@@ -39,13 +39,37 @@ export function normalizeIndianMobile(raw: string): string | null {
 }
 
 /** Split a free-form entry into a name and a number. "Ammu 98450 21234" gives
- *  both; a bare number gives a number; a bare name gives a name. */
+ * both; a bare number gives a number; a bare name gives a name.
+ *
+ * The number is lifted out BEFORE the name is read. A pass over the whole
+ * string folds the name's own digits into the number, so "Team 2
+ * 98450 21234" fails the 10-digit test and the number is silently swallowed
+ * into the name — the entry then looks complete but carries no way to reach
+ * the person. */
 export function parseCrewEntry(raw: string): CrewEntry {
   const trimmed = (raw ?? '').trim()
-  const phone = normalizeIndianMobile(trimmed)
-  if (phone) {
-    const name = trimmed.replace(/[\d+\-()\s]+/g, ' ').replace(/\s+/g, ' ').trim()
-    return { raw: trimmed, name, phone }
+  // Find a run of digits and separators that is a mobile number, then remove
+  // exactly that run from the name. The run is matched with separators allowed
+  // INSIDE it, because a number typed "98450 21234" is one number spread over
+  // two tokens; and it is bounded on both sides by something that is not a
+  // digit or separator, so an 11+ digit string cannot yield its last ten.
+  const run = trimmed.match(/(?<![^\s(])(?:\+?91|0)?[\s-]*([6-9](?:[\s-]*\d){9})(?![\s-]*\d)/)
+  const at = run?.index ?? -1
+  if (run && at >= 0) {
+    const phone = normalizeIndianMobile(run[1])
+    // A country prefix that is not India's must not be peeled off to leave a
+    // valid-looking Indian number behind: "+1 9845021234" is a US number with
+    // an Indian subscriber part, and treating it as Indian would silently
+    // mis-file the crew member.
+    const prefix = trimmed.slice(Math.max(0, at - 4), at)
+    const foreign = /\+/.test(prefix) && !/\+?\s*91\s*$/.test(prefix)
+    if (phone && !foreign) {
+      const name = (trimmed.slice(0, at) + trimmed.slice(at + run[0].length))
+        .replace(/[+\-()]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      return { raw: trimmed, name, phone }
+    }
   }
   return { raw: trimmed, name: trimmed, phone: null }
 }
@@ -56,10 +80,12 @@ export function addCrewEntry(list: CrewEntry[], raw: string, limit: number): Cre
   const entry = parseCrewEntry(raw)
   if (!entry.raw) return list
   if (list.length >= Math.max(0, limit)) return list
-  const dupe = list.some(e =>
-    (entry.phone && e.phone === entry.phone) ||
-    (!entry.phone && !e.phone && e.name.toLowerCase() === entry.name.toLowerCase()),
-  )
+  // The same person on two chips sends two invitations. A number match is the
+  // strong signal; a name match catches the case where the same name arrives
+  // once with a number and once without, which would otherwise be two rows for
+  // one traveller.
+  const dupe = (!!entry.name && list.some(e => e.name.toLowerCase() === entry.name.toLowerCase())) ||
+    (!!entry.phone && list.some(e => e.phone === entry.phone))
   return dupe ? list : [...list, entry]
 }
 
@@ -74,7 +100,8 @@ export function addCrewFields(list: CrewEntry[], fields: { name: string; mobile:
   const phone = mobile ? normalizeIndianMobile(mobile) : null
   if (mobile && !phone) return { kind: 'invalid', field: 'mobile', message: 'Enter a valid Indian mobile number, with 10 digits starting with 6 to 9.' }
   if (list.length >= Math.max(0, limit)) return { kind: 'unchanged', message: 'The crew list is full. Increase the party size or remove a member.' }
-  const duplicate = list.some(entry => phone ? entry.phone === phone : !entry.phone && entry.name.toLowerCase() === name.toLowerCase())
+  const duplicate = (!!name && list.some(entry => entry.name.toLowerCase() === name.toLowerCase())) ||
+    (!!phone && list.some(entry => entry.phone === phone))
   if (duplicate) return { kind: 'unchanged', message: 'This crew member is already on the list.' }
   return { kind: 'added', crew: [...list, { raw: [name, mobile].filter(Boolean).join(' '), name, phone }] }
 }

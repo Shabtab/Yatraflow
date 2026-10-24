@@ -38,7 +38,7 @@ import { CreateFlowCalendar } from '../components/CreateFlowCalendar'
 import { CreateFlowTicket } from '../components/CreateFlowTicket'
 import { currentQuery, navigate, onRouteChange } from '../lib/router'
 import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
-import { addCrewFields, type CrewEntry } from '../lib/crewInvite'
+import { addCrewFields, normalizeIndianMobile, type CrewEntry } from '../lib/crewInvite'
 import { recordCreateEvent } from '../lib/createEvents'
 import { stashHandoff } from '../lib/createHandoff'
 import { routeIq, routeIqLine, type RoutePoint } from '../lib/routeIq'
@@ -477,8 +477,11 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     if (draft.crew?.length) {
       setCrew(draft.crew.map(c => ({
         raw: c.name || c.phone || '',
-        name: c.name || c.phone || '',
-        phone: c.phone && !c.phone.includes('•') ? c.phone : null,
+        // A number is kept only if it normalizes. A masked string ("••• 234")
+        // does not, so it degrades to `null` without a string sniff — and a full
+        // number written by another build is refused rather than re-admitted.
+        name: c.name,
+        phone: c.phone ? normalizeIndianMobile(c.phone) : null,
       })))
     }
     // the restored budget is the user's own number - hand the field back to them
@@ -794,7 +797,10 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     setErrs(next)
     if (createFunnelOn('guided') && Object.keys(next).length) {
       const target = firstErrorStep(next)
-      if (target) { setStep(target); navigate(stepHref(target, '/new', currentQuery())) }
+      // Only a real move pushes an entry. When the blocking row already sits on
+      // this step, pushing the same address again would make Back appear dead:
+      // the address does not change, so Back has to be pressed twice.
+      if (target && target !== step) { setStep(target); navigate(stepHref(target, '/new', currentQuery())) }
       if (next.composerRow || next.composerTime) setDetailsOpen(true)
       const first = Object.keys(next).find(key => stepOfError(key) === target)
       if (first) focusError(first)
@@ -1511,8 +1517,11 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     <div className="crew-chips">
                       {crew.map((m, i) => (
                         <span className="crew-chip" key={`${m.phone ?? m.name}-${i}`}>
-                          {m.name || (guided && m.phone ? maskPhone(m.phone) : `+91 ${m.phone}`)}
-                          {m.name && m.phone ? <small>{guided ? maskPhone(m.phone) : m.phone}</small> : null}
+                          {/* The number is masked in BOTH flows. The draft
+                              masks it on write (D7), so printing the full number
+                              here contradicts the project's own privacy rule. */}
+                          {m.name || (m.phone ? maskPhone(m.phone) : '')}
+                          {m.name && m.phone ? <small>{maskPhone(m.phone)}</small> : null}
                           <button type="button" aria-label={`Remove ${m.name || m.phone}`}
                             onClick={() => setCrew(list => list.filter((_, n) => n !== i))}>&#10005;</button>
                         </span>
