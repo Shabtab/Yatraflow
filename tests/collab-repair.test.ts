@@ -1,4 +1,4 @@
-// ============ Stage A repair gate (rounds 2-4) — maintained probes ============
+// ============ Stage A repair gate (rounds 2-5) — maintained probes ============
 //
 // Ports the parent gate's behavioral probes into the maintained suite and
 // broadens them to the decision path. The fake server implements the contract
@@ -124,6 +124,12 @@ const { fake } = vi.hoisted(() => {
         const nid = crypto.randomUUID()
         notificationIds.push(nid)
         fake.notifications.push({ id: nid, userId: decisionRow.raised_by })
+      }
+      if (c.type === 'decision.ballot') {
+        decisionRow = structuredClone(fake.decisionRows.get(c.decisionId)!)
+        if (c.optionId !== null) decisionRow.votes_by_user_id[fake.actor] = c.optionId
+        else delete decisionRow.votes_by_user_id[fake.actor]
+        fake.decisionRows.set(decisionRow.id, decisionRow)
       }
       fake.activity.push({ id: activityId, tripId: params.p_trip_id, text: c.type === 'activity.append' ? c.verb : c.type })
       const receipt: Receipt = { status: 'applied', tripRevision: 0, activityId, notificationIds,
@@ -251,6 +257,15 @@ async function freshStore() {
 }
 
 beforeEach(() => vi.clearAllMocks())
+
+/** Admit a server row through the real realtime dispatch, so the cache row
+ *  the writers clone is the same object a live peer event would produce. */
+function admitRow(store: Awaited<ReturnType<typeof freshStore>>, table: 'suggestions' | 'decisions', row: Record<string, unknown>): void {
+  store._applyRealtimeEventForTest(table, {
+    eventType: 'UPDATE', schema: 'public', table,
+    commit_timestamp: new Date().toISOString(), old: { id: (row as { id: string }).id }, new: structuredClone(row),
+  } as Parameters<typeof store._applyRealtimeEventForTest>[1])
+}
 
 describe('gate round 2 — F1 surgical rollback', () => {
   it('control: exact command replay commits one comment and retains canonical receipt fields', async () => {
@@ -665,15 +680,6 @@ describe('gate round 2-3 — F4/C1 conflict reconciliation and the unresolved dr
 })
 
 describe('gate round 4 — ballot ownership and per-action draft ownership', () => {
-  /** Admit a server row through the real realtime dispatch, so the cache row
-   *  the writers clone is the same object a live peer event would produce. */
-  function admitRow(store: Awaited<ReturnType<typeof freshStore>>, table: 'suggestions' | 'decisions', row: Record<string, unknown>): void {
-    store._applyRealtimeEventForTest(table, {
-      eventType: 'UPDATE', schema: 'public', table,
-      commit_timestamp: new Date().toISOString(), old: { id: (row as { id: string }).id }, new: structuredClone(row),
-    } as Parameters<typeof store._applyRealtimeEventForTest>[1])
-  }
-
   it('a refused change to an existing ballot restores the prior vote across a concurrent comment', async () => {
     const store = await freshStore()
     // The actor already holds an upvote, admitted through the realtime path.
@@ -797,5 +803,139 @@ describe('gate round 4 — ballot ownership and per-action draft ownership', () 
     const final = store.getSnapshot().trips.find(t => t.id === fake.trip)!
     expect(final.expenses.some(e => e.label === 'Queued fuel')).toBe(true)
     expect(final.writeVersion).toBe(1)
+  })
+})
+
+describe('gate round 5 — chained ballot refusals and in-flight comment drafts', () => {
+  it('two refused overlapping ballots leave no ghost vote and the next upvote is a SET', async () => {
+    const store = await freshStore()
+    fake.hold = true
+    const up = store.voteSuggestion(fake.trip, S1, 1)
+    const down = store.voteSuggestion(fake.trip, S1, -1)
+    expect(fake.held).toHaveLength(2)
+    fake.held[0].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await up).status).toBe('forbidden')
+    fake.held[1].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await down).status).toBe('forbidden')
+    await tick()
+    // Neither command committed, so no trace of either may survive: the
+    // second rollback restored the CONFIRMED baseline (no vote), not the
+    // first operation's unconfirmed upvote.
+    const afterRefusals = store.getSnapshot().suggestions.find(x => x.id === S1)!
+    expect(afterRefusals.votes).toEqual([])
+    expect(fake.rows.get(S1)!.votes).toEqual([])
+    expect(fake.ledger.size).toBe(0)
+    expect(store.getSnapshot().activity).toHaveLength(0)
+    // The semantic consequence: with no server-backed ballot, a real Upvote
+    // click must issue SET 1 — never a removal read off the ghost.
+    fake.hold = false
+    const next = await store.voteSuggestion(fake.trip, S1, 1)
+    expect(next.status).toBe('applied')
+    expect(fake.calls[2].p_command.value).toBe(1)
+    expect(fake.rows.get(S1)!.votes.map(v => v.value)).toEqual([1])
+  })
+
+  it('chained refusals across a concurrent comment also restore the confirmed baseline', async () => {
+    const store = await freshStore()
+    fake.hold = true
+    const up = store.voteSuggestion(fake.trip, S1, 1)
+    const down = store.voteSuggestion(fake.trip, S1, -1)
+    const comment = store.addCommentToSuggestion(fake.trip, S1, 'independent pending comment')
+    expect(fake.held).toHaveLength(3)
+    fake.held[0].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await up).status).toBe('forbidden')
+    // The comment's clone moved the row, so the second rollback takes the
+    // moved-on retraction path with the chained baseline.
+    fake.held[1].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await down).status).toBe('forbidden')
+    const cached = store.getSnapshot().suggestions.find(x => x.id === S1)!
+    expect(cached.votes).toEqual([])
+    expect(cached.comments.map(c => c.text)).toEqual(['independent pending comment'])
+    fake.held[2].resolve(fake.apply(fake.held[2].params))
+    await comment
+    await tick()
+  })
+
+  it('two refused overlapping decision ballots leave no ghost option and the next vote is a SET', async () => {
+    const store = await freshStore()
+    const seeded = structuredClone(fake.decisionRows.get(D1)!)
+    seeded.options = [{ id: 'opt-1', label: 'Time Out' }, { id: 'opt-2', label: 'Late Night' }]
+    fake.decisionRows.set(D1, seeded)
+    admitRow(store, 'decisions', seeded)
+    fake.hold = true
+    const first = store.voteOnDecision(D1, 'opt-1')
+    const second = store.voteOnDecision(D1, 'opt-2')
+    expect(fake.held).toHaveLength(2)
+    fake.held[0].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await first).status).toBe('forbidden')
+    fake.held[1].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await second).status).toBe('forbidden')
+    await tick()
+    const afterRefusals = store.getSnapshot().decisions.find(x => x.id === D1)!
+    expect(afterRefusals.votesByUserId[fake.actor]).toBeUndefined()
+    expect(Object.keys(fake.decisionRows.get(D1)!.votes_by_user_id)).toEqual([])
+    fake.hold = false
+    const next = await store.voteOnDecision(D1, 'opt-1')
+    expect(next.status).toBe('applied')
+    expect(fake.calls[2].p_command.optionId).toBe('opt-1')
+    expect(fake.decisionRows.get(D1)!.votes_by_user_id[fake.actor]).toBe('opt-1')
+  })
+
+  it('an echo landing mid-flight refreshes the confirmed baseline a later rollback restores', async () => {
+    const store = await freshStore()
+    fake.hold = true
+    const up = store.voteSuggestion(fake.trip, S1, 1)
+    // The upvote commits server-side and its realtime echo lands while the
+    // RPC response is still held: the canonical row refreshes the in-flight
+    // operation's confirmed baseline to the committed vote.
+    fake.apply(fake.held[0].params)
+    admitRow(store, 'suggestions', fake.rows.get(S1)!)
+    const down = store.voteSuggestion(fake.trip, S1, -1)
+    const comment = store.addCommentToSuggestion(fake.trip, S1, 'concurrent comment')
+    expect(fake.held).toHaveLength(3)
+    fake.held[0].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await up).status).toBe('forbidden')
+    fake.held[1].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await down).status).toBe('forbidden')
+    // The downvote rollback restores the ECHO-confirmed upvote, not the
+    // "no vote" baseline the first claim captured.
+    const cached = store.getSnapshot().suggestions.find(x => x.id === S1)!
+    expect(cached.votes).toEqual([{ userId: fake.actor, value: 1, createdAt: 1 }])
+    expect(fake.rows.get(S1)!.votes).toEqual([{ userId: fake.actor, value: 1, createdAt: 1 }])
+    fake.held[2].resolve(fake.apply(fake.held[2].params))
+    await comment
+    await tick()
+  })
+
+  it('an in-flight comment stays visible through an earlier ballot recovery and settles once', async () => {
+    const store = await freshStore()
+    fake.hold = true
+    const ballot = store.voteSuggestion(fake.trip, S1, 1)
+    const comment = store.addCommentToSuggestion(fake.trip, S1, 'still sending input')
+    expect(fake.held).toHaveLength(2)
+    const command = structuredClone(fake.held[1].params)
+    expect(store.getSnapshot().suggestions.find(x => x.id === S1)!.comments.map(c => c.text)).toContain('still sending input')
+    // The ballot commits first; its receipt is stale relative to the later
+    // optimistic comment, so it triggers the real fenced recovery SELECT.
+    fake.held[0].resolve(fake.apply(fake.held[0].params))
+    expect((await ballot).status).toBe('applied')
+    await tick()
+    // The recovery SELECT replaced the row with the canonical one, which has
+    // no trace of the uncommitted comment: the dispatch-time draft overlay
+    // must keep it on screen.
+    expect(fake.ledger.has(command.p_command_id)).toBe(false)
+    const whilePending = store.getSnapshot().suggestions.find(x => x.id === S1)!
+    expect(whilePending.comments.map(c => c.text)).toContain('still sending input')
+    expect(whilePending.votes.map(v => v.value)).toEqual([1])
+    // Drain the still-pending transport: success settles the same comment
+    // exactly once, with no duplicate.
+    fake.held[1].resolve(fake.apply(fake.held[1].params))
+    expect((await comment).status).toBe('applied')
+    await tick()
+    const final = store.getSnapshot().suggestions.find(x => x.id === S1)!
+    expect(final.comments.map(c => c.id)).toEqual([command.p_command.commentId])
+    expect(fake.rows.get(S1)!.comments.map(c => c.id)).toEqual([command.p_command.commentId])
+    expect(fake.calls).toHaveLength(2)
+    expect(fake.notifications).toHaveLength(1)
   })
 })
