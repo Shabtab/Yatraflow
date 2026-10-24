@@ -4858,37 +4858,48 @@ function settlePendingCollab(pendingKey: string | null): void {
   if (pendingKey) pendingCollabActions.delete(pendingKey)
 }
 
-// ---- Unresolved conflict drafts (gate round 2 F4, round 3 C1) ----
+// ---- Unresolved conflict drafts (gate round 2 F4, rounds 3-4 C1) ----
 //
 // The input a conflict kept alive. The pending envelope and the form text own
 // the ACTION; this overlay owns the CACHE COPY: a canonical replacement
-// (recovery read, realtime UPDATE) re-attaches the draft, because the server
-// has not committed it yet. Cleared the moment the action settles and the
-// server row carries the comment (or the refusal is final).
+// (receipt adoption, recovery read, realtime UPDATE) re-attaches the draft,
+// because the server has not committed it yet. The owner is the ACTION (its
+// command id), not the row: an unrelated action settling on the same row
+// retires only its own overlay. A draft retires when its action settles and
+// the server row carries the comment, or when the refusal is final.
 
-const conflictDrafts = new Map<string, Comment>() // `${kind}:${rowId}`
+const conflictDrafts = new Map<string, Comment>() // `${kind}:${rowId}:${commandId}`
 
-function draftKey(kind: ContributionKind, rowId: ID): string {
-  return `${kind}:${rowId}`
+function draftKey(kind: ContributionKind, rowId: ID, commandId: string): string {
+  return `${kind}:${rowId}:${commandId}`
 }
 
-/** Re-attach an unresolved draft after a canonical row replacement. When the
- *  canonical row already carries the comment, the server has committed the
- *  retry — the overlay retires. */
-function reattachConflictDraft(kind: ContributionKind, rowId: ID): void {
-  const key = draftKey(kind, rowId)
-  const draft = conflictDrafts.get(key)
-  if (!draft) return
-  if (kind === 'suggestion') {
-    const cur = cache.suggestions.find(x => x.id === rowId)
-    if (!cur) return
-    if (cur.comments.some(c => c.id === draft.id)) { conflictDrafts.delete(key); return }
-    cache.suggestions = cache.suggestions.map(x => x.id === rowId ? { ...x, comments: [...x.comments, draft] } : x)
-  } else {
-    const cur = cache.decisions.find(x => x.id === rowId)
-    if (!cur) return
-    if (cur.comments.some(c => c.id === draft.id)) { conflictDrafts.delete(key); return }
-    cache.decisions = cache.decisions.map(x => x.id === rowId ? { ...x, comments: [...x.comments, draft] } : x)
+/** Every draft an unresolved action still owns on this row, oldest first. */
+function conflictDraftsFor(kind: ContributionKind, rowId: ID): Array<{ key: string; draft: Comment }> {
+  const prefix = `${kind}:${rowId}:`
+  const found: Array<{ key: string; draft: Comment }> = []
+  for (const entry of conflictDrafts) {
+    if (entry[0].startsWith(prefix)) found.push({ key: entry[0], draft: entry[1] })
+  }
+  return found
+}
+
+/** Re-attach every unresolved draft after a canonical row replacement. When
+ *  the canonical row already carries a draft's comment, the server has
+ *  committed that action — its overlay retires; the others stay owned. */
+function reattachConflictDrafts(kind: ContributionKind, rowId: ID): void {
+  for (const { key, draft } of conflictDraftsFor(kind, rowId)) {
+    if (kind === 'suggestion') {
+      const cur = cache.suggestions.find(x => x.id === rowId)
+      if (!cur) return
+      if (cur.comments.some(c => c.id === draft.id)) { conflictDrafts.delete(key); continue }
+      cache.suggestions = cache.suggestions.map(x => x.id === rowId ? { ...x, comments: [...x.comments, draft] } : x)
+    } else {
+      const cur = cache.decisions.find(x => x.id === rowId)
+      if (!cur) return
+      if (cur.comments.some(c => c.id === draft.id)) { conflictDrafts.delete(key); continue }
+      cache.decisions = cache.decisions.map(x => x.id === rowId ? { ...x, comments: [...x.comments, draft] } : x)
+    }
   }
 }
 
@@ -4967,9 +4978,14 @@ function retractSuggestionBallotFromRow(
     ? !entry // the removal itself was the optimistic change
     : !!entry && entry.value === rec.applied.value && entry.createdAt === rec.applied.createdAt
   if (!ghost) return undefined
-  return rec.prior
+  // The prior entry may be REPLACED in the current row (a value change) or
+  // ABSENT from it (a removal whose absence the clone chain carried): the
+  // restore handles both, or a refused removal would leave no trace to
+  // restore and the actor's real vote would stay lost (gate round 4, R2).
+  if (!rec.prior) return { ...row, votes: row.votes.filter(v => v.userId !== ownership.userId) }
+  return row.votes.some(v => v.userId === ownership.userId)
     ? { ...row, votes: row.votes.map(v => v.userId === ownership.userId ? { ...v, value: rec.prior!.value, createdAt: rec.prior!.createdAt } : v) }
-    : { ...row, votes: row.votes.filter(v => v.userId !== ownership.userId) }
+    : { ...row, votes: [...row.votes, { ...rec.prior }] }
 }
 
 function retractDecisionBallotFromRow(
@@ -5138,14 +5154,14 @@ function rollbackContribution(args: {
  *  conflict starts. Bound to the identity that asked, and FENCED by the row's
  *  own generation (gate round 2, F3): the row object is captured BEFORE the
  *  read and the result applies only if it is still current on arrival, so a
- *  delayed snapshot cannot overwrite a newer canonical row. An unresolved
- *  draft comment (a conflict's preserved input) is re-attached to the
- *  authoritative row, because the server has not committed it yet. */
+ *  delayed snapshot cannot overwrite a newer canonical row. Unresolved draft
+ *  comments (a conflict's preserved input, one per owning action) are
+ *  re-attached to the authoritative row, because the server has not committed
+ *  them yet. */
 async function refetchContributionRow(
   kind: ContributionKind,
   rowId: ID,
   scope: IdentityScope,
-  opts?: { draft?: Comment },
 ): Promise<void> {
   try {
     const table = kind === 'suggestion' ? 'suggestions' : 'decisions'
@@ -5161,24 +5177,18 @@ async function refetchContributionRow(
     // discard it (a later event or receipt brings the truth) rather than
     // regress the cache.
     if (current !== before) return
-    const draft = opts?.draft
     if (kind === 'suggestion') {
       const mapped = suggestionRowToEntry(data)
-      if (draft && !mapped.comments.some(c => c.id === draft.id)) {
-        mapped.comments = [...mapped.comments, draft]
-      }
       cache.suggestions = cache.suggestions.some(x => x.id === rowId)
         ? cache.suggestions.map(x => x.id === rowId ? mapped : x)
         : [...cache.suggestions, mapped]
     } else {
       const mapped = decisionRowToEntry(data)
-      if (draft && !mapped.comments.some(c => c.id === draft.id)) {
-        mapped.comments = [...mapped.comments, draft]
-      }
       cache.decisions = cache.decisions.some(x => x.id === rowId)
         ? cache.decisions.map(x => x.id === rowId ? mapped : x)
         : [...cache.decisions, mapped]
     }
+    reattachConflictDrafts(kind, rowId)
     commit()
   } catch (e) {
     console.error(`[yatraflow] ${kind} row refetch failed`, e)
@@ -5223,10 +5233,12 @@ async function runContributionCommand(args: {
     } else if (args.rowKind === 'suggestion') {
       if (receipt.suggestion) {
         cache.suggestions = cache.suggestions.map(x => x.id === args.rowId ? receipt.suggestion! : x)
+        reattachConflictDrafts(args.rowKind, args.rowId)
         commit()
       }
     } else if (receipt.decision) {
       cache.decisions = cache.decisions.map(x => x.id === args.rowId ? receipt.decision! : x)
+      reattachConflictDrafts(args.rowKind, args.rowId)
       commit()
     }
     // applied and alreadyApplied both carry the stored receipt's artifact ids
@@ -5237,7 +5249,9 @@ async function runContributionCommand(args: {
     // action with fresh ids, and the optimistic ballot is server-backed now.
     settlePendingCollab(args.pendingKey)
     releaseBallotOwnership(args.ballotOwnership)
-    conflictDrafts.delete(draftKey(args.rowKind, args.rowId))
+    // Only THIS action's overlay retires (gate round 4, C1): a comment left
+    // unresolved by a conflict keeps its owner until ITS action settles.
+    conflictDrafts.delete(draftKey(args.rowKind, args.rowId, args.commandId))
     return receipt
   }
   if (receipt.status === 'conflict') {
@@ -5248,13 +5262,14 @@ async function runContributionCommand(args: {
     // caller's retry path reuses it.
     dropArtifacts(args.localActivityId, args.localNotificationIds)
     // Own the cache copy of the unresolved input (gate round 3, C1): canonical
-    // replacements re-attach it until the action settles.
-    if (args.draftComment) conflictDrafts.set(draftKey(args.rowKind, args.rowId), args.draftComment)
+    // replacements re-attach it until the action settles. The owner is this
+    // ACTION, so another action's settlement cannot retire it.
+    if (args.draftComment) conflictDrafts.set(draftKey(args.rowKind, args.rowId, args.commandId), args.draftComment)
     // Start the authoritative reconciliation the feedback promises: a fenced
-    // read of the contribution row (keeping the draft attached) and the
-    // acknowledged trip revision — which never advances the client CAS.
-    void refetchContributionRow(args.rowKind, args.rowId, args.scope,
-      args.draftComment ? { draft: args.draftComment } : undefined)
+    // read of the contribution row (keeping every unresolved draft attached)
+    // and the acknowledged trip revision — which never advances the client
+    // CAS.
+    void refetchContributionRow(args.rowKind, args.rowId, args.scope)
     noteTripRevision(args.tripId, receipt.tripRevision)
     return receipt
   }
@@ -5268,7 +5283,7 @@ async function runContributionCommand(args: {
     })
     settlePendingCollab(args.pendingKey)
     releaseBallotOwnership(args.ballotOwnership)
-    conflictDrafts.delete(draftKey(args.rowKind, args.rowId))
+    conflictDrafts.delete(draftKey(args.rowKind, args.rowId, args.commandId))
     return receipt
   }
   // unavailable: the command MAY have committed (a lost response). Retract
@@ -5285,7 +5300,7 @@ async function runContributionCommand(args: {
     localActivityId: args.localActivityId, localNotificationIds: args.localNotificationIds,
   })
   releaseBallotOwnership(args.ballotOwnership)
-  conflictDrafts.delete(draftKey(args.rowKind, args.rowId))
+  conflictDrafts.delete(draftKey(args.rowKind, args.rowId, args.commandId))
   return receipt
 }
 
@@ -5361,6 +5376,11 @@ export function voteSuggestion(tripId: ID, suggestionId: ID, value: 1 | -1): Pro
   const rowBefore = cache.suggestions[sgIdx]
   const sg = structuredClone(rowBefore)
   const existing = sg.votes.find(v => v.userId === scope.userId)
+  // The prior snapshot is captured BEFORE the clone is mutated below
+  // (gate round 4, R2): spreading the entry after `existing.value = value`
+  // would record the failed ballot as its own prior, and a refused change
+  // could then never restore the vote the actor actually had.
+  const priorVote = existing ? { ...existing } : undefined
   // Toggling the same value again is a *removal* — the CLIENT says so with
   // `value: null`, and the activity feed has to say so too: logging the
   // value's verb made "I take back my upvote" read as "upvoted", which is the
@@ -5385,8 +5405,7 @@ export function voteSuggestion(tripId: ID, suggestionId: ID, value: 1 | -1): Pro
   // optimistic entry until it settles, so a rollback can reclaim it even when
   // a concurrent comment's clone moved the row object.
   const ballotOwnership = claimSuggestionBallot(suggestionId, scope.userId,
-    { value: ballot, createdAt: appliedCreatedAt },
-    existing ? { ...existing } : undefined)
+    { value: ballot, createdAt: appliedCreatedAt }, priorVote)
   cache.suggestions = [...cache.suggestions.slice(0, sgIdx), sg, ...cache.suggestions.slice(sgIdx + 1)]
   const localActivityId = uuid()
   cache.activity = [...cache.activity, {
@@ -6831,12 +6850,12 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
     case 'suggestions':
       cache.suggestions = reduceSlice(cache.suggestions, event, row ? rowToSuggestion(row) : undefined, oldRow?.id)
       // A canonical replacement must not hide an unresolved conflict draft
-      // (gate round 3, C1): the overlay re-attaches it until it settles.
-      if (id !== undefined) reattachConflictDraft('suggestion', id)
+      // (gate round 3, C1): every action still owning one re-attaches it.
+      if (id !== undefined) reattachConflictDrafts('suggestion', id)
       break
     case 'decisions':
       cache.decisions = reduceSlice(cache.decisions, event, row ? rowToDecision(row) : undefined, oldRow?.id)
-      if (id !== undefined) reattachConflictDraft('decision', id)
+      if (id !== undefined) reattachConflictDrafts('decision', id)
       break
     case 'activity': {
       if (event === 'DELETE') {

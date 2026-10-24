@@ -1,4 +1,4 @@
-// ============ Stage A repair gate (rounds 2-3) — maintained probes ============
+// ============ Stage A repair gate (rounds 2-4) — maintained probes ============
 //
 // Ports the parent gate's behavioral probes into the maintained suite and
 // broadens them to the decision path. The fake server implements the contract
@@ -6,8 +6,9 @@
 // alreadyApplied with the STORED receipt, artifact ids included), canonical
 // snake_case rows in receipts, camelCase tripRevision, server-side
 // activity/notification creation, holdable RPC + SELECT transports, and a
-// A consistent query builder (setHeader, eq on any column, trips and membership
-// reads) so the trip-reconciliation fetch really executes through admission.
+// A consistent query builder (setHeader, eq on any column, limit, trips and
+// membership reads) so the trip-reconciliation fetch really executes through
+// admission.
 //
 // Premises are the gate's own and are not weakened: every test drives the
 // real store writers, the real receipt parser, the real admission path and
@@ -61,6 +62,7 @@ const { fake } = vi.hoisted(() => {
     tripsRow: null as Record<string, unknown> | null,
     membersRow: null as Record<string, unknown> | null,
     tripUpdateFails: false,
+    tripUpdates: [] as Array<Record<string, unknown>>,
     reset() {
       fake.rows.clear(); fake.decisionRows.clear(); fake.ledger.clear()
       fake.activity = []; fake.notifications = []
@@ -68,6 +70,7 @@ const { fake } = vi.hoisted(() => {
       fake.hold = false; fake.holdSelect = false; fake.loseAfterCommit = false
       fake.conflict = false; fake.readError = false
       fake.tripsRow = null; fake.membersRow = null; fake.tripUpdateFails = false
+      fake.tripUpdates = []
     },
     apply(params: Params): Response {
       const c = params.p_command
@@ -158,8 +161,10 @@ const { fake } = vi.hoisted(() => {
       }
       return Promise.resolve({ data: snapshot, error: null })
     },
-    /** The trips UPDATE, so a queued-edit test can fail it for real. */
+    /** The trips UPDATE, so a queued-edit test can fail it for real. Every
+     *  try is recorded, so a test can prove the UPDATE was reached. */
     updateTrips(eqs: Record<string, unknown>): Response {
+      fake.tripUpdates.push(structuredClone(eqs))
       if (fake.tripUpdateFails) return { data: null, error: { message: 'synthetic trips write failure' } }
       return { data: [{ id: eqs.id, updated_at: 2, write_version: Number(eqs.write_version ?? 0) + 1 }], error: null }
     },
@@ -182,6 +187,7 @@ vi.mock('../src/lib/supabase', () => ({
         insert: () => { method = 'insert'; return qb },
         eq: (column: string, value: unknown) => { eqs[column] = value; return qb },
         is: () => qb,
+        limit: () => qb,
         setHeader: () => qb,
         maybeSingle: () => fake.read(table, eqs, true),
         then: <T, U>(resolve: (r: Response) => T, reject?: (e: unknown) => U) =>
@@ -614,6 +620,9 @@ describe('gate round 2-3 — F4/C1 conflict reconciliation and the unresolved dr
     const store = await freshStore()
     store._setTripWriteDebounceMs(0)
     fake.conflict = true
+    // The server is AHEAD of the edit's base revision (7 vs 0): this proves
+    // the queued-conflict branch, which stops at preflight. The separate
+    // same-revision fixture below proves a real failed UPDATE.
     fake.tripsRow = authoritativeTripsRow(fake.trip, fake.actor, 7)
     fake.membersRow = { id: 'tm-1', trip_id: fake.trip, user_id: fake.actor, role: 'owner', joined_at: 1 }
     // A real local edit whose trip write fails, so the edit is queued.
@@ -652,5 +661,141 @@ describe('gate round 2-3 — F4/C1 conflict reconciliation and the unresolved dr
     const observed = store.getSnapshot().suggestions.find(x => x.id === S1)!.comments.map(c => c.text)
     expect(observed).toContain('peer event')
     expect(observed).toContain('unresolved input')
+  })
+})
+
+describe('gate round 4 — ballot ownership and per-action draft ownership', () => {
+  /** Admit a server row through the real realtime dispatch, so the cache row
+   *  the writers clone is the same object a live peer event would produce. */
+  function admitRow(store: Awaited<ReturnType<typeof freshStore>>, table: 'suggestions' | 'decisions', row: Record<string, unknown>): void {
+    store._applyRealtimeEventForTest(table, {
+      eventType: 'UPDATE', schema: 'public', table,
+      commit_timestamp: new Date().toISOString(), old: { id: (row as { id: string }).id }, new: structuredClone(row),
+    } as Parameters<typeof store._applyRealtimeEventForTest>[1])
+  }
+
+  it('a refused change to an existing ballot restores the prior vote across a concurrent comment', async () => {
+    const store = await freshStore()
+    // The actor already holds an upvote, admitted through the realtime path.
+    const voted = structuredClone(fake.rows.get(S1)!)
+    voted.votes = [{ userId: fake.actor, value: 1, createdAt: 1 }]
+    fake.rows.set(S1, voted)
+    admitRow(store, 'suggestions', voted)
+    fake.hold = true
+    // A downvote on top of the upvote, then a concurrent comment whose clone
+    // carries the optimistic downvote away from the vote's own row object.
+    const vote = store.voteSuggestion(fake.trip, S1, -1)
+    const comment = store.addCommentToSuggestion(fake.trip, S1, 'independent pending comment')
+    expect(fake.held).toHaveLength(2)
+    fake.held[0].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await vote).status).toBe('forbidden')
+    const cached = store.getSnapshot().suggestions.find(x => x.id === S1)!
+    // The refused downvote is gone and the actor's REAL prior vote is back:
+    // the ownership record captured it before the optimistic mutation.
+    expect(cached.votes).toEqual([{ userId: fake.actor, value: 1, createdAt: 1 }])
+    expect(cached.comments.map(c => c.text)).toEqual(['independent pending comment'])
+    expect(fake.rows.get(S1)!.votes).toEqual([{ userId: fake.actor, value: 1, createdAt: 1 }])
+    fake.held[1].resolve(fake.apply(fake.held[1].params))
+    await comment
+    await tick()
+  })
+
+  it('a refused removal restores the prior vote it removed', async () => {
+    const store = await freshStore()
+    const voted = structuredClone(fake.rows.get(S1)!)
+    voted.votes = [{ userId: fake.actor, value: 1, createdAt: 1 }]
+    fake.rows.set(S1, voted)
+    admitRow(store, 'suggestions', voted)
+    fake.hold = true
+    // Toggling the same value is a removal: the optimistic row has NO vote
+    // entry, so the rollback must re-INSERT the prior, not replace it.
+    const vote = store.voteSuggestion(fake.trip, S1, 1)
+    const comment = store.addCommentToSuggestion(fake.trip, S1, 'concurrent comment')
+    expect(fake.held).toHaveLength(2)
+    fake.held[0].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await vote).status).toBe('forbidden')
+    const cached = store.getSnapshot().suggestions.find(x => x.id === S1)!
+    expect(cached.votes).toEqual([{ userId: fake.actor, value: 1, createdAt: 1 }])
+    expect(cached.comments.map(c => c.text)).toEqual(['concurrent comment'])
+    fake.held[1].resolve(fake.apply(fake.held[1].params))
+    await comment
+    await tick()
+  })
+
+  it('a refused decision ballot change restores the prior option across a concurrent comment', async () => {
+    const store = await freshStore()
+    const voted = structuredClone(fake.decisionRows.get(D1)!)
+    voted.options = [{ id: 'opt-1', label: 'Time Out' }, { id: 'opt-2', label: 'Late Night' }]
+    voted.votes_by_user_id = { [fake.actor]: 'opt-1' }
+    fake.decisionRows.set(D1, voted)
+    admitRow(store, 'decisions', voted)
+    fake.hold = true
+    const vote = store.voteOnDecision(D1, 'opt-2')
+    const comment = store.addCommentToDecision(fake.trip, D1, 'concurrent comment')
+    expect(fake.held).toHaveLength(2)
+    fake.held[0].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await vote).status).toBe('forbidden')
+    const cached = store.getSnapshot().decisions.find(x => x.id === D1)!
+    expect(cached.votesByUserId[fake.actor]).toBe('opt-1')
+    expect(cached.comments.map(c => c.text)).toEqual(['concurrent comment'])
+    fake.held[1].resolve(fake.apply(fake.held[1].params))
+    await comment
+    await tick()
+  })
+
+  it('an unrelated successful settlement retires only its own unresolved draft', async () => {
+    const store = await freshStore()
+    fake.conflict = true
+    expect((await store.addCommentToSuggestion(fake.trip, S1, 'unresolved input')).status).toBe('conflict')
+    await tick()
+    expect(store.getSnapshot().suggestions.find(x => x.id === S1)!.comments.map(c => c.text)).toEqual(['unresolved input'])
+    // A ballot on the SAME row succeeds while the comment is unresolved.
+    fake.conflict = false
+    expect((await store.voteSuggestion(fake.trip, S1, 1)).status).toBe('applied')
+    await tick()
+    // The ballot's canonical receipt row must not retire the comment's draft
+    // owner: the overlay belongs to the unresolved action, not to the row.
+    const afterSuccess = store.getSnapshot().suggestions.find(x => x.id === S1)!
+    expect(afterSuccess.comments.map(c => c.text)).toContain('unresolved input')
+    // A later canonical realtime replacement re-attaches it again.
+    const peer = structuredClone(fake.rows.get(S1)!)
+    peer.comments.push({ id: 'peer-comment', authorId: 'peer', text: 'peer event', createdAt: 2 })
+    fake.rows.set(S1, peer)
+    admitRow(store, 'suggestions', peer)
+    const afterRealtime = store.getSnapshot().suggestions.find(x => x.id === S1)!
+    expect(afterRealtime.comments.map(c => c.text)).toContain('peer event')
+    expect(afterRealtime.comments.map(c => c.text)).toContain('unresolved input')
+    // And the action itself is untouched: the retry replays the SAME identity.
+    const retry = await store.addCommentToSuggestion(fake.trip, S1, 'unresolved input')
+    expect(retry.status).toBe('applied')
+    expect(fake.calls[2].p_command_id).toBe(fake.calls[0].p_command_id)
+    expect(fake.calls[2].p_command).toEqual(fake.calls[0].p_command)
+  })
+
+  it('a same-revision queued edit really sends its UPDATE, and a failed one stays queued', async () => {
+    const store = await freshStore()
+    store._setTripWriteDebounceMs(0)
+    // The server sits at the SAME revision the edit is based on, so the queued
+    // write passes preflight and really reaches its UPDATE — this fixture is a
+    // real failed write, not the preflight conflict the revision-7 test proves.
+    fake.tripsRow = authoritativeTripsRow(fake.trip, fake.actor, 0)
+    fake.membersRow = { id: 'tm-1', trip_id: fake.trip, user_id: fake.actor, role: 'owner', joined_at: 1 }
+    fake.tripUpdateFails = true
+    store.addExpense(fake.trip, { label: 'Queued fuel', category: 'transport', amountInr: 500 })
+    await tick(); await tick(); await tick()
+    expect(fake.tripUpdates.length).toBeGreaterThanOrEqual(1)
+    const after = store.getSnapshot().trips.find(t => t.id === fake.trip)!
+    expect(after.expenses.some(e => e.label === 'Queued fuel')).toBe(true)
+    expect(after.writeVersion).toBe(0)
+    // The queue still owns the edit: a replay sends the same write, and this
+    // time it lands — proof that the failed try preserved the entry.
+    fake.tripUpdateFails = false
+    const synced = await store.replayQueuedWrites()
+    await tick()
+    expect(synced).toBeGreaterThanOrEqual(1)
+    expect(fake.tripUpdates.length).toBeGreaterThanOrEqual(2)
+    const final = store.getSnapshot().trips.find(t => t.id === fake.trip)!
+    expect(final.expenses.some(e => e.label === 'Queued fuel')).toBe(true)
+    expect(final.writeVersion).toBe(1)
   })
 })
