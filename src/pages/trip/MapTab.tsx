@@ -17,7 +17,7 @@ import { Select } from '../../components/Select'
 import { DetourWhisk } from '../../components/DetourWhisk'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { openExternal } from '../../lib/native'
-import { corridorAnchors, asymmetricDetourKm, asymmetricDetourMinutes, googleEnabled, reasonForSegmentHit, searchPlacesText, kmFromStartForHit, deriveDrivingPlan, effectiveDrivingDays, rainFactorFor, directionalKm, alongRouteKmOf, DEFER_START, type NearbyOpts, type PlaceHit } from '../../lib/geocode'
+import { corridorAnchors, asymmetricDetourKm, asymmetricDetourMinutes, googleEnabled, reasonForSegmentHit, searchPlacesText, kmFromStartForHit, deriveDrivingPlan, effectiveDrivingDays, anchorsForCrew, rainFactorFor, directionalKm, alongRouteKmOf, DEFER_START, type NearbyOpts, type PlaceHit } from '../../lib/geocode'
 import { useResolvePick } from '../../components/ResolvePickDialog'
 import { clockHM, deriveClockMilestones } from '../../lib/clockOverlay'
 import { SHEET_TABS, sheetHiddenClass, sheetTabMove } from '../../lib/mapSheet'
@@ -518,11 +518,10 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     driverCount: trip.driverCount,
     hasVulnerable: trip.hasVulnerable,
   }
-  const tripAnchors = {
-    dinnerStartMin: trip.hasVulnerable ? 19 * 60 : undefined,
-    dinnerEndMin: trip.hasVulnerable ? 20 * 60 : undefined,
-    allowPostDinnerDriveMin: trip.driveAfterDinnerMin,
-  }
+  const tripAnchors = anchorsForCrew({
+    hasVulnerable: trip.hasVulnerable,
+    driveAfterDinnerMin: trip.driveAfterDinnerMin,
+  })
   // A round trip's SPLIT demands days for the whole loop (2× the outbound
   // corridor — the return re-traces the same road). The CLOCK walk (#145) now
   // models it honestly instead: one outbound walk + a directed return walk
@@ -534,6 +533,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   const drivingPlan = useMemo(
     () => deriveDrivingPlan({
       totalKm: planKm, driveMinutes: wholeTrip.min, dayStart: trip.days[0]?.startTime,
+      dayStartTimes: trip.days.map(d => d.startTime ?? '08:30'),
       rainFactor, dayRainPct: dayRainPct ?? undefined, dayWeatherCode: dayWeatherCode ?? undefined,
       roundTrip: tripIsRoundTrip, profile: roadProfile, ...partyOpts, anchors: tripAnchors,
     }),

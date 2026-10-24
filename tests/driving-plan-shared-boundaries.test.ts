@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { assignSegmentHits, deriveDrivingPlan, effectiveDrivingDays, planRideSegments } from '../src/lib/ridePlan'
+import { anchorsForCrew, assignSegmentHits, deriveDrivingPlan, drivingPlanFingerprint, effectiveDrivingDays, planRideSegments } from '../src/lib/ridePlan'
+import { planInputsHash } from '../src/hooks/useSuggestionCache'
 
 describe('issue 832 F3 shared driving-plan boundaries', () => {
   it.each([1200, 1500])('the corridor overnight targets match the journey clock for %i wheel minutes', (driveMinutes) => {
@@ -90,11 +91,53 @@ describe('issue 832 F3 shared driving-plan boundaries', () => {
     }
     const dayStartTimes = ['08:30', '14:00', '08:30', '08:30']
     const plan = deriveDrivingPlan({ ...facts, dayStartTimes })
+    const defaultPlan = deriveDrivingPlan(facts)
     expect(plan.outbound[1].startMin).toBeGreaterThanOrEqual(14 * 60)
+    expect(plan.outbound[1].endKm).toBeLessThan(defaultPlan.outbound[1].endKm)
+    expect(plan.clock.days.map(day => day.startMin)).toEqual(plan.outbound.map(day => day.startMin))
     const segments = planRideSegments({ ...facts, dayBoundaries: plan.outbound, dayStartTimes })
-    const targets = segments.filter(segment => segment.dayEnd).map(segment => segment.targetKm)
+    const overnights = segments.filter(segment => segment.dayEnd)
+    const targets = overnights.map(segment => segment.targetKm)
     expect(targets).toEqual(plan.outbound.slice(0, -1).map(day => day.endKm))
-    expect(segments.filter(segment => segment.dayEnd).every(segment => Number.isFinite(segment.etaMinutes))).toBe(true)
+    expect(overnights).toHaveLength(plan.outbound.length - 1)
+    expect(overnights.every(segment => Number.isFinite(segment.etaMinutes))).toBe(true)
+  })
+
+  it('changes cache identity when one set of day boundaries carries different route timing', () => {
+    const facts = {
+      totalKm: 1400,
+      transportMode: 'car',
+      travelStyle: 'relaxed',
+      driverCount: 1,
+      hasVulnerable: true,
+      dayStart: '08:30',
+      anchors: { dinnerStartMin: 19 * 60, dinnerEndMin: 20 * 60 },
+    }
+    const first = deriveDrivingPlan({ ...facts, driveMinutes: 1500 })
+    const later = deriveDrivingPlan({ ...facts, driveMinutes: 1510 })
+    expect(first.outbound.map(day => day.endKm)).toEqual(later.outbound.map(day => day.endKm))
+    expect(planRideSegments({ ...facts, driveMinutes: 1500, dayBoundaries: first.outbound }))
+      .not.toEqual(planRideSegments({ ...facts, driveMinutes: 1510, dayBoundaries: later.outbound }))
+    expect(drivingPlanFingerprint(first)).not.toEqual(drivingPlanFingerprint(later))
+    const cacheIdentity = (fingerprint: string) => planInputsHash({
+      anchorsHash: 'route-a', routeHash: 'road-a', travelStyle: facts.travelStyle,
+      transportMode: facts.transportMode, scopeKm: 25, travellers: 2,
+      budgetPerPersonInr: 0, planFingerprint: fingerprint,
+    })
+    expect(cacheIdentity(drivingPlanFingerprint(first))).not.toEqual(cacheIdentity(drivingPlanFingerprint(later)))
+  })
+
+  it('shares the vulnerable-crew dinner and post-dinner policy across callers', () => {
+    expect(anchorsForCrew({ hasVulnerable: true, driveAfterDinnerMin: 120 })).toEqual({
+      dinnerStartMin: 19 * 60,
+      dinnerEndMin: 20 * 60,
+      allowPostDinnerDriveMin: 120,
+    })
+    expect(anchorsForCrew({ hasVulnerable: false, driveAfterDinnerMin: 0 })).toEqual({
+      dinnerStartMin: undefined,
+      dinnerEndMin: undefined,
+      allowPostDinnerDriveMin: 0,
+    })
   })
 
   it('keeps default dinner anchors when ordinary crew supplies undefined overrides', () => {
