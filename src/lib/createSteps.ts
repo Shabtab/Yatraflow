@@ -72,6 +72,10 @@ const ERROR_STEP: Record<string, CreateStep> = {
   // drive back is even possible. Its error has to follow the control.
   returnStops: 'how',
   drivesPart: 'how',
+  fuelEconomy: 'how',
+  fuelPrice: 'how',
+  tankL: 'how',
+  rentPerDay: 'how',
   startDate: 'when',
   endDate: 'when',
   dayStartTime: 'when',
@@ -79,6 +83,7 @@ const ERROR_STEP: Record<string, CreateStep> = {
   budgetPerPersonInr: 'budget',
   name: 'review',
   composerRow: 'review',
+  composerTime: 'review',
 }
 
 /**

@@ -41,14 +41,19 @@ export function stepFromQuery(query: URLSearchParams | string): CreateStep {
 /**
  * The address for a step: `/create?step=when`.
  *
- * The first step carries no parameter, so the commonest address is the plain
+ * Only the step parameter changes. Keep other values, including repeated keys,
+ * so step navigation does not change the identity of a seeded form.
+ * The first step carries no step parameter, so the commonest address is the plain
  * `/create`. A `?step=where` would be the same screen under a longer name, and
  * two addresses for one screen is how a share link starts disagreeing with what
  * the sender saw.
  */
-export function stepHref(step: CreateStep, base = '/create'): string {
-  if (step === CREATE_STEPS[0]) return base
-  return `${base}?${STEP_PARAM}=${step}`
+export function stepHref(step: CreateStep, base = '/create', query: URLSearchParams | string = ''): string {
+  const params = new URLSearchParams(query)
+  params.delete(STEP_PARAM)
+  if (step !== CREATE_STEPS[0]) params.set(STEP_PARAM, step)
+  const search = params.toString()
+  return search ? `${base}?${search}` : base
 }
 
 /**

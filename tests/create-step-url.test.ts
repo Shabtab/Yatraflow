@@ -40,6 +40,20 @@ describe('stepFromQuery', () => {
 })
 
 describe('stepHref', () => {
+  it('replaces only step and preserves duplicate keys and decoded values', () => {
+    const original = new URLSearchParams('seed=synthetic%2Freview&tag=a%2Bb&step=how&tag=a+b&step=who&empty=')
+    const href = stepHref('when', '/new', original)
+    const actual = new URLSearchParams(href.split('?')[1])
+    expect(actual.getAll('step')).toEqual(['when'])
+    expect([...actual].filter(([key]) => key !== 'step')).toEqual([...original].filter(([key]) => key !== 'step'))
+    expect(original.getAll('step')).toEqual(['how', 'who'])
+    expect(actual.getAll('tag')).toEqual(['a+b', 'a b'])
+  })
+
+  it('removes every step value at Where without dropping seed or empty values', () => {
+    expect(stepHref('where', '/new', '?step=how&seed=one&step=review&empty=')).toBe('/new?seed=one&empty=')
+  })
+
   it('gives the first step the plain address, so one screen has one URL', () => {
     expect(stepHref('where')).toBe('/create')
   })

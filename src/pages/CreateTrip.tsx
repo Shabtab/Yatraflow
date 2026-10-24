@@ -31,6 +31,7 @@ import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, m
 import { unpickedStopErrors } from '../lib/createSubmit'
 import { validateCreate, stepOfError, stepNumber, firstErrorStep, type CreateStep, CREATE_ACTION_LABEL, CREATE_ACTION_BUSY_LABEL } from '../lib/createSteps'
 import { stepFromQuery, stepHref } from '../lib/createStepUrl'
+import { createSubmitIntent, guidedConstraintErrors } from '../lib/createGuidedGuards'
 import { reviewLines, reviewOptional } from '../lib/createReview'
 import { StepProgress, StepNav, useStepFocus } from '../components/CreateFlowShell'
 import { CreateFlowCalendar } from '../components/CreateFlowCalendar'
@@ -364,13 +365,14 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   function goToStep(next: CreateStep) {
     if (next === step) return
     if (createFunnelOn('guided') && stepNumber(next) > stepNumber(step)) {
-      const errors = currentErrors()
+      const errors = validationErrors()
       const blockers = Object.fromEntries(Object.entries(errors).filter(([key]) => stepOfError(key) === step))
       setErrs(blockers)
       if (Object.keys(blockers).length) { focusError(Object.keys(blockers)[0]); return }
     }
     setStep(next)
-    navigate(stepHref(next, '/new'))
+    navigate(stepHref(next, '/new', currentQuery()))
+    if (next === 'review') setReturnToReview(false)
   }
   function changeFromReview(next: CreateStep) {
     setReturnToReview(true)
@@ -475,7 +477,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     // Reopen on the step the draft was left on. An older draft has no step, and
     // readStep() has already discarded one this build does not know. This writes
     // the address too, so the resumed step is shareable and Back still works.
-    if (draft.step) { setStep(draft.step as CreateStep); navigate(stepHref(draft.step as CreateStep, '/new')) }
+    if (draft.step) { setStep(draft.step as CreateStep); navigate(stepHref(draft.step as CreateStep, '/new', currentQuery())) }
     setDraft(null)
     setDraftDecided(true)
     toast('Picked up where you left off')
@@ -711,6 +713,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     returnStops: 'Return stops',
     startDate: 'Start date', endDate: 'End date', travellers: 'Travellers', budgetPerPersonInr: 'Budget',
     composerRow: 'Pinned plan row',
+    fuelEconomy: 'Mileage', fuelPrice: 'Fuel price', tankL: 'Tank', rentPerDay: 'Rent',
+    dayStartTime: 'Departure time', composerTime: 'Plan time',
   }
 
   /** Error keys whose control is a LocationInput. It owns its own <input>, so
@@ -719,14 +723,16 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     destinations: 'ct-dest-input',
     returnStops: 'ct-return-input',
     composerRow: 'ct-composer-input',
+    fuelEconomy: 'gcf-mileage', fuelPrice: 'gcf-fuel-price', tankL: 'gcf-tank', rentPerDay: 'gcf-rent',
+    dayStartTime: 'ct-day-start',
   }
 
   function currentErrors() {
-    // Every rule lives in createSteps.ts now, so the guided shell and this form
-    // cannot disagree about what is wrong (see the CONTRACT in createReadiness).
+    // Keep the shared submit rules and add native numeric limits for guided
+    // controls, whose owner step must be visible before reporting an error.
     // The unpicked-stop and composer-row helpers stay their own modules: they are
     // about text left in a field, not about the shape of the trip.
-    return validateCreate({
+    const errors = validateCreate({
       name: f.name,
       startLocation: f.startLocation,
       destInput,
@@ -742,11 +748,32 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       unpicked: unpickedStopErrors({ dest: destInput, ret: returnInput, returnOpen: returnCount > 0 }),
       composerError: composerRowError(c.title),
     })
+    return createFunnelOn('guided') ? { ...errors, ...guidedConstraintErrors({
+      ...f, fuelControls: drivingPolicy.showsDrivingControls, rental: f.transportMode === 'rental',
+    }) } : errors
+  }
+
+  function validationErrors() {
+    const errors = currentErrors()
+    if (!createFunnelOn('guided')) return errors
+    // Native badInput (for example an unfinished exponent) has an empty value.
+    // Read validity here, after input events, rather than during render.
+    document.querySelectorAll<HTMLInputElement>('#yf-create-form input[data-create-field]').forEach(control => {
+      const key = control.dataset.createField
+      if (key && control.willValidate && !control.validity.valid) errors[key] ??= control.validationMessage
+    })
+    return errors
+  }
+
+  function guidedField(key: string) {
+    return { id: FIELD_DOM_IDS[key], 'data-create-field': key,
+      'aria-invalid': !!errs[key], 'aria-describedby': errs[key] ? `${FIELD_DOM_IDS[key]}-error` : undefined }
   }
 
   function focusError(key: string) {
     requestAnimationFrame(() => {
       const control = fieldRefs.current[key] ?? document.getElementById(FIELD_DOM_IDS[key] ?? '')
+        ?? document.querySelector<HTMLElement>(`[data-create-field="${key}"]`)
         ?? document.querySelector<HTMLElement>(key === 'drivesPart' ? '.transport-answer-pair button' : '.ct-q:not([hidden]) input')
       control?.focus()
     })
@@ -754,13 +781,15 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    const intent = createSubmitIntent(createFunnelOn('guided'), step)
+    if (intent.kind === 'advance') { goToStep(intent.step); return }
     if (!me) return
-    const next = currentErrors()
+    const next = validationErrors()
     setErrs(next)
     if (createFunnelOn('guided') && Object.keys(next).length) {
       const target = firstErrorStep(next)
-      if (target) { setStep(target); navigate(stepHref(target, '/new')) }
-      if (next.composerRow) setDetailsOpen(true)
+      if (target) { setStep(target); navigate(stepHref(target, '/new', currentQuery())) }
+      if (next.composerRow || next.composerTime) setDetailsOpen(true)
       const first = Object.keys(next).find(key => stepOfError(key) === target)
       if (first) focusError(first)
       return
@@ -1021,7 +1050,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
 
       <div className="ts-layout">
         {guided && <StepProgress step={step} errors={currentErrors()} onGo={goToStep} />}
-        <form id="yf-create-form" className="ct-flow" onSubmit={submit} aria-busy={submitting}>
+        <form id="yf-create-form" className="ct-flow" onSubmit={submit} noValidate={guided} aria-busy={submitting}>
           {/* The ONE assertive announcement when submit fails - the field-tied
               messages below stay polite, so a multi-field failure interrupts
               once, not once per field (see FormErrorSummary). */}
@@ -1232,16 +1261,19 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 <div className="ct-day-start">
                   <input
                     id="ct-day-start"
+                    data-create-field="dayStartTime"
                     type="time"
                     className="input input--compact"
                     value={f.dayStartTime}
-                    aria-describedby="ct-day-start-hint"
+                    aria-invalid={guided && !!errs.dayStartTime}
+                    aria-describedby={guided && errs.dayStartTime ? 'ct-day-start-error ct-day-start-hint' : 'ct-day-start-hint'}
                     onChange={e => patchFields({ dayStartTime: e.target.value })}
                   />
                   {f.dayStartTime && (
                     <span className="time-preview">= {formatHM(f.dayStartTime, timeFormat)}</span>
                   )}
                 </div>
+                {guided && errs.dayStartTime && <p className="err-text" id="ct-day-start-error" role="status">{errs.dayStartTime}</p>}
                 <p className="hint-text" id="ct-day-start-hint">
                   {f.dayStartTime
                     ? 'Every day starts at this time. Change any single day later on the timeline.'
@@ -1321,11 +1353,12 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               {guided && drivingPolicy.showsDrivingControls && <section className="gcf-vehicle" aria-label="Fuel and vehicle">
                 <h3>Fuel &amp; vehicle</h3>
                 <div className="gcf-fuel-grid">
-                  <label>Mileage<span className="unit-input"><input className="input" type="number" min={2} max={80} step={0.1} value={f.fuelEconomy} onChange={e => patchFields({ fuelEconomy: e.target.value })} placeholder={String(DEFAULT_FUEL_ECONOMY_KML)} aria-label="Mileage in kilometres per litre" /><span className="unit">km/L</span></span></label>
-                  <label>Fuel price<span className="unit-input"><input className="input" type="number" min={50} max={250} step={0.1} value={f.fuelPrice} onChange={e => patchFields({ fuelPrice: e.target.value })} placeholder={String(FUEL_PRICE_INR_PER_L)} aria-label="Fuel price in rupees per litre" /><span className="unit">₹/L</span></span></label>
-                  <label>Tank<span className="unit-input"><input className="input" type="number" min={5} max={300} value={f.tankL} onChange={e => patchFields({ tankL: e.target.value })} placeholder="45" aria-label="Tank capacity in litres" /><span className="unit">L</span></span></label>
-                  {f.transportMode === 'rental' && <label>Rent<span className="unit-input"><input className="input" type="number" min={200} step={50} value={f.rentPerDay} onChange={e => patchFields({ rentPerDay: e.target.value })} placeholder="1800" aria-label="Rental rate in rupees per day" /><span className="unit">₹/day</span></span></label>}
+                  <label>Mileage<span className="unit-input"><input {...guidedField('fuelEconomy')} className="input" type="number" min={2} max={80} step={0.1} value={f.fuelEconomy} onChange={e => patchFields({ fuelEconomy: e.target.value })} placeholder={String(DEFAULT_FUEL_ECONOMY_KML)} aria-label="Mileage in kilometres per litre" /><span className="unit">km/L</span></span></label>
+                  <label>Fuel price<span className="unit-input"><input {...guidedField('fuelPrice')} className="input" type="number" min={50} max={250} step={0.1} value={f.fuelPrice} onChange={e => patchFields({ fuelPrice: e.target.value })} placeholder={String(FUEL_PRICE_INR_PER_L)} aria-label="Fuel price in rupees per litre" /><span className="unit">₹/L</span></span></label>
+                  <label>Tank<span className="unit-input"><input {...guidedField('tankL')} className="input" type="number" min={5} max={300} value={f.tankL} onChange={e => patchFields({ tankL: e.target.value })} placeholder="45" aria-label="Tank capacity in litres" /><span className="unit">L</span></span></label>
+                  {f.transportMode === 'rental' && <label>Rent<span className="unit-input"><input {...guidedField('rentPerDay')} className="input" type="number" min={200} step={50} value={f.rentPerDay} onChange={e => patchFields({ rentPerDay: e.target.value })} placeholder="1800" aria-label="Rental rate in rupees per day" /><span className="unit">₹/day</span></span></label>}
                 </div>
+                {['fuelEconomy', 'fuelPrice', 'tankL', 'rentPerDay'].filter(key => errs[key]).map(key => <p className="err-text" id={`${FIELD_DOM_IDS[key]}-error`} role="status" key={key}>{ERR_LABELS[key]}: {errs[key]}</p>)}
                 {fuelNotice && <p className="hint-text" role="status">{fuelNotice}</p>}
                 <label className="ts-switch gcf-round-trip"><span>Drive back to start</span><input type="checkbox" role="switch" checked={f.roundTrip} onChange={e => patchFields({ roundTrip: e.target.checked })} /><span className="ts-switch-track" aria-hidden /></label>
               </section>}
@@ -1434,7 +1467,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     deliberately no longer where the error lands. */}
                 <div className="sr-only">
                   <Field label="Travellers">
-                    <input className="input mono" type="number" min={CREW_MIN} max={CREW_MAX}
+                    <input className="input mono" type="number" min={CREW_MIN} max={CREW_MAX} data-create-field="travellers"
                       value={f.travellers} aria-invalid={!!errs.travellers}
                       aria-describedby={errs.travellers ? 'ct-travellers-err' : undefined}
                       onChange={e => patchFields({ travellers: clampCrew(Number(e.target.value)) })} />
@@ -1614,7 +1647,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 {/* The exact number still matters - a slider cannot say 13,750. */}
                 <label className="ct-bud-exact">
                   exact amount
-                  <input className="mono" type="number" min={0} step={500}
+                  <input className="mono" type="number" min={0} step={500} data-create-field="budgetPerPersonInr"
                     ref={el => (fieldRefs.current.budgetPerPersonInr = el)}
                     aria-label="Budget per person, exact amount"
                     aria-invalid={!!errs.budgetPerPersonInr}
@@ -1768,7 +1801,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   onChange={val => setC(x => ({ ...x, dayIndex: Number(val) }))}
                   options={Array.from({ length: Math.max(1, dayCount) }, (_, i) => ({ value: String(i), label: `Day ${i + 1}` }))} />
               </Field>
-              <Field label="Time"><input className="input" type="time" value={c.time} onChange={e => setC(x => ({ ...x, time: e.target.value }))} /></Field>
+              <Field label="Time" error={guided ? errs.composerTime : undefined}><input data-create-field="composerTime" className="input" type="time" value={c.time} onChange={e => setC(x => ({ ...x, time: e.target.value }))} /></Field>
               <Field label="Linked stop">
                 <Select value={c.destName ?? ''} onChange={val => setC(x => ({ ...x, destName: val }))}
                   aria-label="Destination this deadline is checked against"
@@ -1777,7 +1810,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <button type="button" className="btn btn-outline" onClick={addCommitment} style={{ height: 42 }}>Add pinned plan</button>
             </div>
           </div>
-          {guided && returnToReview && step !== 'review' && <button type="button" className="btn btn-outline gcf-return-review" onClick={() => { goToStep('review'); setReturnToReview(false) }}>Back to Review</button>}
+          {guided && returnToReview && step !== 'review' && <button type="button" className="btn btn-outline gcf-return-review" onClick={() => goToStep('review')}>Back to Review</button>}
           {guided && <StepNav step={step} errors={errs} onGo={goToStep} submitting={submitting} failed={!!saveError}
             peek={`${outbound.length} stop${outbound.length === 1 ? '' : 's'}${bill.roadKm != null ? ` · ${Math.round(bill.roadKm)} km` : ''}`}
             onPeek={() => setTicketOpen(true)} />}
