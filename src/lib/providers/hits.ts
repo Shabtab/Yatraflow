@@ -375,11 +375,6 @@ export interface NearbyOpts {
    * 0/undefined keep the default; only meaningful when includeFuel is true.
    */
   vehicleRangeKm?: number
-  /**
-   * true = plan the WHOLE trip (cross-day overnight segments allowed);
-   * false/undefined = single-day journey (fatigue halts only, no overnight).
-   */
-  multiDay?: boolean
   /** When set, nearby searches use purpose-specific queries instead of generic tourist queries. */
   purposes?: HaltPurpose[]
   /** Vehicle profile for accurate fuel/charging cadence. */

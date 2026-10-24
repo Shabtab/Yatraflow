@@ -54,7 +54,8 @@ describe('trip DNA', () => {
   })
 
   it('bends scoring ties toward favoured categories', async () => {
-    const { planRideSegments, scoreHitForSegment } = await import('../src/lib/ridePlan')
+    const { scoreHitForSegment } = await import('../src/lib/ridePlan')
+    const { planRide: planRideSegments } = await import('./helpers/sharedDrivingPlan')
     const anchors = [{ lat: 0, lng: 0 }, { lat: 2, lng: 0 }]
     const segs = planRideSegments({ totalKm: 400, driveMinutes: 360 })
     expect(segs.length).toBeGreaterThan(0)

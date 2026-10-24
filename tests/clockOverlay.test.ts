@@ -314,7 +314,7 @@ describe('deriveClockMilestones - labels, not areas', () => {
 
 function clockDay(over: Partial<TravelClockDay> & { dayIndex: number; kmCovered: number }): TravelClockDay {
   return {
-    startKm: 0, nightHaltKm: null, nightHaltEtaMin: null, dinnerAtHalt: false,
+    startMin: 0, startKm: 0, nightHaltKm: null, nightHaltEtaMin: null, dinnerAtHalt: false,
     wheelMin: 0, dwellMin: 0, arrivalEtaMin: null, lateArrival: false, anchors: [],
     ...over,
   }

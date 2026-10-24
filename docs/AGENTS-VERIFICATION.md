@@ -21,6 +21,10 @@ Sections:
 
 ## The gate
 
+Locate a named unpublished dependency before planning its replacement.
+Separate unavailable source from an absent live database function. A repository search proves only repository contents.
+Do not certify a server contract from tests that replace its transport.
+
 **Offline replay needs both transport tests and database checks.**
 Run `node scripts/integration/trip-write-version-db.mjs` for the isolated PostgreSQL checks.
 The harness accepts no database URL. It creates and removes its own container, with no published ports.

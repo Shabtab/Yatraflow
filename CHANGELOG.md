@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **The map's overnight stops now agree with the journey clock.** The banner, the night-halt targets and the day slots used separate day splits. A late start, rain or a vulnerable crew could move one and not the others. One shared driving plan now supplies all three. It uses the walked clock boundaries, so departure time, weather, terrain, pins and a round trip move them together. A saved departure on any later day now enters the same clock. Rain that adds a day does not reset it. A pin no longer leaves a gap in the day spans, so later starts stay contiguous. A missing meal override keeps its default. A measured timing change now changes the cache identity, so the map never serves old segment timing. A halt past the stored days stays unassigned until you apply it. An add picker with no planned day discloses its guess. Cached map plans from before this change are discarded. (#840, #832)
+
 ## [0.79.1] - 2026-10-24
 
 **This release adds the guided six-step create form. It also repairs eight defects in that form.**

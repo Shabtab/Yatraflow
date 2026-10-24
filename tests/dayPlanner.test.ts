@@ -13,7 +13,6 @@ import {
   clampRainFactor,
   isDriveDay,
   planDriveDays,
-  planRideSegments,
   planTravelClock,
   TEA_WINDOW,
   wheelCapHoursFor,
@@ -21,6 +20,7 @@ import {
   resolveAnchors,
   rainFactorFor,
 } from '../src/lib/ridePlan'
+import { planRide as planRideSegments } from './helpers/sharedDrivingPlan'
 import { computeTotals } from '../src/lib/engine'
 import { STAY_RATE_PER_NIGHT } from '../src/lib/planBench'
 import { seedData } from '../src/data/seed'

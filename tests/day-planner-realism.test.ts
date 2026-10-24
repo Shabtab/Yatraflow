@@ -6,11 +6,11 @@ import { describe, expect, it } from 'vitest'
 import {
   isSelfDrivenMode,
   planDriveDays,
-  planRideSegments,
   planTravelClock,
   rainFactorFor,
   wheelCapHoursFor,
 } from '../src/lib/ridePlan'
+import { planRide as planRideSegments } from './helpers/sharedDrivingPlan'
 import { computeTotals } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
 
