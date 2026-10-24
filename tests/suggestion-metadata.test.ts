@@ -77,7 +77,12 @@ describe('stored suggestion metadata', () => {
     })
     expect(entry.dayId).toBe('d1')
     expect(entry.place).toEqual(place)
-    expect(suggestionRowToEntry({ id: 's2', trip_id: 't1', day_index: 0, proposed_by: 'u1', title: 'X', category: 'sightseeing', location_name: 'X', lat: 15, lng: 73, status: 'open', place: { exposure: 'outdoor' } }).place).toBeUndefined()
+    const malformed = suggestionRowToEntry({
+      id: 's2', trip_id: 't1', day_index: 0, proposed_by: 'u1', title: 'X',
+      category: 'sightseeing', location_name: 'X', lat: 15, lng: 73,
+      status: 'open', place: { exposure: 'outdoor' },
+    })
+    expect(malformed.place).toBeUndefined()
   })
   it('restores the new columns only when present, keeping old rows unchanged', () => {
     const base = {

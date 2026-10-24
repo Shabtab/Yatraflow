@@ -18,6 +18,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **A suggestion now stays attached to its place and its day.** A location text edit now clears the old pin, so a text-only idea is never pinned to the origin. A suggestion whose day was deleted stays open with a day picker instead of landing elsewhere. Provider namespaces keep different places apart, and a place with no known provider stays valid. Accepted or declined suggestions stop seeding duplicate crew preferences. (#839)
+
 - **A release cut now attaches its APK to the GitHub release.** Each tag run built the APK and kept it as an Actions artifact for 14 days. The release page stayed empty, so `v0.79.0` and `v0.79.1` shipped with no file. The tag run now uploads the APK to its release.
 
 - **The Android build takes its version from `package.json`.** `versionCode` sat at 14 and `versionName` at `0.14-native` while the web app reached `0.79.1`. Every APK looked older than every release, so the in-app update check could never offer one (#809). The build now reads the package version: `0.79.1` becomes `0.79.1-native` with code 7901.

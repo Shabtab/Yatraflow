@@ -1,5 +1,5 @@
 // ============ A picked place, kept honest until it is saved ============
-// The composer used to keep only two optional numbers. Editing the text after a
+// The composer used to keep only two optional numbers. A text edit after a
 // pick left the old pin behind, and a text-only idea was silently pinned to the
 // trip anchor. A draft now either carries a real picked place or it does not;
 // there is no third state the submit path could mistake for one.
@@ -24,10 +24,12 @@ function cleanKey(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-/** A usable pick: finite non-zero coordinates and no provider this build cannot
- *  round-trip. `open-meteo` is a weather source, never a place identity. */
+/** A usable pick: finite, in-range, non-zero coordinates and no provider this
+ *  build cannot round-trip. `open-meteo` is a weather source, never a place
+ *  identity. Latitude is −90..90 and longitude is −180..180 (#839 R4). */
 export function resolvedPlaceFromHit(hit: PlaceHit): ResolvedPlace | null {
   if (!hit || !Number.isFinite(hit.latitude) || !Number.isFinite(hit.longitude)) return null
+  if (hit.latitude < -90 || hit.latitude > 90 || hit.longitude < -180 || hit.longitude > 180) return null
   if (hit.latitude === 0 || hit.longitude === 0) return null
   if (hit.source !== undefined && !isPlaceProvider(hit.source)) return null
   const label = (hit.name ?? '').trim()

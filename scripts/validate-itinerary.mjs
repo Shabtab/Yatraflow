@@ -22,7 +22,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
 
-const SPEC_VERSION = '2.0'
+const SPEC_VERSION = '3.0'
 
 // ---- the rule set, shared with src/lib/itinerarySpec.ts (pinned by tests)
 const FORMAT_VERSION = 3

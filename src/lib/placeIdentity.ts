@@ -1,6 +1,6 @@
 // ============ One "already added" identity (#345) ============
 // "Is this place already mine?" used to be answered five different ways in five
-// places - and they disagreed. Discarding a preview left a ghost id that hid
+// places - and they disagreed. A discarded preview left a ghost id that hid
 // the place until reload; during an open preview the same hit was addable
 // twice; a REJECTED stop blocked its name forever; `" Hotel Taj "` never
 // matched `"Hotel Taj"`; story arcs advertised places already on the plan. This
@@ -17,6 +17,9 @@ export interface PlaceRecord {
   name: string
   lat: number
   lng: number
+  /** The provider keys this one place is known by, so a name match can honour a
+   *  key conflict instead of bypassing it (#839 R1). */
+  keys: PlaceKey[]
 }
 
 /**
@@ -97,7 +100,7 @@ export function tripPresence(trip: Pick<Trip, 'days'>): Pick<PlaceIdentity, 'nam
       for (const key of placeKeysOf(like)) {
         if (!keys.some(k => k.kind === key.kind && k.value === key.value && k.provider === key.provider)) keys.push(key)
       }
-      if (name && usableCoords(s)) places.push({ name, lat: s.lat, lng: s.lng })
+      if (name && usableCoords(s)) places.push({ name, lat: s.lat, lng: s.lng, keys: placeKeysOf(like) })
     }
   }
   return { names, keys, places }
@@ -148,8 +151,15 @@ export function isAlreadyAdded(
   if (!name) return false
   const sameName = identity.places.filter(p => p.name === name)
   if (sameName.length > 0) {
+    // A same-named place whose known key conflicts with the hit's known key is a
+    // different entity. The name fallback must not bypass that conflict (#839 R1).
+    const conflicts = (p: PlaceRecord) =>
+      hitKeys.length > 0 && p.keys.length > 0
+      && !hitKeys.some(hk => p.keys.some(k => placeKeyMatches(hk, k)))
+    const candidates = sameName.filter(p => !conflicts(p))
+    if (candidates.length === 0) return false
     if (!usableCoords(hit)) return true
-    return sameName.some(p => placeDistanceKm({ lat: hit.lat, lng: hit.lng }, p) <= 0.5)
+    return candidates.some(p => placeDistanceKm({ lat: hit.lat, lng: hit.lng }, p) <= 0.5)
   }
   return identity.names.has(name)
 }
@@ -167,6 +177,8 @@ export function placeDistanceKm(a: { lat: number; lng: number }, b: { lat: numbe
 export interface VisitPlaceLike extends PlaceLike {
   title?: string
   locationName?: string
+  /** An ItineraryStop keeps its provider here, not in `source` (#839 R2). */
+  placeSource?: PlaceProvider | 'open-meteo'
   /** Identity captured beside the row, as persisted for a suggestion or a
    *  decision place. The flat fields still win when a caller supplies them. */
   place?: PersistedPlaceIdentity
@@ -178,7 +190,7 @@ function entityOfVisit(p: VisitPlaceLike): PlaceLike {
     name: p.locationName || p.title || p.name,
     placeId: p.placeId ?? p.place?.placeId,
     eLoc: p.eLoc ?? p.place?.eLoc,
-    source: p.source ?? p.place?.source,
+    source: p.source ?? p.place?.source ?? p.placeSource,
   }
 }
 
@@ -190,7 +202,9 @@ function entityOfVisit(p: VisitPlaceLike): PlaceLike {
  *  record with no coordinates falls back to the name alone.
  */
 export function isSameEntity(a: VisitPlaceLike, b: VisitPlaceLike): boolean {
-  if (a.id != null && b.id != null && String(a.id) === String(b.id)) return true
+  // A raw local id is not a provider entity: two providers can both number a hit
+  // "1". Provider keys decide identity, so a shared id never outranks a namespace
+  // conflict (#839 R3).
   const keysA = placeKeysOf(entityOfVisit(a))
   const keysB = placeKeysOf(entityOfVisit(b))
   if (keysA.some(ka => keysB.some(kb => placeKeyMatches(ka, kb)))) return true

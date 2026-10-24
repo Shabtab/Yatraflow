@@ -2561,7 +2561,9 @@ export function restoreTrip(trip: Trip, index: number): void {
   if (cache.trips.some(t => t.id === trip.id)) return
   tripAccessEpochs.set(trip.id, (tripAccessEpochs.get(trip.id) ?? 0) + 1)
   const snap = lastDeletedTrip?.trip.id === trip.id ? lastDeletedTrip : null
-  lastDeletedTrip = null
+  // Keep lastDeletedTrip until the child rows land. restoreTripData releases it on
+  // success and keeps it for a retry when an insert fails (#839). Clearing it here
+  // dropped the recoverable payload before the writes could fail.
   const at = Math.min(index, cache.trips.length)
   cache.trips = [...cache.trips.slice(0, at), trip, ...cache.trips.slice(at)]
   commit()
@@ -2613,14 +2615,22 @@ async function restoreTripData(trip: Trip, snap: TripSnapshot | null): Promise<v
     ['published link', results[4]],
   ].filter(([, msg]) => msg) as [string, string][]
 
-  if (!failed.length) return
+  if (!failed.length) {
+    // Every child row landed, so the undo is spent. Release the payload.
+    if (lastDeletedTrip?.trip.id === trip.id) lastDeletedTrip = null
+    return
+  }
   console.error('[yatraflow] undo could not restore:', failed.map(([t, m]) => `${t} (${m})`).join(', '))
+  // Keep lastDeletedTrip so the user can run Undo again (#839). Clearing it here
+  // is what used to drop the recoverable payload before a retry was possible.
   // The public link is the one loss the user would notice and could not explain,
   // so it is the one worth saying out loud. published_itineraries RLS is gated
   // on creator_id, meaning a collaborator undoing their own delete genuinely
   // cannot re-publish the owner's itinerary.
   if (failed.some(([t]) => t === 'published link')) {
     toast('Trip restored, but its public link could not be restored - republish it from the trip.')
+  } else {
+    toast('Some trip data could not be restored. Run Undo again to retry.', 'err')
   }
 }
 

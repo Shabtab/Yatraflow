@@ -8,6 +8,7 @@ import {
   normalizePlaceName, placeKeysOf, tripPresence, placeIdentity, isAlreadyAdded, discardedStagedIds,
   isSameEntity, sameVisitPlace, placeKeyMatches, placeDistanceKm,
 } from '../src/lib/placeIdentity'
+import { resolvedPlaceFromHit } from '../src/lib/placeDraft'
 import type { Trip } from '../src/data/types'
 
 function stop(over: Record<string, unknown>) {
@@ -152,5 +153,48 @@ describe('place keys and visit entities', () => {
     expect(isAlreadyAdded(hit({ name: 'Sharma Dhaba', lat: 15.01, lng: 73.01 }), id)).toBe(false)
     expect(isAlreadyAdded(hit({ name: 'Sharma Dhaba', lat: 15.0001, lng: 73.0001 }), id)).toBe(true)
     expect(isAlreadyAdded(hit({ name: 'Sharma Dhaba' }), id)).toBe(true)
+  })
+})
+
+describe('reproduced resume defects R1-R4 (issue #839)', () => {
+  const pick = (over: Record<string, unknown>) => ({ id: 1, name: 'Fort', latitude: 15, longitude: 73, kind: 'poi', ...over } as never)
+
+  it('R1: a conflicting known key beats the name fallback on the rail', () => {
+    const id = placeIdentity(tripOf([stop({ title: 'Fort', lat: 15, lng: 73, placeSource: 'google', placeId: 'same-raw', status: 'confirmed' })]))
+    // Same name and coordinates, but the hit is OSM while the planned stop is Google.
+    expect(isAlreadyAdded({ name: 'Fort', lat: 15, lng: 73, source: 'osm', placeId: 'same-raw' }, id)).toBe(false)
+    // The same provider key still matches.
+    expect(isAlreadyAdded({ name: 'Fort', lat: 15, lng: 73, source: 'google', placeId: 'same-raw' }, id)).toBe(true)
+    // A hit with no key keeps the legacy name fallback.
+    expect(isAlreadyAdded({ name: 'Fort', lat: 15, lng: 73 }, id)).toBe(true)
+  })
+
+  it('R2: a suggestion with OSM metadata does not match a Google stop', () => {
+    const stopRow = { title: 'Fort', locationName: 'Fort', lat: 15, lng: 73, placeSource: 'google', placeId: 'same-raw' }
+    expect(isSameEntity(
+      { title: 'Fort', lat: 15, lng: 73, place: { source: 'osm', placeId: 'same-raw', exposure: 'unknown' } },
+      stopRow,
+    )).toBe(false)
+    // The matching provider reads through placeSource.
+    expect(isSameEntity(
+      { title: 'Fort', lat: 15, lng: 73, place: { source: 'google', placeId: 'same-raw', exposure: 'unknown' } },
+      stopRow,
+    )).toBe(true)
+  })
+
+  it('R3: a shared raw id does not outrank a provider conflict', () => {
+    expect(isSameEntity(
+      { id: 1, name: 'A', source: 'google', placeId: 'g1' },
+      { id: 1, name: 'B', source: 'osm', placeId: 'o1' },
+    )).toBe(false)
+  })
+
+  it('R4: a picked place rejects out-of-range or placeholder coordinates', () => {
+    expect(resolvedPlaceFromHit(pick({ latitude: 100 }))).toBeNull()
+    expect(resolvedPlaceFromHit(pick({ longitude: 200 }))).toBeNull()
+    expect(resolvedPlaceFromHit(pick({ latitude: Infinity }))).toBeNull()
+    expect(resolvedPlaceFromHit(pick({ latitude: 0 }))).toBeNull()
+    // A legitimate provider-free pick inside range still resolves.
+    expect(resolvedPlaceFromHit(pick({ latitude: 15.2, longitude: 73.3 }))).toMatchObject({ label: 'Fort', lat: 15.2, lng: 73.3 })
   })
 })

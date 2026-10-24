@@ -331,7 +331,7 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
       return
     }
     if (outcome.status === 'retarget') {
-      setRetarget({ days: outcome.availableDays, dayId: outcome.availableDays[0]?.id ?? '' })
+      setRetarget({ days: outcome.availableDays, dayId: '' })
       return
     }
     if (outcome.status === 'visitConflict') {
@@ -404,6 +404,7 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
             <p className="small muted">That day is no longer on this trip. Choose another day, or cancel to keep the idea here.</p>
             <select className="select" aria-label="Day for this idea" value={retarget.dayId}
               onChange={e => setRetarget(r => r ? { ...r, dayId: e.target.value } : r)}>
+              <option value="">Pick a day</option>
               {retarget.days.map(d => <option key={d.id} value={d.id}>Day {d.index + 1}{d.title ? ` · ${d.title}` : ''}</option>)}
             </select>
             <button className="btn btn-primary btn-sm" onClick={() => {

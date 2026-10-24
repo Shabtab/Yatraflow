@@ -278,6 +278,8 @@ $$;
 revoke all on function public.guard_collab_contribution_columns() from public, anon, authenticated;
 create trigger suggestions_guard_contributions before update on public.suggestions
   for each row execute function public.guard_collab_contribution_columns();
+create trigger decisions_guard_contributions before update on public.decisions
+  for each row execute function public.guard_collab_contribution_columns();
 
 drop function if exists public.restore_trip_contributions(text,jsonb,jsonb,jsonb,jsonb);
 drop function if exists public.restore_trip_contributions(text);
