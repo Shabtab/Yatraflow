@@ -4,6 +4,7 @@ Start here. The codebase is documented across the files below — read the ones 
 
 | Doc | What's in it |
 |---|---|
+| [`redesign/create-flow/SPEC.md`](redesign/create-flow/SPEC.md) | Guided Create trip specification and the 53 approved reference images. |
 | [`README.md`](../README.md) | Project overview, features, MVP scope, roadmap, quick start. The front door. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | How the pieces fit: data model, store, engine math, AI, geocoding, routing, maps, theming, extension points, gotchas. Read before changing core logic. |
 | [`DEPLOYMENT.md`](DEPLOYMENT.md) | Supabase setup, Vercel + other static hosts, env vars, release checklist. |

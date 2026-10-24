@@ -33,6 +33,8 @@ anywhere in this repo means the entry labelled `6b` below.
 Source-contract tests must handle both LF and CRLF line endings.
 Tests for helper use must check the call site. A function definition does not prove that callers use it.
 
+Query changes can remount a form when its page key includes the full URL. Exclude only step navigation from that key. Preserve keys for new entries and seed changes. Prove that Next, Back and Review edits keep live answers.
+
 Flight records can exist without stored stops. Protect their days during date reconciliation and preserve them through imports and snapshots.
 Use resolved journey points for exports and insertion origins. Stored stops can omit airports and arrival anchors.
 Settings previews must use validated draft fields. Reuse road measurements only while the route and day assignment still match.
@@ -62,6 +64,25 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    own rule, so the rendered size never changed. After a fold, confirm the RENDERED
    computed style, and when a class changes role (kicker → boarding-pass head bar),
    REMOVE it from the shared-recipe list — that is the delete-cheaper-than-add fix.
+   (4) **An appended block at the SAME specificity silently beats everything above it.**
+   The guided create flow's answer rows were read once as pills and repaired in the
+   wrong direction: a `.gcf.trip-starter …` block (0,3,0) re-asserted 999px corners,
+   44px heights and no border on the accommodation row, the driver row and the Mixed
+   pair, on the reading that the older `.gcf` pill rules were the intent and the
+   later `.trip-starter` block had flattened them by accident. The approved mockup
+   says the opposite, and the legacy long form was always boxed: Who, How, Budget
+   and Mixed are square boxes with 8px corners, a 1px border, a per-answer tint, a
+   check mark and a short settle. Found only by reading `getComputedStyle` in a real
+   browser, because the source looked correct and the screenshot had already been
+   called a success. **Rule: a higher-specificity block is the defect, not the fix,
+   when it contradicts the mockup.** Match the approved shape and let source order
+   do the overriding; never reach for a deeper selector to win an argument the
+   design never made. `tests/create-answer-shape.test.ts` now fails on a 999px
+   radius below the boxed block, and on any `.gcf.trip-starter` answer rule.
+   **Rule: after appending any `.trip-starter` / page-scoped block, probe the
+   computed style of a control the earlier block styled.** `:not(.gcf)` on the later
+   rule works only for one property at a time — line 12206 got it right and 12204
+   did not, so a whole block still leaked.
  6e. **Two silent killers from the crew-channels pass (learned 2026-09-23).**
    (1) `window.open(url, '_blank', 'noopener')` **always returns null** — the
    `noopener` feature implies no window handle — so `if (!win) throw` or
@@ -899,6 +920,8 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
 
 ## 2. Conventions (`AGENTS.md` §4)
 
+- **Separate crew fields must stay separate during parsing.** Normalize the mobile field alone. A name can contain digits. A parser that joins both fields can change that name or make the mobile number invalid. Keep the existing structured draft fields and duplicate rules.
+
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05
 split); the index table says which file a change touches. What follows is
 the cross-cutting residue: data model, platform APIs, verification and
@@ -1183,3 +1206,25 @@ The editor primitives are the default; a script is the exception.
   quote) each aborted before the first statement, so nothing was ever
   half-written. Keep that property: assert every anchor exists and is unique,
   `throw` before any write, then verify by counting the token you inserted.
+
+  6aw. **Never normalize a whole free-form string to find the phone number in
+    it (learned 2026-10-24, the create branch review).** `parseCrewEntry` ran
+    `normalizeIndianMobile` over the entire entry, which strips every non-digit
+    and then tests for exactly ten. A name carrying a digit ("Team 2 98450
+    21234") fails that test, so the number is not rejected — it is silently
+    reclassified as part of the name. The chip then looks complete and carries
+    no way to reach the person. Three shapes of the same trap, all found by
+    reading the code rather than the happy path:
+    (1) **extract, then read what is left.** Match the digit run (separators
+    allowed INSIDE it, because "98450 21234" is one number over two tokens),
+    remove exactly that run, and re-verify the extracted digits through the
+    shared normalizer. A naive `[6-9]\d{9}` match loses the spaced form AND
+    hands back the last ten of an 11+ digit string.
+    (2) **a country prefix that is not India's must not be peeled off.**
+    `+1 9845021234` matched the bare run and left `+1` in the name, filing a US
+    number as Indian. Bound the run on both sides by a non-digit, non-separator.
+    (3) **the same person can occupy two chips.** The duplicate rule tested the
+    number only when the NEW entry had one, so "Ammu" then "Ammu 9845021234"
+    made two rows that send two invitations. Compare the name too.
+    Pinned in tests/create-crew-fields.test.ts; the entry fails on the
+    pre-fix parser (see 6h's break-proof rule).

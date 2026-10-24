@@ -24,6 +24,7 @@ import { analyticsBeforeSend } from './lib/analyticsPrivacy'
 import { scrollBehavior } from './lib/motion'
 import { pageTitle, routeParts } from './lib/pageTitle'
 import { CREATE_SEGMENT, CREATE_PATH } from './lib/routes'
+import { createFunnelOn } from './lib/featureFlags'
 import { currentRoute, navigate as navigateRoute, onRouteChange, settleLegacyHash } from './lib/router'
 import { appLink } from './lib/appLink'
 import { App as CapApp } from '@capacitor/app'
@@ -423,6 +424,16 @@ export default function App() {
   // segment still matches the switch. Pages read their own params from the
   // address via lib/router's currentQuery().
   const parts = routeParts(route)
+  // A guided step changes the address while keeping the live form mounted.
+  // Other query values still identify a new page, including future seed inputs.
+  const routePanelKey = parts[0] === CREATE_SEGMENT && createFunnelOn('guided')
+    ? (() => {
+      const [path, query = ''] = route.split('?')
+      const params = new URLSearchParams(query)
+      params.delete('step')
+      return params.toString() ? `${path}?${params}` : path
+    })()
+    : route
 
   // One title per route. `index.html` carries a single static title, so every
   // route shared it: four open tabs all read the same thing, and a bookmark of
@@ -756,7 +767,7 @@ export default function App() {
         <p className="sr-only" role="status" aria-live="polite">{routeAnnounce}</p>
         {/* keyed on the route so every page change (My trips ↔ Explore ↔ a trip)
             re-mounts and plays the route-panel entrance animation */}
-        <div className="route-panel" key={route}>{page}</div>
+        <div className="route-panel" key={routePanelKey}>{page}</div>
       </main>
 
       <footer className="footer">

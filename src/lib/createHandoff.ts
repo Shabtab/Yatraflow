@@ -15,9 +15,13 @@ export const HANDOFF_KEY = 'yf.createHandoff.v1'
 export interface HandoffCrew {
   name: string
   phone: string | null
+  /** The masked label a resumed entry carries instead of a number. It names the
+   *  person on the moment-after screen and is never a link target. */
+  label?: string
 }
 
 import type { StarterBill } from './tripStarter'
+import { isMaskedLabel } from './crewInvite'
 
 export interface CreateHandoff {
   tripId: string
@@ -63,9 +67,14 @@ export function readHandoff(tripId: string, opts: { store?: HandoffStore | null 
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<CreateHandoff>
     if (!parsed || parsed.tripId !== tripId) return null
-    const crew = Array.isArray(parsed.crew)
-      ? parsed.crew.filter(c => c && typeof c === 'object' && (typeof c.name === 'string' || typeof c.phone === 'string'))
-        .map(c => ({ name: typeof c.name === 'string' ? c.name : '', phone: typeof c.phone === 'string' ? c.phone : null }))
+    const crew: HandoffCrew[] = Array.isArray(parsed.crew)
+      ? parsed.crew.filter(c => c && typeof c === 'object' && (typeof c.name === 'string' || typeof c.phone === 'string' || typeof c.label === 'string'))
+        .map(c => {
+          // The same rule as the draft: only the three-digit mask may act as a
+          // label, so a hand-edited value cannot smuggle a full number through.
+          const label = isMaskedLabel(c.label) ? c.label : undefined
+          return { name: typeof c.name === 'string' ? c.name : '', phone: typeof c.phone === 'string' ? c.phone : null, ...(label ? { label } : {}) }
+        })
       : []
     const rawBill = parsed.bill as Partial<StarterBill> | null | undefined
     const num = (v: unknown, fallback: number | null = null) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback)

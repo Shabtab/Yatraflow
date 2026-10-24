@@ -24,20 +24,28 @@ import { estimateTripStarter, buildOutlineSeedStops, vehicleProfileFor } from '.
 import { transportPolicy } from '../lib/transportPolicy'
 import { sanitizeTankL, sanitizeRentPerDayInr } from '../lib/tripRow'
 import { TRIP_TEMPLATES, applyTemplate, templateFromRange, fmtBand } from '../lib/tripTemplates'
-import { regionFor, regionBand, nationalBand, experienceTier, anchorNote } from '../lib/budgetBenchmarks'
+import { regionFor, regionBand, nationalBand } from '../lib/budgetBenchmarks'
 import { createFunnelOn } from '../lib/featureFlags'
 import { createReadiness, readinessFromDraft, readinessLine } from '../lib/createReadiness'
-import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, type StoredDraft } from '../lib/createDraft'
+import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, maskPhone, type StoredDraft } from '../lib/createDraft'
 import { unpickedStopErrors } from '../lib/createSubmit'
+import { validateCreate, stepOfError, stepNumber, firstErrorStep, type CreateStep, CREATE_ACTION_LABEL, CREATE_ACTION_BUSY_LABEL } from '../lib/createSteps'
+import { stepFromQuery, stepHref } from '../lib/createStepUrl'
+import { createSubmitIntent, guidedConstraintErrors } from '../lib/createGuidedGuards'
+import { reviewLines, reviewOptional } from '../lib/createReview'
+import { StepProgress, StepNav, useStepFocus } from '../components/CreateFlowShell'
+import { CreateFlowCalendar } from '../components/CreateFlowCalendar'
+import { CreateFlowTicket } from '../components/CreateFlowTicket'
+import { currentQuery, navigate, onRouteChange } from '../lib/router'
 import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
-import { addCrewEntry, type CrewEntry } from '../lib/crewInvite'
+import { addCrewFields, isMaskedLabel, normalizeIndianMobile, type CrewEntry } from '../lib/crewInvite'
 import { recordCreateEvent } from '../lib/createEvents'
 import { stashHandoff } from '../lib/createHandoff'
 import { routeIq, routeIqLine, type RoutePoint } from '../lib/routeIq'
 import { seasonNoteFor, monthOfIso } from '../lib/seasonality'
 import { radarLines } from '../lib/createRadar'
 import { fetchTripThumbUrl } from '../lib/tripThumb'
-import { Field, Chip, toast, Odometer, useMedia, FormErrorSummary } from '../components/ui'
+import { Field, Chip, toast, Odometer, useMedia, FormErrorSummary, Modal } from '../components/ui'
 import { Select } from '../components/Select'
 import { DateRangeCalendar, fmtDay, isoDay } from '../components/DateRangeCalendar'
 import { isoAddDays } from '../lib/weather'
@@ -75,14 +83,14 @@ interface DestDraft {
  *  The GLYPH is no longer listed here: it comes from the one MODE_ICONS map in
  *  components/icons, so this file only owns the copy. */
 const MODE_TILE_META: Record<TransportMode, { hint: string }> = {
-  car: { hint: 'your fuel · ≈42 km/h' },
-  rental: { hint: 'self-drive · ₹/day' },
-  motorcycle: { hint: 'your fuel · ≈44 km/h' },
-  train: { hint: '₹1.6/km fare' },
-  bus: { hint: '₹2.2/km fare' },
-  flight: { hint: 'Per-person fares + ground transfers' },
-  taxi: { hint: '₹16/km fare' },
-  mixed: { hint: 'a bit of everything' },
+  car: { hint: 'Your car and fuel' },
+  rental: { hint: 'Fuel and daily rent' },
+  motorcycle: { hint: 'Your bike and fuel' },
+  train: { hint: 'Rail fare estimate' },
+  bus: { hint: 'Bus fare estimate' },
+  flight: { hint: 'Flights and transfers' },
+  taxi: { hint: 'Taxi fare estimate' },
+  mixed: { hint: 'Combine transport modes' },
 }
 
 /** Mode tiles for the transport grid — every mode a trip can BE (#213 Phase 5).
@@ -97,16 +105,16 @@ const MODE_TILES = TRANSPORT_MODES.map(mode => ({ mode, icon: MODE_ICONS[mode], 
  *  preference dial's job, and the two dials are deliberately independent
  *  (see `stayKeyFor` in lib/engine.ts). Never claim more than the algorithm does. */
 const STYLE_COPY: Record<TravelStyle, string> = {
-  relaxed: 'gentle rhythm — stretch halts every ~120 km, meals ~260 km, 60 min/day of detour slack for suggestions.',
-  packed: 'maximum ground — 180 km between stretch halts, meals ~300 km, 30 min/day of detour slack.',
-  balanced: 'the default rhythm — stretches every 150 km, meals ~300 km, 45 min/day of detour slack.',
-  adventure: 'suggestions favour treks, trails and outdoor stops — adventure and nature categories rank up.',
-  luxury: 'the default driving rhythm. The bed\'s price is the Budget preference above — this dial never touches pricing.',
-  budget: 'the default driving rhythm. The bed\'s price is the Budget preference above — this dial never touches pricing.',
-  family: 'built around crew size — 5+ travellers get the gentler 120 km cadence automatically, style aside.',
-  spiritual: 'suggestions favour temple stops and sacred circuits — the temple category ranks up.',
-  'food-focused': 'suggestions favour food — local meals rank up wherever the route goes.',
-  creator: 'suggestions favour landmark sights and museums — the content-worthy stops.',
+  relaxed: 'More frequent driving breaks and more time for suggested detours.',
+  packed: 'Longer stretches between driving breaks and less time for detours.',
+  balanced: 'Regular driving breaks and time for suggested detours.',
+  adventure: 'Suggestions favour treks, trails and outdoor stops.',
+  luxury: 'Uses the standard driving pace. Choose accommodation separately above.',
+  budget: 'Uses the standard driving pace. Choose accommodation separately above.',
+  family: 'Groups of five or more get more frequent driving breaks with any style.',
+  spiritual: 'Suggestions favour temples and sacred sites.',
+  'food-focused': 'Suggestions favour local food stops.',
+  creator: 'Suggestions favour landmarks and museums.',
 }
 
 const EMOJIS = ['🧭', '🏔️', '🏖️', '🛕', '🚗', '🚂', '🌴', '🎒']
@@ -134,9 +142,9 @@ function TicketScenery() {
  *  the numbers move when the plan changes instead of swapping silently.
  *  Declared at module scope on purpose: an inline component would be a new
  *  type every render, so React would remount the odometer and the digit roll
- *  would never run. Falls back to an em dash when there is nothing to price. */
+ *  would never run. Shows a label when there is nothing to price. */
 function Money({ v, animate }: { v: number | null | undefined; animate: boolean }) {
-  if (v == null) return <>—</>
+  if (v == null) return <>Not priced</>
   const text = `₹${v.toLocaleString('en-IN')}`
   return <Odometer value={text} animate={animate} label={text} />
 }
@@ -344,11 +352,44 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   // pending draft can never be overwritten by the blank form it is offering.
   const [draft, setDraft] = useState<StoredDraft | null>(null)
   const [draftDecided, setDraftDecided] = useState(false)
+  // Which of the six steps is open. The address is the source of truth (step 3
+  // of the guided flow): `?step=when` survives a reload, and moving between steps
+  // pushes a history entry so the browser's Back button steps backwards instead
+  // of leaving the page. `goToStep` is the only writer.
+  const [step, setStep] = useState<CreateStep>(() => stepFromQuery(currentQuery()))
+  const [ticketOpen, setTicketOpen] = useState(false)
+  const [flowStarted, setFlowStarted] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [returnToReview, setReturnToReview] = useState(false)
+  /** Move to a step as a real navigation, so Back returns to the previous one. */
+  function goToStep(next: CreateStep) {
+    if (next === step) return
+    if (createFunnelOn('guided') && stepNumber(next) > stepNumber(step)) {
+      const errors = validationErrors()
+      const blockers = Object.fromEntries(Object.entries(errors).filter(([key]) => stepOfError(key) === step))
+      setErrs(blockers)
+      if (Object.keys(blockers).length) { focusError(Object.keys(blockers)[0]); return }
+    }
+    setStep(next)
+    navigate(stepHref(next, '/new', currentQuery()))
+    if (next === 'review') setReturnToReview(false)
+  }
+  function changeFromReview(next: CreateStep) {
+    setReturnToReview(true)
+    setTicketOpen(false)
+    goToStep(next)
+  }
+  // A real route change (Back, Forward, or a link into the flow) re-seeds the
+  // step from the address. `navigate` notifies, so goToStep's own push lands
+  // here too - setting the same value twice is a no-op for React.
+  useEffect(() => onRouteChange(() => setStep(stepFromQuery(currentQuery()))), [])
   // P5 - the crew collector. Local state only: nothing is written to the trip
   // and nothing is sent from here. The invite is composed (and marked ready)
   // once the trip exists, so this page never promises a message it cannot send.
   const [crew, setCrew] = useState<CrewEntry[]>([])
-  const [crewInput, setCrewInput] = useState('')
+  const [crewName, setCrewName] = useState('')
+  const [crewMobile, setCrewMobile] = useState('')
+  const [crewFeedback, setCrewFeedback] = useState<{ field?: 'name' | 'mobile'; message: string } | null>(null)
   /** The tucked drawer is a real controlled element so the party chip can open
    *  it and the native summary still closes it (P1's "advanced is tucked, not
    *  hidden" promise - the chip in the flow is the second way in). */
@@ -381,10 +422,13 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   useEffect(() => {
     if (!createFunnelOn('drafts') || !draftDecided) return
     const t = setTimeout(() => {
-      saveDraft({ form: f as unknown as Record<string, unknown>, dests, returnCount, crew: crew.map(c => ({ name: c.name, phone: c.phone })) })
+      // `label` rides along so a resumed phone-only entry keeps its identity
+      // through every later autosave. saveDraft writes the mask into `label` and
+      // null into `phone`, so the stored copy never holds a number.
+      saveDraft({ form: f as unknown as Record<string, unknown>, dests, returnCount, crew: crew.map(c => ({ name: c.name, phone: c.phone, label: c.label })), step })
     }, 800)
     return () => clearTimeout(t)
-  }, [f, dests, returnCount, crew, draftDecided])
+  }, [f, dests, returnCount, crew, step, draftDecided])
 
   /** P5: who can be invited - the party minus the planner, capped at four so the
    *  create flow never turns into an address book (more live on the Share tab). */
@@ -398,11 +442,18 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   }
 
   function addCrewMember() {
-    const next = addCrewEntry(crew, crewInput, crewLimit)
-    if (next === crew) { setCrewInput(''); return }
+    const result = addCrewFields(crew, { name: crewName, mobile: crewMobile }, crewLimit)
+    if (result.kind !== 'added') {
+      setCrewFeedback({ message: result.message, field: result.kind === 'invalid' ? result.field : undefined })
+      if (result.kind === 'invalid') document.getElementById(result.field === 'mobile' ? 'ct-crew-mobile' : 'ct-crew-name')?.focus()
+      return
+    }
+    const next = result.crew
     haptic(HAPTIC.tick)
     setCrew(next)
-    setCrewInput('')
+    setCrewName('')
+    setCrewMobile('')
+    setCrewFeedback({ message: 'Crew member added. No invitation has been sent.' })
     // #428: a COUNT went in — never a name or number.
     recordCreateEvent('crew_added', { count: next.length }, { userId: me?.id })
   }
@@ -421,9 +472,28 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     setF(prev => ({ ...prev, ...(draft.form as Partial<typeof prev>) }))
     setDests(draft.dests)
     setReturnCount(draft.returnCount)
-    if (draft.crew?.length) setCrew(draft.crew.map(c => ({ raw: c.name || c.phone || '', name: c.name, phone: c.phone })))
+    // Crew numbers come back masked (only the last three digits were stored, see
+    // saveDraft). A masked string is a LABEL, not a number: keeping it as
+    // `phone` would build a wa.me link to "••• 234" and fail at the last step,
+    // which is worse than asking for the number again. So the label is kept as
+    // `label`, `phone` stays null, and the chip shows who the person is.
+    if (draft.crew?.length) {
+      setCrew(draft.crew.map(c => ({
+        raw: c.name || c.label || '',
+        name: c.name,
+        // A number is kept only if it normalizes. A masked string ("••• 234")
+        // does not, so it degrades to `null` without a string sniff — and a full
+        // number written by another build is refused rather than re-admitted.
+        phone: c.phone ? normalizeIndianMobile(c.phone) : null,
+        label: isMaskedLabel(c.label) ? c.label : undefined,
+      })))
+    }
     // the restored budget is the user's own number - hand the field back to them
     setBudgetTouched(true)
+    // Reopen on the step the draft was left on. An older draft has no step, and
+    // readStep() has already discarded one this build does not know. This writes
+    // the address too, so the resumed step is shareable and Back still works.
+    if (draft.step) { setStep(draft.step as CreateStep); navigate(stepHref(draft.step as CreateStep, '/new', currentQuery())) }
     setDraft(null)
     setDraftDecided(true)
     toast('Picked up where you left off')
@@ -448,9 +518,6 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     () => (region ? regionBand(region, bill.days || undefined) : (bill.days ? nationalBand(bill.days) : null)),
     [region, bill.days],
   )
-  // P2 - money in the user's hands, described by what it buys.
-  const tier = experienceTier(f.budgetPerPersonInr)
-
   // Day Planner (P1, PR #105): the engine kicks in the moment a start and a
   // destination exist — the route demands its own days from the wheel-hour
   // cap, before any date juggling. Blended mode speed until the workspace's
@@ -516,6 +583,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
 
   /** Start blank: clears any picked card, leaves the form exactly as it is. */
   function clearTemplate() {
+    setFlowStarted(true)
     if (tplId == null) return
     setTplId(null)
     haptic(HAPTIC.tick)
@@ -530,8 +598,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     const start = f.startDate || today
     patchFields({ startDate: start, endDate: isoAddDays(start, days - 1), roundTrip: true })
     toast(days === 1
-      ? 'Day out: one round-trip day — the bill prices meals and parking, no stay'
-      : 'Weekend dash: two days there and back — no stay unless you add one')
+      ? 'Day out: one round-trip day. The bill includes meals, with no overnight stay.'
+      : 'Weekend dash: two days there and back. Check the accommodation estimate below.')
   }
 
   // Auto-fill: the rounded-up rough take lands in the budget field whenever it
@@ -579,7 +647,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     } else {
       setDests(list => list.slice(0, list.length - returnCount))
       setReturnCount(0)
-      toast('Return stops cleared — driving back the same way.')
+      toast('Return stops cleared. The final drive to start option is unchanged.')
     }
   }
 
@@ -638,7 +706,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   /** One message for every way the save can fail: the form cannot tell a
    *  dropped connection from a refusal, so it says what it does know — the trip
    *  is not on the server, and nothing typed here is lost. */
-  const SAVE_FAILED = 'Couldn’t save this trip to the server — your inputs are still here. Try again.'
+  const SAVE_FAILED = 'Couldn’t save this trip to the server. Your inputs are still here. Try again.'
 
   /** The failure notice, rendered beside BOTH submit surfaces: the ticket rail's
    *  CTA and the form's own summary. Its Retry is just a submit — the guarded
@@ -658,6 +726,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     returnStops: 'Return stops',
     startDate: 'Start date', endDate: 'End date', travellers: 'Travellers', budgetPerPersonInr: 'Budget',
     composerRow: 'Pinned plan row',
+    fuelEconomy: 'Mileage', fuelPrice: 'Fuel price', tankL: 'Tank', rentPerDay: 'Rent',
+    dayStartTime: 'Departure time', composerTime: 'Plan time',
   }
 
   /** Error keys whose control is a LocationInput. It owns its own <input>, so
@@ -666,41 +736,80 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     destinations: 'ct-dest-input',
     returnStops: 'ct-return-input',
     composerRow: 'ct-composer-input',
+    fuelEconomy: 'gcf-mileage', fuelPrice: 'gcf-fuel-price', tankL: 'gcf-tank', rentPerDay: 'gcf-rent',
+    dayStartTime: 'ct-day-start',
+  }
+
+  function currentErrors() {
+    // Keep the shared submit rules and add native numeric limits for guided
+    // controls, whose owner step must be visible before reporting an error.
+    // The unpicked-stop and composer-row helpers stay their own modules: they are
+    // about text left in a field, not about the shape of the trip.
+    const errors = validateCreate({
+      name: f.name,
+      startLocation: f.startLocation,
+      destInput,
+      stopCount: dests.length,
+      returnInput,
+      returnOpen: returnCount > 0,
+      composerTitle: c.title,
+      startDate: f.startDate,
+      endDate: f.endDate,
+      travellers: f.travellers,
+      budgetPerPersonInr: f.budgetPerPersonInr,
+      mustAnswerDriving: drivingPolicy.mustAnswerDriving,
+      unpicked: unpickedStopErrors({ dest: destInput, ret: returnInput, returnOpen: returnCount > 0 }),
+      composerError: composerRowError(c.title),
+    })
+    return createFunnelOn('guided') ? { ...errors, ...guidedConstraintErrors({
+      ...f, fuelControls: drivingPolicy.showsDrivingControls, rental: f.transportMode === 'rental',
+    }) } : errors
+  }
+
+  function validationErrors() {
+    const errors = currentErrors()
+    if (!createFunnelOn('guided')) return errors
+    // Native badInput (for example an unfinished exponent) has an empty value.
+    // Read validity here, after input events, rather than during render.
+    document.querySelectorAll<HTMLInputElement>('#yf-create-form input[data-create-field]').forEach(control => {
+      const key = control.dataset.createField
+      if (key && control.willValidate && !control.validity.valid) errors[key] ??= control.validationMessage
+    })
+    return errors
+  }
+
+  function guidedField(key: string) {
+    return { id: FIELD_DOM_IDS[key], 'data-create-field': key,
+      'aria-invalid': !!errs[key], 'aria-describedby': errs[key] ? `${FIELD_DOM_IDS[key]}-error` : undefined }
+  }
+
+  function focusError(key: string) {
+    requestAnimationFrame(() => {
+      const control = fieldRefs.current[key] ?? document.getElementById(FIELD_DOM_IDS[key] ?? '')
+        ?? document.querySelector<HTMLElement>(`[data-create-field="${key}"]`)
+        ?? document.querySelector<HTMLElement>(key === 'drivesPart' ? '.transport-answer-pair button' : '.ct-q:not([hidden]) input')
+      control?.focus()
+    })
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    const intent = createSubmitIntent(createFunnelOn('guided'), step)
+    if (intent.kind === 'advance') { goToStep(intent.step); return }
     if (!me) return
-    const next: Record<string, string> = {}
-    if (!f.name.trim()) next.name = 'Name your trip.'
-    if (!f.startLocation.trim()) next.startLocation = 'Where does the journey start?'
-    // #375: text typed into an add-stop field but never picked used to vanish
-    // here — the stop count looked fine and the place the user typed was simply
-    // absent from the trip. Say so instead, on the field that holds the text.
-    // The unpicked message wins over the bare "add a destination" one: it names
-    // the text the user can see in the box, which is the more useful sentence.
-    const unpicked = unpickedStopErrors({ dest: destInput, ret: returnInput, returnOpen: returnCount > 0 })
-    if (unpicked.destinations) next.destinations = unpicked.destinations
-    else if (dests.length === 0) next.destinations = 'Add at least one destination.'
-    if (unpicked.returnStops) next.returnStops = unpicked.returnStops
-    // #378: a plan typed into the composer row but never "Add"ed used to be
-    // dropped at submit without a word — the same honesty hole as unpicked
-    // stop text (#375), same answer: block with the text named, never discard.
-    const composer = composerRowError(c.title)
-    if (composer) next.composerRow = composer
-    if (!f.startDate) next.startDate = 'Pick a start date.'
-    if (!f.endDate) next.endDate = 'Pick an end date.'
-    else if (f.startDate && new Date(f.endDate) < new Date(f.startDate)) next.endDate = 'End date must be after the start date.'
-    if (f.travellers < CREW_MIN) next.travellers = 'At least one traveller!'
-    else if (f.travellers > CREW_MAX) next.travellers = `Split groups over ${CREW_MAX} into multiple trips.`
-    // #213 Phase 5: the floor is the crew helper's, not a magic 500 — Trip
-    // settings allows ₹0 (= "no per-person target", which the pacing tile
-    // already renders honestly), so the two surfaces agree.
-    if (f.budgetPerPersonInr < 0) next.budgetPerPersonInr = 'A budget cannot be negative.'
-    // A new Mixed trip cannot be created without the driving answer (2026-10-19).
-    // Every other mode has no question to ask, so this blocks only Mixed.
-    if (drivingPolicy.mustAnswerDriving) next.drivesPart = 'Answer the driving question above.'
+    const next = validationErrors()
     setErrs(next)
+    if (createFunnelOn('guided') && Object.keys(next).length) {
+      const target = firstErrorStep(next)
+      // Only a real move pushes an entry. When the blocking row already sits on
+      // this step, pushing the same address again would make Back appear dead:
+      // the address does not change, so Back has to be pressed twice.
+      if (target && target !== step) { setStep(target); navigate(stepHref(target, '/new', currentQuery())) }
+      if (next.composerRow || next.composerTime) setDetailsOpen(true)
+      const first = Object.keys(next).find(key => stepOfError(key) === target)
+      if (first) focusError(first)
+      return
+    }
     if (Object.keys(next).length) {
       // F-15: move focus to the first invalid field so keyboard / screen-reader
       // users don't have to hunt for what failed. LocationInput fields don't
@@ -811,7 +920,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
         rangeKm: bill.rangeKm,
         days: bill.days,
         travellers: f.travellers,
-        crew: crew.map(c => ({ name: c.name, phone: c.phone })),
+        crew: crew.map(c => ({ name: c.name, phone: c.phone, label: c.label })),
         bill,
       })
       navigateWithTransition(`/created/${trip.id}`)
@@ -834,6 +943,15 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
   const whereDone = dests.length > 0 && !!f.startLocation.trim()
   const whenDone = !!f.startDate && !!f.endDate
   const whoDone = f.travellers >= CREW_MIN && f.travellers <= CREW_MAX
+  // How is answered when a mode is chosen and, for Mixed, the driving question
+  // too. Transport always has a value (car by default), so this is really "has
+  // the traveller looked at it" - the Mixed answer is the only hard gate, and it
+  // is the one submit() also enforces.
+  const howDone = !drivingPolicy.mustAnswerDriving
+  // The guided shell is opt-in, so the long form is byte-for-byte the old
+  // behaviour while the flag is off. `guided` gates every step-visibility rule.
+  const guided = createFunnelOn('guided')
+  useStepFocus(step, guided)
 
   const outbound = dests.slice(0, dests.length - returnCount)
   const returnStops = dests.slice(dests.length - returnCount)
@@ -859,10 +977,26 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
     ? `${fmtDay(f.startDate)} – ${fmtDay(f.endDate)} · ${bill.days} day${bill.days !== 1 ? 's' : ''} · ${bill.nights} night${bill.nights !== 1 ? 's' : ''}`
     : 'Pick your dates'
 
+  const guidedTicket = <CreateFlowTicket title={f.name.trim() || (outbound.length ? `${f.startLocation.split(',')[0]} to ${outbound[outbound.length - 1].name.split(',')[0]}` : ticketTitle)}
+    route={ticketRoute.split(' → ').join(', ')} dates={dateLabel}
+    departure={f.dayStartTime ? formatHM(f.dayStartTime, timeFormat) : ''}
+    mode={f.transportMode} travel={`${cap(f.transportMode)}${f.driverCount ? `, ${f.driverCount} drivers` : ''}`}
+    fuel={fuelMode ? ticketFuelSegments(f.fuelEconomy, f.fuelPrice, f.tankL).join(' · ') : ''}
+    party={`${f.travellers} traveller${f.travellers === 1 ? '' : 's'}`}
+    budget={`₹${f.budgetPerPersonInr.toLocaleString('en-IN')} per person`}
+    total={bill.perHead != null ? bill.perHead * f.travellers : null} perHead={bill.perHead}
+    failed={!!saveError} review={step === 'review'} onChange={changeFromReview} />
+
+  const startField = <LocationInput id={guided ? 'gcf-start-location' : undefined}
+    value={f.startLocation} onChange={v => patchFields({ startLocation: v })}
+    onPick={p => setStartCoords({ lat: p.latitude, lng: p.longitude })}
+    error={guided ? errs.startLocation : undefined} errorId={guided && errs.startLocation ? 'gcf-start-error' : undefined}
+    placeholder="Search a city, e.g. Kochi" />
+
   // ---- Shared fragments ----------------------------------------------------
 
   return (
-    <div className="container form-page trip-starter page-enter">
+    <div className={`container form-page trip-starter page-enter${guided ? ' gcf' : ''}`} data-create-step={guided ? step : undefined}>
       {createFunnelOn('drafts') && draft && (
         <Surface className="draft-banner" role="status">
           <div className="draft-banner-copy">
@@ -880,17 +1014,17 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
       <PageHeader
         kicker="Start something"
         headline={{ lead: 'Plan a new', accent: 'trip' }}
-        lede="Fill the blocks — your ticket assembles itself as you go."
+        lede="Fill in the form. Your ticket updates as you go."
       />
 
       {/* ---- Warm start (P1): the front door, full width above the grid ---- */}
-      {createFunnelOn('templates') && (
+      {createFunnelOn('templates') && (!guided || (!flowStarted && step === 'where' && !f.startLocation && dests.length === 0)) && (
       <section className="tpl-warm" aria-label="Start from a real trip">
         <TripArtSprite />
         <div className="tpl-warm-head">
           <h2>Start from a real trip</h2>
           <button type="button" className="tpl-blank-link" onClick={clearTemplate}>Start blank</button>
-          <span className="why">or blank - your call</span>
+          <span className="why">Or start with your own route</span>
         </div>
 <div className="tpl-strip">
               {TRIP_TEMPLATES.map(t => (
@@ -912,7 +1046,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <button type="button" className="tpl-blank" key="blank" onClick={clearTemplate}>
                 <span>
                   Start blank
-                  <small>three questions and a live ticket</small>
+                  <small>{guided ? 'Six short steps. Most take one tap.' : 'three questions and a live ticket'}</small>
                 </span>
               </button>
             </div>
@@ -931,7 +1065,8 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
       )}
 
       <div className="ts-layout">
-        <form id="yf-create-form" className="ct-flow" onSubmit={submit} aria-busy={submitting}>
+        {guided && <StepProgress step={step} errors={currentErrors()} onGo={goToStep} />}
+        <form id="yf-create-form" className="ct-flow" onSubmit={submit} noValidate={guided} aria-busy={submitting}>
           {/* The ONE assertive announcement when submit fails - the field-tied
               messages below stay polite, so a multi-field failure interrupts
               once, not once per field (see FormErrorSummary). */}
@@ -947,10 +1082,54 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                inline, headed like every other section, suggestion chip beside.
                The error stays field-level (F-15): aria-invalid + describedby +
                the focus ref on the input itself. ---- */}
-          <div className="tpl-nameblock">
+          {/* ---- Review: the trip in six lines, each with a way back. Not a
+               second form - every row is a value and a Change link, so the
+               traveller checks the trip instead of re-reading five screens. A
+               row with no value names what is missing, and it is the row the
+               Create press moves focus to. ---- */}
+          {guided && step === 'review' && (
+            <div className="ct-review">
+              <h2>Check and create</h2>
+              <p className="ct-hint">One last look. Everything below can still change.</p>
+              <ul className="ct-review-list">
+                {reviewLines({
+                  name: f.name, startLocation: f.startLocation,
+                  stopNames: dests.map(d => d.name),
+                  startDate: f.startDate, endDate: f.endDate, days: bill.days,
+                  travellers: f.travellers, transportLabel: cap(f.transportMode),
+                  budgetPerPersonInr: f.budgetPerPersonInr,
+                  hasCover: !!f.coverImageUrl.trim(), commitmentCount: commitments.length,
+                }).map(line => (
+                  <li key={line.step} className={`ct-review-row${line.value === null ? ' missing' : ''}`}>
+                    <span className="ct-review-lab">{line.label}</span>
+                    <span className="ct-review-val">{line.value ?? <em>{line.empty}</em>}</span>
+                    <button type="button" className="ct-review-change" onClick={() => changeFromReview(line.step)}>
+                      Change<span className="sr-only"> {line.label}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <ul className="ct-review-list ct-review-optional">
+                {reviewOptional({
+                  name: f.name, startLocation: f.startLocation, stopNames: [],
+                  startDate: f.startDate, endDate: f.endDate, days: bill.days,
+                  travellers: f.travellers, transportLabel: cap(f.transportMode),
+                  budgetPerPersonInr: f.budgetPerPersonInr,
+                  hasCover: !!f.coverImageUrl.trim(), commitmentCount: commitments.length,
+                }).map(line => (
+                  <li key={line.label} className="ct-review-row">
+                    <span className="ct-review-lab">{line.label}</span>
+                    <span className="ct-review-val">{line.value ?? <em>{line.empty}</em>}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="tpl-nameblock" hidden={guided && step !== 'review'}>
             <div className="tpl-warm-head">
               <h2 id="ct-name-h">Name your trip</h2>
-              <span className="why">it becomes yours the moment it has a name</span>
+              <span className="why">Choose a name you can find later</span>
             </div>
             <div className="tpl-name">
               <div className="namebox-in">
@@ -973,20 +1152,17 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
           </div>
 
           {/* ---- 1 - Where ---- */}
-          <div className={`ct-q${whereDone ? ' done' : ''}`}>
+          <div className={`ct-q${whereDone ? ' done' : ''}`} hidden={guided && step !== 'where'}>
             <span className="ct-n">1</span>
             <div className="ct-q-body">
               <h2>Where are you going?</h2>
-              <p className="ct-hint">Start typing - places geocode and order themselves along the road.</p>
+              <p className="ct-hint">Start from where you leave, then add each stop in order.</p>
               <div className="ct-q-field">
-                <Field label="Starting location" error={errs.startLocation}>
-                  <LocationInput
-                    value={f.startLocation}
-                    onChange={v => patchFields({ startLocation: v })}
-                    onPick={p => setStartCoords({ lat: p.latitude, lng: p.longitude })}
-                    placeholder="Search a city, e.g. Kochi"
-                  />
-                </Field>
+                {guided ? <div className="field">
+                  <label className="label" htmlFor="gcf-start-location">Starting location</label>
+                  {startField}
+                  {errs.startLocation && <p className="err-text" id="gcf-start-error" role="status">{errs.startLocation}</p>}
+                </div> : <Field label="Starting location" error={errs.startLocation}>{startField}</Field>}
               </div>
 
               <div className="ct-chips" role="list" aria-label="Stops in order">
@@ -1062,30 +1238,165 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
 
               <div className="ct-presets" role="group" aria-label="Trip shape presets">
                 <button type="button" className="ct-pre" onClick={() => applyDayOutShape(1)}>
-                  A day out<small>one round trip - no stay</small>
+                  A day out<small>One day, no overnight stay</small>
                 </button>
                 <button type="button" className="ct-pre" onClick={() => applyDayOutShape(2)}>
-                  Weekend dash<small>two days, one night</small>
+                  Weekend dash<small>Two days, one night</small>
                 </button>
                 <button type="button" className="ct-pre" onClick={() => focusAddStop()}>
-                  The full route<small>multi-day, stays planned</small>
+                  The full route<small>Several days with overnight stays</small>
                 </button>
               </div>
 
-              <div className="ct-rrow" style={{ marginTop: 12 }}>
-                {/* The reverse-route planner walks a wheel (#377). A passenger
-                    mode has no wheel, so it does not get this control, and no
-                    substitute is invented for it: a return leg by train is a
-                    ticket, not a reverse road route. */}
-                {drivingPolicy.driving && (
-                <label className="ts-switch">
-                  <input type="checkbox" role="switch" checked={returnCount > 0}
-                    onChange={e => setReturnOn(e.target.checked)} aria-label="Configure custom return journey stops" />
-                  <span className="ts-switch-track" aria-hidden="true"></span>
-                  <span className="ts-switch-label">Plot the drive back</span>
-                </label>
-                )}
+            </div>
+          </div>
+
+          {/* ---- 3 - When ---- */}
+          <div className={`ct-q${whenDone ? ' done' : ''}`} hidden={guided && step !== 'when'}>
+            <span className="ct-n">3</span>
+            <div className="ct-q-body">
+              <h2>{guided ? 'When do you leave?' : 'When?'}</h2>
+              <p className="ct-hint">{guided ? 'Pick the first and last day. The bill follows your dates.' : 'The clock walk and every window on the trip starts here.'}</p>
+              {guided && <div className="gcf-presets" role="group" aria-label="Trip shape presets">
+                <button type="button" className="btn btn-outline" onClick={() => applyDayOutShape(1)}>A day out</button>
+                <button type="button" className="btn btn-outline" onClick={() => applyDayOutShape(2)}>Weekend dash</button>
+                <button type="button" className="btn btn-outline" onClick={() => fieldRefs.current.startDate?.focus()}>The full route</button>
+              </div>}
+              <div className="ct-q-field">
+                {guided ? <CreateFlowCalendar key={f.startDate.slice(0, 7)} start={f.startDate} end={f.endDate} error={errs.startDate || errs.endDate}
+                  registerRef={el => { fieldRefs.current.startDate = el; fieldRefs.current.endDate = el }}
+                  onChange={({ startDate, endDate }) => patchFields({ startDate, endDate })} /> : <DateRangeCalendar
+                  start={f.startDate} end={f.endDate}
+                  error={errs.startDate || errs.endDate}
+                  registerRef={el => { fieldRefs.current.startDate = el; fieldRefs.current.endDate = el }}
+                  onChange={({ startDate, endDate }) => patchFields({ startDate, endDate })}
+                />}
               </div>
+              <div className="ct-q-field">
+                <label className="ct-lbl" htmlFor="ct-day-start">Departure time</label>
+                <div className="ct-day-start">
+                  <input
+                    id="ct-day-start"
+                    data-create-field="dayStartTime"
+                    type="time"
+                    className="input input--compact"
+                    value={f.dayStartTime}
+                    aria-invalid={guided && !!errs.dayStartTime}
+                    aria-describedby={guided && errs.dayStartTime ? 'ct-day-start-error ct-day-start-hint' : 'ct-day-start-hint'}
+                    onChange={e => patchFields({ dayStartTime: e.target.value })}
+                  />
+                  {f.dayStartTime && (
+                    <span className="time-preview">= {formatHM(f.dayStartTime, timeFormat)}</span>
+                  )}
+                </div>
+                {guided && errs.dayStartTime && <p className="err-text" id="ct-day-start-error" role="status">{errs.dayStartTime}</p>}
+                <p className="hint-text" id="ct-day-start-hint">
+                  {f.dayStartTime
+                    ? 'Every day starts at this time. Change any single day later on the timeline.'
+                    : 'Leave blank to start each day at 08:30. You can change one day later on the timeline.'}
+                </p>
+              </div>
+              {createFunnelOn('iq') && seasonLine && (
+                <p className="hint-text season-note" role="status">{seasonLine}</p>
+              )}
+            </div>
+          </div>
+
+          {/* ---- 2 - How: transport, plus the Mixed driving question. The return
+               leg moves here in step 5 of the build; until then it stays where
+               it is, so this commit changes no behaviour. ---- */}
+          <div className={`ct-q${howDone ? ' done' : ''}`} hidden={guided && step !== 'how'}>
+            <span className="ct-n">2</span>
+            <div className="ct-q-body">
+              <h2>How are you travelling?</h2>
+              <p className="ct-hint">This sets the speeds, the costs and the driving limits.</p>
+              <div className="ct-q-field">
+                <span className="ct-lbl">Transport</span>
+                <div className="ct-modes" role="group" aria-label="Transport mode">
+                  {MODE_TILES.map(t => {
+                    // The local-train switch belongs to the train pill, so the
+                    // pill and its switch stay siblings inside one tile.
+                    const pill = (
+                      <button key={t.mode} type="button" data-choice={t.mode} className={`ct-mode${f.transportMode === t.mode ? ' on' : ''}`}
+                        aria-pressed={f.transportMode === t.mode}
+                        title={t.hint}
+                        onClick={() => {
+                          haptic(HAPTIC.select)
+                          patchFields(t.mode !== 'train' && f.localTrain ? { transportMode: t.mode, localTrain: false } : { transportMode: t.mode })
+                        }}>
+                        <t.icon size={13} aria-hidden />
+                        <span>{t.mode === 'rental' ? 'Car rental' : cap(t.mode)}</span>
+                        <small>{t.hint}</small>
+                      </button>
+                    )
+                    if (t.mode !== 'train') return pill
+                    return (
+                      <span key="train" className="mode-tile">
+                        {pill}
+                        {f.transportMode === 'train' && (
+                          <label className="ts-switch mode-local-switch">
+                            <input type="checkbox" role="switch" checked={f.localTrain}
+                              onChange={e => { haptic(HAPTIC.toggle); patchFields({ localTrain: e.target.checked }) }}
+                              aria-label="Local / suburban train fares (much cheaper)" />
+                            <span className="ts-switch-track" aria-hidden="true"></span>
+                            <span className="ts-switch-label">Local</span>
+                          </label>
+                        )}
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+              {/* Mixed is the one mode that asks (2026-10-19). The question sits
+                  directly under the mode row it qualifies. */}
+              {f.transportMode === 'mixed' && (
+                <div className="ct-q-field">
+                  <span className="ct-lbl" id="ct-mixed-driving-label">Will you drive any part of this trip?</span>
+                  <div className="transport-answer-pair" role="group" aria-labelledby="ct-mixed-driving-label" aria-describedby={errs.drivesPart ? 'gcf-driving-error' : undefined} data-sel={f.drivesPart === true ? '0' : f.drivesPart === false ? '1' : 'none'}>
+                    <button type="button" className={`crew-btn${f.drivesPart === true ? ' on' : ''}`}
+                      aria-pressed={f.drivesPart === true}
+                      onClick={() => { haptic(HAPTIC.select); patchFields({ drivesPart: true }) }}>Yes, I drive</button>
+                    <button type="button" className={`crew-btn${f.drivesPart === false ? ' on' : ''}`}
+                      aria-pressed={f.drivesPart === false}
+                      onClick={() => { haptic(HAPTIC.select); patchFields({ drivesPart: false }) }}>No, passenger only</button>
+                  </div>
+                  {f.drivesPart === undefined && (
+                    <p className="adv-hint" id="gcf-driving-error" role="status">{errs.drivesPart || 'Answer this to create the trip.'}</p>
+                  )}
+                </div>
+              )}
+
+              {guided && drivingPolicy.showsDrivingControls && <section className="gcf-vehicle" aria-label="Fuel and vehicle">
+                <h3>Fuel &amp; vehicle</h3>
+                <div className="gcf-fuel-grid">
+                  <label>Mileage<span className="unit-input"><input {...guidedField('fuelEconomy')} className="input" type="number" min={2} max={80} step={0.1} value={f.fuelEconomy} onChange={e => patchFields({ fuelEconomy: e.target.value })} placeholder={String(DEFAULT_FUEL_ECONOMY_KML)} aria-label="Mileage in kilometres per litre" /><span className="unit">km/L</span></span></label>
+                  <label>Fuel price<span className="unit-input"><input {...guidedField('fuelPrice')} className="input" type="number" min={50} max={250} step={0.1} value={f.fuelPrice} onChange={e => patchFields({ fuelPrice: e.target.value })} placeholder={String(FUEL_PRICE_INR_PER_L)} aria-label="Fuel price in rupees per litre" /><span className="unit">₹/L</span></span></label>
+                  <label>Tank<span className="unit-input"><input {...guidedField('tankL')} className="input" type="number" min={5} max={300} value={f.tankL} onChange={e => patchFields({ tankL: e.target.value })} placeholder="45" aria-label="Tank capacity in litres" /><span className="unit">L</span></span></label>
+                  {f.transportMode === 'rental' && <label>Rent<span className="unit-input"><input {...guidedField('rentPerDay')} className="input" type="number" min={200} step={50} value={f.rentPerDay} onChange={e => patchFields({ rentPerDay: e.target.value })} placeholder="1800" aria-label="Rental rate in rupees per day" /><span className="unit">₹/day</span></span></label>}
+                </div>
+                {['fuelEconomy', 'fuelPrice', 'tankL', 'rentPerDay'].filter(key => errs[key]).map(key => <p className="err-text" id={`${FIELD_DOM_IDS[key]}-error`} role="status" key={key}>{ERR_LABELS[key]}: {errs[key]}</p>)}
+                {fuelNotice && <p className="hint-text" role="status">{fuelNotice}</p>}
+                <label className="ts-switch gcf-round-trip"><span>Include drive to start</span><input type="checkbox" role="switch" checked={f.roundTrip} aria-describedby="ct-roundtrip-help" onChange={e => patchFields({ roundTrip: e.target.checked })} /><span className="ts-switch-track" aria-hidden /></label>
+                <p className="hint-text" id="ct-roundtrip-help">Includes the final drive to your starting location. Without return stops, the estimate uses the outward distance for the drive back.</p>
+              </section>}
+
+              {/* The return leg lives here, not on Where: whether a drive back is
+                  even possible is a fact about the MODE, so the control belongs
+                  beside the mode that decides it. The reverse-route planner walks
+                  a wheel (#377); a passenger mode has no wheel, so it gets no
+                  control, and no substitute is invented for it — a return leg by
+                  train is a ticket, not a reverse road route. */}
+              {drivingPolicy.driving && (
+                <div className="ct-q-field">
+                  <label className="ts-switch">
+                    <input type="checkbox" role="switch" checked={returnCount > 0}
+                      onChange={e => setReturnOn(e.target.checked)} aria-label="Configure custom return journey stops" aria-describedby="ct-return-help" />
+                    <span className="ts-switch-track" aria-hidden="true"></span>
+                    <span className="ts-switch-label">Add return stops</span>
+                  </label>
+                  <p className="hint-text" id="ct-return-help">Start with the reversed route, then edit the stops. These replace the simple return-distance estimate. The final drive to your starting location is a separate option.</p>
+                </div>
+              )}
 
               {returnCount > 0 && (
                 <div className="return-section" aria-label="Return journey stops">
@@ -1128,107 +1439,14 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
             </div>
           </div>
 
-          {/* ---- 2 - When ---- */}
-          <div className={`ct-q${whenDone ? ' done' : ''}`}>
-            <span className="ct-n">2</span>
+          {/* ---- 4 - Who: party, crew and the drivers drawer. Split out of the
+               old combined "Who & how" block so the guided flow can ask the
+               transport question and the party question on their own screens. ---- */}
+          <div className={`ct-q${whoDone ? ' done' : ''}`} hidden={guided && step !== 'who'}>
+            <span className="ct-n">4</span>
             <div className="ct-q-body">
-              <h2>When?</h2>
-              <p className="ct-hint">The clock walk and every window on the trip starts here.</p>
-              <div className="ct-q-field">
-                <DateRangeCalendar
-                  start={f.startDate} end={f.endDate}
-                  error={errs.startDate || errs.endDate}
-                  registerRef={el => { fieldRefs.current.startDate = el; fieldRefs.current.endDate = el }}
-                  onChange={({ startDate, endDate }) => patchFields({ startDate, endDate })}
-                />
-              </div>
-              <div className="ct-q-field">
-                <label className="ct-lbl" htmlFor="ct-day-start">Departure time</label>
-                <div className="ct-day-start">
-                  <input
-                    id="ct-day-start"
-                    type="time"
-                    className="input input--compact"
-                    value={f.dayStartTime}
-                    aria-describedby="ct-day-start-hint"
-                    onChange={e => patchFields({ dayStartTime: e.target.value })}
-                  />
-                  {f.dayStartTime && (
-                    <span className="time-preview">= {formatHM(f.dayStartTime, timeFormat)}</span>
-                  )}
-                </div>
-                <p className="hint-text" id="ct-day-start-hint">
-                  {f.dayStartTime
-                    ? 'Every day starts at this time. Change any single day later on the timeline.'
-                    : 'Leave blank to start each day at 08:30. You can change one day later on the timeline.'}
-                </p>
-              </div>
-              {createFunnelOn('iq') && seasonLine && (
-                <p className="hint-text season-note" role="status">{seasonLine}</p>
-              )}
-            </div>
-          </div>
-
-          {/* ---- 3 - Who & how ---- */}
-          <div className={`ct-q${whoDone ? ' done' : ''}`}>
-            <span className="ct-n">3</span>
-            <div className="ct-q-body">
-              <h2>Who's coming, and how are you travelling?</h2>
-              <p className="ct-hint">Party shape tunes the engine - meal windows and rest cadence.</p>
-              <div className="ct-q-field">
-                <span className="ct-lbl">Transport</span>
-                <div className="ct-modes" role="group" aria-label="Transport mode">
-                  {MODE_TILES.map(t => {
-                    // The local-train switch belongs to the train pill, so the
-                    // pill and its switch stay siblings inside one tile.
-                    const pill = (
-                      <button key={t.mode} type="button" className={`ct-mode${f.transportMode === t.mode ? ' on' : ''}`}
-                        aria-pressed={f.transportMode === t.mode}
-                        title={t.hint}
-                        onClick={() => {
-                          haptic(HAPTIC.select)
-                          patchFields(t.mode !== 'train' && f.localTrain ? { transportMode: t.mode, localTrain: false } : { transportMode: t.mode })
-                        }}>
-                        <t.icon size={13} aria-hidden />
-                        <span>{t.mode === 'rental' ? 'Car rental' : cap(t.mode)}</span>
-                      </button>
-                    )
-                    if (t.mode !== 'train') return pill
-                    return (
-                      <span key="train" className="mode-tile">
-                        {pill}
-                        {f.transportMode === 'train' && (
-                          <label className="ts-switch mode-local-switch">
-                            <input type="checkbox" role="switch" checked={f.localTrain}
-                              onChange={e => { haptic(HAPTIC.toggle); patchFields({ localTrain: e.target.checked }) }}
-                              aria-label="Local / suburban train fares (much cheaper)" />
-                            <span className="ts-switch-track" aria-hidden="true"></span>
-                            <span className="ts-switch-label">Local</span>
-                          </label>
-                        )}
-                      </span>
-                    )
-                  })}
-                </div>
-              </div>
-              {/* Mixed is the one mode that asks (2026-10-19). The question sits
-                  directly under the mode row it qualifies. */}
-              {f.transportMode === 'mixed' && (
-                <div className="ct-q-field">
-                  <span className="ct-lbl" id="ct-mixed-driving-label">Will you drive any part of this trip?</span>
-                  <div className="transport-answer-pair" role="group" aria-labelledby="ct-mixed-driving-label" data-sel={f.drivesPart === true ? '0' : f.drivesPart === false ? '1' : 'none'}>
-                    <button type="button" className={`crew-btn${f.drivesPart === true ? ' on' : ''}`}
-                      aria-pressed={f.drivesPart === true}
-                      onClick={() => { haptic(HAPTIC.select); patchFields({ drivesPart: true }) }}>Yes, I drive</button>
-                    <button type="button" className={`crew-btn${f.drivesPart === false ? ' on' : ''}`}
-                      aria-pressed={f.drivesPart === false}
-                      onClick={() => { haptic(HAPTIC.select); patchFields({ drivesPart: false }) }}>No, passenger only</button>
-                  </div>
-                  {f.drivesPart === undefined && (
-                    <p className="adv-hint" role="status">Answer this to create the trip.</p>
-                  )}
-                </div>
-              )}
+              <h2>Who's coming?</h2>
+              <p className="ct-hint">We plan meal stops and rest breaks for the group.</p>
               <div className="ct-q-field">
                 <span className="ct-lbl">Party size</span>
                 <div className="ct-party">
@@ -1251,9 +1469,9 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   {/* The shortcut opens the driving drawer. With no driving
                       fields to open, both the button and the drawer go, rather
                       than an empty section wearing a new label. */}
-                  {drivingPolicy.showsDrivingControls && (
-                    <button type="button" className="ct-mini" onClick={() => setDrawerOpen(true)}>
-                      {f.driverCount && f.driverCount > 1 ? `${f.driverCount} drivers` : 'Drivers & pace'}{f.hasVulnerable ? ' · kids aboard' : ''}
+                  {drivingPolicy.showsDrivingControls && !guided && (
+                    <button type="button" className="ct-mini" aria-expanded={drawerOpen} aria-controls="ct-driving-details" onClick={() => { setDrawerOpen(true); document.getElementById('ct-driving-details')?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() }) }}>
+                      Driving settings
                     </button>
                   )}
                   <span className="sr-only">{f.travellers} traveller{f.travellers !== 1 ? 's' : ''} on {cap(f.transportMode)}</span>
@@ -1267,7 +1485,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     deliberately no longer where the error lands. */}
                 <div className="sr-only">
                   <Field label="Travellers">
-                    <input className="input mono" type="number" min={CREW_MIN} max={CREW_MAX}
+                    <input className="input mono" type="number" min={CREW_MIN} max={CREW_MAX} data-create-field="travellers"
                       value={f.travellers} aria-invalid={!!errs.travellers}
                       aria-describedby={errs.travellers ? 'ct-travellers-err' : undefined}
                       onChange={e => patchFields({ travellers: clampCrew(Number(e.target.value)) })} />
@@ -1279,24 +1497,41 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   <div className="crew-card-t">
                     <Users size={13} aria-hidden />
                     <b>Bring the crew</b>
-                    <span className="why">optional - the invite is ready when the trip is</span>
+                    <span className="why">Optional. Prepare invitations for later.</span>
                   </div>
                   <div className="crew-invite-row">
-                    <input className="input" value={crewInput} autoComplete="off"
-                      placeholder="Name or mobile, e.g. Ammu 98450 21234"
-                      aria-label="Crew member name or mobile number"
-                      onChange={e => setCrewInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCrewMember() } }} />
+                    <label htmlFor="ct-crew-name">Name
+                      <input id="ct-crew-name" className="input" value={crewName} autoComplete="off" maxLength={100}
+                        placeholder="e.g. Ammu" aria-invalid={crewFeedback?.field === 'name'} aria-describedby="ct-crew-help ct-crew-feedback"
+                        onChange={e => { setCrewName(e.target.value); setCrewFeedback(null) }}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCrewMember() } }} />
+                    </label>
+                    <label htmlFor="ct-crew-mobile">Mobile number
+                      <input id="ct-crew-mobile" className="input" type="tel" inputMode="tel" value={crewMobile} autoComplete="off" maxLength={24}
+                        placeholder="e.g. +91 98450 21234" aria-invalid={crewFeedback?.field === 'mobile'} aria-describedby="ct-crew-help ct-crew-feedback"
+                        onChange={e => { setCrewMobile(e.target.value); setCrewFeedback(null) }}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCrewMember() } }} />
+                    </label>
                     <button type="button" className="btn btn-outline btn-sm" onClick={addCrewMember}
-                      disabled={crew.length >= crewLimit || !crewInput.trim()}>Add crew member</button>
+                      disabled={crew.length >= crewLimit || (!crewName.trim() && !crewMobile.trim())}>Add crew member</button>
                   </div>
+                  <p className="hint-text" id="ct-crew-help">Add a name, an Indian mobile number, or both. No invitation is sent here.</p>
+                  <p className={crewFeedback?.field ? 'err-text' : 'hint-text'} id="ct-crew-feedback" role="status">{crewFeedback?.message}</p>
                   {crew.length > 0 && (
                     <div className="crew-chips">
                       {crew.map((m, i) => (
-                        <span className="crew-chip" key={`${m.phone ?? m.name}-${i}`}>
-                          {m.name || `+91 ${m.phone}`}
-                          {m.name && m.phone ? <small>{m.phone}</small> : null}
-                          <button type="button" aria-label={`Remove ${m.name || m.phone}`}
+                        <span className="crew-chip" key={`${m.phone ?? m.label ?? m.name}-${i}`}>
+                          {/* The number is masked in BOTH flows. The draft
+                              masks it on write (D7), so printing the full number
+                              here contradicts the project's own privacy rule.
+                              A resumed entry carries `label` instead of a number:
+                              it names the person and cannot build a link. */}
+                          {m.name || m.label || (m.phone ? maskPhone(m.phone) : '')}
+                          {/* A resumed entry has `label` where it used to have a
+                              masked `phone`, so the hint reads from either and
+                              the chip still shows which number it is. */}
+                          {m.name && (m.phone || m.label) ? <small>{m.phone ? maskPhone(m.phone) : m.label}</small> : null}
+                          <button type="button" aria-label={`Remove ${m.name || m.label || m.phone}`}
                             onClick={() => setCrew(list => list.filter((_, n) => n !== i))}>&#10005;</button>
                         </span>
                       ))}
@@ -1313,14 +1548,14 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   applicable it would be an empty section, so a passenger mode
                   drops it entirely rather than showing one under a new label. */}
               {drivingPolicy.showsDrivingControls && (
-              <details className="adv-drawer" open={drawerOpen}
-                onToggle={e => setDrawerOpen((e.target as HTMLDetailsElement).open)}>
+              <details id="ct-driving-details" className="adv-drawer" open={guided || drawerOpen}
+                onToggle={e => setDrawerOpen(e.currentTarget.open)}>
                 <summary>
-                  <span className="group-lab">Fuel, vehicle &amp; party details</span>
-                  <span className="adv-hint">{f.fuelEconomy || f.fuelPrice || f.tankL || f.rentPerDay || f.driverCount || f.hasVulnerable || f.driveAfterDinnerMin ? 'set' : 'the engine has good defaults'}</span>
+                  <span className="group-lab">{guided ? 'Driving settings' : 'Fuel, vehicle and driving settings'}</span>
+                  <span className="adv-hint">{f.fuelEconomy || f.fuelPrice || f.tankL || f.rentPerDay || f.driverCount || f.hasVulnerable || f.driveAfterDinnerMin ? 'Custom settings' : 'Defaults available'}</span>
                 </summary>
                 <div className="adv-body">
-              {fuelMode && (
+              {fuelMode && !guided && (
                 <div>
                   <span className="group-lab">Fuel &amp; vehicle</span>
                   <div className="fuel-stack">
@@ -1333,7 +1568,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                       </span>
                     </label>
                     {isImplausibleFuelEconomy(f.transportMode, parseFuelEconomyKmL(f.fuelEconomy)) && (
-                      <p className="hint-text"><InlineIcon icon={TriangleAlert} size={12} gap={3} />Unusual for a {f.transportMode === 'rental' ? 'rented car' : f.transportMode} — double-check the value.</p>
+                      <p className="hint-text"><InlineIcon icon={TriangleAlert} size={12} gap={3} />Unusual for a {f.transportMode === 'rental' ? 'rented car' : f.transportMode}. Check the value.</p>
                     )}
                     {fuelNotice && (
                       <p className="hint-text" role="status"><InlineIcon icon={TriangleAlert} size={12} gap={3} />{fuelNotice}</p>
@@ -1368,15 +1603,14 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                       </label>
                     )}
                     <div className="chip-row">
-                      <span title={f.roundTrip && bill.roadKm != null
-                        ? `Bills the drive back to ${f.startLocation || 'your start'} (≈ ${Math.round(bill.roadKm / 2)} km each way) on the last day. Turn off for a one-way plan.`
-                        : 'On by default for self-drive — it bills the drive back to your start on the last day. Turn off for a one-way plan.'}>
+                      <span title="Includes the final drive to your starting location. Turn off for a one-way plan.">
                         <Chip active={f.roundTrip} aria-pressed={f.roundTrip}
                           onClick={() => { haptic(HAPTIC.toggle); patchFields({ roundTrip: !f.roundTrip }) }}>
-                          Drive back to start
+                          Include drive to start
                         </Chip>
                       </span>
                     </div>
+                    <p className="hint-text">Includes the final drive to your starting location. Without return stops, the estimate uses the outward distance for the drive back.</p>
                   </div>
                 </div>
               )}
@@ -1388,25 +1622,26 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 {/* Control visibility, so this is the CONTROL flag, not the planner's (2026-10-19). */}
                 {drivingPolicy.showsDrivingControls && (
                   <div className="crew-custom" style={{ marginTop: 10 }}>
-                    <Field label="Drivers sharing the wheel" hint="2 drivers rotate — honest days get longer.">
+                    <Field label="Drivers sharing the wheel" hint="More drivers can share longer driving days.">
                       <div className="crew-row" role="group" aria-label="Drivers sharing the wheel">
                         {[1, 2, 3].map(n => (
                           <button key={n} type="button" className={`crew-btn${(f.driverCount ?? 1) === n ? ' on' : ''}`}
                             aria-pressed={(f.driverCount ?? 1) === n}
-                            onClick={() => { haptic(HAPTIC.select); patchFields({ driverCount: n === 1 ? undefined : n }) }}>{n}</button>
+                            onClick={() => { haptic(HAPTIC.select); patchFields({ driverCount: n === 1 ? undefined : n }) }}>{n} {n === 1 ? 'driver' : 'drivers'}</button>
                         ))}
                       </div>
                     </Field>
-                    <Field label="Pace of the party">
+                    {guided && <label className="ts-switch gcf-vulnerable"><span>Travelling with children or older travellers</span><input type="checkbox" role="switch" checked={!!f.hasVulnerable} onChange={e => patchFields({ hasVulnerable: e.target.checked || undefined })} /><span className="ts-switch-track" aria-hidden /></label>}
+                    <Field label={guided ? 'After dinner' : 'Pace of the party'}>
                       <div className="crew-row" role="group" aria-label="Party pace">
-                        <button type="button" className={`crew-btn${!f.hasVulnerable ? ' on' : ''}`} aria-pressed={!f.hasVulnerable}
-                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: undefined }) }}>Everyone adult</button>
-                        <button type="button" className={`crew-btn${f.hasVulnerable ? ' on' : ''}`} aria-pressed={f.hasVulnerable}
-                          title="Infants or seniors aboard — shorter days, earlier dinner"
-                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: true }) }}>Infants / seniors</button>
+                        {!guided && <button type="button" className={`crew-btn${!f.hasVulnerable ? ' on' : ''}`} aria-pressed={!f.hasVulnerable}
+                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: undefined }) }}>Adults only</button>}
+                        {!guided && <button type="button" className={`crew-btn${f.hasVulnerable ? ' on' : ''}`} aria-pressed={f.hasVulnerable}
+                          title="Children or older travellers. Shorter days and earlier dinner."
+                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: true }) }}>Children or older travellers</button>}
                         {/* #122 dhaba case — opt-in post-dinner driving */}
                         <button type="button" className={`crew-btn${f.driveAfterDinnerMin ? ' on' : ''}`} aria-pressed={!!f.driveAfterDinnerMin}
-                          title="Dhaba dinner, then keep going — dinner no longer ends the day"
+                          title="Allow up to two hours of driving after dinner"
                           onClick={() => { haptic(HAPTIC.select); patchFields({ driveAfterDinnerMin: f.driveAfterDinnerMin ? undefined : 120 }) }}>
                           Drive after dinner
                         </button>
@@ -1423,11 +1658,14 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
           {/* ---- Budget: the funnel mockup promotes it out of the refine layer -
                pricing is a decision, so it gets its own question-sized block
                carrying the honest anchor and the experience translation. ---- */}
-          <div className="ct-budget">
+          <div className="ct-budget" hidden={guided && step !== 'budget'}>
             <div className="tpl-warm-head">
-              <h2>Budget per head</h2>
-              <span className="why">anchored honestly - the tool earns trust here</span>
+              {/* A question, like every other step heading. "Budget per head"
+                  named the field; this asks what the step wants to know. */}
+              <h2>What is your budget?</h2>
+              <span className="why">Per person, for the whole trip</span>
             </div>
+            {guided && <p className="ct-hint">Per person, for the whole trip. Change it at any time.</p>}
             <div className="ct-bud-card">
               <div className="ct-rrow">
                 <div className="ct-bud">
@@ -1437,13 +1675,13 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     onChange={e => { setBudgetTouched(true); patchFields({ budgetPerPersonInr: Number(e.target.value) }) }} />
                   <span className="v">
                     &#8377;{f.budgetPerPersonInr.toLocaleString('en-IN')}
-                    <small>group &#8377;{(f.budgetPerPersonInr * f.travellers).toLocaleString('en-IN')}</small>
+                    <small>Group &#8377;{(f.budgetPerPersonInr * f.travellers).toLocaleString('en-IN')}</small>
                   </span>
                 </div>
                 {/* The exact number still matters - a slider cannot say 13,750. */}
                 <label className="ct-bud-exact">
-                  exact amount
-                  <input className="mono" type="number" min={0} step={500}
+                  Exact amount
+                  <input className="mono" type="number" min={0} step={500} data-create-field="budgetPerPersonInr"
                     ref={el => (fieldRefs.current.budgetPerPersonInr = el)}
                     aria-label="Budget per person, exact amount"
                     aria-invalid={!!errs.budgetPerPersonInr}
@@ -1453,7 +1691,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 </label>
                 <button type="button" className="ct-mini"
                   onClick={() => { setBudgetTouched(false); if (suggestedBudget != null) patchFields({ budgetPerPersonInr: suggestedBudget }) }}>
-                  use our estimate
+                  Use estimate
                 </button>
               </div>
               {errs.budgetPerPersonInr && <p className="err-text" id="ct-budget-err" role="status" aria-live="polite">{errs.budgetPerPersonInr}</p>}
@@ -1462,51 +1700,54 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               {/* Mockup order: money in the hand first (the translation), then
                   the anchor against reality. Both flag-gated (P2). */}
               {createFunnelOn('budget') && (<p className="hint-text budget-tier">
-                At <b>&#8377;{f.budgetPerPersonInr.toLocaleString('en-IN')}</b> per head: {tier.blurb}.
+                Your target is <b>&#8377;{f.budgetPerPersonInr.toLocaleString('en-IN')}</b> per person. The estimate uses your route, transport and accommodation choices.
               </p>)}
               {createFunnelOn('budget') && band && (
                 <p className="hint-text budget-anchor" role="status">
                   <i className="bench-mark" aria-hidden>&#9650;</i> A typical {band.days}-day {band.label} run costs <b>&#8377;{band.low.toLocaleString('en-IN')}&ndash;{band.high.toLocaleString('en-IN')}</b> per head
-                  {f.budgetPerPersonInr > 0 ? <> - {anchorNote(f.budgetPerPersonInr, band)}</> : null}.
+                  {f.budgetPerPersonInr > 0 ? <>. Your target is {f.budgetPerPersonInr < band.low ? 'below' : f.budgetPerPersonInr > band.high ? 'above' : 'within'} this range</> : null}.
                 </p>
               )}
             </div>
           </div>
 
-          {/* ---- Refine: the bed & style ---- */}
-          <div className="ct-refine">
+          {/* ---- Refine: accommodation sets the stay estimate. Travel style
+               sets pace and suggestion preferences independently. ---- */}
+          <div className="ct-refine" hidden={guided && step !== 'budget'}>
             <span className="ct-lbl">Refine the trip</span>
 
             <div className="ct-rrow">
-              <span className="ct-lbl">The bed</span>
-              <span className="ct-tier" role="group" aria-label="Bed tier">
+              <span className="ct-lbl">Accommodation</span>
+              <span className="ct-tier" role="group" aria-label="Accommodation tier">
                 {(['budget', 'comfort', 'luxury'] as const).map(st => (
-                  <button key={st} type="button" className={f.stayStyle === st ? 'on' : ''}
+                  <button key={st} type="button" data-choice={st} className={f.stayStyle === st ? 'on' : ''}
                     aria-pressed={f.stayStyle === st}
                     onClick={() => { haptic(HAPTIC.select); patchFields({ stayStyle: st }) }}>{cap(st)}</button>
                 ))}
               </span>
-              <span className="ct-party-sub">prices the bed - the journey never changes with it</span>
+              <span className="ct-party-sub">Sets the accommodation estimate. Your route stays the same.</span>
             </div>
 
-            <div>
-              <span className="ct-lbl">Travel style &middot; pick one</span>
+            <details className={guided ? 'gcf-budget-details' : undefined} open>
+              <summary hidden={!guided}>Travel style</summary>
+              <span className="ct-lbl">{guided ? 'Choose one' : 'Travel style. Choose one'}</span>
               <div className="ct-styles" role="group" aria-label="Travel style" style={{ marginTop: 6 }}>
                 {TRAVEL_STYLES.map(st => (
-                  <button key={st} type="button" className={`ct-style${f.travelStyle === st ? ' on' : ''}`}
+                  <button key={st} type="button" data-choice={st} className={`ct-style${f.travelStyle === st ? ' on' : ''}`}
                     aria-pressed={f.travelStyle === st}
                     onClick={() => { haptic(HAPTIC.select); patchFields({ travelStyle: st }) }}>{cap(st)}</button>
                 ))}
               </div>
-              <p className="hint-text style-copy" role="status"><b>{cap(f.travelStyle)}</b> - {STYLE_COPY[f.travelStyle]}</p>
-            </div>
+              <p className="hint-text style-copy" role="status"><b>{cap(f.travelStyle)}.</b> {STYLE_COPY[f.travelStyle]}</p>
+            </details>
           </div>
 
           {/* ---- cover + pinned: the optional layer ---- */}
-          <div className="ct-optional">
+          {guided && step === 'review' && <button type="button" className="btn btn-outline gcf-details-toggle" onClick={() => setDetailsOpen(value => !value)} aria-expanded={detailsOpen}>Add details <span className="muted">Optional</span></button>}
+          <div className="ct-optional" hidden={guided && (step !== 'review' || !detailsOpen)}>
             <div className="ct-opt-head">
               <span className="ct-lbl">Trip cover</span>
-              <span className="ct-party-sub">optional</span>
+              <span className="ct-party-sub">Optional</span>
             </div>
             <Field label="Trip emoji">
               <div className="chip-row" style={{ marginTop: 6 }}>
@@ -1531,7 +1772,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                       const q = last || f.startLocation.trim() || f.name.trim()
                       const u = q ? await fetchTripThumbUrl(q) : null
                       patchFields({ coverImageUrl: u ?? '' })
-                      if (!u) toast("Couldn’t find a photo for that destination — paste an image URL instead.", 'err')
+                      if (!u) toast("Couldn’t find a photo for that destination. Paste an image URL instead.", 'err')
                     } finally { setBusyCover(false) }
                   }}>
                   {busyCover ? 'Finding photo…' : f.coverImageUrl ? 'Refresh destination photo' : 'Use destination photo'}
@@ -1548,7 +1789,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
 
           <div className="ct-opt-head" style={{ marginTop: 16 }}>
               <span className="ct-lbl">Pinned plans</span>
-              <span className="ct-party-sub">optional - trains, weddings, anything with a time</span>
+              <span className="ct-party-sub">Optional. Trains, weddings or other plans with a fixed time.</span>
             </div>
             {createFunnelOn('iq') && radar.length > 0 && (
               <div className="ct-radar" role="status">
@@ -1567,7 +1808,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     <span className="warn-icon"><Pin size={13} aria-hidden /></span>
                     <div style={{ flex: 1 }}>
                       <div className="warn-title">{x.title}</div>
-                      <div className="warn-fix">Day {x.dayIndex + 1} at {formatHM(x.time, timeFormat)}{x.destName ? ` — at ${x.destName}` : ''}</div>
+                      <div className="warn-fix">Day {x.dayIndex + 1} at {formatHM(x.time, timeFormat)}{x.destName ? `, at ${x.destName}` : ''}</div>
                     </div>
                     <button type="button" className="icon-btn" aria-label={`Remove ${x.title}`} onClick={() => setCommitments(l => l.filter((_, j) => j !== i))}><X size={13} aria-hidden /></button>
                   </div>
@@ -1594,7 +1835,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   onChange={val => setC(x => ({ ...x, dayIndex: Number(val) }))}
                   options={Array.from({ length: Math.max(1, dayCount) }, (_, i) => ({ value: String(i), label: `Day ${i + 1}` }))} />
               </Field>
-              <Field label="Time"><input className="input" type="time" value={c.time} onChange={e => setC(x => ({ ...x, time: e.target.value }))} /></Field>
+              <Field label="Time" error={guided ? errs.composerTime : undefined}><input data-create-field="composerTime" className="input" type="time" value={c.time} onChange={e => setC(x => ({ ...x, time: e.target.value }))} /></Field>
               <Field label="Linked stop">
                 <Select value={c.destName ?? ''} onChange={val => setC(x => ({ ...x, destName: val }))}
                   aria-label="Destination this deadline is checked against"
@@ -1603,11 +1844,31 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <button type="button" className="btn btn-outline" onClick={addCommitment} style={{ height: 42 }}>Add pinned plan</button>
             </div>
           </div>
+          {guided && returnToReview && step !== 'review' && <button type="button" className="btn btn-outline gcf-return-review" onClick={() => goToStep('review')}>Back to Review</button>}
+          {guided && <StepNav step={step} errors={errs} onGo={goToStep} submitting={submitting} failed={!!saveError}
+            peek={`${outbound.length} stop${outbound.length === 1 ? '' : 's'}${bill.roadKm != null ? ` · ${Math.round(bill.roadKm)} km` : ''}`}
+            onPeek={() => setTicketOpen(true)} />}
+          {guided && step === 'review' && <div className="gcf-review-actions">
+            <p className="hint-text">Creates the trip and opens your rough day plan.</p>
+            <button type="button" className="btn btn-outline" disabled={!bill.perHead} onClick={() => {
+              setBillPrinted(value => !value)
+              requestAnimationFrame(() => document.querySelector<HTMLElement>('.gcf-printed-bill')?.focus())
+            }}><Printer size={16} aria-hidden />{billPrinted ? 'Hide the rough bill' : 'Print the rough bill'}</button>
+            <button type="button" className="btn btn-ghost" onClick={() => onNavigate('/trips')}>Cancel</button>
+            {billPrinted && <div className="gcf-printed-bill" role="region" aria-label="Rough trip bill" tabIndex={-1}>
+              <h3>Rough trip bill</h3>
+              <div className="bill-row"><span>Transport</span><b><Money v={bill.transportCost} animate={!reduced} /></b></div>
+              <div className="bill-row"><span>Stay</span><b><Money v={bill.stayCost} animate={!reduced} /></b></div>
+              <div className="bill-row"><span>Food</span><b><Money v={bill.mealCost} animate={!reduced} /></b></div>
+              <p className="hint-text">Excludes tolls, parking and entry fees.</p>
+            </div>}
+          </div>}
           </div>
         </form>
 
         {/* ---- The Trip Ticket (right rail / hidden on mobile) ---- */}
-        <aside className="ts-rail" aria-label="Trip ticket preview">
+        {guided && <aside className="gcf-rail" aria-label="Trip ticket preview">{guidedTicket}</aside>}
+        <aside className="ts-rail" aria-label="Trip ticket preview" hidden={guided}>
           <div className="ticket">
             <div className="tk-head">
               <span className="tk-brand">YatraFlow</span>
@@ -1623,7 +1884,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <div className="tk-title">{ticketTitle}</div>
               <p className="tk-route" title={ticketRoute}>
                 {ticketRoute}
-                {returnCount > 0 && <span className="tk-return-chip">↔ custom return</span>}
+                {returnCount > 0 && <span className="tk-return-chip">↔ Custom return</span>}
               </p>
               <div className="tk-rows">
                 <div className="tk-row"><span className="ic"><Calendar size={13} aria-hidden /></span><b>{dateLabel}</b></div>
@@ -1640,13 +1901,13 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 each shows its math, nothing hides behind Print. Printing stays
                 as the paper moment below. */}
             <div className="tk-stub tk-bill">
-              <div className="bill-row"><span>Transport</span><b className="mono">{bill.transportCost != null ? <Money v={bill.transportCost} animate={!reduced} /> : '\u2014'}</b></div>
-              <p className="bill-formula">{bill.transportFormula || `add a geocoded stop to price the ${costNoun}`}</p>
+              <div className="bill-row"><span>Transport</span><b className="mono">{bill.transportCost != null ? <Money v={bill.transportCost} animate={!reduced} /> : 'Not priced'}</b></div>
+              <p className="bill-formula">{bill.transportFormula || `Add a mapped stop to estimate the ${costNoun}.`}</p>
               <div className="bill-row"><span>Stay</span><b className="mono"><Money v={bill.stayCost} animate={!reduced} /></b></div>
               <p className="bill-formula">{bill.stayFormula}</p>
               <div className="bill-row"><span>Food</span><b className="mono"><Money v={bill.mealCost} animate={!reduced} /></b></div>
               <p className="bill-formula">{bill.mealFormula}</p>
-              <div className="bill-row bill-dim"><span>Entries &amp; tolls</span><b>excluded</b></div>
+              <div className="bill-row bill-dim"><span>Entries &amp; tolls</span><b>Excluded</b></div>
               {bill.perHead != null && (
                 <>
                   <div className="bill-row bill-total"><span>Total</span><b className="mono">{'\u20B9 '}<Money v={Math.round(bill.perHead * f.travellers)} animate={!reduced} /></b></div>
@@ -1681,7 +1942,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 visible way to finish. Printing is a secondary peek. */}
             {saveFailure}
             <button type="submit" form="yf-create-form" className="tk-cta" disabled={submitting}>
-              {submitting ? 'Creating…' : <>Start planning <ArrowRight size={16} aria-hidden /></>}
+              {submitting ? CREATE_ACTION_BUSY_LABEL : <>{CREATE_ACTION_LABEL} <ArrowRight size={16} aria-hidden /></>}
             </button>
             <div className="tk-subrow">
               <button type="button" className="tk-cancel" onClick={printBill} disabled={!bill.perHead}>
@@ -1698,14 +1959,14 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                         <p className="bill-brand">YATRAFLOW &ndash; ROUGH BILL</p>
                         <div className="bill-row"><span>Road (est.)</span><b className="mono">{bill.roadKm != null ? `\u2248 ${bill.roadKm} km` : '-'}</b></div>
                         <div className="bill-row"><span>Transport</span><b className="mono"><Money v={bill.transportCost} animate={!reduced} /></b></div>
-<p className="bill-formula">{bill.transportFormula || `add a geocoded stop to price the ${costNoun}`}</p>
+<p className="bill-formula">{bill.transportFormula || `Add a mapped stop to estimate the ${costNoun}.`}</p>
                         <div className="bill-row"><span>Stay</span><b className="mono"><Money v={bill.stayCost} animate={!reduced} /></b></div>
                         <p className="bill-formula">{bill.stayFormula}</p>
                         <div className="bill-row"><span>Food</span><b className="mono"><Money v={bill.mealCost} animate={!reduced} /></b></div>
                         <p className="bill-formula">{bill.mealFormula}</p>
                         <div className="bill-row bill-total"><span>Total</span><b className="mono">{'\u20B9 '}<Money v={bill.perHead != null ? Math.round(bill.perHead * f.travellers) : null} animate={!reduced} /></b></div>
                         <div className="bill-perhead"><span className="mono">{'\u20B9 '}<Money v={bill.perHead ?? 0} animate={!reduced} /></span><span className="per">/ head</span></div>
-                        <p className="bill-note">rough take - refined once your route resolves in the workspace &middot; excludes tolls, parking &amp; entry fees</p>
+                        <p className="bill-note">An estimate that updates when the route is measured. Excludes tolls, parking and entry fees.</p>
                       </div>
                     </div>
                   </div>
@@ -1716,7 +1977,8 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
       </div>
 
       {/* ---- Mobile dock (≤900px): the CTA surface ---- */}
-      <div className="trip-dock" role="region" aria-label="Trip ticket dock">
+      {guided && <Modal open={ticketOpen} onClose={() => setTicketOpen(false)} title="Your trip ticket">{guidedTicket}</Modal>}
+      <div className="trip-dock" role="region" aria-label="Trip ticket dock" hidden={guided}>
         <div className="dock-thumb">{f.coverEmoji}</div>
         <div className="dock-meta">
           <b>{ticketTitle}</b>
@@ -1729,7 +1991,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
         {/* Same fix as the rail: the primary is the primary, and printing is a
             peek at the numbers - not a gate in front of creating. */}
         <button type="submit" form="yf-create-form" className="dock-cta" disabled={submitting}>
-          {submitting ? 'Creating…' : <>Start planning <ArrowRight size={15} aria-hidden /></>}
+          {submitting ? CREATE_ACTION_BUSY_LABEL : <>{CREATE_ACTION_LABEL} <ArrowRight size={15} aria-hidden /></>}
         </button>
         <button type="button" className="dock-secondary" onClick={printBill} disabled={!bill.perHead} aria-label="Print the rough bill"><Printer size={15} aria-hidden /></button>
       </div>
