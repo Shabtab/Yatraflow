@@ -761,9 +761,10 @@ export function planTravelClock(input: TravelClockInput, splitOverride?: DriveDa
     // keep walking capped days until the walk reaches totalKm.
     for (let guard = 0; remaining > 0.5 && guard < 30; guard++) {
       const isFinal = remaining <= capKmFor(days.length) + 0.5
+      const laterStartMin = dayOffset === 0 ? savedStartFor(days.length) : hmToMinutes(CLOCK_DEFAULT_START)
       const day = walkClockDay({
         dayIndex: dayOffset + days.length, startKm, kmBudget: isFinal ? remaining : Math.min(remaining, capKmFor(days.length)),
-        startMin: hmToMinutes(CLOCK_DEFAULT_START), kmPerMin, isFinal, capKm: isFinal ? Infinity : endnoCap, anchors: input.anchors, profile: input.profile ?? null,
+        startMin: laterStartMin, kmPerMin, isFinal, capKm: isFinal ? Infinity : endnoCap, anchors: input.anchors, profile: input.profile ?? null,
       })
       days.push(day)
       remaining -= day.kmCovered - startKm
