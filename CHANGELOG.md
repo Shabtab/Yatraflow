@@ -18,7 +18,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
-- **A suggestion now stays attached to its place and its day.** A location text edit now clears the old pin, so a text-only idea is never pinned to the origin. A suggestion whose day was deleted stays open with a day picker instead of landing elsewhere. Provider namespaces keep different places apart, and a place with no known provider stays valid. Accepted or declined suggestions stop seeding duplicate crew preferences. (#839)
+- **A suggestion now stays attached to its place and its day.** A location text edit clears the old pin, so a text-only idea is never pinned to the origin. A suggestion whose day was deleted stays open with a day picker instead of landing elsewhere. That picker offers the days the trip has now. It asks again if the chosen one disappears, and it never invents a day when the trip has none. Provider namespaces keep different places apart. A place with no known provider stays valid. Accepted or declined suggestions stop seeding duplicate crew preferences. Delete a trip and run Undo, and its suggestions, decisions, activity and notifications come back too. They arrive in one batch, not the trip alone. A place that was never set no longer blocks that restore. A database with no place column says so, instead of quietly saving the suggestion without it. When a restore cannot finish, running Undo again really retries. It retries the same metadata, not a stripped-down write that only looks successful. (#839)
 
 ## [0.79.2] - 2026-10-24
 

@@ -1169,6 +1169,44 @@ Kept as one line each so the origin is traceable without re-listing the work as 
   The two cannot name different days. An unknown position still falls back to the trip's first
   day, and the modal keeps its guess notice.
 
+## Suggestions repair — Stage B (#839): place identity
+
+| Stage | Scope | Dependency | Current state |
+|---|---|---|---|
+| B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Implemented on `fix/839-place-identity-minimax`. The merged command contract is available. Preserve imported trips and unambiguous legacy references. |
+
+The user approved this batch on 2026-10-24. It is the place-identity half of Stage B:
+what a picked place IS, how it survives a save, and how it survives a delete and undo.
+
+- **Settled product behaviour.** When the target day disappears, ask again with a day
+  picker and preserve the idea's text and place data. Never choose another day
+  automatically. Cancel preserves the open idea. Same-day repeats need an explicit
+  "Add another visit" confirmation; different-day visits stay allowed, and Cancel
+  preserves the idea.
+- **Accepted technical choices.** Resolved and unresolved place states are distinct;
+  editing the location text invalidates the selected pin and its metadata. Suggestion
+  metadata and stable day identity are persisted — no transient-only fallback. The
+  table and the command are extended additively; shipped migrations and the
+  contribution tables are not edited or replaced. Every Stage A actor, receipt, guard,
+  archive and restore protection is preserved. The existing 0.5 km name-and-proximity
+  fallback applies, with provider identity taking precedence over names and proximity.
+  Export uses format 3 when the shape it needs changes; legacy reads stay readable and
+  incompatible future versions are rejected honestly. Server-atomic acceptance remains
+  Stage C — Stage B must not claim that separate writes are atomic.
+- **Corrections carried into the build.** The CHECK validates the full allowed
+  shape and data types with an `IS TRUE` form, so missing and null exposure are both
+  rejected (R1). Missing columns or an older RPC produce a recoverable refusal on
+  every write that carries identity (R2, R3). A restore may omit metadata only for a
+  legacy row that has none to lose; a restore carrying metadata preserves it or refuses
+  recoverably, and the recovery payload is kept for retry. Resolved coordinates need
+  not have known provenance, so a provider key is not needed when the source
+  legitimately supplies none — and unknown provenance stays unknown, with the
+  metadata builder, type, RPC and SQL constraint agreeing on that valid state.
+- **Ownership.** MiniMax implements the fixed candidate. Codex independently reviews
+  and verifies it and owns integration, the full gate, browser evidence and
+  publication. The full gate, browser proof, live SQL and rollout stay outside this
+  batch's own proof.
+
 ## Historical plans (executed — kept for the record, not live guidance)
 
 - [implementation plan for v0.23.0 + the CTI redesign](docs/history/implementation-plan-v0.23.0-cti.md)

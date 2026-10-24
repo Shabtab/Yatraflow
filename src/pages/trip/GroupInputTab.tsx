@@ -315,8 +315,18 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
   const consensusPct = memberCount ? Math.round((ups / memberCount) * 100) : 0
   const author = userById(sg.proposedBy)
   const { busy, claim, release } = useBusyClaim(sg.id)
-  const [retarget, setRetarget] = useState<null | { days: Array<{ id: string; index: number; title?: string }>; dayId: string }>(null)
+  // Only the user's CHOICE lives here. The day list is read from the trip at
+  // render time: a day removed while the panel was open must disappear from the
+  // choices too, instead of offering a day that no longer exists (#839).
+  const [retarget, setRetarget] = useState<null | { dayId: string; reason: 'missing-day' | 'legacy-ambiguous' }>(null)
   const [duplicate, setDuplicate] = useState<null | { dayId: string; dayIndex: number }>(null)
+  const liveDays = useMemo(() => trip.days.map(d => ({ id: d.id, index: d.index, ...(d.title ? { title: d.title } : {}) })),
+    [trip.days])
+  // One follow-up at a time. Retarget wins when both somehow want to be open,
+  // because the missing day is the question that has to be answered first.
+  const followUp: SuggestionFollowUp | null = retarget
+    ? { kind: 'retarget', ...retarget }
+    : duplicate ? { kind: 'duplicate', ...duplicate } : null
 
   function accept(opts: { dayId?: string; dayIndex?: number; allowDuplicate?: boolean } = {}) {
     const outcome = acceptSuggestionIntoTimeline(trip.id, sg.id, opts)
@@ -331,10 +341,21 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
       return
     }
     if (outcome.status === 'retarget') {
-      setRetarget({ days: outcome.availableDays, dayId: '' })
+      // The day the user chose is gone, or a legacy index is ambiguous. The idea
+      // stays OPEN and they are asked again. Never re-file it onto another day,
+      // and never close it with the work lost. This panel replaces the duplicate
+      // one, because two follow-ups on one row read as two answers to one
+      // question. The first action asked a question rather than writing, so its
+      // claim is released here and the follow-up takes its own. That is what lets
+      // the follow-up's buttons disable while it is in flight.
+      setDuplicate(null)
+      release()
+      setRetarget({ dayId: '', reason: outcome.reason })
       return
     }
     if (outcome.status === 'visitConflict') {
+      setRetarget(null)
+      release()
       setDuplicate({ dayId: outcome.dayId, dayIndex: outcome.dayIndex })
       return
     }
@@ -399,27 +420,24 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
           </div>
         )}
 
-        {retarget && (
-          <div className="gin-item-actions" role="group" aria-label="Choose a day for this idea">
-            <p className="small muted">That day is no longer on this trip. Choose another day, or cancel to keep the idea here.</p>
-            <select className="select" aria-label="Day for this idea" value={retarget.dayId}
-              onChange={e => setRetarget(r => r ? { ...r, dayId: e.target.value } : r)}>
-              <option value="">Pick a day</option>
-              {retarget.days.map(d => <option key={d.id} value={d.id}>Day {d.index + 1}{d.title ? ` · ${d.title}` : ''}</option>)}
-            </select>
-            <button className="btn btn-primary btn-sm" onClick={() => {
-              if (retarget.dayId) accept({ dayId: retarget.dayId })
-            }}>Add to chosen day</button>
-            <button className="btn btn-outline btn-sm" onClick={() => { setRetarget(null); release() }}>Cancel</button>
-          </div>
-        )}
-
-        {duplicate && (
-          <div className="gin-item-actions" role="group" aria-label="Add another visit">
-            <p className="small muted">This place is already on Day {duplicate.dayIndex + 1}. Add another visit, or cancel to keep the idea open.</p>
-            <button className="btn btn-primary btn-sm" onClick={() => accept({ dayId: duplicate.dayId, allowDuplicate: true })}>Add another visit</button>
-            <button className="btn btn-outline btn-sm" onClick={() => { setDuplicate(null); release() }}>Cancel</button>
-          </div>
+        {followUp && (
+          <SuggestionFollowUpPanel
+            followUp={followUp}
+            days={liveDays}
+            busy={busy}
+            previewOpen={previewOpen}
+            onPickDay={dayId => setRetarget(r => (r ? { ...r, dayId } : r))}
+            onConfirm={() => {
+              if (!claim()) return
+              if (followUp.kind === 'retarget') accept({ dayId: followUp.dayId })
+              else accept({ dayId: followUp.dayId, allowDuplicate: true })
+            }}
+            onCancel={() => {
+              if (followUp.kind === 'retarget') setRetarget(null)
+              else setDuplicate(null)
+              release()
+            }}
+          />
         )}
 
         {sg.comments.length > 0 && (
@@ -440,6 +458,72 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
       </div>
       </div>
     </Surface>
+  )
+}
+
+// ================= The one follow-up a suggestion row can be asking =================
+// Retarget ("that day is gone, pick another") and repeat ("this place is already
+// on that day, add another visit?") are the SAME question shape: a sentence, a
+// choice, a confirm and a cancel. Rendering them from one component is what makes
+// them mutually exclusive by construction — a row cannot ask two questions at
+// once, which is how the two panels used to stack (#839).
+
+export type SuggestionFollowUp =
+  | { kind: 'retarget'; dayId: string; reason: 'missing-day' | 'legacy-ambiguous' }
+  | { kind: 'duplicate'; dayId: string; dayIndex: number }
+
+export function SuggestionFollowUpPanel({ followUp, days, busy, previewOpen, onPickDay, onConfirm, onCancel }: {
+  followUp: SuggestionFollowUp
+  /** The trip's CURRENT days, read at render time — never a captured list. */
+  days: Array<{ id: string; index: number; title?: string }>
+  busy: boolean
+  previewOpen?: boolean
+  onPickDay: (dayId: string) => void
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const noDays = days.length === 0
+  const canConfirm = followUp.kind === 'duplicate' || (!!followUp.dayId && !noDays)
+  return (
+    <div className="gin-item-actions gin-followup" role="group"
+      aria-label={followUp.kind === 'retarget' ? 'Choose a day for this idea' : 'Add another visit'}>
+      {followUp.kind === 'retarget' ? (
+        <>
+          <p className="small muted">
+            {followUp.reason === 'legacy-ambiguous'
+              ? 'This idea names a day by number and more than one day now matches it. Choose the day, or cancel to keep the idea here.'
+              : 'That day is no longer on this trip. Choose another day, or cancel to keep the idea here.'}
+          </p>
+          {noDays ? (
+            // No day to offer and none invented: the honest instruction is to add
+            // one, and Cancel keeps the idea exactly as it is.
+            <p className="small">This trip has no days yet. Add a day in the timeline, then choose Add to timeline again.</p>
+          ) : (
+            <select className="select" aria-label="Day for this idea" value={followUp.dayId}
+              onChange={e => onPickDay(e.target.value)}>
+              <option value="">Pick a day</option>
+              {days.map(d => <option key={d.id} value={d.id}>Day {d.index + 1}{d.title ? ` · ${d.title}` : ''}</option>)}
+            </select>
+          )}
+        </>
+      ) : (
+        <p className="small muted">This place is already on Day {followUp.dayIndex + 1}. Add another visit, or cancel to keep the idea open.</p>
+      )}
+      <button className="btn btn-primary btn-sm" disabled={busy || !canConfirm} aria-busy={busy}
+        onClick={() => {
+          // The row's own guards, again: no write while a preview is staged, one
+          // claim per row so a double-tap cannot land the idea twice, and no
+          // confirm without an actual choice.
+          if (refuseWhileStaged(previewOpen)) return
+          if (!canConfirm) return
+          onConfirm()
+        }}>
+        {followUp.kind === 'retarget' ? 'Add to chosen day' : 'Add another visit'}
+      </button>
+      {/* Cancel stays live while the claim is held: cancelling is how the claim
+          is given back, so disabling it would strand the row. */}
+      <button className="btn btn-outline btn-sm" onClick={onCancel}>Cancel</button>
+    </div>
   )
 }
 
