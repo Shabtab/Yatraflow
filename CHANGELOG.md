@@ -15,6 +15,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.79.0] - 2026-10-24
+
+**This release moves crew collaboration onto an idempotent command contract. A suggestion or a decision can now be deleted only by its author or by the trip owner.**
+
+Two database migrations go with this release: `20261023a_collab_commands.sql` and `20261023b_collab_cutover.sql`. Run the additive migration first. Deploy this app build. Then run the cutover migration. See the release notes for the order.
+
 ### Added
 
 - **The Departure time control now speaks once per change.** A time field reports every step of its minute dial. A ten-minute change arrived as ten reports. Each one raised a message and a buzz, so the screen filled with ten copies. The plan still updates on every step. Only the message waits for the value you settle on. (#828)

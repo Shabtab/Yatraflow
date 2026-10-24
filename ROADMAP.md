@@ -15,8 +15,8 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-21, verified against the repo):** v0.78.0 is the release candidate that joins `test` and `main`. It keeps both histories. It carries the public itinerary page and the Android update check. It also carries the trip owner and delete guards and the offline conflict recovery. The v0.77.1 flight fixes are already in `test` under other commit ids. Two migrations are new and unreleased: `20261017_trip_write_version.sql` and `20261020_trip_owner_and_delete_guards.sql`. Run the first one, deploy the app, then run the second. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
-Current version: **0.78.0** — the candidate for promotion to `main`. Under it: **0.77.1**, a hotfix cut from `main` on 2026-10-18. Under that: **0.77.0**, promoted to `main` through PR #772. Older releases appear in CHANGELOG.md.
+**Snapshot (2026-10-24, verified against the repo):** v0.79.0 is the release candidate that joins `test` and `main`. It keeps both histories. It moves crew collaboration onto an idempotent command contract. A suggestion or a decision can now be deleted only by its author or by the trip owner. Two migrations go with this release: `20261023a_collab_commands.sql` is applied, and `20261023b_collab_cutover.sql` waits for the client and `pg_cron`. Read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
+Current version: **0.79.0** — the candidate for promotion to `main`. Under it: **0.78.0**, promoted to `main` on 2026-10-21. Under that: **0.77.1**, a hotfix cut from `main` on 2026-10-18. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
