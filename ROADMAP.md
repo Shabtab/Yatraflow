@@ -231,16 +231,16 @@ Preserve its seven-stage order and existing issue ownership. Do not replace its 
 
 | Stage | Scope | Dependency | Current state |
 |---|---|---|---|
-| A | Contribution ownership, acknowledged writes, notification policies; F1, F2, F13 | First | Client merged through #835 at f0368c41. Server51a97911 and its migrations remain unavailable for review. |
+| A | Contribution ownership, acknowledged writes, notification policies; F1, F2, F13 | First | Client merged through #835 at f0368c41. Server commit 51a97911 and its migrations remain unavailable for review. |
 | B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Planned. Preserve imported trips and unambiguous legacy references. |
 | C | Atomic acceptance, resolution, lifecycle, and honest UI results; F2, F7, F11, F13 | A and B | Planned. Preserve drafts and release busy state on every refusal. |
-| D | One authoritative driving plan; F3 | Before E and final F | Approved for implementation. OpenCode implements, MiniMax reviews, and Codex verifies. |
+| D | One authoritative driving plan; F3 | Before E and final F | Implemented locally. Independent source review passed at 58f77324. Publication needs user approval. |
 | E | Day-scoped candidates, slot identity, placement, and shortlist outcomes; F5, F6, F8, F12, F15 | B, C, and D | Planned. Preserve existing option IDs and legacy poll reads. |
 | F | Request ownership, semantic cache freshness, and discovery context; F16, F17, F18 | D and E for final integration | The isolated search-race work belongs to #834. Do not duplicate it. |
 | G | Schedule-based companion advice and explicit uncertainty; F9, F10 | B, D, and authoritative schedules | Planned. Companion activation remains the separate #236 decision. |
 
 The current fixed inspection base is f0368c41671a843a6f5eb276f58365ef808b1435.
-The existing collaboration command and repair suites pass43tests at this base.
+The existing collaboration command and repair suites pass 43 tests at this base.
 These are mocked transport tests. They do not prove the unpublished SQL or live two-account behavior.
 Stage D does not need the unpublished Stage A server. Its client repair can proceed independently.
 Keep publication and live SQL separately approved.
