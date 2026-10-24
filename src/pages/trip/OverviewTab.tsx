@@ -3,6 +3,7 @@
 import { daySlots, tripDayAttribution, type DaySlotsDeps } from '../../lib/daySlots'
 import { mapRoadViewFromLegs, type TripRoadView } from '../../lib/tripRoad'
 import type { SegmentHit } from '../../lib/geocode'
+import type { DrivingPlanDay } from '../../lib/ridePlan'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CircleCheck, CloudSun, Droplets, Lightbulb, Pin, Siren, TriangleAlert } from 'lucide-react'
 import type { Trip } from '../../data/types'
@@ -102,7 +103,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
   /** Freshness pair published by the Map tab (lane A) — null when never mounted. */
   mapInputs?: { hash: string; scopeKm: number } | null
   /** The cache entry the matrix reads (`suggestionCache.cache.map`). */
-  mapCache?: { scopeKm: number; inputsHash: string } | null
+  mapCache?: { scopeKm: number; inputsHash: string; plan?: readonly DrivingPlanDay[] } | null
 }) {
   const db = useDb()
   const sliceReads = useSliceReads()
@@ -508,7 +509,7 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
    *  UNKNOWN, never stale and never fresh. */
   mapInputs?: { hash: string; scopeKm: number } | null
   /** The cache entry the matrix reads (`suggestionCache.cache.map`). */
-  mapCache?: { scopeKm: number; inputsHash: string } | null
+  mapCache?: { scopeKm: number; inputsHash: string; plan?: readonly DrivingPlanDay[] } | null
   /** Switch to the Map tab (the stale qualifier's Refresh target). */
   onRefreshMatrix?: () => void
 }) {
@@ -520,6 +521,11 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
     { key: 'dinner', label: 'D', name: 'dinner' },
     { key: 'stay', label: 'N', name: 'the night' },
   ]
+  const hasCorridor = (corridorSegments?.length ?? 0) > 0
+  // The matrix re-derives with today's settings over the scan the Map wrote -
+  // possibly under older settings. Unknown (Map never mounted) is qualified,
+  // never fresh; stale replaces the numbers, never annotates them.
+  const freshness = matrixFreshness({ hasCorridor, mapCache: mapCache ?? null, mapInputs: mapInputs ?? null })
   const deps = useMemo<Omit<DaySlotsDeps, 'dayStops'>>(() => {
     // Same helper as the Map tab, over the same corridor segments — but NOT the
     // same inputs: the Map passes real anchors, routePolyline, altPool and
@@ -528,7 +534,10 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
     // freshness gate below is what keeps that asymmetry from printing stale
     // numbers silently: same helper + same segments + same gate, or qualified.
     const dayRoadKm = mapRoadViewFromLegs(road?.chain ?? null, road?.legs ?? null, trip.days.map(d => d.index)).dayRoadKm
-    const attribution = tripDayAttribution(trip, dayRoadKm)
+    // #832: when the Map's cache is not stale, its plan projection is the same
+    // boundary source the Map used. A stale cache renders nothing, so it never
+    // reaches here with old boundaries.
+    const attribution = tripDayAttribution(trip, dayRoadKm, freshness === 'stale' ? null : mapCache?.plan)
     return {
       haltSegments: corridorSegments ?? [],
       anchors: [],
@@ -543,16 +552,11 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
       // projections per hit across the whole corridor pool) is pure waste here.
       limit: 0,
     }
-  }, [trip, road, corridorSegments])
+  }, [trip, road, corridorSegments, freshness, mapCache])
   const rows = useMemo(
     () => trip.days.map(d => ({ day: d, slots: daySlots(d.index, { ...deps, dayStops: d.stops }) })),
     [trip.days, deps],
   )
-  const hasCorridor = (corridorSegments?.length ?? 0) > 0
-  // The matrix re-derives with today's settings over the scan the Map wrote —
-  // possibly under older settings. Unknown (Map never mounted) is qualified,
-  // never fresh; stale replaces the numbers, never annotates them.
-  const freshness = matrixFreshness({ hasCorridor, mapCache: mapCache ?? null, mapInputs: mapInputs ?? null })
   // S11: a day with no slots at all is the EMPTIEST day, and the old
   // `total > 0` filter dropped it — so the callout could never name the one day
   // that most needed naming.

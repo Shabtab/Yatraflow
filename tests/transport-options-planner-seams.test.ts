@@ -6,8 +6,9 @@
 // `drivesPart` from any of these call paths and the matching test fails.
 import { describe, expect, it } from 'vitest'
 import {
-  isSelfDrivenMode, planRideSegments, wheelCapHoursForParty, planDriveDays,
+  isSelfDrivenMode, wheelCapHoursForParty, planDriveDays,
 } from '../src/lib/ridePlan'
+import { planRide as planRideSegments } from './helpers/sharedDrivingPlan'
 import { planInputsHash } from '../src/hooks/useSuggestionCache'
 import { transportPolicy } from '../src/lib/transportPolicy'
 

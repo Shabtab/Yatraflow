@@ -30,7 +30,7 @@ describe('road personality', () => {
   })
 
   it('lets a ghat window win over a slow day-average (no false city crawl)', async () => {
-    const { planRideSegments } = await import('../src/lib/ridePlan')
+    const { planRide: planRideSegments } = await import('./helpers/sharedDrivingPlan')
     // A slow day (400 km in 20 h) on twisty geometry: the urgent, geometry-true
     // advice is "switchbacks ahead", not the day-level "city crawl" verdict.
     const segs = planRideSegments({ totalKm: 400, driveMinutes: 1200, roadGeometry: zigzagKm(40) })
@@ -71,7 +71,7 @@ describe('road personality', () => {
 
 describe('road personality in segment planning', () => {
   it('tags segments with ghat warnings on twisty geometry', async () => {
-    const { planRideSegments } = await import('../src/lib/ridePlan')
+    const { planRide: planRideSegments } = await import('./helpers/sharedDrivingPlan')
     const segs = planRideSegments({ totalKm: 400, driveMinutes: 360, roadGeometry: zigzagKm(40) })
     expect(segs.length).toBeGreaterThan(0)
     const warned = segs.filter(s => s.roadPersonality === 'ghat')
@@ -80,14 +80,14 @@ describe('road personality in segment planning', () => {
   })
 
   it('leaves segments untagged without geometry', async () => {
-    const { planRideSegments } = await import('../src/lib/ridePlan')
+    const { planRide: planRideSegments } = await import('./helpers/sharedDrivingPlan')
     const segs = planRideSegments({ totalKm: 400, driveMinutes: 360 })
     expect(segs.length).toBeGreaterThan(0)
     expect(segs.every(s => s.roadPersonality === undefined)).toBe(true)
   })
 
   it('tags crawl-speed windows as city', async () => {
-    const { planRideSegments } = await import('../src/lib/ridePlan')
+    const { planRide: planRideSegments } = await import('./helpers/sharedDrivingPlan')
     // 400 km in 20 h = 20 km/h crawl → city, not highway
     const segs = planRideSegments({ totalKm: 400, driveMinutes: 1200, roadGeometry: straightKm(40) })
     expect(segs.length).toBeGreaterThan(0)
@@ -95,7 +95,7 @@ describe('road personality in segment planning', () => {
   })
 
   it('keeps highway-speed windows as highway', async () => {
-    const { planRideSegments } = await import('../src/lib/ridePlan')
+    const { planRide: planRideSegments } = await import('./helpers/sharedDrivingPlan')
     // 400 km in 5 h = 80 km/h → highway
     const segs = planRideSegments({ totalKm: 400, driveMinutes: 300, roadGeometry: straightKm(40) })
     expect(segs.length).toBeGreaterThan(0)

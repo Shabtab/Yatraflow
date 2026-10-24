@@ -2,7 +2,8 @@
 // overnight) reject hits with zero purpose-fit instead of assigning the
 // least-bad wrong-kind place.
 import { describe, it, expect } from 'vitest'
-import { planRideSegments, scoreHitForSegment, assignSegmentHits } from '../src/lib/ridePlan'
+import { scoreHitForSegment, assignSegmentHits } from '../src/lib/ridePlan'
+import { planRide as planRideSegments } from './helpers/sharedDrivingPlan'
 
 const anchors = [{ lat: 0, lng: 0 }, { lat: 4, lng: 0 }]
 
@@ -24,7 +25,7 @@ describe('need-purpose fit gate', () => {
   })
 
   it('rejects a generic sight for meal and overnight halts', () => {
-    const segs = planRideSegments({ totalKm: 700, driveMinutes: 560, multiDay: true })
+    const segs = planRideSegments({ totalKm: 900, driveMinutes: 900, multiDay: true })
     const meal = segs.find(s => s.purpose === 'meal')!
     const night = segs.find(s => s.purpose === 'overnight')!
     const sight = hitAt('Viewpoint', 'sightseeing', 2)
@@ -35,7 +36,7 @@ describe('need-purpose fit gate', () => {
   })
 
   it('still accepts real fuel, food and hotel picks', () => {
-    const segs = planRideSegments({ totalKm: 700, driveMinutes: 560, multiDay: true, includeFuel: true, vehicleRangeKm: 200 })
+    const segs = planRideSegments({ totalKm: 900, driveMinutes: 900, multiDay: true, includeFuel: true, vehicleRangeKm: 200 })
     const fuel = segs.find(s => s.purpose === 'fuel')!
     const meal = segs.find(s => s.purpose === 'meal')!
     const night = segs.find(s => s.purpose === 'overnight')!

@@ -3,8 +3,9 @@
 // cards say so.
 import { describe, it, expect } from 'vitest'
 import {
-  planRideSegments, scoreHitForSegment, reasonForSegmentHit, type RideSegment,
+  scoreHitForSegment, reasonForSegmentHit, type RideSegment,
 } from '../src/lib/ridePlan'
+import { planRide as planRideSegments, sharedPlan } from './helpers/sharedDrivingPlan'
 import type { PlaceHit } from '../src/lib/providers/hits'
 
 const anchors = [{ lat: 0, lng: 0 }, { lat: 5, lng: 0 }]
@@ -45,13 +46,13 @@ describe('weather-aware scoring', () => {
 
 describe('planRideSegments day rain', () => {
   it('flags segments on rainy days', () => {
-    const s = planRideSegments({
-      totalKm: 1400, driveMinutes: 1000, includeFuel: false, multiDay: true,
-      dayRainPct: [90, 10],
-    })
+    const facts = { totalKm: 1400, driveMinutes: 1000, includeFuel: false, dayRainPct: [90, 10] }
+    const plan = sharedPlan(facts)
+    const s = planRideSegments({ ...facts, dayBoundaries: plan.outbound })
+    const firstDayEndKm = plan.outbound[0].endKm
     expect(s.some(x => x.rainy)).toBe(true)
-    expect(s.filter(x => x.targetKm < 550).every(x => x.rainy)).toBe(true)
-    expect(s.filter(x => x.targetKm >= 550).every(x => !x.rainy)).toBe(true)
+    expect(s.filter(x => x.targetKm < firstDayEndKm).every(x => x.rainy)).toBe(true)
+    expect(s.filter(x => x.targetKm >= firstDayEndKm).every(x => !x.rainy)).toBe(true)
   })
 })
 

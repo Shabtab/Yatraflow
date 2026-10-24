@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { planJourneyHalts, searchNearbyPoisMulti } from '../src/lib/geocode'
 import { QuotaExhaustedError } from '../src/lib/providers/google'
+import { sharedPlan } from './helpers/sharedDrivingPlan'
 import { SOFT_CAPS, quotaResetForTests } from '../src/lib/providers/quota'
 
 const ROUTE = [[77.0, 10.0], [77.4, 10.5]] as [number, number][]
@@ -83,8 +84,9 @@ describe('a failed stop search is not an empty one (#704)', () => {
   it('the Map plan rejects when its stop search fails, and other callers still get a plan', async () => {
     stubPlaces(httpError)
     const anchors = [ANCHOR, FAR_ANCHOR]
-    await expect(planJourneyHalts(anchors, 900, 900, { routeCoords: ROUTE, multiDay: true, rejectOnFailure: true }, 35000)).rejects.toThrow('HTTP 500')
-    await expect(planJourneyHalts(anchors, 900, 900, { routeCoords: ROUTE, multiDay: true }, 35000)).resolves.toEqual(expect.any(Array))
+    const plan = sharedPlan({ totalKm: 900, driveMinutes: 900, transportMode: 'car' })
+    await expect(planJourneyHalts(anchors, 900, 900, { routeCoords: ROUTE, plan, rejectOnFailure: true }, 35000)).rejects.toThrow('HTTP 500')
+    await expect(planJourneyHalts(anchors, 900, 900, { routeCoords: ROUTE, plan }, 35000)).resolves.toEqual(expect.any(Array))
   })
 })
 

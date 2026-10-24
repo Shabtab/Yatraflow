@@ -15,8 +15,8 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-24, verified against the repo):** v0.79.1 is the release candidate that joins `test` and `main`. It keeps both histories. It adds the guided six-step create form and repairs eight defects in that form. The form stays behind the `guided` phase of `VITE_CREATE_FUNNEL`. No database migration goes with this release. The two v0.79.0 migrations keep their own status: `20261023a_collab_commands.sql` is applied, and `20261023b_collab_cutover.sql` waits for the client and `pg_cron`. Read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
-Current version: **0.79.1** — the candidate for promotion to `main`. Under it: **0.79.0**, the crew command contract. Under that: **0.78.0**, promoted to `main` on 2026-10-21. Older releases appear in CHANGELOG.md.
+**Snapshot (2026-10-24, verified against the repo):** v0.79.2 is the release candidate that joins `test` and `main`. It keeps both histories. It fixes the Android release pipeline. A tag run now attaches its APK. The APK version follows `package.json`. A stale place-search answer can no longer overwrite a newer one. No database migration goes with this release. The two v0.79.0 migrations keep their own status. `20261023a_collab_commands.sql` is applied. `20261023b_collab_cutover.sql` waits for the client and `pg_cron`. Read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
+Current version: **0.79.2** — the candidate for promotion to `main`. Under it: **0.79.1**, the guided create form. Under that: **0.79.0**, the crew command contract. Under that: **0.78.0**, promoted to `main` on 2026-10-21. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
@@ -223,6 +223,54 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 - [ ] **1.0 (M8)** — offline-first/PWA, i18n (EN+HI), the 1.0 cut → then PR to `test`
 
 ---
+
+## Suggestions repair sequence (#832)
+
+The [full issue specification](https://github.com/hasnaina955/Yatraflow/issues/832) owns the contracts and all five checks per stage.
+Preserve its seven-stage order and existing issue ownership. Stage A shipped in v0.79.0 and must not be rebuilt.
+
+| Stage | Scope | Dependency | Current state |
+|---|---|---|---|
+| A | Contribution ownership, acknowledged writes, notification policies; F1, F2, F13 | First | Shipped through #835 and #836 in v0.79.0. The author reports both migrations applied and nineteen live assertions passed. |
+| B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Planned under #839. The merged command contract is available. Preserve imported trips and unambiguous legacy references. |
+| C | Atomic acceptance, resolution, lifecycle, and honest UI results; F2, F7, F11, F13 | A and B | Planned under #838. Preserve drafts and release busy state on every refusal. |
+| D | One authoritative driving plan; F3 | Before E and final F | Implemented under #840. Its pull request records candidate verification and landing status. Preserve all five regression checks. |
+| E | Day-scoped candidates, slot identity, placement, and shortlist outcomes; F5, F6, F8, F12, F15 | B, C, and D | Planned under #841. Preserve existing option IDs and legacy poll reads. |
+| F | Request ownership, semantic cache freshness, and discovery context; F16, F17, F18 | D and E for final integration | F16 merged through #834. Remaining discovery and cache work belongs to #842. Do not duplicate the search guard. |
+| G | Schedule-based companion advice and explicit uncertainty; F9, F10 | B, D, and authoritative schedules | Planned under #843. Companion activation remains the separate #236 decision. |
+
+The current fixed integration base is 9f1916ddd27b40d2c54832ecb05d7904b1bf04f3, upstream test after #844.
+This base includes the guided create flow and v0.79.1. Preserve its confirmation-screen crew labels during integration.
+The coordinator inspected CI logs. The coordinator did not repeat the author's hosted database assertions.
+Verify the merged Stage D candidate before publication. Keep the full gate and browser evidence bound to that revision.
+Synthetic browser checks do not prove hosted integration. Check readiness and preview lifecycle behavior separately.
+Preserve the merged #844 crew labels and guided create flow. Recheck upstream changes before each integration.
+Keep publication and live SQL separately approved.
+
+### Approved Stage D contract
+
+The user approved this first repair batch on 2026-10-24. It addresses F3 only.
+One shared driving plan must supply the banner, overnight targets, segment days, and readiness.
+The current corridor drops crew, pace, and weather inputs. It then computes different day boundaries.
+The reproduced 1400 km fixture needs four driving days with relaxed pace and vulnerable travellers.
+
+- Build the plan from route facts, transport policy, crew, weather, departure times, and dinner limits.
+- Use the clock's actual boundaries when its walk differs from the initial distance split.
+- Keep outward and return legs distinct. The banner must still count the complete trip.
+- Preserve car, motorcycle, passenger modes, and all three Mixed answer states.
+- Preserve accepted halt pins, route endpoints, departure constraints, and existing stop identities.
+- Keep planning free of itinerary writes. Reject, Keep, and Undo must retain their existing contracts.
+- The halt-planning boundary must take the computed plan. Remove the default overnight replan.
+- Include the plan in cache identity. Old cached boundaries must not survive this repair.
+- Keep pricing, provider selection, collaboration commands, and other audit stages outside this batch.
+
+Verify all five Stage D checks from the full issue. Add behavioural regressions before the repair.
+Change driver count, rain, and vulnerable crew independently. Check both banner days and halt placement.
+Check readiness attribution through the real day-slot functions. Preserve non-contiguous stored day indexes.
+Leave a proposed day unassigned until its stored day exists. Disclose any fallback in the day picker.
+Check late starts, round trips, terrain profiles, accepted halts, and preview decisions.
+OpenCode owns the implementation branch. MiniMax reviews its fixed candidate without edits.
+Codex owns integration, the full gate, and browser evidence. This batch needs no live SQL.
 
 ## Stabilization track — COMPLETE (M0–M4 landed; see the ledger)
 

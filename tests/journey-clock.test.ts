@@ -2,7 +2,7 @@
 // A 6 AM start puts the km-based "lunch" at ~9:30 AM. Meals must slide into
 // the 11:30-14:30 window; unset day starts fall back to 08:30.
 import { describe, it, expect } from 'vitest'
-import { planRideSegments } from '../src/lib/ridePlan'
+import { planRide as planRideSegments } from './helpers/sharedDrivingPlan'
 
 const base = { totalKm: 1400, driveMinutes: 1000, includeFuel: false, multiDay: false }
 

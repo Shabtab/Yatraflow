@@ -15,7 +15,7 @@ import {
 import { collectWarnings } from '../lib/engine'
 import { anticipate, type AnticipationItem } from '../lib/anticipation'
 import { estimateLunchStop } from '../lib/routeIq'
-import { planJourneyHalts } from '../lib/geocode'
+import { anchorsForCrew, deriveDrivingPlan, planJourneyHalts } from '../lib/geocode'
 import { transportPolicy } from '../lib/transportPolicy'
 import { MODE_SPEED, isRoadMeasuredMode } from '../lib/engine'
 import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../lib/weather'
@@ -215,15 +215,25 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     const roadKm = handoff?.bill?.roadKm ?? handoff?.roadKm ?? null
     const totalKm = roadKm ?? 0
     if (totalKm <= 0) return
-    const days = trip.days.length || 1
     const driveMinutes = Math.round((totalKm / (MODE_SPEED[trip.transportMode] ?? 42)) * 60)
+    const drivingPlan = deriveDrivingPlan({
+      totalKm, driveMinutes, dayStart: trip.days[0]?.startTime,
+      dayStartTimes: trip.days.map(d => d.startTime ?? '08:30'),
+      transportMode: trip.transportMode, drivesPart: trip.drivesPart,
+      driverCount: trip.driverCount, hasVulnerable: trip.hasVulnerable,
+      travelStyle: trip.travelStyle, roundTrip: trip.roundTrip,
+      anchors: anchorsForCrew({
+        hasVulnerable: trip.hasVulnerable,
+        driveAfterDinnerMin: trip.driveAfterDinnerMin,
+      }),
+    })
     let alive = true
     planJourneyHalts(
       points, totalKm, driveMinutes,
       // Fuel halts are the traveller's own wheel (2026-10-19). A bus, a taxi or a
   // Mixed trip the traveller does not drive has no tank to fill, so the shared
   // capability gates it here; the facade gates it again as a backstop.
-  { includeFuel: transportPolicy({ transportMode: trip.transportMode, drivesPart: trip.drivesPart }).driving, drivesPart: trip.drivesPart, travellers: trip.travellers, travelStyle: trip.travelStyle, transportMode: trip.transportMode, multiDay: days > 1 },
+  { includeFuel: transportPolicy({ transportMode: trip.transportMode, drivesPart: trip.drivesPart }).driving, drivesPart: trip.drivesPart, travellers: trip.travellers, travelStyle: trip.travelStyle, transportMode: trip.transportMode, plan: drivingPlan },
     )
       .then(hits => {
         if (!alive) return
