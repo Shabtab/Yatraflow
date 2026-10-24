@@ -2,6 +2,7 @@
 // Search visitors read the page. A recognised share tag opens the app.
 import { resolveOrigin } from './_origin.js'
 import { CREATOR_PAGE_CLASS, CREATOR_PAGE_STYLE, renderCreatorBody, creatorJsonLd } from './_creatorBody.js'
+import { escapeHtml } from './_escape.js'
 
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -17,12 +18,6 @@ const CARD_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalid
 // The card's own stylesheet. It goes in the document head, never inside the body
 // fragment, so a crawler reads the text and the style block as separate things.
 const CREATOR_STYLE_TAG = `<style>${CREATOR_PAGE_STYLE}</style>`
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[character])
-}
 
 /**
  * The card. A profile the database could not read renders the noindex form:

@@ -26,6 +26,7 @@
 import { normWords, hasCoords, spurKm, type PlaceHit, type HaltPurpose } from './hits'
 import { quotaAllows, quotaCount, type QuotaSku } from './quota'
 import { queriesForPurpose } from '../purposeQueries'
+import { encodePolyline } from './polyline'
 
 const PLACES = 'https://places.googleapis.com/v1'
 const REGION_CODE = 'IN'
@@ -73,36 +74,9 @@ async function placesPost(path: string, sku: QuotaSku, body: unknown, fieldMask:
   return res.json()
 }
 
-// ============ Google encoded-polyline encoding ============
-// OSRM hands us [lng, lat][] geometry; Search-Along-Route wants a Google
-// encoded polyline (1e5 precision, signed varint deltas). ~20 lines, no deps.
-
-function encVal(v: number): string {
-  let out = ''
-  let n = v < 0 ? ~(v << 1) : (v << 1)
-  while (n >= 0x20) {
-    out += String.fromCharCode((0x20 | (n & 0x1f)) + 63)
-    n >>= 5
-  }
-  out += String.fromCharCode(n + 63)
-  return out
-}
-
-/** Encode OSRM-style [lng, lat][] coordinates as a Google encoded polyline. */
-export function encodePolyline(coords: [number, number][]): string {
-  let out = ''
-  let prevLat = 0
-  let prevLng = 0
-  for (const [lng, lat] of coords) {
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
-    const ilat = Math.round(lat * 1e5)
-    const ilng = Math.round(lng * 1e5)
-    out += encVal(ilat - prevLat) + encVal(ilng - prevLng)
-    prevLat = ilat
-    prevLng = ilng
-  }
-  return out
-}
+// ============ Google encoded polyline ============
+// The codec lives in ./polyline. It re-exports encodePolyline, so existing imports keep working.
+export { encodePolyline }
 
 // ============ 1. Autocomplete (location picking) ============
 

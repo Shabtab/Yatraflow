@@ -10,6 +10,7 @@
 // each call BEFORE it goes out, so the app silently drops to the free stack
 // long before paid events can fire.
 import { quotaAllows, quotaCount, type QuotaSku } from './quota'
+import { decodePolyline } from './polyline'
 
 const ROUTES = 'https://routes.googleapis.com/v2:computeRoutes'
 
@@ -76,38 +77,8 @@ export interface CorridorResult {
   legs: RoadLegResult[]
 }
 
-/** Decode a Google encoded polyline into [lng, lat][] (1e5 precision). */
-export function decodePolyline(str: string): [number, number][] {
-  const out: [number, number][] = []
-  let idx = 0
-  let lat = 0
-  let lng = 0
-  while (idx < str.length) {
-    let shift = 0
-    let result = 0
-    let b: number
-    do {
-      b = str.charCodeAt(idx++) - 63
-      result |= (b & 0x1f) << shift
-      shift += 5
-    } while (b >= 0x20)
-    const dlat = result & 1 ? ~(result >> 1) : result >> 1
-    lat += dlat
-
-    shift = 0
-    result = 0
-    do {
-      b = str.charCodeAt(idx++) - 63
-      result |= (b & 0x1f) << shift
-      shift += 5
-    } while (b >= 0x20)
-    const dlng = result & 1 ? ~(result >> 1) : result >> 1
-    lng += dlng
-
-    out.push([lng / 1e5, lat / 1e5])
-  }
-  return out
-}
+// The codec lives in ./polyline. It re-exports decodePolyline, so existing imports keep working.
+export { decodePolyline }
 
 /**
  * Road route between two points via Google Routes API computeRoutes.

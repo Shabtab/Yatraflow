@@ -3,6 +3,7 @@
 // sibling api module, not client code: the dependency rule below is about the
 // bundler, and this compiles with the function.
 import { resolveOrigin } from './_origin.js'
+import { escapeHtml } from './_escape.js'
 import { renderBodyHTML, touristTripJsonLd } from './_publicBody.js'
 import pilotCampaigns from '../src/data/growthCampaigns.json' with { type: 'json' }
 
@@ -45,12 +46,6 @@ function sizedCover(url) {
   if (!file) return url
   const host = match[1] === 'commons' ? 'commons.wikimedia.org' : `${match[1]}.wikipedia.org`
   return `https://${host}/wiki/Special:Redirect/file/${file}?width=${COVER_WIDTH}`
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[character])
 }
 
 /** Does this entitlement belong to this publication?

@@ -49,6 +49,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **A passenger trip gets no fuel or charge stop.** The stop planner reads one driving answer. A passenger mode gets no fuel stop and no charge stop. A Mixed trip that answers No gets none either. A stored electric vehicle no longer adds charge stops to a passenger trip. The plan of a passenger trip reads no vehicle at all. (2026-10-19)
 - **Your driving choices stay when you change the mode.** An answer of No keeps the driver count, the vulnerable seat setting and the after-dinner allowance. They apply again when you choose Yes. A passenger mode hides them, and it does not delete them. The values you set last are the values the trip keeps. (2026-10-19)
 - **The driving answer buttons have a full touch target.** The two answers are at least 44px high at every width. The selected answer shows a pale wash with dark teal text. On a phone, both answers keep one height. (2026-10-19)
+- **A late place-search answer can no longer overwrite a newer one.** In the location field, an older answer could replace the hits of a newer search. It could also switch off the spinner while the newer search still ran. Only the newest search now updates the list. A pick, or a query under two characters, cancels any search in flight. `src/lib/latestRequest.ts` holds the guard.
+- **A cut-off route line no longer produces a false point.** The polyline decoder read past the end of a truncated string and returned a wrong coordinate. It now returns only the points that it fully decoded. The decoder and the encoder moved to `src/lib/providers/polyline.ts`, and `routes.ts` and `google.ts` share them.
+
+### Changed
+
+- **The public-page and sitemap escape code lives in one file.** Five copies of one entity table could drift apart. `api/_escape.js` now holds the table. The output is byte-identical to before, so the sitemap still writes `&apos;`.
 
 ## [0.78.0] - 2026-10-21
 
