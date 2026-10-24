@@ -1,17 +1,15 @@
-// ============ Decision comments (I-7) ============
-// TripDecision gained a comments column (20260920_decision_comments.sql) for
-// parity with StopSuggestion. Two behaviours matter and are checked here: the
-// comment lands in the cache and writes the whole array through when the
-// column exists, and on a pre-migration database the capability probe keeps
-// the comment session-only instead of firing an UPDATE the database would
-// reject whole (a write naming an unknown column fails the whole statement).
+// ============ Decision comments (I-7), under the stage-A command path ============
+// Decision comments used to ride a whole-JSON column UPDATE guarded by a
+// client-side capability probe. Stage A of #832 moves them through the
+// `submit_collab_command` RPC: the comment travels as a `decision.comment`
+// command with a stable comment id, the receipt decides what the caller
+// learns, and a refused command rolls the optimistic comment back instead of
+// leaving a session-only ghost behind.
 import { describe, it, expect, vi } from 'vitest'
 import { seedData } from '../src/data/seed'
 
-const { calls, probeError } = vi.hoisted(() => ({
+const { calls } = vi.hoisted(() => ({
   calls: [] as Array<{ table: string; method: string; payload?: unknown }>,
-  // Set to a PGRST204/42703 code to simulate the pre-migration database.
-  probeError: { code: '' as string },
 }))
 
 vi.mock('../src/lib/supabase', () => {
@@ -31,19 +29,23 @@ vi.mock('../src/lib/supabase', () => {
     builder.maybeSingle = () => builder
     builder.single = () => builder
     builder.then = (res: (v: { data: unknown; error: unknown }) => unknown) =>
-      new Promise(resolve => {
-        // The capability probe is select('comments').limit(1) on decisions.
-        const error = table === 'decisions' && method === 'select' && probeError.code
-          ? { code: probeError.code, message: 'column "comments" does not exist' }
-          : null
-        if (method) calls.push({ table, method, payload })
-        resolve({ data: null, error })
-      }).then(res)
+      new Promise(resolve => { if (method) calls.push({ table, method, payload }); resolve({ data: null, error: null }) }).then(res)
     return builder
   }
   return {
     isSupabaseConfigured: true,
-    supabase: { from: (t: string) => makeBuilder(t) },
+    supabase: {
+      from: (t: string) => makeBuilder(t),
+      // The command RPC. A test sets `receipt` to shape the answer; the
+      // default applied receipt carries no canonical row, so the optimistic
+      // cache entry stands.
+      rpc: (fn: string, params?: unknown) => {
+        const qb: Record<string, unknown> = {}
+        qb.then = (res: (v: { data: unknown; error: unknown }) => unknown) =>
+          new Promise(resolve => { calls.push({ table: fn, method: 'rpc', payload: params }); resolve({ data: currentReceipt(), error: null }) }).then(res)
+        return qb
+      },
+    },
   }
 })
 
@@ -54,66 +56,84 @@ async function freshStore() {
   return import('../src/store/store')
 }
 
+let receipt: unknown
+function currentReceipt(): unknown {
+  return receipt
+}
+
 const keralaTrip = seedData.trips[0]
 const ownerId = 'owner-test'
 
-function flush(): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, 0))
+function commentCommands() {
+  return calls.filter(c => c.table === 'submit_collab_command' && c.method === 'rpc')
+    .map(c => (c.payload as { p_command?: { type?: string } })?.p_command)
+    .filter(cmd => cmd?.type === 'decision.comment')
 }
 
-function decisionsUpdates() {
-  return calls.filter(c => c.table === 'decisions' && c.method === 'update')
-}
-
-describe('decision comments (I-7)', () => {
-  it('lands the comment in the cache and writes the whole array through', async () => {
-    probeError.code = ''
+describe('decision comments (I-7) through the command RPC', () => {
+  it('lands the comment in the cache and sends it as a decision.comment command', async () => {
+    receipt = { status: 'applied', tripRevision: 3, activityId: 'act-1', notificationIds: ['n-1'] }
     calls.length = 0
     const store = await freshStore()
     const trip = store.duplicateTrip(keralaTrip, ownerId)
     store.getSnapshot().sessionUserId = ownerId
-    store.addDecision(trip.id, { question: 'Houseboat or resort?', options: [{ id: 'o_1', label: 'Houseboat' }] })
+    await store.addDecision(trip.id, { question: 'Houseboat or resort?', options: [{ id: 'o_1', label: 'Houseboat' }] })
     const d = store.getSnapshot().decisions[store.getSnapshot().decisions.length - 1]
 
-    store.addCommentToDecision(trip.id, d.id, ownerId, 'Book the upper deck.')
-    await flush()
+    const outcome = await store.addCommentToDecision(trip.id, d.id, 'Book the upper deck.')
 
     const after = store.getSnapshot().decisions.find(x => x.id === d.id)!
     expect(after.comments).toHaveLength(1)
+    // The author is the SIGNED-IN account — the caller cannot name one (#801).
     expect(after.comments[0]).toMatchObject({ authorId: ownerId, text: 'Book the upper deck.' })
+    expect(outcome.status).toBe('applied')
 
-    const updates = decisionsUpdates()
-    expect(updates).toHaveLength(1)
-    expect((updates[0].payload as { comments: unknown[] }).comments).toEqual(after.comments)
+    const commands = commentCommands()
+    expect(commands).toHaveLength(1)
+    const cmd = commands[0] as { decisionId?: string; commentId?: string; text?: string }
+    expect(cmd.decisionId).toBe(d.id)
+    expect(cmd.text).toBe('Book the upper deck.')
+    // The stable comment id is what makes a retry answer alreadyApplied.
+    expect(typeof cmd.commentId).toBe('string')
+    expect(cmd.commentId!.startsWith('cm_')).toBe(true)
   })
 
-  it('stays session-only when the comments column is missing (pre-migration)', async () => {
-    probeError.code = 'PGRST204'
+  it('rolls the comment back when the command cannot be committed (no receipt)', async () => {
+    receipt = { status: 'applied', tripRevision: 1 }
     calls.length = 0
     const store = await freshStore()
     const trip = store.duplicateTrip(keralaTrip, ownerId)
     store.getSnapshot().sessionUserId = ownerId
-    store.addDecision(trip.id, { question: 'Houseboat or resort?', options: [{ id: 'o_1', label: 'Houseboat' }] })
+    await store.addDecision(trip.id, { question: 'Houseboat or resort?', options: [{ id: 'o_1', label: 'Houseboat' }] })
     const d = store.getSnapshot().decisions[store.getSnapshot().decisions.length - 1]
-    calls.length = 0 // forget the addDecision insert; only the comment write matters
 
-    store.addCommentToDecision(trip.id, d.id, ownerId, 'Book the upper deck.')
-    await flush()
+    // The answer this time is NOT a parseable receipt — the database answered
+    // 200 with nothing this client can trust, or the RPC is not deployed.
+    receipt = undefined
+    const outcome = await store.addCommentToDecision(trip.id, d.id, 'Book the upper deck.')
 
-    // The comment shows up in the session, but no UPDATE is fired at the
-    // database — the party-prefs degradation, not a silent data-loss hole.
+    // No optimistic success and no session-only ghost: the caller learns the
+    // write did not happen and the cache says so too.
+    expect(outcome.status).toBe('unavailable')
     const after = store.getSnapshot().decisions.find(x => x.id === d.id)!
-    expect(after.comments).toHaveLength(1)
-    expect(decisionsUpdates()).toHaveLength(0)
+    expect(after.comments).toHaveLength(0)
+    expect(commentCommands()).toHaveLength(1)
   })
 
-  it('an empty comment is a no-op, and an unknown decision is safe', async () => {
-    probeError.code = ''
+  it('an empty comment is invalid, and an unknown decision is invalid — both answered', async () => {
+    receipt = { status: 'applied', tripRevision: 1 }
     calls.length = 0
     const store = await freshStore()
     const trip = store.duplicateTrip(keralaTrip, ownerId)
     store.getSnapshot().sessionUserId = ownerId
-    store.addCommentToDecision(trip.id, 'no-such-decision', ownerId, 'hello')
-    expect(decisionsUpdates()).toHaveLength(0)
+    await store.addDecision(trip.id, { question: 'Houseboat or resort?', options: [{ id: 'o_1', label: 'Houseboat' }] })
+    const d = store.getSnapshot().decisions[store.getSnapshot().decisions.length - 1]
+
+    const empty = await store.addCommentToDecision(trip.id, d.id, '   ')
+    expect(empty.status).toBe('invalid')
+
+    const unknown = await store.addCommentToDecision(trip.id, 'no-such-decision', 'hello')
+    expect(unknown.status).toBe('invalid')
+    expect(commentCommands()).toHaveLength(0)
   })
 })

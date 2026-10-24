@@ -22,6 +22,7 @@ import { newStopId, poiVisitMinutes } from './pageHelpers'
 import { saveHaltPin } from '../../../lib/uiPrefs'
 import { recordDnaEvent } from '../../../lib/tripDna'
 import { addDecision, deleteStop } from '../../../store/store'
+import { reportCollabOutcome } from '../../../lib/collabFeedback'
 import type { DaySlot } from '../../../lib/daySlots'
 import type { ItineraryStop, Trip } from '../../../data/types'
 
@@ -351,7 +352,7 @@ export function useMapWriters({
       const resolved = await Promise.all(picks.map(async c => ({ c, pinned: await resolvePick(c.hit) })))
       const usable = resolved.filter((x): x is { c: (typeof picks)[number]; pinned: PlaceHit } => !!x.pinned)
       if (usable.length < 2) { toast('Those places could not be pinned on the map - the vote was not created.'); return }
-      addDecision(trip.id, {
+      const outcome = await addDecision(trip.id, {
         question: `Day ${activeDayIndex + 1} ${slot.label.toLowerCase()} - where?`,
         context: `Voting from the day plan (Day ${activeDayIndex + 1})`,
         options: usable.map(({ c, pinned }) => ({
@@ -365,9 +366,11 @@ export function useMapWriters({
           },
         })),
       })
-      toast(`The crew is voting on Day ${activeDayIndex + 1} ${slot.label.toLowerCase()} - resolve it in Group input`)
-      setOpenSlotKey(null)
-      onOpenGroupInput?.()
+      reportCollabOutcome(outcome, `The crew is voting on Day ${activeDayIndex + 1} ${slot.label.toLowerCase()} - resolve it in Group input`)
+      if (outcome.status === 'applied' || outcome.status === 'alreadyApplied') {
+        setOpenSlotKey(null)
+        onOpenGroupInput?.()
+      }
     } finally { setAddingAny(false) }
   }
 

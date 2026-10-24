@@ -247,14 +247,16 @@ beforeEach(() => {
 describe('#36-11 — vote activity text', () => {
   it('says "upvoted" for a new upvote', async () => {
     const store = await freshStore()
-    store.voteSuggestion('trip-1', 'sug-1', 'amelia', 1)
+    // Stage A of #832: the ballot actor is the signed-in account; the writer
+    // takes no userId parameter any more.
+    store.voteSuggestion('trip-1', 'sug-1', 1)
     expect(verbs(store)).toContain('upvoted a suggestion')
   })
 
   it('says the vote was REMOVED when the same vote is toggled off', async () => {
     const store = await freshStore()
-    store.voteSuggestion('trip-1', 'sug-1', 'amelia', 1)
-    store.voteSuggestion('trip-1', 'sug-1', 'amelia', 1)
+    store.voteSuggestion('trip-1', 'sug-1', 1)
+    store.voteSuggestion('trip-1', 'sug-1', 1)
 
     // The second call takes the upvote back. Logging "upvoted a suggestion" again
     // told everyone the opposite of what happened.
@@ -264,8 +266,8 @@ describe('#36-11 — vote activity text', () => {
 
   it('still says downvoted when a vote flips side', async () => {
     const store = await freshStore()
-    store.voteSuggestion('trip-1', 'sug-1', 'amelia', 1)
-    store.voteSuggestion('trip-1', 'sug-1', 'amelia', -1)
+    store.voteSuggestion('trip-1', 'sug-1', 1)
+    store.voteSuggestion('trip-1', 'sug-1', -1)
 
     expect(verbs(store)).toContain('downvoted a suggestion')
     expect(verbs(store)).not.toContain('removed their vote on a suggestion')
