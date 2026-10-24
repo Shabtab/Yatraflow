@@ -26,8 +26,6 @@ export const STRETCH_INTERVAL_KM = 150
 export const MEAL_INTERVAL_KM = 300
 /** Default tank range for fuel cadence (honoured per vehicleRangeKm when set). */
 export const FUEL_INTERVAL_KM = 450
-/** ≈7 h — the cross-day overnight cadence; max daily drive cap is 8 h. */
-export const OVERNIGHT_INTERVAL_KM = 550
 /** Drift below this km keeps an accepted halt's pin without asking (#143).
  *  Engine-pure (tests + callers import it); the localStorage pin store lives
  *  in uiPrefs. */
@@ -206,9 +204,28 @@ const ANCHOR_DEFAULTS: Required<AnchorOpts> = {
  *  full hour past dinner close — an early dinner must not force an earlier
  *  stop than the meal itself (#122). */
 export function resolveAnchors(a?: AnchorOpts): Required<AnchorOpts> {
-  const out = { ...ANCHOR_DEFAULTS, ...a }
+  const out: Required<AnchorOpts> = {
+    dinnerStartMin: a?.dinnerStartMin ?? ANCHOR_DEFAULTS.dinnerStartMin,
+    dinnerEndMin: a?.dinnerEndMin ?? ANCHOR_DEFAULTS.dinnerEndMin,
+    nightEndMin: a?.nightEndMin ?? ANCHOR_DEFAULTS.nightEndMin,
+    allowPostDinnerDriveMin: a?.allowPostDinnerDriveMin ?? ANCHOR_DEFAULTS.allowPostDinnerDriveMin,
+  }
   out.nightEndMin = Math.max(out.nightEndMin, out.dinnerEndMin + 60)
   return out
+}
+
+/** The caller's party-driven anchor overrides, shared by MapTab and the
+ *  create screen. A vulnerable crew eats at 19:00 and closes at 20:00; the
+ *  post-dinner allowance passes straight through. */
+export function anchorsForCrew(input: {
+  hasVulnerable?: boolean
+  driveAfterDinnerMin?: number
+}): AnchorOpts {
+  return {
+    dinnerStartMin: input.hasVulnerable ? 19 * 60 : undefined,
+    dinnerEndMin: input.hasVulnerable ? 20 * 60 : undefined,
+    allowPostDinnerDriveMin: input.driveAfterDinnerMin,
+  }
 }
 
 
@@ -367,10 +384,14 @@ export type TravelClockVerdict =
  *  this scope). Derived days 2+ always start here. */
 const CLOCK_DEFAULT_START = '08:30'
 
+/** Parse a saved "HH:MM" departure, or null when it is absent or invalid. */
+function savedStartMin(raw: string | null | undefined): number | null {
+  return raw && /^\d{1,2}:\d{2}$/.test(raw) ? hmToMinutes(raw) : null
+}
+
 /** Parse "HH:MM" (or fall back to the 08:30 default) into minutes since midnight. */
-function clockStartMin(raw: string | undefined): number {
-  if (raw && /^\d{1,2}:\d{2}$/.test(raw)) return hmToMinutes(raw)
-  return hmToMinutes(CLOCK_DEFAULT_START)
+function clockStartMin(raw: string | null | undefined): number {
+  return savedStartMin(raw) ?? hmToMinutes(CLOCK_DEFAULT_START)
 }
 
 /**
@@ -601,6 +622,9 @@ export interface TravelClockInput {
   driveMinutes: number
   /** "HH:MM" drive start of day 1 — derived days default to 08:30 */
   dayStart?: string
+  /** Saved "HH:MM" departure per outbound day ordinal. A valid entry beats the
+   *  day-1 start or the 08:30 default; a missing entry keeps that default. */
+  dayStartTimes?: readonly (string | null | undefined)[]
   travelStyle?: string
   /** 0.5—1 multiplier on the wheel cap (rain), as in planDriveDays */
   rainFactor?: number
@@ -660,7 +684,10 @@ export function planTravelClock(input: TravelClockInput, splitOverride?: DriveDa
     return { verdict: 'ok', days: [], returnDays: null, split: null }
   }
   const kmPerMin = totalKm / driveMin
-  const startMin = clockStartMin(input.dayStart)
+  // A saved departure beats the day-1 field, which beats the 08:30 default.
+  const startMin = savedStartMin(input.dayStartTimes?.[0]) ?? clockStartMin(input.dayStart)
+  const savedStartFor = (ordinal: number): number =>
+    savedStartMin(input.dayStartTimes?.[ordinal]) ?? hmToMinutes(CLOCK_DEFAULT_START)
   const wheelAvailMin = anchors.nightEndMin - startMin
   if (wheelAvailMin < MIN_HONEST_WHEEL_MIN) {
     return {
@@ -720,7 +747,8 @@ export function planTravelClock(input: TravelClockInput, splitOverride?: DriveDa
       // over-cap last day.
       const isFinal = i === restDays && remaining <= capKmFor(i) + 0.5
       const budget = isFinal ? remaining : Math.min(remaining / (restDays - i + 1), capKmFor(i))
-      const day = walkClockDay({ dayIndex: dayOffset + i, startKm, kmBudget: budget, startMin: hmToMinutes(CLOCK_DEFAULT_START), kmPerMin, isFinal, capKm: isFinal ? Infinity : endnoCap, anchors: input.anchors, profile: input.profile ?? null })
+      const laterStartMin = dayOffset === 0 ? savedStartFor(i) : hmToMinutes(CLOCK_DEFAULT_START)
+      const day = walkClockDay({ dayIndex: dayOffset + i, startKm, kmBudget: budget, startMin: laterStartMin, kmPerMin, isFinal, capKm: isFinal ? Infinity : endnoCap, anchors: input.anchors, profile: input.profile ?? null })
       days.push(day)
       // kmCovered is ABSOLUTE within this leg — the budget is RELATIVE
       // (#137, caught when the walk produced 5 of 9 promised days).
@@ -827,7 +855,7 @@ export function deriveDrivingPlan(input: DrivingPlanInput): DrivingPlan {
           endKm: clock.hopKm,
           nightHaltKm: clock.hopKm,
           nightHaltEtaMin: clock.nightHaltEtaMin,
-          startMin: clockStartMin(input.dayStart),
+          startMin: savedStartMin(input.dayStartTimes?.[0]) ?? clockStartMin(input.dayStart),
         }]
       : []
   const returnDays = clock.verdict === 'ok' && clock.returnDays
@@ -852,15 +880,22 @@ export function effectiveDrivingDays(
 ): DrivingPlanDay[] {
   const overnights = segments.filter(sh => sh.segment.dayEnd)
   if (overnights.length === 0) return [...plan.outbound]
+  let previousEnd = plan.outbound[0]?.startKm ?? 0
   return plan.outbound.map((day, i) => {
     const overnight = overnights[i]
-    if (!overnight) return day
+    const startKm = i === 0 ? day.startKm : previousEnd
+    const pinned = overnight?.segment.targetKm
+    const endKm = pinned != null && Number.isFinite(pinned)
+      ? Math.max(pinned, startKm)
+      : Math.max(day.endKm, startKm)
+    previousEnd = endKm
     return {
       ...day,
-      endKm: overnight.segment.targetKm,
-      nightHaltKm: overnight.segment.targetKm,
-      nightHaltEtaMin: overnight.segment.etaMinutes ?? day.nightHaltEtaMin,
-      proposedEndKm: overnight.segment.haltDriftToKm,
+      startKm,
+      endKm,
+      nightHaltKm: day.nightHaltKm == null ? null : endKm,
+      nightHaltEtaMin: overnight?.segment.etaMinutes ?? day.nightHaltEtaMin,
+      proposedEndKm: overnight?.segment.haltDriftToKm,
     }
   })
 }
@@ -870,7 +905,16 @@ export function drivingPlanFingerprint(plan: DrivingPlan): string {
   return [
     plan.verdict,
     plan.dayCount,
-    plan.outbound.map(d => `${d.startKm.toFixed(1)}-${d.endKm.toFixed(1)}`).join(','),
+    plan.outbound.map(d => `${d.startMin}@${d.startKm.toFixed(1)}-${d.endKm.toFixed(1)}~${d.nightHaltEtaMin ?? '-'}`).join(','),
+    // Boundaries can stay put while the measured wheel time moves every ETA.
+    // The cache must not serve the old segment timing, so the walked clock's
+    // wheel, dwell and anchor positions are part of the identity too.
+    plan.clock.verdict === 'ok'
+      ? plan.clock.days.map(d => [
+          d.startMin, d.wheelMin, d.dwellMin, d.nightHaltEtaMin ?? '-', d.arrivalEtaMin ?? '-',
+          d.anchors.map(a => `${a.name}:${a.km}:${a.etaMin}:${a.minutes}`).join('+'),
+        ].join(':')).join(',')
+      : '-',
     plan.return?.length ?? 0,
   ].join('|')
 }

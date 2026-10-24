@@ -15,7 +15,7 @@ import {
 import { collectWarnings } from '../lib/engine'
 import { anticipate, type AnticipationItem } from '../lib/anticipation'
 import { estimateLunchStop } from '../lib/routeIq'
-import { deriveDrivingPlan, planJourneyHalts } from '../lib/geocode'
+import { anchorsForCrew, deriveDrivingPlan, planJourneyHalts } from '../lib/geocode'
 import { transportPolicy } from '../lib/transportPolicy'
 import { MODE_SPEED, isRoadMeasuredMode } from '../lib/engine'
 import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../lib/weather'
@@ -185,9 +185,14 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     const driveMinutes = Math.round((totalKm / (MODE_SPEED[trip.transportMode] ?? 42)) * 60)
     const drivingPlan = deriveDrivingPlan({
       totalKm, driveMinutes, dayStart: trip.days[0]?.startTime,
+      dayStartTimes: trip.days.map(d => d.startTime ?? '08:30'),
       transportMode: trip.transportMode, drivesPart: trip.drivesPart,
       driverCount: trip.driverCount, hasVulnerable: trip.hasVulnerable,
       travelStyle: trip.travelStyle, roundTrip: trip.roundTrip,
+      anchors: anchorsForCrew({
+        hasVulnerable: trip.hasVulnerable,
+        driveAfterDinnerMin: trip.driveAfterDinnerMin,
+      }),
     })
     let alive = true
     planJourneyHalts(

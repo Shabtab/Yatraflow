@@ -23,7 +23,7 @@ export { googleEnabled } from './providers/google'
 export { googleSearchText, QuotaExhaustedError } from './providers/google'
 export { googleCitiesAlong } from './providers/google'
 export { searchCitiesAlong } from './providers/free'
-export { planRideSegments, assignSegmentHits, leftoverAsSight, reasonForSegmentHit, reasonForHit, kmFromStartForHit, planDriveDays, planTravelClock, deriveDrivingPlan, effectiveDrivingDays, drivingPlanFingerprint, isSelfDrivenMode, rainFactorFor, DEFER_START, type SegmentHit, type RideSegment, type DriveDaysPlan, type TravelClockVerdict, type DrivingPlan, type DrivingPlanDay, type DrivingPlanInput } from './ridePlan'
+export { planRideSegments, assignSegmentHits, leftoverAsSight, reasonForSegmentHit, reasonForHit, kmFromStartForHit, planDriveDays, planTravelClock, deriveDrivingPlan, effectiveDrivingDays, drivingPlanFingerprint, anchorsForCrew, isSelfDrivenMode, rainFactorFor, DEFER_START, type SegmentHit, type RideSegment, type DriveDaysPlan, type TravelClockVerdict, type DrivingPlan, type DrivingPlanDay, type DrivingPlanInput } from './ridePlan'
 export { hasCoords } from './providers/hits'
 import { plannerDrives } from './transportPolicy'
 import type { TransportMode } from '../data/types'
@@ -52,6 +52,7 @@ import {
   type DrivingPlan, type SegmentHit,
 } from './ridePlan'
 import { resolveVehicleRange } from './vehicleProfile'
+import { addMinutesToClock } from './engine'
 
 /**
  * Search cities AND points of interest at once. Google autocomplete first
@@ -331,7 +332,7 @@ export async function planJourneyHalts(
     haltPins: opts.haltPins ?? undefined,
     dayBoundaries: opts.plan.outbound,
     vehicleRangeKm: vehicleRange,
-    dayStartTimes: opts.dayStartTimes,
+    dayStartTimes: opts.plan.outbound.map(d => addMinutesToClock(d.startMin, 0)),
     dayRainPct: opts.dayRainPct,
     transportMode: opts.transportMode,
     drivesPart: opts.drivesPart,
