@@ -12,17 +12,33 @@ const { state } = vi.hoisted(() => ({
   state: {
     /** Every write the store attempts, in call order. */
     writes: [] as { table: string; method: string; payload: unknown }[],
+    /** Every guarded call the store makes, in call order. */
+    calls: [] as { fn: string; args: unknown; header: string | null }[],
+    /** Writes and guarded calls in ONE order, so a test can compare them. */
+    log: [] as string[],
     /** Tables whose write should come back failed, to exercise RLS rejection. */
     fail: new Set<string>(),
     /** Columns a pre-migration database does not have. A `select` naming one
      *  answers with Postgres' unknown-column error, the same shape
      *  `isMissingColumnError` reads. */
     missingColumns: new Set<string>(),
+    /** How `restore_trip_contributions` answers. The guarded archive function is
+     *  the only seam that may put contribution rows back, so every recovery test
+     *  drives it here rather than recording a permissive direct write. */
+    archive: { status: 'applied' } as { status: string } | { error: string },
+    /** Milliseconds the archive answer waits before it resolves. Lets a test
+     *  hold a recovery in flight while something else happens. */
+    archiveDelay: 0,
+    /** The session token `auth.getSession` answers with. */
+    token: 'token-amelia',
   },
 }))
 
 vi.mock('../src/lib/supabase', () => {
-  const record = (table: string, method: string, payload: unknown) => state.writes.push({ table, method, payload })
+  const record = (table: string, method: string, payload: unknown) => {
+    state.writes.push({ table, method, payload })
+    state.log.push(`${method} ${table}`)
+  }
   const builder = (table: string) => {
     const b: Record<string, unknown> = {
       select: (column?: string) => {
@@ -33,6 +49,7 @@ vi.mock('../src/lib/supabase', () => {
       in: () => b,
       limit: () => b,
       maybeSingle: () => b,
+      setHeader: (name: string, value: string) => { b.authHeader = `${name}: ${value}`; return b },
       delete: () => (record(table, 'delete', null), b),
       insert: (p: unknown) => (record(table, 'insert', p), b),
       upsert: (p: unknown) => (record(table, 'upsert', p), b),
@@ -53,8 +70,29 @@ vi.mock('../src/lib/supabase', () => {
       channel: () => { const c: Record<string, unknown> = { on: () => c, subscribe: () => ({}) }; return c },
       removeChannel: () => Promise.resolve(),
       auth: {
-        getSession: () => Promise.resolve({ data: { session: null } }),
+        getSession: () => Promise.resolve({
+          data: { session: state.token ? { user: { id: 'amelia' }, access_token: state.token } : null },
+        }),
         onAuthStateChange: () => ({ data: { subscription: {} } }),
+      },
+      rpc: (fn: string, args: unknown) => {
+        const b: Record<string, unknown> = {
+          setHeader: (name: string, value: string) => { b.authHeader = `${name}: ${value}`; return b },
+          then: (res: (v: { data: unknown; error: unknown }) => unknown) => {
+            state.calls.push({ fn, args, header: (b.authHeader as string | undefined) ?? null })
+            state.log.push(`call ${fn}`)
+            const answer = fn === 'restore_trip_contributions' ? state.archive : { status: 'applied' }
+            const isError = 'error' in answer
+            const settle = () => Promise.resolve({
+              data: isError ? null : answer,
+              error: isError ? { message: answer.error } : null,
+            })
+            return (state.archiveDelay > 0 && fn === 'restore_trip_contributions'
+              ? new Promise(resolve => setTimeout(resolve, state.archiveDelay)).then(settle)
+              : settle()).then(res)
+          },
+        }
+        return b
       },
     },
   }
@@ -125,8 +163,13 @@ const writesTo = (table: string, method?: string) =>
 
 beforeEach(() => {
   state.writes = []
+  state.calls = []
+  state.log = []
   state.fail = new Set()
   state.missingColumns = new Set()
+  state.archive = { status: 'applied' }
+  state.archiveDelay = 0
+  state.token = 'token-amelia'
 })
 
 describe('undo after trip delete (#43)', () => {
@@ -143,25 +186,27 @@ describe('undo after trip delete (#43)', () => {
     expect(row.owner_id).not.toBe('priya')
   })
 
-  it('restores votes, decisions, activity and notifications', async () => {
+  it('routes contribution recovery through the guarded archive function', async () => {
+    // Stage A removed the direct insert policies on suggestions, decisions,
+    // activity and notifications, so a client-side re-insert is refused by the
+    // database and proves nothing. The guarded archive function is the seam that
+    // can put them back, and it is bound to the captured account's token.
     const store = await freshStoreWith()
     const trip = store.getSnapshot().trips[0]
 
     store.deleteTrip('trip-1')
     store.restoreTrip(trip, 0)
     await flush()
+    await flush()
 
-    expect((writesTo('suggestions', 'insert')[0].payload as { id: string }[])[0]).toMatchObject({ id: 'sg-1', status: 'accepted' })
-    expect((writesTo('decisions', 'insert')[0].payload as { id: string }[])[0].id).toBe('dc-1')
-    expect((writesTo('activity', 'insert')[0].payload as { id: string }[])[0].id).toBe('ac-1')
-    expect((writesTo('notifications', 'insert')[0].payload as { id: string }[])[0].id).toBe('nt-1')
-    // The public-link upsert this test used to assert is now unreachable BY
-    // DESIGN (#566): deleteTrip refuses a published trip before it snapshots,
-    // because the undo can restore the publication row but NOT the buyers'
-    // entitlements and orders that cascade off it — a delete+undo of a
-    // published trip would be a confiscation with a restored logo on top. The
-    // upsert stays in restoreTripData as belt and braces; the refusal below is
-    // the behaviour that matters.
+    const call = state.calls.find(c => c.fn === 'restore_trip_contributions')
+    expect(call).toBeDefined()
+    expect((call!.args as { p_trip_id: string }).p_trip_id).toBe('trip-1')
+    expect(call!.header).toBe('Authorization: Bearer token-amelia')
+    // Nothing may try to write those tables directly.
+    for (const table of ['suggestions', 'decisions', 'activity', 'notifications']) {
+      expect(writesTo(table)).toHaveLength(0)
+    }
   })
 
   it('refuses to delete a published trip — undo cannot restore buyers\' grants', async () => {
@@ -180,17 +225,23 @@ describe('undo after trip delete (#43)', () => {
     expect(writesTo('published_itineraries')).toHaveLength(0)
   })
 
-  it('writes the trip before its children, because RLS gates them on membership', async () => {
+  it('writes the trip before it asks the archive for the children', async () => {
+    // The archive function reads the trip row (it refuses when the row is gone),
+    // and every child policy gates on membership, so the trip and its members
+    // must already be in place when it runs.
     const store = await freshStoreWith()
     const trip = store.getSnapshot().trips[0]
 
     store.deleteTrip('trip-1')
     store.restoreTrip(trip, 0)
     await flush()
+    await flush()
 
-    const order = state.writes.map(w => `${w.method} ${w.table}`)
-    expect(order.indexOf('insert trips')).toBeLessThan(order.indexOf('insert suggestions'))
-    expect(order.indexOf('insert trip_members')).toBeLessThan(order.indexOf('insert suggestions'))
+    const archiveAt = state.log.indexOf('call restore_trip_contributions')
+    expect(archiveAt).toBeGreaterThanOrEqual(0)
+    expect(state.log.indexOf('insert trips')).toBeGreaterThanOrEqual(0)
+    expect(state.log.indexOf('insert trips')).toBeLessThan(archiveAt)
+    expect(state.log.indexOf('insert trip_members')).toBeLessThan(archiveAt)
   })
 
   it('leaves the itinerary intact and does not duplicate cache rows', async () => {
@@ -210,132 +261,99 @@ describe('undo after trip delete (#43)', () => {
     expect(writesTo('trip_members', 'insert')[0].payload).toHaveLength(2)
   })
 
-  it('restores only the trip when there is no snapshot to restore from', async () => {
-    // Unseeded: the cache is empty, so restoreTrip's duplicate guard does not
-    // fire. With no preceding deleteTrip nothing was ever captured, so the old
-    // behaviour (trip + members only) must still hold, and it must not throw.
+  it('restores nothing when there is no captured payload to recover', async () => {
+    // Unseeded: nothing was ever captured, so there is no payload, no captured
+    // identity and no access generation to bind a recovery to. Refusing is the
+    // only honest answer — an unbound write is exactly what this repair removes.
     const store = await freshStoreWith(false)
     store.restoreTrip(mkTrip(), 0)
     await flush()
 
-    expect(writesTo('trips', 'insert')).toHaveLength(1)
-    expect(writesTo('trip_members', 'insert')).toHaveLength(1)
-    expect(writesTo('suggestions', 'insert')).toHaveLength(0)
-    expect(writesTo('published_itineraries', 'upsert')).toHaveLength(0)
+    expect(state.writes).toHaveLength(0)
+    expect(state.calls).toHaveLength(0)
   })
 
-  it('refuses rather than strips metadata a pre-migration database cannot store (#839)', async () => {
-    // The suggestion carries a picked place. A database without the column must
-    // NOT get the row written with the place quietly removed: that would spend
-    // the snapshot on a restore where the user silently loses the identity they
-    // picked. The capability is probed once per session, so running Undo again
-    // on the same database keeps refusing rather than degrading the write.
+
+  it('keeps the payload and offers a retry when the archive refuses', async () => {
+    // `forbidden` is the honest answer for a missing or expired archive, or a
+    // caller who is not the archived owner. Nothing is stripped and nothing is
+    // written directly: the payload stays and the toast offers the action.
     const store = await freshStoreWith()
     const trip = store.getSnapshot().trips[0]
-    store.getSnapshot().suggestions.push({
-      ...suggestion, id: 'sg-2', place: { source: 'google', placeId: 'g1', exposure: 'unknown' },
-    })
-    state.missingColumns = new Set(['place', 'day_id'])
-
-    store.deleteTrip('trip-1')
-    store.restoreTrip(trip, 0)
-    await flush()
-    await flush()
-    const afterFirst = state.writes.length
-
-    store.restoreTrip(trip, 0) // Undo again, on the same un-migrated database
-    await flush()
-    await flush()
-
-    // No suggestion row was written at all — not with the place, and not
-    // without it. The other children are still attempted every time.
-    expect(writesTo('suggestions', 'insert')).toHaveLength(0)
-    expect(writesTo('suggestions', 'upsert')).toHaveLength(0)
-    expect(state.writes.length).toBeGreaterThan(afterFirst)
-    // And the cache copy is untouched: the restore never edited the suggestion.
-    expect(store.getSnapshot().suggestions.find(s => s.id === 'sg-2')?.place)
-      .toEqual({ source: 'google', placeId: 'g1', exposure: 'unknown' })
-  })
-
-  it('still restores a legacy suggestion that carries no metadata on an old database', async () => {
-    // Legacy rows have no place and no day, so the missing columns must not
-    // block their restore — the capability gap only applies to metadata.
-    const store = await freshStoreWith()
-    const trip = store.getSnapshot().trips[0]
-    state.missingColumns = new Set(['place', 'day_id'])
+    state.archive = { status: 'forbidden' }
 
     store.deleteTrip('trip-1')
     store.restoreTrip(trip, 0)
     await flush()
     await flush()
 
-    const rows = writesTo('suggestions', 'insert')[0].payload as Record<string, unknown>[]
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).not.toHaveProperty('place')
-    expect(rows[0]).not.toHaveProperty('day_id')
-    expect(rows[0].id).toBe('sg-1')
-  })
-
-  it('does not clear a newer deletion\'s snapshot when an older restore finishes (#839)', async () => {
-    const store = await freshStoreWith()
-    const trip = store.getSnapshot().trips[0]
-
-    store.deleteTrip('trip-1')
-    // Start the restore but do NOT let it finish: its writes are still in flight
-    // when the user deletes the trip a second time.
-    store.restoreTrip(trip, 0)
-    store.deleteTrip('trip-1')
-    await flush()
-    await flush()
-
-    // The in-flight restore succeeded, so an id comparison would have released
-    // the SECOND deletion's payload here. Comparing the snapshot object instead
-    // keeps it, and running Undo again restores the children from it.
-    const before = writesTo('suggestions', 'insert').length
-    store.restoreTrip(trip, 0)
-    await flush()
-    await flush()
-    expect(writesTo('suggestions', 'insert').length).toBe(before + 1)
-  })
-
-  it('runs Undo again when the first try failed, and is idempotent (#839)', async () => {
-    // The toast promises "Run Undo again to retry". The trip is already back in
-    // the cache by then (its row insert is what succeeded), so the duplicate
-    // guard used to swallow the retry and the retained payload was unreachable.
-    const store = await freshStoreWith()
-    const trip = store.getSnapshot().trips[0]
-
-    store.deleteTrip('trip-1')
-    state.fail = new Set(['suggestions'])
-    store.restoreTrip(trip, 0)
-    await flush()
-    await flush()
-
+    expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(1)
+    for (const table of ['suggestions', 'decisions', 'activity', 'notifications']) {
+      expect(writesTo(table)).toHaveLength(0)
+    }
+    // The trip is back and the cache copy of the suggestion is untouched.
     expect(store.getSnapshot().trips.filter(t => t.id === 'trip-1')).toHaveLength(1)
-    expect(writesTo('suggestions', 'insert')).toHaveLength(1)
-    const afterFirst = state.writes.length
+    expect(store.getSnapshot().suggestions.find(s => s.id === 'sg-1')?.status).toBe('accepted')
+  })
 
-    // Undo again: the trip exists, so this is the retry seam, not a re-add.
-    state.fail = new Set()
+  it('a retry after the server gains support recovers without a reload', async () => {
+    // The archive function is missing on the first try (a database that has not
+    // been migrated yet) and present on the second. The repeat is the user saying
+    // "try again now", so the recovery re-asks the server instead of answering
+    // from a cached refusal.
+    const store = await freshStoreWith()
+    const trip = store.getSnapshot().trips[0]
+    state.archive = { error: 'Could not find the function public.restore_trip_contributions' }
+
+    store.deleteTrip('trip-1')
+    store.restoreTrip(trip, 0)
+    await flush()
+    await flush()
+    expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(1)
+
+    state.archive = { status: 'applied' }
     store.restoreTrip(trip, 0)
     await flush()
     await flush()
 
-    const retryWrites = state.writes.slice(afterFirst)
-    const retriedSuggestion = retryWrites.find(w => w.table === 'suggestions' && w.method === 'upsert')
-    expect(retriedSuggestion).toBeDefined()
-    expect((retriedSuggestion!.payload as { id: string }[])[0].id).toBe('sg-1')
-    // Idempotent, not duplicated: the repeat upserts the same ids, and the cache
-    // still holds exactly one copy of the trip.
-    expect(store.getSnapshot().trips).toHaveLength(1)
-    expect(store.getSnapshot().suggestions.filter(s => s.tripId === 'trip-1')).toHaveLength(1)
-
-    // A third Undo has nothing left to do: a successful retry releases the
-    // payload, so the seam closes instead of re-writing forever.
-    const afterRetry = state.writes.length
+    expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(2)
+    // The payload is spent, so a third run has nothing left to do.
     store.restoreTrip(trip, 0)
     await flush()
     await flush()
-    expect(state.writes.length).toBe(afterRetry)
+    expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(2)
+  })
+
+  it('does not let a newer deletion\'s recovery write children', async () => {
+    const store = await freshStoreWith()
+    const trip = store.getSnapshot().trips[0]
+
+    store.deleteTrip('trip-1')
+    // Hold the first recovery's archive answer open, and let it get that far:
+    // the trip row is written and the guarded call is in flight.
+    state.archiveDelay = 5
+    store.restoreTrip(trip, 0)
+    await flush()
+    expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(1)
+
+    // The user deletes the trip again while that answer is still pending.
+    store.deleteTrip('trip-1')
+    await flush()
+    await flush()
+    await flush()
+
+    // The second delete moved the trip's access generation, so the waiting
+    // recovery refuses the moment its answer lands: it writes nothing further,
+    // says nothing, and leaves the newer payload on the slot.
+    expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(1)
+    for (const table of ['suggestions', 'decisions', 'activity', 'notifications']) {
+      expect(writesTo(table)).toHaveLength(0)
+    }
+
+    // The newer payload's own recovery still works.
+    store.restoreTrip(trip, 0)
+    await flush()
+    await flush()
+    expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(2)
   })
 })
