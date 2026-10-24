@@ -122,4 +122,4 @@ The Google key is **optional** and the app fully works without it (free stack on
 4. Check `vercel env ls` — `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` present for **Production *and* a branch-free Preview** (the `environments (git branch)` column must read `Preview`, never `Preview (<branch>)`; Production-only or branch-pinned scoping is the #1 cause of "login works here but not on the preview")
 5. Update `CHANGELOG.md`; for feature-worthy releases also bump `package.json` + lockfile and refresh README highlights (newest first)
 6. Commit, merge to `main` (user-gated), push, watch the Vercel deployment finish
-7. Verify the live URL serves the new build (hard-refresh; check bundle hash changed), then tag the promotion merge (`vX.Y.Z`, annotated) — the tag push is what builds the Android APK
+7. Verify the live URL serves the new build. Hard-refresh and check that the bundle hash changed. Then tag the promotion merge (`vX.Y.Z`, annotated). The tag push builds the Android APK and attaches it to the release. The APK reads its `versionCode`/`versionName` from `package.json`, so the tag and the installed build agree.

@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+// The Android version follows package.json, so a release cut cannot leave the
+// APK reporting an old build. versionCode must rise with every release because
+// the in-app update check compares it (see #809), so derive it from the semver
+// parts: 0.79.1 -> 7901.
+def packageVersion = new groovy.json.JsonSlurper()
+        .parseText(file("${project.rootDir}/../package.json").text)
+        .version as String
+def versionParts = packageVersion.tokenize('.').collect { ((it.find(/\d+/) ?: '0') as int) }
+
 android {
     namespace = "app.yatraflow.mobile"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +16,8 @@ android {
         applicationId "app.yatraflow.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 14
-        versionName "0.14-native"
+        versionCode versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
+        versionName "${packageVersion}-native"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
