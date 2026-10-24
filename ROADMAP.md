@@ -15,8 +15,8 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-24, verified against the repo):** v0.79.0 is the release candidate that joins `test` and `main`. It keeps both histories. It moves crew collaboration onto an idempotent command contract. A suggestion or a decision can now be deleted only by its author or by the trip owner. Two migrations go with this release: `20261023a_collab_commands.sql` is applied, and `20261023b_collab_cutover.sql` waits for the client and `pg_cron`. Read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
-Current version: **0.79.0** — the candidate for promotion to `main`. Under it: **0.78.0**, promoted to `main` on 2026-10-21. Under that: **0.77.1**, a hotfix cut from `main` on 2026-10-18. Older releases appear in CHANGELOG.md.
+**Snapshot (2026-10-24, verified against the repo):** v0.79.1 is the release candidate that joins `test` and `main`. It keeps both histories. It adds the guided six-step create form and repairs eight defects in that form. The form stays behind the `guided` phase of `VITE_CREATE_FUNNEL`. No database migration goes with this release. The two v0.79.0 migrations keep their own status: `20261023a_collab_commands.sql` is applied, and `20261023b_collab_cutover.sql` waits for the client and `pg_cron`. Read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
+Current version: **0.79.1** — the candidate for promotion to `main`. Under it: **0.79.0**, the crew command contract. Under that: **0.78.0**, promoted to `main` on 2026-10-21. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
@@ -745,6 +745,7 @@ The strategy freezes this track for six weeks, so pick it up after the creator g
 | P8 | Auth and DMCA |
 | P9 | Profile |
 | P10 | The creator hub |
+| P11 | Create trip, with the guided flag on. Local mock verification. The legacy form remains with the flag off. |
 | P12 | The workspace tabs |
 | P14 | The Android home |
 | P15 | Admin |
@@ -754,7 +755,6 @@ The strategy freezes this track for six weeks, so pick it up after the creator g
 | P2 | The workspace header and tab bar (a mockup is required) |
 | P4 | The creator page |
 | P7 | The public itinerary |
-| P11 | Create trip |
 | P13 | Landing (a mockup is required) |
 | P16 | The fold-in, which closes the track |
 

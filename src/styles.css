@@ -11701,3 +11701,531 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
   flex: 0 1 200px;
 }
 
+
+/* ============ Guided create flow: progress and step nav ============
+   The frame the guided flow adds around the six steps. Layout only - the step
+   bodies keep their existing rules, because the flow shows one of them at a time
+   rather than restyling them.
+
+   Presentation is split at 700px: a phone gets the counter and six segments, a
+   tablet and up get the labelled list where a completed step is a link. The
+   spec's landscape rule is height-only (under 500px of height), so a phone on
+   its side keeps the compact form at any width. */
+
+.ct-progress {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 18px;
+}
+
+/* Phone: "Step 3 of 6" beside six segments. */
+.ct-progress-count {
+  font-size: .78rem; font-weight: 600; letter-spacing: .01em;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.ct-progress-segs {
+  display: flex; gap: 4px; flex: 1;
+}
+.ct-progress-segs > i {
+  height: 3px; flex: 1; border-radius: 999px;
+  background: var(--line);
+  transition: background var(--motion-fast) var(--ease-out);
+}
+.ct-progress-segs > i.done { background: var(--teal-deep); opacity: .45; }
+.ct-progress-segs > i.now { background: var(--teal-deep); }
+
+/* The labelled list is the wide presentation; the counter and segments are the
+   narrow one. Exactly one of the two is shown at any width. */
+.ct-progress-list { display: none; }
+
+@media (min-width: 700px) and (min-height: 500px) {
+  .ct-progress-count, .ct-progress-segs { display: none; }
+  .ct-progress-list {
+    display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+    margin: 0; padding: 0; list-style: none;
+  }
+}
+
+.ct-progress-item { font-size: .8rem; }
+/* The step number reuses the palette the step markers already use (see `.ct-n`):
+   --teal-deep on --card, and --teal-soft with --teal-deep once done. Both pairs
+   are in the contrast contract, so neither theme has to invent an ink here. */
+.ct-progress-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; margin-right: 5px;
+  border-radius: 50%;
+  font-size: .68rem; font-weight: 700;
+  background: var(--teal-soft);
+  color: var(--teal-deep);
+}
+.ct-progress-plain, .ct-progress-link {
+  display: inline-flex; align-items: center;
+  padding: 4px 7px; border-radius: 7px;
+  color: var(--text-3);
+  background: none; border: 0; font: inherit;
+}
+.ct-progress-item.now .ct-progress-plain {
+  color: var(--text);
+  font-weight: 600;
+  background: var(--bg-soft);
+}
+.ct-progress-item.now .ct-progress-n { background: var(--teal-deep); color: var(--card); }
+.ct-progress-item.done .ct-progress-n { background: var(--teal-soft); color: var(--teal-deep); }
+.ct-progress-item.done .ct-progress-plain { color: var(--text-2); }
+
+/* A completed step is a real button, so it needs a real focus ring. */
+.ct-progress-link { cursor: pointer; transition: background var(--motion-fast) var(--ease-out); }
+.ct-progress-link:hover { background: var(--bg-soft); }
+.ct-progress-link:focus-visible {
+  outline: 2px solid var(--teal-deep);
+  outline-offset: 1px;
+}
+
+/* ---- Back / Next ---- */
+.ct-nav {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 20px; padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.ct-nav-left {
+  flex: 1; min-width: 0;
+  font-size: .78rem; color: var(--text-3);
+}
+.ct-next { margin-left: auto; }
+
+/* A phone has no room for three things in a row: the honest "what is left"
+   line gets its own row above the buttons, and Back and Next split the width. */
+@media (max-width: 699px) {
+  .ct-nav { gap: 8px; }
+  .ct-nav-left { order: -1; flex-basis: 100%; }
+  .ct-back, .ct-next { flex: 1; justify-content: center; }
+  .ct-next { margin-left: 0; }
+}
+
+/* Landscape: height is the scarce axis, so the frame tightens rather than the
+   content shrinking. Height-only, per the spec's landscape rule - a phone held
+   sideways is 740px wide but still a phone, so it keeps the compact form. The
+   counter stays visible: hiding it would leave only the six segments, and the
+   reference frame (740 x 360) shows "Step 3 of 6" beside them. */
+@media (max-height: 499px) {
+  .ct-progress { margin-bottom: 10px; }
+  .ct-nav { margin-top: 12px; padding-top: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ct-progress-segs > i,
+  .ct-progress-link { transition: none; }
+}
+
+
+/* ---- Keep `hidden` authoritative for every guided step ----
+   `hidden` is only `display: none` in the browser's own stylesheet, and an
+   author rule beats it regardless of specificity. Every block below sets
+   `display: flex`, so `hidden={guided && step !== '...'}` did nothing and all
+   six steps rendered at once. The same guard already exists for .share-panel
+   (see "Guard: keep [hidden] authoritative"). This one covers the step blocks. */
+.ct-panel > [hidden] { display: none !important; }
+/* ---- Review: the trip in six lines ---- */
+.ct-review { margin-bottom: 18px; }
+.ct-review h2 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
+.ct-review-list { margin: 10px 0 0; padding: 0; list-style: none; }
+
+.ct-review-row {
+  display: grid;
+  grid-template-columns: minmax(84px, 116px) 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+.ct-review-row:first-child { border-top: 0; }
+.ct-review-lab { font-size: .78rem; color: var(--text-3); }
+.ct-review-val { font-size: .88rem; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+
+/* A missing answer is stated, not left blank: an empty row tells the traveller
+   nothing about what to do. The colour is the danger ink the form already uses
+   for a field error, so the row reads as the same kind of fact. */
+.ct-review-row.missing .ct-review-val { color: var(--danger); }
+.ct-review-val em { font-style: normal; }
+
+.ct-review-change {
+  justify-self: end;
+  padding: 4px 8px;
+  border: 0; border-radius: 7px;
+  background: none;
+  font: inherit; font-size: .78rem;
+  color: var(--teal-deep);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+.ct-review-change:hover { background: var(--bg-soft); }
+.ct-review-change:focus-visible { outline: 2px solid var(--teal-deep); outline-offset: 1px; }
+
+/* The optional rows never block, so they sit quieter and lose the link column. */
+.ct-review-optional { margin-top: 12px; }
+.ct-review-optional .ct-review-row { grid-template-columns: minmax(84px, 116px) 1fr; }
+.ct-review-optional .ct-review-lab,
+.ct-review-optional .ct-review-val { color: var(--text-3); }
+
+@media (max-width: 699px) {
+  /* On a phone the label and value stack: two columns of prose plus a link do
+     not fit, and wrapping the value under its label keeps every row readable. */
+  .ct-review-row, .ct-review-optional .ct-review-row {
+    grid-template-columns: 1fr auto;
+    gap: 2px 10px;
+  }
+  .ct-review-lab { grid-column: 1; }
+  .ct-review-val { grid-column: 1 / -1; grid-row: 2; }
+  .ct-review-change { grid-column: 2; grid-row: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ct-review-change { transition: none; }
+}
+
+/* Approved guided Create trip: the question, step list and live ticket. */
+.container.form-page.gcf { max-width: 1248px; padding: 16px 24px 24px; }
+.gcf .yf-header { margin-bottom: 16px; border: 0; padding-bottom: 0; }
+.gcf :is(.yf-header-kicker, .yf-header-lede) { display: none; }
+.gcf .yf-header-title { font-size: 44px; }
+.container.form-page.gcf .ts-layout { display: grid; grid-template-columns: 200px minmax(0, 560px) 320px; gap: 24px; justify-content: space-between; align-items: start; }
+.gcf .ct-flow { grid-column: 2; gap: 12px; }
+.gcf .ct-panel { padding: 0; border: 0; background: transparent; border-radius: 0; gap: 16px; }
+.gcf .ct-q { display: block; padding: 0; border: 0; background: transparent; }
+.gcf .ct-q-body { min-width: 0; }
+.gcf .ct-n { display: none; }
+.gcf :is(.ct-q h2, .ct-review h2, .ct-budget h2) { margin: 0; font-family: var(--font-body); font-size: 18px; line-height: 1.3; font-weight: 800; }
+.gcf :is(.ct-hint, .ct-party-sub, .hint-text) { color: var(--text-2); font-size: 13px; line-height: 1.6; }
+.gcf .ct-hint { margin: 4px 0 16px; }
+.gcf :is(.ct-lbl, .field-label, .mini-lab) { font-size: 13px; font-weight: 700; color: var(--text-2); letter-spacing: 0; text-transform: none; }
+.gcf .ct-q-field { margin-top: 16px; }
+.gcf :is(.input, .loc-input, .namebox-in) { min-height: 46px; border-radius: 12px; background: var(--card); font-size: 15px; color: var(--text); }
+.gcf :is(input, textarea) { caret-color: var(--teal-deep); }
+.gcf ::selection { background: var(--teal-soft); color: var(--text); }
+.gcf :is(button, input, summary):focus-visible { outline: 2px solid var(--teal-deep); outline-offset: 3px; }
+.gcf .ct-progress { display: block; margin: 0; }
+.gcf .ct-progress-list { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.gcf .ct-progress-item { font-size: 15px; }
+.gcf :is(.ct-progress-plain, .ct-progress-link) { display: flex; width: 100%; min-height: 44px; padding: 8px 12px; border-radius: 12px; font-weight: 600; color: var(--text-2); }
+.gcf .ct-progress-n { flex: 0 0 26px; width: 26px; height: 26px; margin-right: 12px; background: var(--bg-soft); color: var(--text-2); font-size: 13px; }
+.gcf .ct-progress-item.now .ct-progress-plain { background: var(--teal-deep); color: var(--card); }
+.gcf .ct-progress-item.now .ct-progress-n { background: var(--card); color: var(--teal-deep); }
+.gcf .ct-progress-item.done .ct-progress-n { background: var(--teal-soft); color: var(--teal-deep); }
+.gcf :is(.ct-progress-count, .ct-progress-segs) { display: none; }
+.gcf .ct-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.gcf .ct-dchip { display: flex; width: 100%; min-height: 50px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font-size: 15px; color: var(--text); }
+.gcf .ct-dchip > span:nth-child(2) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.gcf .ct-dchip .n { display: grid; place-items: center; width: 26px; height: 26px; background: var(--teal-soft); color: var(--teal-deep); border-radius: 50%; }
+.gcf .ct-dchip :is(.mv, .x) { width: 40px; height: 32px; font-size: 20px; }
+.gcf :is(.ct-dadd, .ct-presets) { display: none; }
+.gcf .route-iq { background: var(--teal-soft); border: 0; border-radius: 12px; padding: 12px; margin-top: 12px; font-size: 14px; color: var(--teal-deep); }
+.gcf .ct-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.gcf .ct-mode { display: flex; flex-direction: column; align-items: start; justify-content: center; width: 100%; min-height: 76px; padding: 12px 8px; border-radius: 12px; font-size: 15px; line-height: 1.35; text-align: left; background: var(--card); color: var(--text); transition: border-color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out); }
+.gcf .ct-mode > svg { display: none; }
+.gcf .ct-mode small { color: var(--text-2); font-size: 12px; font-weight: 400; }
+.gcf .ct-mode.on { background: var(--teal-soft); border-color: var(--teal-deep); box-shadow: inset 0 0 0 1px var(--teal-deep); }
+.gcf .mode-tile { min-width: 0; }
+.gcf .ct-q:has(.ct-modes) > .ct-q-body > .ct-hint { display: none; }
+.gcf .ct-q-field:has(.ct-modes) > .ct-lbl { display: none; }
+.gcf .transport-answer-pair { display: grid; grid-template-columns: 1fr 1fr; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-soft); gap: 4px; margin-top: 8px; }
+.gcf .transport-answer-pair::before { display: none; }
+.gcf .transport-answer-pair .crew-btn { min-height: 44px; padding: 8px; font-size: 14px; border-radius: 999px; }
+.gcf .transport-answer-pair .crew-btn.on { background: var(--teal-deep); color: var(--card); }
+.gcf .gcf-vehicle { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.gcf-vehicle h3 { margin: 0 0 20px; font-size: 15px; font-weight: 800; }
+.gcf-fuel-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.gcf-fuel-grid label { min-width: 0; font-size: 13px; font-weight: 700; color: var(--text-2); }
+.gcf-fuel-grid .unit-input { display: flex; align-items: center; margin-top: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.gcf-fuel-grid .input { width: 100%; min-width: 0; padding: 8px; border: 0; background: transparent; appearance: textfield; }
+.gcf-fuel-grid input::-webkit-inner-spin-button { appearance: none; }
+.gcf-fuel-grid .unit { position: static; flex-shrink: 0; padding-right: 8px; font-size: 12px; transform: none; }
+.gcf-round-trip { display: flex; justify-content: space-between; margin-top: 20px; font-size: 14px; font-weight: 600; }
+.gcf-presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.gcf .gcf-presets .btn { border-radius: 999px; padding: 8px 14px; font-size: 14px; }
+.gcf-date-label { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; font-size: 13px; color: var(--text-2); }
+.gcf-date-label > span { color: var(--teal-deep); font-weight: 600; }
+.gcf-calendar { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.gcf-month { min-width: 0; }
+.gcf-month-head { position: relative; display: flex; align-items: center; justify-content: center; min-height: 40px; font-size: 15px; }
+.gcf-month-head button { display: grid; place-items: center; width: 32px; height: 40px; border: 0; background: transparent; color: var(--text-2); cursor: pointer; }
+.gcf-month-head > button:first-child:not(.gcf-month-next) { position: absolute; left: 0; }
+.gcf-month-head .gcf-month-next { position: absolute; right: 0; }
+.gcf-month:first-child .gcf-month-next { visibility: hidden; }
+.gcf-day-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
+.gcf-day-grid > span { min-height: 32px; display: grid; place-items: center; color: var(--text-3); font-size: 12px; }
+.gcf-day-grid button { min-width: 0; min-height: 40px; padding: 0; border: 0; border-radius: 0; background: transparent; font: inherit; font-size: 14px; color: var(--text); cursor: pointer; transition: background var(--motion-fast) var(--ease-out); }
+.gcf-day-grid button.in-range { background: var(--teal-soft); }
+.gcf-day-grid button.edge { border-radius: 999px; background: var(--teal-deep); color: var(--card); font-weight: 800; }
+.gcf-day-grid button:hover:not(.edge) { background: var(--teal-soft); }
+.gcf .ct-party { margin: 10px 0 16px; gap: 12px; }
+.gcf .ct-step { border: 0; background: transparent; gap: 16px; }
+.gcf .ct-step button { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font-size: 22px; }
+.gcf .ct-step b { font-size: 28px; }
+.gcf .crew-card { padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.gcf .crew-card-t { font-size: 14px; }
+.gcf .crew-card-t .why { font-size: 12px; }
+.gcf .crew-invite-row { margin-top: 12px; }
+.gcf .crew-chip { min-height: 40px; padding: 8px 12px; font-size: 14px; background: var(--card); border: 1px solid var(--line); }
+.gcf .adv-drawer { border: 0; padding: 0; background: transparent; margin-top: 20px; }
+.gcf .adv-drawer > summary { display: none; }
+.gcf .adv-body { padding: 0; }
+.gcf .crew-custom { max-width: none; width: 100%; }
+.gcf .crew-custom .field { width: 100%; }
+.gcf .crew-row { display: flex; gap: 6px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-soft); }
+.gcf .crew-row .crew-btn { flex: 1; width: auto; min-height: 44px; font-size: 14px; border: 0; border-radius: 999px; background: transparent; }
+.gcf .crew-row .crew-btn.on { background: var(--teal-deep); color: var(--card); }
+.gcf-vulnerable { display: flex; justify-content: space-between; gap: 16px; margin: 20px 0; font-size: 14px; font-weight: 600; }
+.gcf .ct-bud-card { padding: 16px; margin-top: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; }
+.gcf .ct-bud-card > .ct-rrow { display: flex; flex-wrap: wrap; gap: 12px; }
+.gcf .ct-bud {
+  display: flex; flex-direction: column-reverse; align-items: stretch; flex: 1 1 100%;
+  max-width: none; padding: 0; border: 0; background: transparent; gap: 16px;
+}
+.gcf .ct-bud > .v { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 30px; font-weight: 800; }
+.gcf .ct-bud .v small { font-size: 12px; color: var(--text-2); font-weight: 600; text-transform: none; letter-spacing: 0; }
+.gcf .ct-bud input[type='range'] { width: 100%; accent-color: var(--teal-deep); }
+.gcf .ct-bud-exact { display: flex; align-items: center; gap: 8px; padding: 0; border: 0; border-radius: 0; font-size: 13px; }
+.gcf .ct-bud-exact input { width: 144px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); background: var(--bg); font-size: 15px; border-radius: 12px; }
+.gcf .ct-mini { min-height: 40px; padding: 8px 12px; font-size: 13px; }
+.gcf .ct-budget .why { display: none; }
+.gcf .ct-refine { padding: 0; border: 0; background: transparent; }
+.gcf .ct-refine > .ct-lbl { display: none; }
+.gcf .ct-refine > .ct-rrow { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+.gcf .ct-tier { display: flex; padding: 4px; border: 1px solid var(--line); background: var(--bg-soft); border-radius: 999px; }
+.gcf .ct-tier button { flex: 1; min-height: 44px; font-size: 15px; border-radius: 999px; }
+.gcf .ct-tier button.on { background: var(--teal-deep); color: var(--card); }
+.gcf .ct-styles { gap: 8px; }
+.gcf-budget-details > summary { min-height: 44px; padding: 10px 0; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; }
+.gcf .ct-style { min-height: 40px; font-size: 13px; }
+.gcf .ct-review { margin: 0; }
+.gcf .ct-review-list { display: none; }
+.gcf .tpl-nameblock { padding: 0; border: 0; background: transparent; }
+.gcf .tpl-nameblock h2 { font-size: 13px; color: var(--text-2); }
+.gcf .tpl-nameblock .why { display: none; }
+.gcf .tpl-name { margin-top: 10px; }
+.gcf .namebox-in { border: 1px solid var(--line); padding: 8px 12px; }
+.gcf .namebox-input { font-size: 15px; }
+.gcf .ct-nav { margin-top: 0; padding-top: 0; border: 0; gap: 12px; }
+.gcf .ct-nav-left { display: none; }
+.gcf .ct-nav .btn { min-height: 44px; padding: 10px 18px; border-radius: 12px; font-size: 14px; font-weight: 700; }
+.gcf .ct-back { border: 0; padding-left: 0; background: transparent; color: var(--text-2); }
+.gcf .ct-create { margin-left: auto; }
+.gcf .gcf-peek { display: none; }
+.gcf .gcf-rail { min-width: 0; grid-column: 3; }
+.gcf :is(.ts-rail[hidden], .trip-dock[hidden]) { display: none; }
+.gcf-ticket { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: var(--shadow-card); color: var(--text); }
+.gcf-ticket-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--text); color: var(--card); font-size: 14px; }
+.gcf-ticket-head > span { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+.gcf-ticket-art { display: block; width: 100%; height: 76px; }
+.gcf-ticket-body { padding: 16px 14px; }
+.gcf-ticket-body h3 { margin: 0 0 16px; font-size: 18px; line-height: 1.4; font-weight: 800; overflow-wrap: anywhere; }
+.gcf-route-line { display: block; width: 100%; height: 36px; margin-bottom: 12px; color: var(--teal-deep); }
+.gcf-ticket-rows { margin: 0; }
+.gcf-ticket-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px dashed var(--line); }
+.gcf-ticket-icon { flex: 0 0 16px; color: var(--text-3); }
+.gcf-ticket-row > div { flex: 1; min-width: 0; }
+.gcf-ticket-row dt { font-size: 12px; color: var(--text-2); }
+.gcf-ticket-row dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.gcf-ticket-row button { min-height: 40px; border: 0; padding: 4px 0 4px 6px; background: transparent; color: var(--teal-deep); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.gcf-ticket-bill { border-top: 1px dashed var(--line); padding: 16px; background: var(--bg); }
+.gcf-ticket-bill p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-2); }
+.gcf-ticket-total { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-2); }
+.gcf-ticket-total b { font-size: 14px; color: var(--text); }
+.gcf-ticket-bill .gcf-ticket-price { margin: 0; font-size: 28px; font-weight: 800; color: var(--text); }
+.gcf-ticket-price span { font-size: 12px; color: var(--text-2); }
+.gcf .ct-optional { border-top: 1px solid var(--line); padding-top: 16px; }
+.gcf .gcf-details-toggle { justify-content: space-between; min-height: 44px; }
+.gcf .ct-save-err { padding: 12px; border: 1px solid var(--danger); border-radius: 12px; }
+.gcf .ct-save-err .chip { white-space: normal; line-height: 1.6; }
+.gcf .gcf-return-review { align-self: flex-start; }
+.gcf-review-actions > p { margin: 0 0 16px; }
+.gcf-review-actions > .btn { min-height: 44px; border-radius: 12px; }
+.gcf-printed-bill { margin-top: 16px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.gcf .ct-panel > :is(.ct-q, .ct-budget, .ct-review):not([hidden]) { animation: cardIn var(--motion-slow) var(--ease-out) backwards; }
+[data-theme="dark"] .gcf-ticket-head { background: var(--teal-soft); color: var(--text); }
+@media (min-width: 700px) and (max-width: 1023px) and (min-height: 500px) {
+  .container.form-page.gcf .ts-layout { grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; }
+  .gcf .ct-progress { grid-column: 1 / -1; }
+  .gcf .ct-progress-list { flex-direction: row; justify-content: space-between; }
+  .gcf :is(.ct-progress-plain, .ct-progress-link) { padding: 8px; font-size: 13px; }
+  .gcf .ct-progress-n { margin-right: 6px; }
+  .gcf .ct-flow { grid-column: 1; }
+  .gcf .gcf-rail { grid-column: 2; }
+  .gcf .ct-modes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .gcf-calendar { grid-template-columns: 1fr; }
+  .gcf-month:nth-child(2) { display: none; }
+  .gcf-month:first-child .gcf-month-next { visibility: visible; }
+}
+@media (max-width: 699px), (max-height: 499px) {
+  body:has(.gcf) :is(.topnav, .bottom-nav, .native-bottom-nav, .footer) { display: none; }
+  .container.form-page.gcf { padding: 0 16px 172px; }
+  .gcf .yf-header { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .container.form-page.gcf .ts-layout { display: flex; flex-direction: column; gap: 0; }
+  .gcf .ct-flow { width: 100%; }
+  .gcf .ct-panel { padding-top: 16px; gap: 16px; }
+  .gcf .gcf-rail { display: none; }
+  .gcf .modal-overlay { align-items: flex-end; padding: 0; }
+  .gcf .modal { width: 100%; max-width: 560px; max-height: 90dvh; border-radius: 18px 18px 0 0; }
+  .gcf .ct-progress { width: calc(100% + 32px); margin: 0 -16px; padding: 16px; background: var(--card); border-bottom: 1px solid var(--line); }
+  .gcf .ct-progress-list { display: none; }
+  .gcf .ct-progress-count { display: block; text-align: right; font-size: 14px; color: var(--text-2); }
+  .gcf .ct-progress-segs { display: flex; margin-top: 12px; gap: 4px; }
+  .gcf .ct-progress-segs > i { height: 5px; }
+  .gcf .ct-progress-segs > i.done { opacity: 1; }
+  .gcf .ct-modes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .gcf .ct-mode { min-height: 76px; padding: 12px 10px; font-size: 16px; }
+  .gcf .ct-mode small { font-size: 13px; }
+  .gcf :is(.input, .loc-input, .namebox-input) { font-size: 16px; }
+  .gcf-calendar { grid-template-columns: 1fr; }
+  .gcf-month:nth-child(2) { display: none; }
+  .gcf-month:first-child .gcf-month-next { visibility: visible; }
+  .gcf-day-grid button { min-height: 44px; font-size: 15px; }
+  .gcf .ct-nav { position: fixed; z-index: var(--z-dock); bottom: 0; left: 0; right: 0; display: flex; padding: 12px 16px calc(16px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); background: var(--card); border-top: 1px solid var(--line); gap: 12px; }
+  .gcf .ct-nav > .ct-back { position: fixed; left: 16px; top: 6px; z-index: var(--z-nav-glass); min-height: 40px; padding: 0; }
+  .gcf .ct-nav > span:empty { display: none; }
+  .gcf .ct-nav :is(.ct-next, .ct-create) { width: 100%; flex: 1 1 100%; margin: 0; min-height: 48px; font-size: 16px; }
+  .gcf .gcf-peek { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 36px; padding: 0; border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 14px; font-weight: 700; }
+  .gcf .crew-invite-row { flex-wrap: wrap; }
+  .gcf .crew-invite-row .input { flex-basis: 100%; }
+  .gcf .crew-card-t { flex-wrap: wrap; }
+  .gcf .ct-bud > .v { flex-wrap: wrap; }
+  .gcf .tpl-warm { margin-top: 16px; }
+  .gcf .ct-review { display: contents; }
+  .gcf .ct-review > h2 { order: 0; }
+  .gcf .ct-review > .ct-hint { order: 1; margin-bottom: 0; }
+  .gcf .tpl-nameblock { order: 2; }
+  .gcf .ct-review-list:not(.ct-review-optional) { display: block; order: 3; margin: 0; }
+  .gcf .gcf-details-toggle { order: 4; }
+  .gcf .ct-optional { order: 5; }
+  .gcf .gcf-review-actions { order: 5; }
+  .gcf .ct-nav { order: 6; }
+}
+@media (max-height: 499px) {
+  .container.form-page.gcf { padding-bottom: 24px; }
+  .gcf .ct-progress { padding: 8px 16px; }
+  .gcf .ct-progress-segs { margin-top: 6px; }
+  .gcf .ct-nav { position: static; padding: 12px 0; background: transparent; }
+  .gcf .ct-nav > .ct-back { position: absolute; top: 0; }
+  .gcf .ct-nav .gcf-peek { display: none; }
+  .gcf .ct-nav .ct-next { flex: 0 1 auto; width: auto; margin-left: auto; }
+  .gcf .ct-modes { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .gcf .ct-mode { min-height: 44px; align-items: center; font-size: 13px; padding: 8px 4px; }
+  .gcf .ct-mode small { display: none; }
+  .gcf .gcf-vehicle { padding: 12px; }
+  .gcf .gcf-vehicle h3 { margin-bottom: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gcf .ct-mode, .gcf-day-grid button { transition: none; }
+  .gcf .ct-panel > :is(.ct-q, .ct-budget, .ct-review):not([hidden]) { animation: none; }
+}
+
+/* Create choices: a stable grid, immediate press and a short selection settle. */
+.container.trip-starter { --choice-tint: var(--cat-accommodation); }
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn) {
+  position: relative;
+  min-width: 0;
+  min-height: 52px;
+  padding: 12px 28px 12px 12px;
+  border: 1px solid color-mix(in srgb, var(--text) 30%, var(--card));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--choice-tint) 6%, var(--card));
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  text-transform: none;
+  transition: transform var(--motion-fast) var(--ease-out), background-color var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out);
+}
+.trip-starter [data-choice='car'], .trip-starter [data-choice='balanced'] { --choice-tint: var(--cat-accommodation); }
+.trip-starter [data-choice='rental'], .trip-starter [data-choice='luxury'] { --choice-tint: var(--yf-purple); }
+.trip-starter [data-choice='motorcycle'], .trip-starter [data-choice='adventure'] { --choice-tint: var(--cat-activities); }
+.trip-starter [data-choice='train'], .trip-starter [data-choice='relaxed'] { --choice-tint: var(--yf-teal-600); }
+.trip-starter [data-choice='bus'], .trip-starter [data-choice='budget'] { --choice-tint: var(--cat-local-travel); }
+.trip-starter [data-choice='flight'], .trip-starter [data-choice='creator'] { --choice-tint: var(--cat-transport); }
+.trip-starter [data-choice='taxi'], .trip-starter [data-choice='family'], .trip-starter [data-choice='comfort'] { --choice-tint: var(--cat-emergency-buffer); }
+.trip-starter [data-choice='mixed'], .trip-starter [data-choice='spiritual'] { --choice-tint: var(--cat-entry-fees); }
+.trip-starter [data-choice='packed'] { --choice-tint: var(--yf-amber); }
+.trip-starter [data-choice='food-focused'] { --choice-tint: var(--cat-food); }
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn).on {
+  border-color: var(--text);
+  background: color-mix(in srgb, var(--choice-tint) 17%, var(--card));
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text);
+  animation: create-choice-settle var(--motion-med) var(--ease-out);
+}
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn)::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 12px;
+  width: 6px;
+  height: 10px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  opacity: 0;
+  transform: translateY(3px) rotate(45deg);
+  transition: opacity var(--motion-fast) var(--ease-out), transform var(--motion-med) var(--ease-out);
+}
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn).on::after { opacity: 1; transform: translateY(0) rotate(45deg); }
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn):active { transform: translateY(2px); }
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn, .ct-mini):focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+@media (hover: hover) {
+  .trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn):hover { border-color: var(--text); background: color-mix(in srgb, var(--choice-tint) 12%, var(--card)); }
+}
+.trip-starter .ct-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.trip-starter .ct-mode { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-content: start; align-items: center; gap: 5px 6px; width: 100%; min-height: 92px; }
+.trip-starter .ct-mode > svg { display: block; width: 16px; height: 16px; }
+.trip-starter .ct-mode small { display: block; grid-column: 1 / -1; color: color-mix(in srgb, var(--text) 92%, var(--choice-tint)); font-size: 12px; font-weight: 400; line-height: 1.4; }
+.trip-starter .mode-tile { min-width: 0; }
+.trip-starter .ct-tier, .trip-starter .crew-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.trip-starter .ct-tier button, .trip-starter .crew-row .crew-btn { flex: 1; width: auto; min-height: 52px; padding: 12px 26px 12px 10px; border: 1px solid color-mix(in srgb, var(--text) 30%, var(--card)); border-radius: 8px; background: color-mix(in srgb, var(--choice-tint) 6%, var(--card)); }
+.trip-starter .ct-tier button.on, .trip-starter .crew-row .crew-btn.on { border-color: var(--text); background: color-mix(in srgb, var(--choice-tint) 17%, var(--card)); color: var(--text); }
+.trip-starter .crew-custom { max-width: none; width: 100%; }
+.trip-starter .crew-custom .crew-row .crew-btn { flex-basis: 90px; }
+.trip-starter .transport-answer-pair { gap: 8px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.trip-starter .transport-answer-pair::before { display: none; }
+.trip-starter .transport-answer-pair .crew-btn { min-height: 52px; border-radius: 8px; padding: 12px 26px 12px 10px; }
+.trip-starter .transport-answer-pair .crew-btn.on { background: color-mix(in srgb, var(--choice-tint) 17%, var(--card)); color: var(--text); }
+.trip-starter .ct-styles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.trip-starter .ct-mini { min-height: 44px; border-radius: 8px; transition: transform var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out); }
+.trip-starter .ct-mini:active { transform: translateY(2px); }
+.trip-starter .crew-invite-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: 12px; }
+.trip-starter .crew-invite-row label { display: grid; gap: 6px; color: var(--text); font-size: 13px; font-weight: 600; }
+.trip-starter .crew-invite-row .input { width: 100%; min-width: 0; }
+.trip-starter .crew-invite-row button { grid-column: 1 / -1; justify-self: start; min-height: 44px; border-radius: 8px; }
+.trip-starter .crew-invite-row button:disabled { background: var(--card); color: var(--text-2); opacity: 1; cursor: not-allowed; }
+.trip-starter #ct-crew-feedback:empty { display: none; }
+.trip-starter .ct-bud-exact, .trip-starter .ct-party-sub { text-transform: none; }
+.trip-starter .ct-bud-exact input { min-height: 44px; }
+.trip-starter input::placeholder { color: var(--text-2); opacity: 1; }
+@keyframes create-choice-settle { from { transform: translateY(2px); } to { transform: translateY(0); } }
+@media (max-width: 600px) {
+  .trip-starter .ct-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trip-starter .ct-styles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trip-starter:not(.gcf) :is(.ct-modes, .ct-styles) { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
+  .trip-starter .crew-invite-row { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn).on { animation: none; }
+  .trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn, .ct-mini),
+  .trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn)::after { animation: none; transition: none; transform: none; }
+  .trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn, .ct-mini):active { transform: none; }
+}
+
+/* ---- The guided flow's answers are square boxes, not pills ----
+   This block used to re-assert 999px pills on the accommodation row, the
+   driver row and the Mixed answer pair. It was added on the reading that the
+   older `.gcf` pill rules were the intended shape and the boxed block above had
+   flattened them by accident. The approved mockup is the other way round: every
+   answer on Who, How, Budget and Mixed is a square box with a subtle tint, a
+   check mark and a short settle, and the legacy long form keeps its own boxes.
+   So the boxed block above is the intent, and nothing here may re-pill it.
+
+   Do not add a `.gcf.trip-starter` rule for these rows without a new mockup.
+   The boxed look already comes from `.trip-starter` above, which wins on source
+   order. A pill rule here needs specificity 0,3,0 or higher, so it silently
+   beats that block and every later session reads the CSS as "pill intent".
+   Probe the computed `border-radius` of an answer button in a browser after any
+   change here, the way `CODING_STANDARDS.md` 6d(4) says. */
+

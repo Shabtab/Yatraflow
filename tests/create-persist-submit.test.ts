@@ -278,8 +278,11 @@ describe('#373 — the page cannot submit twice, and cannot route on a failed sa
   it('both submit surfaces wait, and say so', () => {
     const guarded = [...page.matchAll(/className="(tk-cta|dock-cta)" disabled=\{submitting\}/g)]
     expect(guarded.map(m => m[1]).sort()).toEqual(['dock-cta', 'tk-cta'])
-    // both primaries + the retry button
-    expect([...page.matchAll(/submitting \? 'Creating…' : /g)]).toHaveLength(3)
+    // both primaries + the retry button. The busy label is one constant now, so
+    // count the uses of the constant rather than a repeated literal: the point is
+    // that every surface says the same thing while it waits.
+    expect([...page.matchAll(/CREATE_ACTION_BUSY_LABEL/g)].length).toBeGreaterThanOrEqual(2)
+    expect([...page.matchAll(/submitting \? 'Creating…' : /g)]).toHaveLength(1)
     expect(page).toMatch(/aria-busy=\{submitting\}/)
   })
 

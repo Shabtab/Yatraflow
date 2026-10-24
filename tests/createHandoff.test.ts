@@ -66,6 +66,20 @@ describe('create handoff - the one hop to the moment-after screen', () => {
     expect(billTotal({ days: 1, nights: 0, roadKm: null, transportCost: null, transportFormula: '', stayCost: 0, stayFormula: '', mealCost: 0, mealFormula: '', perHead: null, rangeKm: null }, 4)).toBeNull()
   })
 
+  it('carries a resumed entry’s masked label, and refuses one that is not a mask', () => {
+    // A phone-only entry resumed from a draft has no number to hand on, so the
+    // moment-after screen names it by the label instead. The label is a display
+    // string: a full number in that slot is dropped, never passed through.
+    const store = fakeStore()
+    stashHandoff({ ...h, crew: [{ name: '', phone: null, label: '••• 234' }, { name: 'Ravi', phone: null }] }, { store })
+    expect(readHandoff('t1', { store })!.crew).toEqual([
+      { name: '', phone: null, label: '••• 234' },
+      { name: 'Ravi', phone: null },
+    ])
+    store.map.set(HANDOFF_KEY, JSON.stringify({ tripId: 't1', crew: [{ name: '', phone: null, label: '9845021234' }] }))
+    expect(readHandoff('t1', { store })!.crew).toEqual([{ name: '', phone: null }])
+  })
+
   it('clear removes it, and clearing twice is harmless', () => {
     const store = fakeStore()
     stashHandoff(h, { store })

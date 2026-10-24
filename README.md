@@ -93,6 +93,14 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 _Release highlights, newest first — the full record lives in [CHANGELOG.md](CHANGELOG.md)._
 
+## ✨ The v0.79 release, in plain words
+
+- **The plan-a-trip form now walks you through six steps.** The form asks one question at a time. The questions are where, how you travel, when you leave, who is coming, your budget, and a final check. A laptop shows the step list, the question and a live trip ticket. A phone shows a ticket sheet and a fixed Next bar. Next names the missing answers and moves focus to their control. Review has Change links and a retry after a failed save. A draft you resume reopens on the step you left. The form is behind the `guided` phase of `VITE_CREATE_FUNNEL`; with the flag off, the old long form stays available.
+- **A crew member is named even when the draft holds only a number.** A phone-only entry keeps a safe masked label through resume, autosave, Review and the moment-after screen. Two such entries stay distinct, and no masked label can build an invite link. WhatsApp and SMS stay unavailable on a row with no number; Telegram and the share sheet still work.
+- **A crew number is read in every form people write it.** Brackets, spaces, hyphens, "+91", "91" and a leading "0" all parse again. A free-form entry such as "Team 2 98450 21234" keeps its name and finds its number. A foreign country code such as "+971" is refused instead of being read as an Indian number.
+- **Two people with the same name and different numbers both join the crew.** The duplicate rule compares numbers first, so two numbers are two people and one number twice is still one person.
+- **The guided answers are square boxes.** Who, How, Budget and Mixed use boxed cards. Each one has a check mark, a subtle tint, and motion that respects reduced motion.
+
 ## ✨ The v0.78 release, in plain words
 
 - **A public itinerary shows what is inside before you pay.** The first screen holds the cover, the facts and the buy box. A "What is inside" section counts the places by kind and shows one card per day. A locked day keeps its title and road time, and it hides its stop names.

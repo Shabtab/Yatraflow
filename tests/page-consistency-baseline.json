@@ -25,7 +25,7 @@
     "src/pages/CreateTrip.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 11,
+      "inlineStyle": 10,
       "rawH1": 0
     },
     "src/pages/CreatorHubPage.tsx": {

@@ -15,10 +15,12 @@ const page = readFileSync('src/pages/CreateTrip.tsx', 'utf8')
 
 describe('CreateTrip #378 wiring', () => {
   it('submit consults the composer-row rule before any network work', () => {
-    // The composer error joins the same `next` map the other field errors use,
-    // so it rides the F-15 first-invalid focus too.
+    // The composer error joins the same error map the other field errors use,
+    // so it rides the F-15 first-invalid focus too. Since the guided flow landed,
+    // the map is built by validateCreate() rather than by hand here — the rule
+    // still has to be consulted at submit, so this pins the call, not the shape.
     expect(page).toMatch(/composerRowError\(c\.title\)/)
-    expect(page).toMatch(/next\.composerRow = composer/)
+    expect(page).toMatch(/validateCreate\(\{[\s\S]{0,900}composerError: composerRowError\(c\.title\)/)
   })
 
   it('revalidates commitments on the day-count change, in an effect on dayCount', () => {
