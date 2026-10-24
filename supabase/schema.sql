@@ -1540,10 +1540,10 @@ drop policy if exists "admin write" on public.activity;
 -- blocks direct replacement of ballots, comments, identities, options or scope.
 create policy "suggestions update" on public.suggestions for update
   using (public.is_editor(trip_id)) with check (public.is_editor(trip_id));
-create policy "suggestions delete" on public.suggestions for delete using (public.is_editor(trip_id));
+create policy "suggestions delete" on public.suggestions for delete using (public.is_editor(trip_id) and (proposed_by = auth.uid() or exists (select 1 from public.trips t where t.id = suggestions.trip_id and t.owner_id = auth.uid())));
 create policy "decisions update" on public.decisions for update
   using (public.is_editor(trip_id)) with check (public.is_editor(trip_id));
-create policy "decisions delete" on public.decisions for delete using (public.is_editor(trip_id));
+create policy "decisions delete" on public.decisions for delete using (public.is_editor(trip_id) and (raised_by = auth.uid() or exists (select 1 from public.trips t where t.id = decisions.trip_id and t.owner_id = auth.uid())));
 
 drop trigger if exists suggestions_guard_contributions on public.suggestions;
 drop trigger if exists decisions_guard_contributions on public.decisions;

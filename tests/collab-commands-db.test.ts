@@ -344,4 +344,38 @@ describe('collaboration command SQL behavior', () => {
     expect(await count('notifications')).toBe(before.notifications)
     await db.exec('reset role; alter table public.notifications drop constraint reject_synthetic_notice')
   })
+
+  it('lets only the author or the trip owner delete a contribution', async () => {
+    await db.exec(`reset role; insert into public.profiles(id) values('${editorB}') on conflict do nothing; insert into public.trip_members(trip_id,user_id,role) values('${trip}','${editorB}','editor') on conflict do nothing;`)
+    await actor(editorB)
+    const peerId = '30000000-0000-4000-8000-000000000060'
+    const probeReceipt = await call('50000000-0000-4000-8000-000000000060', {
+      type: 'suggestion.create', suggestionId: peerId,
+      suggestion: { dayIndex: 0, title: 'Peer delete probe', visitMinutes: 10, estimatedEntryFeeInr: 0, estimatedTransportInr: 0 },
+    })
+    expect(probeReceipt.status).toBe('applied')
+    await actor(editorA)
+    expect((await db.query(`delete from public.suggestions where id='${peerId}'`)).rowCount).toBe(0)
+    await actor(editorB)
+    expect((await db.query(`delete from public.suggestions where id='${peerId}'`)).rowCount).toBe(1)
+
+    const ownerDeleteId = '30000000-0000-4000-8000-000000000061'
+    await call('50000000-0000-4000-8000-000000000061', {
+      type: 'suggestion.create', suggestionId: ownerDeleteId,
+      suggestion: { dayIndex: 0, title: 'Owner delete probe', visitMinutes: 10, estimatedEntryFeeInr: 0, estimatedTransportInr: 0 },
+    })
+    await actor(owner)
+    expect((await db.query(`delete from public.suggestions where id='${ownerDeleteId}'`)).rowCount).toBe(1)
+
+    const decisionId = '40000000-0000-4000-8000-000000000060'
+    await actor(editorB)
+    await call('50000000-0000-4000-8000-000000000062', {
+      type: 'decision.create', decisionId,
+      decision: { question: 'Peer delete probe', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] },
+    })
+    await actor(editorA)
+    expect((await db.query(`delete from public.decisions where id='${decisionId}'`)).rowCount).toBe(0)
+    await actor(owner)
+    expect((await db.query(`delete from public.decisions where id='${decisionId}'`)).rowCount).toBe(1)
+  })
 })

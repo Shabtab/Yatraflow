@@ -296,8 +296,9 @@ begin
     if child in ('suggestions','decisions') and not exists (
       select 1 from pg_policies
       where schemaname='public' and tablename=child and cmd='DELETE' and qual like '%is_editor%'
+        and qual like '%auth.uid()%' and qual like '%owner_id%'
     ) then
-      raise exception '% DELETE must stay editor-scoped', child;
+      raise exception '% DELETE must be editor-scoped and author-or-owner', child;
     end if;
     if child='activity' and exists (
       select 1 from pg_policies where schemaname='public' and tablename=child
