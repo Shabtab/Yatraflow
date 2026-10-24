@@ -44,7 +44,21 @@ vi.mock('../src/lib/supabase', () => {
       new Promise(resolve => { if (method) calls.push({ table, method, payload }); resolve({ data: null, error: null }) }).then(res)
     return builder
   }
-  return { isSupabaseConfigured: false, supabase: { from: (t: string) => makeBuilder(t) } }
+  return {
+    isSupabaseConfigured: false,
+    supabase: {
+      from: (t: string) => makeBuilder(t),
+      // Stage A of #832: decision.create travels through the collab-command
+      // RPC. The stub records the arguments and answers an applied receipt
+      // with no canonical row, so the optimistic cache entry stands.
+      rpc: (fn: string, params?: unknown) => {
+        const qb: Record<string, unknown> = {}
+        qb.then = (res: (v: { data: unknown; error: unknown }) => unknown) =>
+          new Promise(resolve => { calls.push({ table: fn, method: 'rpc', payload: params }); resolve({ data: { status: 'applied', tripRevision: 1 }, error: null }) }).then(res)
+        return qb
+      },
+    },
+  }
 })
 
 import {
@@ -68,8 +82,9 @@ function lastDecision(): TripDecision {
 }
 
 function decisionInsertPayload(): { options?: Array<{ id?: string }> } | undefined {
-  const call = calls.find(c => c.table === 'decisions' && c.method === 'insert')
-  return call?.payload as { options?: Array<{ id?: string }> } | undefined
+  const call = calls.find(c => c.table === 'submit_collab_command' && c.method === 'rpc')
+  const params = call?.payload as { p_command?: { decision?: { options?: Array<{ id?: string }> } } } | undefined
+  return params?.p_command?.decision
 }
 
 /** The transport is fire-and-forget: the builder's `then` records the call on
@@ -95,7 +110,7 @@ const railDeps = (over: Partial<DaySlotsDeps> = {}): DaySlotsDeps => ({
 })
 
 describe('#335 — addDecision preserves the option ids its caller supplied', () => {
-  it('keeps the map rail`s slot ids, in the cache AND in the row it inserts', async () => {
+  it('keeps the map rail`s slot ids, in the cache AND in the command it sends', async () => {
     const trip = freshTrip()
     getSnapshot().sessionUserId = ownerId
     addDecision(trip.id, {

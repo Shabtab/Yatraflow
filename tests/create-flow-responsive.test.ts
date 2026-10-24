@@ -114,10 +114,18 @@ describe('`hidden` actually hides a step', () => {
 
   it('does not rely on the UA stylesheet anywhere the flow gates a block', () => {
     // Every gated block sets display, so each one needs the guard above it.
+    // The block is sliced by a literal search rather than a built pattern: the
+    // constructed form is flagged as a security finding, and the slice pins the
+    // same contract — the rule for this class, up to its closing brace, sets
+    // display.
     const gated = ['ct-q', 'tpl-nameblock', 'ct-budget', 'ct-refine', 'ct-optional']
     for (const cls of gated) {
-      expect(css, `${cls} should set display, which is why it needs the guard`)
-        .toMatch(new RegExp(`\\.${cls} \\{[^}]*display:`))
+      const reason = `${cls} should set display, which is why it needs the guard`
+      const at = css.indexOf(`.${cls} {`)
+      expect(at, reason).toBeGreaterThan(-1)
+      const end = css.indexOf('}', at)
+      expect(end, `${cls} should close its rule`).toBeGreaterThan(at)
+      expect(css.slice(at, end), reason).toContain('display:')
     }
   })
 })

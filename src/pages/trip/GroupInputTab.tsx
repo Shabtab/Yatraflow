@@ -13,6 +13,7 @@ import type { FormEvent } from 'react'
 import { Car, ChevronDown, ChevronUp, ClipboardList, Clock, Lightbulb, MapPin, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
 import { PillNav } from '../../components/PillNav'
 import type { StopCategory, StopSuggestion, Trip, TripDecision } from '../../data/types'
+import type { CollabOutcome } from '../../store/collabCommand'
 import { STOP_CATEGORIES } from '../../data/types'
 import {
   useDb, userById, currentUser, addSuggestion, voteSuggestion, addCommentToSuggestion,
@@ -27,6 +28,7 @@ import { Avatar, Chip, Field, toast } from '../../components/ui'
 import { StateBlock } from '../../components/page/StateBlock'
 import { Surface } from '../../components/page/Surface'
 import { refuseWhileStaged } from '../../lib/mutationLifecycle'
+import { reportCollabOutcome } from '../../lib/collabFeedback'
 import type { BusyClaim } from '../../lib/busyClaim'
 import { isClaimed, takeClaim } from '../../lib/busyClaim'
 import { LocationInput } from '../../components/LocationInput'
@@ -63,11 +65,14 @@ function itemTitle(i: GroupItem): string { return i.kind === 'idea' ? i.sg.title
 /** #394: one busy claim per crew-signal row. The claim is read through a ref
  *  because a state closure can still hold the pre-claim render when a fast
  *  second click lands before React re-renders — the ref makes the refusal
- *  synchronous, the state only paints it. The claim is never released here:
- *  the store write spends the row inside the same handler, the buttons that
- *  carried it unmount with the row, and nothing is left waiting on a network
- *  tail (see lib/busyClaim for why releasing on one would be a bug). */
-function useBusyClaim(key: string): { busy: boolean; claim: () => boolean } {
+ *  synchronous, the state only paints it. The claim is never released on
+ *  SUCCESS: the store write spends the row inside the same handler, the
+ *  buttons that carried it unmount with the row, and nothing is left waiting
+ *  on a network tail (see lib/busyClaim for why releasing on one would be a
+ *  bug). Stage A of #832 made decline/resolve receipts ASYNC, and a refused
+ *  write leaves the row on screen — so a failed outcome releases the claim
+ *  (releaseClaim), or the row's buttons would strand disabled forever. */
+function useBusyClaim(key: string): { busy: boolean; claim: () => boolean; release: () => void } {
   const claimsRef = useRef<BusyClaim>(new Set())
   const [claims, setClaims] = useState<BusyClaim>(() => new Set())
   const claim = useCallback(() => {
@@ -77,7 +82,14 @@ function useBusyClaim(key: string): { busy: boolean; claim: () => boolean } {
     setClaims(taken.claims)
     return true
   }, [key])
-  return { busy: isClaimed(claims, key), claim }
+  const release = useCallback(() => {
+    if (!claimsRef.current.has(key)) return
+    const next = new Set(claimsRef.current)
+    next.delete(key)
+    claimsRef.current = next
+    setClaims(next)
+  }, [key])
+  return { busy: isClaimed(claims, key), claim, release }
 }
 
 export function GroupInputTab({ trip, editable, me, previewOpen }: {
@@ -261,7 +273,7 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
               ))}
             </PillNav>
             {composerMode === 'idea'
-              ? <SuggestionComposerForm trip={trip} me={me} />
+              ? <SuggestionComposerForm trip={trip} />
               : <DecisionComposerForm trip={trip} />}
           </Surface>
         </div>
@@ -300,14 +312,14 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
   const myVote = sg.votes.find(v => v.userId === me.id)?.value
   const consensusPct = memberCount ? Math.round((ups / memberCount) * 100) : 0
   const author = userById(sg.proposedBy)
-  const { busy, claim } = useBusyClaim(sg.id)
+  const { busy, claim, release } = useBusyClaim(sg.id)
   return (
     <Surface id={`gi-item-${sg.id}`} tabIndex={-1} className={`card gi-item gin-item-card gin-panel${needsMe ? ' gi-needs-you' : ''}`}>
       <div className="gin-item-layout">
       <div className="vote-col">
-        <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} onClick={() => voteSuggestion(trip.id, sg.id, me.id, 1)} aria-label="Upvote" aria-pressed={myVote === 1}><ChevronUp size={13} aria-hidden /></button>
+        <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} onClick={() => void voteSuggestion(trip.id, sg.id, 1).then(o => reportCollabOutcome(o))} aria-label="Upvote" aria-pressed={myVote === 1}><ChevronUp size={13} aria-hidden /></button>
         <span className="vote-count">{ups - downs}</span>
-        <button className={`vote-btn ${myVote === -1 ? 'on' : ''}`} onClick={() => voteSuggestion(trip.id, sg.id, me.id, -1)} aria-label="Downvote" aria-pressed={myVote === -1}><ChevronDown size={13} aria-hidden /></button>
+        <button className={`vote-btn ${myVote === -1 ? 'on' : ''}`} onClick={() => void voteSuggestion(trip.id, sg.id, -1).then(o => reportCollabOutcome(o))} aria-label="Downvote" aria-pressed={myVote === -1}><ChevronDown size={13} aria-hidden /></button>
       </div>
       <div>
         <div className="row-between">
@@ -350,8 +362,12 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
             <button className="btn btn-danger btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
               if (refuseWhileStaged(previewOpen)) return
               if (!claim()) return
-              declineSuggestion(trip.id, sg.id)
-              toast('Suggestion declined')
+              void declineSuggestion(trip.id, sg.id).then(o => {
+                reportCollabOutcome(o, 'Suggestion declined')
+                // A refused receipt leaves the row on screen with its status
+                // unchanged — free the claim or the buttons strand disabled.
+                if (o.status !== 'applied' && o.status !== 'alreadyApplied') release()
+              })
             }}>Decline</button>
           </div>
         )}
@@ -370,19 +386,32 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
             ))}
           </div>
         )}
-        <CommentForm onSubmit={(text) => addCommentToSuggestion(trip.id, sg.id, me.id, text)} />
+        <CommentForm onSubmit={text => addCommentToSuggestion(trip.id, sg.id, text).then(o => { reportCollabOutcome(o); return o })} />
       </div>
       </div>
     </Surface>
   )
 }
 
-function CommentForm({ onSubmit }: { onSubmit: (text: string) => void }) {
+function CommentForm({ onSubmit }: { onSubmit: (text: string) => Promise<CollabOutcome> }) {
   const [text, setText] = useState('')
+  const [pending, setPending] = useState(false)
   return (
-    <form className="gin-comment-form" onSubmit={e => { e.preventDefault(); if (text.trim()) { onSubmit(text.trim()); setText('') } }}>
+    <form className="gin-comment-form" onSubmit={e => {
+      e.preventDefault()
+      const trimmed = text.trim()
+      if (!trimmed || pending) return
+      setPending(true)
+      // The draft clears on the RECEIPT, not on the click (gate round 2):
+      // a refused send keeps what the planner typed, and a second submit
+      // waits for the first to settle.
+      void onSubmit(trimmed).then(o => {
+        if (o.status === 'applied' || o.status === 'alreadyApplied') setText('')
+        setPending(false)
+      })
+    }}>
       <input className="input" placeholder="Add a comment…" aria-label="Add a comment" value={text} onChange={e => setText(e.target.value)} />
-      <button className="btn btn-sm btn-outline">Post</button>
+      <button className="btn btn-sm btn-outline" disabled={pending} aria-busy={pending}>Post</button>
     </form>
   )
 }
@@ -406,7 +435,7 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
   // trip or decision changes (a new vote can flip the tie-break).
   const ctx = useMemo(() => decisionContext(trip), [trip])
   const rec = useMemo(() => recommendForDecision(trip, d, ctx), [trip, d, ctx])
-  const { busy, claim } = useBusyClaim(d.id)
+  const { busy, claim, release } = useBusyClaim(d.id)
 
   return (
     <Surface id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-item-card gin-panel${needsMe ? ' gi-needs-you' : ''}`}>
@@ -426,7 +455,7 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
           return (
             <div key={o.id} className={`decision-option-row${leading ? ' leading' : ''}`}>
               <button className={`vote-btn ${mine ? 'on' : ''}`} disabled={d.status === 'resolved'} aria-pressed={mine}
-                onClick={() => voteOnDecision(d.id, o.id)} aria-label={`Vote for ${o.label}`}><ChevronUp size={13} aria-hidden /></button>
+                onClick={() => void voteOnDecision(d.id, o.id).then(o2 => reportCollabOutcome(o2))} aria-label={`Vote for ${o.label}`}><ChevronUp size={13} aria-hidden /></button>
               <span className="gin-option-label">
                 {o.label}
                 {o.timeImpactMin ? <span className="muted small num"> · ≈{o.timeImpactMin} min detour</span> : null}
@@ -470,8 +499,12 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
               onClick={() => {
                 if (refuseWhileStaged(previewOpen)) return
                 if (!claim()) return
-                resolveDecision(d.id, o.id)
-                toast('Decision resolved')
+                void resolveDecision(d.id, o.id).then(o2 => {
+                  reportCollabOutcome(o2, 'Decision resolved')
+                  // A refused receipt leaves the poll open — free the claim
+                  // or the Resolve buttons strand disabled.
+                  if (o2.status !== 'applied' && o2.status !== 'alreadyApplied') release()
+                })
               }}>
               Resolve: {o.label}
             </button>
@@ -494,7 +527,7 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
           ))}
         </div>
       )}
-      <CommentForm onSubmit={text => addCommentToDecision(trip.id, d.id, me.id, text)} />
+      <CommentForm onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
     </Surface>
   )
 }
@@ -517,32 +550,40 @@ export function tripAnchor(trip: Trip): { lat: number; lng: number } {
   return { lat: 0, lng: 0 }
 }
 
-function SuggestionComposerForm({ trip, me }: {
+function SuggestionComposerForm({ trip }: {
   trip: Trip
-  me: NonNullable<ReturnType<typeof currentUser>>
 }) {
   const [form, setForm] = useState({
     title: '', dayIndex: 0, category: 'sightseeing' as StopCategory, locationName: '',
     description: '', visitMinutes: 60, entryFee: 0, transportCost: 200,
   })
   const [coords, setCoords] = useState<{ lat?: number; lng?: number }>({})
+  const [pending, setPending] = useState(false)
 
   function submit(e: FormEvent) {
     e.preventDefault()
+    if (pending) return
     if (!form.title.trim()) { toast('Give your suggestion a name.', 'err'); return }
     const anchor = coords.lat !== undefined && coords.lng !== undefined
       ? { lat: coords.lat, lng: coords.lng }
       : tripAnchor(trip)
-    addSuggestion(trip.id, {
-      dayIndex: form.dayIndex, proposedBy: me.id, title: form.title.trim(),
+    setPending(true)
+    void addSuggestion(trip.id, {
+      dayIndex: form.dayIndex, title: form.title.trim(),
       category: form.category, locationName: form.locationName || 'To be decided',
       lat: anchor.lat, lng: anchor.lng, description: form.description,
       visitMinutes: form.visitMinutes, estimatedEntryFeeInr: form.entryFee,
       estimatedTransportInr: form.transportCost,
+    }).then(o => {
+      reportCollabOutcome(o, 'Suggestion shared with the group!')
+      // The draft clears on the RECEIPT, not on the click — a refused write
+      // must not erase what the planner typed (#802's optimistic-success half).
+      if (o.status === 'applied' || o.status === 'alreadyApplied') {
+        setForm(f => ({ ...f, title: '', description: '' }))
+        setCoords({})
+      }
+      setPending(false)
     })
-    setForm(f => ({ ...f, title: '', description: '' }))
-    setCoords({})
-    toast('Suggestion shared with the group!')
   }
 
   return (
@@ -580,6 +621,7 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
   const [q, setQ] = useState('')
   const [context, setContext] = useState('')
   const [opts, setOpts] = useState([{ label: '', cost: '' }, { label: '', cost: '' }])
+  const [pending, setPending] = useState(false)
 
   function setOpt(i: number, key: 'label' | 'cost', v: string) {
     setOpts(list => list.map((o, j) => j === i ? { ...o, [key]: v } : o))
@@ -587,21 +629,27 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
 
   function create(e: FormEvent) {
     e.preventDefault()
+    if (pending) return
     if (!q.trim()) { toast('Write the question first.', 'err'); return }
     const built = opts
       .map(o => ({ label: o.label.trim(), cost: Number(o.cost) || 0 }))
       .filter(o => o.label)
     if (built.length < 2) { toast('Give at least two options.', 'err'); return }
-    addDecision(trip.id, {
+    setPending(true)
+    void addDecision(trip.id, {
       question: q.trim(),
       context: context.trim() || undefined,
       // #335: no placeholder ids — a hand-typed poll gets real ones from the
       // store, which preserves an id a caller does supply (the Map rail's
       // slot and place ids are load-bearing).
       options: built.map(o => ({ label: o.label, costImpactInr: o.cost || undefined })),
+    }).then(o => {
+      reportCollabOutcome(o, 'Decision posted for the group')
+      if (o.status === 'applied' || o.status === 'alreadyApplied') {
+        setQ(''); setContext(''); setOpts([{ label: '', cost: '' }, { label: '', cost: '' }])
+      }
+      setPending(false)
     })
-    setQ(''); setContext(''); setOpts([{ label: '', cost: '' }, { label: '', cost: '' }])
-    toast('Decision posted for the group')
   }
 
   return (

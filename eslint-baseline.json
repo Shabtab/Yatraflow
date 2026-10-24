@@ -1,6 +1,6 @@
 {
   "generatedBy": "npm run lint:ratchet -- --update",
-  "errors": 138,
+  "errors": 136,
   "warnings": 29,
   "files": {
     "src/App.tsx": {
@@ -128,7 +128,7 @@
       "@typescript-eslint/no-unused-vars": 1
     },
     "src/store/store.ts": {
-      "@typescript-eslint/no-explicit-any": 7,
+      "@typescript-eslint/no-explicit-any": 5,
       "@typescript-eslint/no-unused-vars": 1
     }
   }

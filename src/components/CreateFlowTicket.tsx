@@ -44,7 +44,7 @@ export function CreateFlowTicket(p: CreateFlowTicketProps) {
       <dl className="gcf-ticket-rows">{rows.map((row, i) => <div className="gcf-ticket-row" key={i}>
         <span className="gcf-ticket-icon" aria-hidden>{row.icon}</span>
         <div><dt>{row.label}</dt><dd>{row.value}</dd></div>
-        {p.review && <button type="button" onClick={() => p.onChange(row.step)}>Change<span className="sr-only"> {row.label}</span></button>}
+        {p.review && <button type="button" onClick={() => { p.onChange(row.step) }}>Change<span className="sr-only"> {row.label}</span></button>}
       </div>)}</dl>
     </div>
     <div className="gcf-ticket-bill" role="status">

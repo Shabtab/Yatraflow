@@ -25,9 +25,9 @@ export function CreateFlowCalendar({ start, end, error, registerRef, onChange }:
           const count = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
           return <div className="gcf-month" key={offset}>
             <div className="gcf-month-head">
-              {offset === 0 && <button type="button" ref={registerRef} aria-label="Previous month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}><ChevronLeft size={18} aria-hidden /></button>}
+              {offset === 0 && <button type="button" ref={registerRef} aria-label="Previous month" onClick={() => { setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1)) }}><ChevronLeft size={18} aria-hidden /></button>}
               <b>{date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</b>
-              <button type="button" className="gcf-month-next" aria-label={offset === 0 ? 'Next month' : 'Show later months'} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}><ChevronRight size={18} aria-hidden /></button>
+              <button type="button" className="gcf-month-next" aria-label={offset === 0 ? 'Next month' : 'Show later months'} onClick={() => { setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1)) }}><ChevronRight size={18} aria-hidden /></button>
             </div>
             <div className="gcf-day-grid">
               {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => <span key={`w${index}`} aria-hidden>{day}</span>)}
@@ -37,8 +37,8 @@ export function CreateFlowCalendar({ start, end, error, registerRef, onChange }:
                 const edge = iso === start || iso === end
                 return <button type="button" key={iso} aria-label={iso} aria-pressed={edge}
                   className={`${edge ? 'edge' : ''}${start && preview && iso > start && iso < preview ? ' in-range' : ''}`}
-                  onMouseEnter={() => setHover(iso)} onMouseLeave={() => setHover('')}
-                  onClick={() => onChange(!start || end || iso < start ? { startDate: iso, endDate: '' } : { startDate: start, endDate: iso })}>{index + 1}</button>
+                  onMouseEnter={() => { setHover(iso) }} onMouseLeave={() => { setHover('') }}
+                  onClick={() => { onChange(!start || end || iso < start ? { startDate: iso, endDate: '' } : { startDate: start, endDate: iso }) }}>{index + 1}</button>
               })}
             </div>
           </div>

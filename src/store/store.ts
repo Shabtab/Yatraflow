@@ -11,7 +11,7 @@ import { useSyncExternalStore } from 'react'
 import type {
   User, Trip, StopSuggestion, TripDecision, ActivityEntry, Notification,
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
-  NewDecisionOption, VehicleProfile,
+  NewDecisionOption, VehicleProfile, Comment, Vote, DecisionOption,
 } from '../data/types'
 import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
 import { seedData, uid } from '../data/seed'
@@ -38,6 +38,10 @@ import { suggestionToRow, decisionToRow, activityToRow, notificationToRow, publi
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
 import { MISSING_BACKEND_MESSAGE, describeAuthFailure } from '../lib/authErrors'
 import { hasStopNamed, nextOrderInDay, renumberDay } from '../lib/stopOrder'
+import {
+  submitCollabCommand, suggestionRowToEntry, decisionRowToEntry,
+  type CollabOutcome, type CollabCommand,
+} from './collabCommand'
 import { adminFromSession, clearAdminCache, isAdminCached } from '../lib/adminSession'
 import type { RealtimeChannel, RealtimePostgresChangesPayload, SupabaseClient } from '@supabase/supabase-js'
 
@@ -254,7 +258,7 @@ function mutateTrip(tripId: ID, fn: (draft: Trip) => void, opts: { touch?: boole
   const draft = structuredClone(cache.trips[idx])
   fn(draft)
   if (opts.touch !== false) draft.updatedAt = Date.now()
-  if (opts.log && cache.sessionUserId) addActivity(tripId, cache.sessionUserId, opts.log, opts.target)
+  if (opts.log) void addActivity(tripId, opts.log, opts.target)
   cache.trips = [...cache.trips.slice(0, idx), draft, ...cache.trips.slice(idx + 1)]
   commit()
   return draft
@@ -637,6 +641,12 @@ export function init(): void {
       queuedLocalTrips.clear()
       editableTripGrants.clear()
       tripAccessEpochs.clear()
+      // Pending contribution envelopes are scoped to the identity that
+      // created them; the next identity starts with no uncertain actions.
+      pendingCollabActions.clear()
+      commentDrafts.clear()
+      suggestionBallotOwners.clear()
+      decisionBallotOwners.clear()
       // Publish the new identity before any storage or network await.
       patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false,
         users: [], suggestions: [], decisions: [], activity: [], notifications: [],
@@ -1187,25 +1197,11 @@ export function addDemoTrips(): void {
 
 // ---------------- Row mappers for collaboration tables ----------------
 
-function rowToSuggestion(row: unknown): StopSuggestion {
-  const r = row as any
-  return {
-    id: r.id, tripId: r.trip_id, dayIndex: r.day_index, proposedBy: r.proposed_by,
-    title: r.title, category: r.category, locationName: r.location_name, lat: r.lat, lng: r.lng,
-    description: r.description, visitMinutes: r.visit_minutes,
-    estimatedEntryFeeInr: r.estimated_entry_fee_inr, estimatedTransportInr: r.estimated_transport_inr,
-    votes: r.votes ?? [], comments: r.comments ?? [], status: r.status, createdAt: r.created_at,
-  }
-}
-function rowToDecision(row: unknown): TripDecision {
-  const r = row as any
-  return {
-    id: r.id, tripId: r.trip_id, question: r.question, context: r.context,
-    options: r.options ?? [], votesByUserId: r.votes_by_user_id ?? {}, status: r.status,
-    comments: r.comments ?? [],
-    resolvedOptionId: r.resolved_option_id, raisedBy: r.raised_by, createdAt: r.created_at, resolvedAt: r.resolved_at,
-  }
-}
+// The suggestion and decision row mappings live in ./collabCommand, shared with
+// the receipt-adoption path (the same server read shape). Local aliases keep
+// the hydrate and realtime call sites unchanged.
+const rowToSuggestion = suggestionRowToEntry
+const rowToDecision = decisionRowToEntry
 function rowToActivity(row: unknown): ActivityEntry {
   const r = row as any
   return { id: r.id, tripId: r.trip_id, actorId: r.actor_id, verb: r.verb, target: r.target, at: r.at }
@@ -4755,88 +4751,827 @@ export function markExpenseUnsettled(tripId: ID, expenseId: ID, by: ID | null): 
   void persistTripField(tripId, tripById(tripId)!)
 }
 
+// ---------------- Contribution command helpers (stage A of #832) ----------------
+//
+// Shared machinery for the writers that submit through the collab-command RPC
+// (docs/agents/collab-command-contract.md). The contract rules live here so
+// no writer can forget them:
+//
+//   1. A receipt is applied only under the identity that submitted the
+//      command. Every continuation captures identityScope() before its first
+//      await and checks isCurrentIdentity before it touches the cache, so a
+//      late receipt after sign-out or A→B→A never enters the next identity's
+//      cache.
+//   2. Freshness is PER ROW, for receipts AND for recovery reads. A writer
+//      captures the cached row object after its optimistic update; on the
+//      receipt it adopts the canonical row only if that object is still the
+//      current one, and a recovery SELECT captures the row object again
+//      before it starts and applies only if it is unchanged on arrival
+//      (gate round 2, F3).
+//   3. A refused command retracts ONLY what that operation added, from
+//      whatever state the cache holds now (gate round 2, F1): a whole-slice
+//      restore erased comments, activity and notifications that landed after
+//      the failed operation started.
+//   4. One logical action keeps ONE identity across uncertain failures
+//      (gate round 2, F2): the command id, stable comment id and payload sit
+//      in a pending envelope and the writer's next call for the same slot
+//      retries it, so a committed command whose response was lost cannot
+//      duplicate itself.
+
+type ContributionKind = 'suggestion' | 'decision'
+
+/** The client's own acknowledgment revision for a direct (non-RPC) write:
+ *  the cached trip's write_version, or 0 when unknown. Never invented — the
+ *  client does not advance its trip CAS revision for a contribution. */
+function tripRevisionOf(tripId: ID): number {
+  const t = tripById(tripId)
+  return t && validWriteVersion(t.writeVersion) ? t.writeVersion : 0
+}
+
+/** Acknowledge a receipt's tripRevision. It is NOT a trip snapshot and MUST
+ *  NOT advance the client's CAS revision while an older snapshot is held
+ *  (contract rule 1). It only schedules a background refetch when the server
+ *  observed a revision NEWER than the cached row; pending trip edits stay
+ *  queued and are rebased by the normal admission path. */
+function noteTripRevision(tripId: ID, revision: number): void {
+  const t = tripById(tripId)
+  if (!t || !validWriteVersion(revision)) return
+  // Reconcile only against a KNOWN cached revision: without one there is no
+  // honest comparison, and a background refetch per receipt would be noise.
+  // A known-but-older revision means the server has moved on — the refetch
+  // brings the authoritative trip home through the normal admission path.
+  if (!validWriteVersion(t.writeVersion) || t.writeVersion >= revision) return
+  fetchTripIntoCache(tripId).catch(e => console.error('[yatraflow] trip refetch after receipt failed', e))
+}
+
+// ---- The pending-action envelope (gate round 2, F2) ----
+//
+// One uncertain command per logical slot keeps its identity. The envelope is
+// IMMUTABLE once created: command id, stable comment id and payload never
+// change, so a retry replays the same bytes. The writer's next call for the
+// same slot (same identity epoch, user, command kind, trip, row and logical
+// fingerprint) is the retry; a DIFFERENT fingerprint is a new intentional
+// action with new ids — the client never deduplicates against server text.
+
+type PendingCollabAction = {
+  commandId: string
+  command: CollabCommand
+}
+
+const pendingCollabActions = new Map<string, PendingCollabAction>()
+
+function collabKey(
+  scope: IdentityScope,
+  tripId: ID,
+  type: CollabCommand['type'],
+  rowKey: string,
+  fingerprint: string | null,
+): string | null {
+  if (fingerprint === null) return null
+  // creates keep '' — the entity id lives IN the envelope; the slot is the
+  // trip. activity.append never reaches here (no fingerprint).
+  return `${scope.epoch}:${scope.userId}:${type}:${tripId}:${rowKey}:${fingerprint}`
+}
+
+/** Claim the envelope for this logical slot. `key` names the slot (null = no
+ *  retry gesture); `mint` builds the real command when a fresh envelope is
+ *  needed. On a retry the STORED command comes back untouched — ids and
+ *  payload from the first try. */
+function claimEnvelope(
+  scope: IdentityScope,
+  tripId: ID,
+  key: string | null,
+  mint: () => CollabCommand,
+): { command: CollabCommand; commandId: string; pendingKey: string | null; isRetry: boolean } {
+  if (key === null) {
+    return { command: mint(), commandId: uuid(), pendingKey: null, isRetry: false }
+  }
+  const existing = pendingCollabActions.get(key)
+  if (existing) return { command: existing.command, commandId: existing.commandId, pendingKey: key, isRetry: true }
+  const command = mint()
+  const commandId = uuid()
+  pendingCollabActions.set(key, { commandId, command })
+  return { command, commandId, pendingKey: key, isRetry: false }
+}
+
+function settlePendingCollab(pendingKey: string | null): void {
+  if (pendingKey) pendingCollabActions.delete(pendingKey)
+}
+
+// ---- In-flight comment drafts (gate round 2 F4, rounds 3-5 C1) ----
+//
+// The cache copy of a comment that has no receipt yet. Every comment action
+// registers its draft at DISPATCH — in flight or refused by a conflict — and
+// retires it when the action settles. The pending envelope and the form text
+// own the ACTION; this overlay owns the CACHE COPY: a canonical replacement
+// (receipt adoption, recovery read, realtime UPDATE) re-attaches the draft,
+// because the server has not committed it yet. The owner is the ACTION (its
+// command id), so another action settling on the same row retires only its
+// own overlay.
+
+const commentDrafts = new Map<string, Comment>() // `${kind}:${rowId}:${commandId}`
+
+function draftKey(kind: ContributionKind, rowId: ID, commandId: string): string {
+  return `${kind}:${rowId}:${commandId}`
+}
+
+/** Every draft an unsettled comment action owns on this row, oldest first. */
+function commentDraftsFor(kind: ContributionKind, rowId: ID): Array<{ key: string; draft: Comment }> {
+  const prefix = `${kind}:${rowId}:`
+  const found: Array<{ key: string; draft: Comment }> = []
+  for (const entry of commentDrafts) {
+    if (entry[0].startsWith(prefix)) found.push({ key: entry[0], draft: entry[1] })
+  }
+  return found
+}
+
+/** Re-attach every in-flight draft after a canonical row replacement. When
+ *  the canonical row already carries a draft's comment, the server has
+ *  committed that action — its overlay retires; the others stay owned. */
+function reattachCommentDrafts(kind: ContributionKind, rowId: ID): void {
+  for (const { key, draft } of commentDraftsFor(kind, rowId)) {
+    if (kind === 'suggestion') {
+      const cur = cache.suggestions.find(x => x.id === rowId)
+      if (!cur) return
+      if (cur.comments.some(c => c.id === draft.id)) { commentDrafts.delete(key); continue }
+      cache.suggestions = cache.suggestions.map(x => x.id === rowId ? { ...x, comments: [...x.comments, draft] } : x)
+    } else {
+      const cur = cache.decisions.find(x => x.id === rowId)
+      if (!cur) return
+      if (cur.comments.some(c => c.id === draft.id)) { commentDrafts.delete(key); continue }
+      cache.decisions = cache.decisions.map(x => x.id === rowId ? { ...x, comments: [...x.comments, draft] } : x)
+    }
+  }
+}
+
+// ---- Actor-ballot operation ownership (gate rounds 3-5, R2) ----
+//
+// The LAST ballot operation an actor performs on a row owns that actor's
+// optimistic entry, independently of row object identity: a concurrent
+// comment's optimistic clone inherits the entry (so object identity cannot
+// see it), and a canonical replacement must never be clobbered.
+//
+// The record also carries the actor's CONFIRMED ballot — the last value a
+// server row showed. A claim chains it from the previous in-flight owner, so
+// an optimistic vote another operation left behind is never mistaken for a
+// confirmed one (gate round 5, P1): when a chain of ballots all fails, the
+// rollback restores the confirmed baseline, not an uncommitted prior. A
+// refused operation retracts its entry only while it still owns it; a later
+// intentional ballot supersedes by claiming a new token.
+
+type SuggestionBallotOwnership = {
+  key: string
+  rowId: ID
+  userId: ID
+  token: string
+  applied: { value: 1 | -1 | null; createdAt: number }
+  confirmed: Vote | undefined
+}
+
+type DecisionBallotOwnership = {
+  key: string
+  rowId: ID
+  userId: ID
+  token: string
+  applied: { optionId: string | null }
+  confirmed: string | undefined
+}
+
+const suggestionBallotOwners = new Map<string, SuggestionBallotOwnership>()
+const decisionBallotOwners = new Map<string, DecisionBallotOwnership>()
+
+function claimSuggestionBallot(
+  suggestionId: ID,
+  userId: ID,
+  applied: { value: 1 | -1 | null; createdAt: number },
+  confirmed: Vote | undefined,
+): { key: string; token: string; userId: ID } {
+  const key = `${suggestionId}:${userId}`
+  const token = uuid()
+  suggestionBallotOwners.set(key, { key, rowId: suggestionId, userId, token, applied, confirmed })
+  return { key, token, userId }
+}
+
+function claimDecisionBallot(
+  decisionId: ID,
+  userId: ID,
+  applied: { optionId: string | null },
+  confirmed: string | undefined,
+): { key: string; token: string; userId: ID } {
+  const key = `${decisionId}:${userId}`
+  const token = uuid()
+  decisionBallotOwners.set(key, { key, rowId: decisionId, userId, token, applied, confirmed })
+  return { key, token, userId }
+}
+
+/** A canonical row replaced the cached one: the actor's ballot it shows is
+ *  the new confirmed baseline for every in-flight ballot operation on that
+ *  row, so an echo landing mid-flight keeps the rollback target honest. */
+function noteConfirmedBallots(kind: ContributionKind, row: StopSuggestion | TripDecision): void {
+  const owners = kind === 'suggestion' ? suggestionBallotOwners : decisionBallotOwners
+  for (const rec of owners.values()) {
+    if (rec.rowId !== row.id) continue
+    if (kind === 'suggestion') {
+      const entry = (row as StopSuggestion).votes.find(v => v.userId === rec.userId)
+      rec.confirmed = entry ? { ...entry } : undefined
+    } else {
+      const entry = (row as TripDecision).votesByUserId[rec.userId]
+      rec.confirmed = typeof entry === 'string' ? entry : undefined
+    }
+  }
+}
+
+/** Release the ownership record when the action settles (any receipt except
+ *  conflict — a conflict's unresolved ballot stays owned until a later
+ *  ballot supersedes it). */
+function releaseBallotOwnership(ownership: { key: string; token: string } | undefined): void {
+  if (!ownership) return
+  const rec = suggestionBallotOwners.get(ownership.key)
+  if (rec && rec.token === ownership.token) { suggestionBallotOwners.delete(ownership.key); return }
+  const dec = decisionBallotOwners.get(ownership.key)
+  if (dec && dec.token === ownership.token) decisionBallotOwners.delete(ownership.key)
+}
+
+/** Retract the owned ghost ballot from the CURRENT row and restore the
+ *  actor's CONFIRMED baseline. Answers the next row state, or undefined when
+ *  this operation does not own the entry any more. With `force` (the row is
+ *  this operation's own optimistic base) the ghost check is skipped: the
+ *  actor's entry there is this op's ghost, a superseded op's ghost, or the
+ *  baseline itself — the baseline is correct for all three. Without `force`
+ *  (the row moved on) a canonical or later value is left alone. */
+function retractSuggestionBallotFromRow(
+  ownership: { key: string; token: string; userId: ID },
+  row: StopSuggestion,
+  opts?: { force?: boolean },
+): StopSuggestion | undefined {
+  const rec = suggestionBallotOwners.get(ownership.key)
+  if (!rec || rec.token !== ownership.token) return undefined
+  suggestionBallotOwners.delete(ownership.key)
+  const entry = row.votes.find(v => v.userId === ownership.userId)
+  if (!opts?.force) {
+    const ghost = rec.applied.value === null
+      ? !entry // the removal itself was the optimistic change
+      : !!entry && entry.value === rec.applied.value && entry.createdAt === rec.applied.createdAt
+    if (!ghost) return undefined
+  }
+  // The baseline may be REPLACED in the current row (a value change) or
+  // ABSENT from it (a removal whose absence the clone chain carried): the
+  // restore handles both, or a refused removal would leave nothing to
+  // restore and the actor's real vote would stay lost (gate round 4, R2).
+  if (!rec.confirmed) return { ...row, votes: row.votes.filter(v => v.userId !== ownership.userId) }
+  return row.votes.some(v => v.userId === ownership.userId)
+    ? { ...row, votes: row.votes.map(v => v.userId === ownership.userId ? { ...v, value: rec.confirmed!.value, createdAt: rec.confirmed!.createdAt } : v) }
+    : { ...row, votes: [...row.votes, { ...rec.confirmed }] }
+}
+
+function retractDecisionBallotFromRow(
+  ownership: { key: string; token: string; userId: ID },
+  row: TripDecision,
+  opts?: { force?: boolean },
+): TripDecision | undefined {
+  const rec = decisionBallotOwners.get(ownership.key)
+  if (!rec || rec.token !== ownership.token) return undefined
+  decisionBallotOwners.delete(ownership.key)
+  const entry = row.votesByUserId[ownership.userId]
+  if (!opts?.force) {
+    const ghost = rec.applied.optionId === null
+      ? entry === undefined
+      : entry === rec.applied.optionId
+    if (!ghost) return undefined
+  }
+  const votes = { ...row.votesByUserId }
+  if (rec.confirmed === undefined) delete votes[ownership.userId]
+  else votes[ownership.userId] = rec.confirmed
+  return { ...row, votesByUserId: votes }
+}
+
+/** Swap the optimistic activity entry for the canonical one the receipt
+ *  names, so the realtime echo upserts the SAME row instead of duplicating
+ *  it. A twin (a retry's earlier copy already re-keyed) is dropped first.
+ *
+ *  Notifications arrive as ids with NO recipient-order guarantee (the
+ *  server's member SELECT has no ORDER BY), so a positional mapping is never
+ *  inferred. A single-notification receipt is unambiguous and re-keys its
+ *  optimistic entry; any other count drops the optimistic copies and lets
+ *  the realtime echo or the next hydrate bring the server's rows. */
+function reconcileArtifacts(
+  activityId: string | undefined,
+  notificationIds: string[] | undefined,
+  localActivityId: string,
+  localNotificationIds: string[],
+): void {
+  let activity = cache.activity
+  let notifications = cache.notifications
+  let changed = false
+  if (localActivityId) {
+    if (activityId) {
+      const twinExists = activity.some(a => a.id === activityId && a.id !== localActivityId)
+      activity = twinExists
+        ? activity.filter(a => a.id !== localActivityId)
+        : activity.map(a => a.id === localActivityId ? { ...a, id: activityId } : a)
+    } else {
+      activity = activity.filter(a => a.id !== localActivityId)
+    }
+    changed = true
+  }
+  if (localNotificationIds.length) {
+    const canRename = notificationIds?.length === 1 && localNotificationIds.length === 1
+    if (canRename) {
+      const canonicalId = notificationIds[0]
+      const twinExists = notifications.some(n => n.id === canonicalId && n.id !== localNotificationIds[0])
+      notifications = twinExists
+        ? notifications.filter(n => n.id !== localNotificationIds[0])
+        : notifications.map(n => n.id === localNotificationIds[0] ? { ...n, id: canonicalId } : n)
+    } else {
+      const drop = new Set(localNotificationIds)
+      notifications = notifications.filter(n => !drop.has(n.id))
+    }
+    changed = true
+  }
+  if (changed) { cache.activity = activity; cache.notifications = notifications; commit() }
+}
+
+/** Remove the optimistic activity/notification entries a refused command
+ *  created (the server created none). Id-scoped by design: entries that other
+ *  operations added after this one started are never touched. */
+function dropArtifacts(localActivityId: string, localNotificationIds: string[]): void {
+  if (!localActivityId && localNotificationIds.length === 0) return
+  const drop = new Set(localNotificationIds)
+  cache.activity = cache.activity.filter(a => a.id !== localActivityId)
+  cache.notifications = cache.notifications.filter(n => !drop.has(n.id))
+  commit()
+}
+
+/** Surgical rollback of ONE refused contribution (gate round 2, F1). Retracts
+ *  only what this operation added, from the CURRENT cache state:
+ *
+ *  - the row: put the exact pre-command row back while nobody replaced it
+ *    (object identity); once the row moved on — a peer command cloned it, a
+ *    receipt adopted it, realtime landed — retract by id instead (comments),
+ *    or leave the newer state alone (ballots: one entry per actor makes a
+ *    ghost self-correct on the actor's next ballot; creates: the optimistic
+ *    row is only removed while it is still ours).
+ *  - artifacts: always id-scoped.
+ *
+ *  A whole-slice restore here is what erased later successful comments,
+ *  activity and notifications in the round-2 probes. */
+function rollbackContribution(args: {
+  rowKind?: ContributionKind
+  rowId?: ID
+  rowBefore?: unknown
+  rowRef?: unknown
+  commentId?: string
+  ballotOwnership?: { key: string; token: string; userId: ID }
+  localActivityId?: string
+  localNotificationIds?: string[]
+}): void {
+  const localNotificationIds = args.localNotificationIds ?? []
+  let changed = false
+  if (args.rowKind && args.rowId) {
+    if (args.rowKind === 'suggestion') {
+      const cur = cache.suggestions.find(x => x.id === args.rowId)
+      if (cur && cur === args.rowRef) {
+        cache.suggestions = args.rowBefore !== undefined
+          ? cache.suggestions.map(x => x.id === args.rowId ? args.rowBefore as StopSuggestion : x)
+          : cache.suggestions.filter(x => x.id !== args.rowId)
+        // The restored base can carry an UNCOMMITTED ballot an earlier
+        // in-flight operation left behind (gate round 5, P1): force the
+        // actor's vote to the confirmed baseline while this op owns it.
+        if (args.ballotOwnership && args.rowBefore !== undefined) {
+          const repaired = retractSuggestionBallotFromRow(args.ballotOwnership, args.rowBefore as StopSuggestion, { force: true })
+          if (repaired) cache.suggestions = cache.suggestions.map(x => x.id === args.rowId ? repaired : x)
+        }
+        changed = true
+        releaseBallotOwnership(args.ballotOwnership)
+      } else if (cur) {
+        // The row moved on (a peer command cloned it, a receipt adopted it,
+        // realtime landed): retract by id, preserving everything that is not
+        // ours — including later comments and later intentional ballots.
+        let next = cur
+        if (args.commentId && next.comments.some(c => c.id === args.commentId)) {
+          next = { ...next, comments: next.comments.filter(c => c.id !== args.commentId) }
+        }
+        if (args.ballotOwnership) {
+          const retracted = retractSuggestionBallotFromRow(args.ballotOwnership, next)
+          if (retracted) next = retracted
+        }
+        if (next !== cur) {
+          cache.suggestions = cache.suggestions.map(x => x.id === args.rowId ? next : x)
+          changed = true
+        }
+      }
+    } else {
+      const cur = cache.decisions.find(x => x.id === args.rowId)
+      if (cur && cur === args.rowRef) {
+        cache.decisions = args.rowBefore !== undefined
+          ? cache.decisions.map(x => x.id === args.rowId ? args.rowBefore as TripDecision : x)
+          : cache.decisions.filter(x => x.id !== args.rowId)
+        if (args.ballotOwnership && args.rowBefore !== undefined) {
+          const repaired = retractDecisionBallotFromRow(args.ballotOwnership, args.rowBefore as TripDecision, { force: true })
+          if (repaired) cache.decisions = cache.decisions.map(x => x.id === args.rowId ? repaired : x)
+        }
+        changed = true
+        releaseBallotOwnership(args.ballotOwnership)
+      } else if (cur) {
+        let next = cur
+        if (args.commentId && next.comments.some(c => c.id === args.commentId)) {
+          next = { ...next, comments: next.comments.filter(c => c.id !== args.commentId) }
+        }
+        if (args.ballotOwnership) {
+          const retracted = retractDecisionBallotFromRow(args.ballotOwnership, next)
+          if (retracted) next = retracted
+        }
+        if (next !== cur) {
+          cache.decisions = cache.decisions.map(x => x.id === args.rowId ? next : x)
+          changed = true
+        }
+      }
+    }
+  } else {
+    releaseBallotOwnership(args.ballotOwnership)
+  }
+  const hadArtifacts = !!args.localActivityId || localNotificationIds.length > 0
+  const activityCount = cache.activity.length
+  const notificationCount = cache.notifications.length
+  dropArtifacts(args.localActivityId ?? '', localNotificationIds)
+  if (changed || cache.activity.length !== activityCount || cache.notifications.length !== notificationCount || hadArtifacts) {
+    commit()
+  }
+}
+
+/** Re-read ONE suggestion/decision row into the cache — the freshness
+ *  recovery when a receipt's row is stale, or the authoritative read a
+ *  conflict starts. Bound to the identity that asked, and FENCED by the row's
+ *  own generation (gate round 2, F3): the row object is captured BEFORE the
+ *  read and the result applies only if it is still current on arrival, so a
+ *  delayed snapshot cannot overwrite a newer canonical row. Unresolved draft
+ *  comments (a conflict's preserved input, one per owning action) are
+ *  re-attached to the authoritative row, because the server has not committed
+ *  them yet. */
+async function refetchContributionRow(
+  kind: ContributionKind,
+  rowId: ID,
+  scope: IdentityScope,
+): Promise<void> {
+  try {
+    const table = kind === 'suggestion' ? 'suggestions' : 'decisions'
+    const before = kind === 'suggestion'
+      ? cache.suggestions.find(x => x.id === rowId)
+      : cache.decisions.find(x => x.id === rowId)
+    const { data, error } = await supabase.from(table).select('*').eq('id', rowId).maybeSingle()
+    if (error || !data || !isCurrentIdentity(scope)) return
+    const current = kind === 'suggestion'
+      ? cache.suggestions.find(x => x.id === rowId)
+      : cache.decisions.find(x => x.id === rowId)
+    // The row moved on between dispatch and arrival: the snapshot is stale —
+    // discard it (a later event or receipt brings the truth) rather than
+    // regress the cache.
+    if (current !== before) return
+    if (kind === 'suggestion') {
+      const mapped = suggestionRowToEntry(data)
+      cache.suggestions = cache.suggestions.some(x => x.id === rowId)
+        ? cache.suggestions.map(x => x.id === rowId ? mapped : x)
+        : [...cache.suggestions, mapped]
+      noteConfirmedBallots('suggestion', mapped)
+    } else {
+      const mapped = decisionRowToEntry(data)
+      cache.decisions = cache.decisions.some(x => x.id === rowId)
+        ? cache.decisions.map(x => x.id === rowId ? mapped : x)
+        : [...cache.decisions, mapped]
+      noteConfirmedBallots('decision', mapped)
+    }
+    reattachCommentDrafts(kind, rowId)
+    commit()
+  } catch (e) {
+    console.error(`[yatraflow] ${kind} row refetch failed`, e)
+  }
+}
+
+/** Submit one contribution command and settle its receipt against the cache.
+ *  Every RPC-backed writer funnels through this, so the identity, freshness,
+ *  envelope, rollback and conflict rules cannot drift apart between them. */
+async function runContributionCommand(args: {
+  scope: IdentityScope
+  tripId: ID
+  commandId: string
+  command: CollabCommand
+  pendingKey: string | null
+  rowKind: ContributionKind
+  rowId: ID
+  rowBefore?: unknown
+  rowRef?: unknown
+  commentId?: string
+  ballotOwnership?: { key: string; token: string; userId: ID }
+  localActivityId: string
+  localNotificationIds: string[]
+}): Promise<CollabOutcome> {
+  const receipt = await submitCollabCommand(args.commandId, args.tripId, args.command)
+  // Identity binding first: a receipt that lands after sign-out or an
+  // account switch writes — and rolls back — NOTHING. A restore here would
+  // put the previous identity's slices into the next identity's cache, the
+  // #45 leak all over again. (The envelope map is cleared on the identity
+  // change itself.)
+  if (!isCurrentIdentity(args.scope)) return receipt
+  if (receipt.status === 'applied' || receipt.status === 'alreadyApplied') {
+    const stillCurrent = args.rowKind === 'suggestion'
+      ? cache.suggestions.find(x => x.id === args.rowId)
+      : cache.decisions.find(x => x.id === args.rowId)
+    if (stillCurrent !== args.rowRef) {
+      // Per-row freshness: the row moved on (realtime, a peer command, or one
+      // of our own later commands). Discard the receipt row and refetch that
+      // row; it already carries every contribution.
+      void refetchContributionRow(args.rowKind, args.rowId, args.scope)
+    } else if (args.rowKind === 'suggestion') {
+      if (receipt.suggestion) {
+        cache.suggestions = cache.suggestions.map(x => x.id === args.rowId ? receipt.suggestion! : x)
+        noteConfirmedBallots(args.rowKind, receipt.suggestion)
+        reattachCommentDrafts(args.rowKind, args.rowId)
+        commit()
+      }
+    } else if (receipt.decision) {
+      cache.decisions = cache.decisions.map(x => x.id === args.rowId ? receipt.decision! : x)
+      noteConfirmedBallots(args.rowKind, receipt.decision)
+      reattachCommentDrafts(args.rowKind, args.rowId)
+      commit()
+    }
+    // applied and alreadyApplied both carry the stored receipt's artifact ids
+    // (contract answer): re-key this try's optimistic copies onto them.
+    reconcileArtifacts(receipt.activityId, receipt.notificationIds, args.localActivityId, args.localNotificationIds)
+    noteTripRevision(args.tripId, receipt.tripRevision)
+    // The action settled: the next call for this slot is a NEW intentional
+    // action with fresh ids, and the optimistic ballot is server-backed now.
+    settlePendingCollab(args.pendingKey)
+    releaseBallotOwnership(args.ballotOwnership)
+    // Only THIS action's overlay retires (gate round 4, C1): a comment still
+    // in flight or unresolved keeps its owner until ITS action settles.
+    commentDrafts.delete(draftKey(args.rowKind, args.rowId, args.commandId))
+    return receipt
+  }
+  if (receipt.status === 'conflict') {
+    // Keep the optimistic local work — the planner's comment or ballot stays
+    // on screen; dropping it silently is the exact defect this stage repairs.
+    // The side artifacts go (the server created none for a command it
+    // refused). The envelope STAYS pending: the action is unresolved, and the
+    // caller's retry path reuses it. The comment's dispatch-time draft keeps
+    // owning the cache copy (gate round 5, P2).
+    dropArtifacts(args.localActivityId, args.localNotificationIds)
+    // Start the authoritative reconciliation the feedback promises: a fenced
+    // read of the contribution row (re-attaching every in-flight draft) and
+    // the acknowledged trip revision — which never advances the client CAS.
+    void refetchContributionRow(args.rowKind, args.rowId, args.scope)
+    noteTripRevision(args.tripId, receipt.tripRevision)
+    return receipt
+  }
+  if (receipt.status === 'forbidden' || receipt.status === 'invalid') {
+    // A final refusal settles the action: retract only this operation's
+    // entries, and let the next call be a new action.
+    rollbackContribution({
+      rowKind: args.rowKind, rowId: args.rowId, rowBefore: args.rowBefore, rowRef: args.rowRef,
+      commentId: args.commentId, ballotOwnership: args.ballotOwnership,
+      localActivityId: args.localActivityId, localNotificationIds: args.localNotificationIds,
+    })
+    settlePendingCollab(args.pendingKey)
+    releaseBallotOwnership(args.ballotOwnership)
+    commentDrafts.delete(draftKey(args.rowKind, args.rowId, args.commandId))
+    return receipt
+  }
+  // unavailable: the command MAY have committed (a lost response). Retract
+  // the optimistic entries — nothing was confirmed — and KEEP the envelope:
+  // the writer's next call for this slot retries the same identity, which is
+  // what makes the retry idempotent. The ballot retraction reclaims the
+  // actor's ghost entry, so a retried vote is derived as a SET again and
+  // cannot become a removal (gate round 3, R2). The draft overlay retires
+  // with the rollback: nothing visible owns a cache copy any more, and a
+  // retried comment re-records it.
+  rollbackContribution({
+    rowKind: args.rowKind, rowId: args.rowId, rowBefore: args.rowBefore, rowRef: args.rowRef,
+    commentId: args.commentId, ballotOwnership: args.ballotOwnership,
+    localActivityId: args.localActivityId, localNotificationIds: args.localNotificationIds,
+  })
+  releaseBallotOwnership(args.ballotOwnership)
+  commentDrafts.delete(draftKey(args.rowKind, args.rowId, args.commandId))
+  return receipt
+}
+
 // ---------------- Suggestions / votes / comments ----------------
 
-export function addSuggestion(tripId: ID, s: Omit<StopSuggestion, 'id' | 'votes' | 'comments' | 'status' | 'createdAt' | 'tripId'>): void {
+export function addSuggestion(
+  tripId: ID,
+  s: Omit<StopSuggestion, 'id' | 'proposedBy' | 'votes' | 'comments' | 'status' | 'createdAt' | 'tripId'>,
+): Promise<CollabOutcome> {
+  const scope = identityScope()
+  // The server derives the actor from auth.uid(); a signed-out caller has no
+  // actor, so there is nothing to submit. The caller's proposedBy parameter
+  // is GONE — the actor never travels in the payload (#801).
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!s.title.trim()) return Promise.resolve({ status: 'invalid', reason: 'empty title' })
+  // The envelope (F2) owns the entity id: a retry of an uncertain create
+  // reuses the FIRST try's id, so the server row id is stable. The
+  // fingerprint is the id-free payload — the suggestion carries no
+  // client-minted ids.
+  const suggestion = {
+    dayIndex: s.dayIndex, title: s.title, category: s.category, locationName: s.locationName,
+    lat: s.lat, lng: s.lng, description: s.description, visitMinutes: s.visitMinutes,
+    estimatedEntryFeeInr: s.estimatedEntryFeeInr, estimatedTransportInr: s.estimatedTransportInr,
+  }
+  const claimed = claimEnvelope(scope, tripId,
+    collabKey(scope, tripId, 'suggestion.create', '', `c:${JSON.stringify(suggestion)}`),
+    () => ({ type: 'suggestion.create', suggestionId: uuid(), suggestion }))
+  const command = claimed.command
+  if (command.type !== 'suggestion.create') return Promise.resolve({ status: 'unavailable' })
+  const id = command.suggestionId
   // Client generates the UUID so the cache and the DB row agree on the id
   // (a server-generated default would diverge after the next hydration).
-  const id = uuid()
-  const row = {
-    id, trip_id: tripId, day_index: s.dayIndex, proposed_by: s.proposedBy, title: s.title, category: s.category,
-    location_name: s.locationName, lat: s.lat, lng: s.lng, description: s.description, visit_minutes: s.visitMinutes,
-    estimated_entry_fee_inr: s.estimatedEntryFeeInr, estimated_transport_inr: s.estimatedTransportInr,
-    votes: [], comments: [], status: 'open',
-  }
-  cache.suggestions = [...cache.suggestions, { ...s, id, tripId, votes: [], comments: [], status: 'open', createdAt: Date.now() }]
+  cache.suggestions = [...cache.suggestions, {
+    ...s, id, tripId, proposedBy: scope.userId, votes: [], comments: [], status: 'open' as const, createdAt: Date.now(),
+  }]
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId, actorId: scope.userId,
+    verb: `suggested “${s.title}”`, target: `Day ${(s.dayIndex ?? 0) + 1}`, at: Date.now(),
+  }]
+  const localNotificationIds: string[] = []
   const trip = tripById(tripId)
-  if (trip && cache.sessionUserId) {
-    addActivity(tripId, cache.sessionUserId, `suggested “${s.title}”`, `Day ${(s.dayIndex ?? 0) + 1}`)
+  if (trip) {
     for (const m of trip.members ?? []) {
-      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, tripId, `${userName(cache.sessionUserId)} suggested “${s.title}” for Day ${(s.dayIndex ?? 0) + 1}.`)
+      if (m.userId !== scope.userId) {
+        const nid = uuid()
+        localNotificationIds.push(nid)
+        cache.notifications = [{
+          id: nid, userId: m.userId, tripId, read: false, at: Date.now(),
+          text: `${userName(scope.userId)} suggested “${s.title}” for Day ${(s.dayIndex ?? 0) + 1}.`,
+        }, ...cache.notifications]
+      }
     }
   }
   commit()
-  fire('suggestions', supabase.from('suggestions').insert(row))
+  const rowRef = cache.suggestions.find(x => x.id === id)
+  return runContributionCommand({
+    scope, tripId, commandId: claimed.commandId, command, pendingKey: claimed.pendingKey,
+    rowKind: 'suggestion', rowId: id, rowRef, localActivityId, localNotificationIds,
+  })
 }
 
-export function voteSuggestion(tripId: ID, suggestionId: ID, userId: ID, value: 1 | -1): void {
+export function voteSuggestion(tripId: ID, suggestionId: ID, value: 1 | -1): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
   const sgIdx = cache.suggestions.findIndex(x => x.id === suggestionId)
-  if (sgIdx < 0) return
-  const sg = structuredClone(cache.suggestions[sgIdx])
-  const existing = sg.votes.find(v => v.userId === userId)
-  // Toggling the same value again is a *removal*, and the activity feed has to say
-  // so — logging the value's verb made "I take back my upvote" read as "upvoted",
-  // which is the opposite of what happened. #36-11.
+  if (sgIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
+  if (cache.suggestions[sgIdx].status && cache.suggestions[sgIdx].status !== 'open') {
+    // F13: a closed suggestion takes no more ballots — the accept/decline
+    // record IS the decision, and the vote buttons go quiet with it.
+    return Promise.resolve({ status: 'invalid', reason: 'suggestion is not open' })
+  }
+  const rowBefore = cache.suggestions[sgIdx]
+  const sg = structuredClone(rowBefore)
+  const existing = sg.votes.find(v => v.userId === scope.userId)
+  // The prior snapshot is captured BEFORE the clone is mutated below
+  // (gate round 4, R2): spreading the entry after `existing.value = value`
+  // would record the failed ballot as its own prior, and a refused change
+  // could then never restore the vote the actor actually had.
+  const priorVote = existing ? { ...existing } : undefined
+  // The rollback baseline is the last CONFIRMED ballot, never the optimistic
+  // entry (gate round 5, P1): when an earlier ballot is still in flight, its
+  // uncommitted value chains forward, so a chain of refusals restores the
+  // server-backed vote instead of a ghost.
+  const previousOwner = suggestionBallotOwners.get(`${suggestionId}:${scope.userId}`)
+  const confirmedVote = previousOwner ? previousOwner.confirmed : priorVote
+  // Toggling the same value again is a *removal* — the CLIENT says so with
+  // `value: null`, and the activity feed has to say so too: logging the
+  // value's verb made "I take back my upvote" read as "upvoted", which is the
+  // opposite of what happened. #36-11. The ballot command itself never
+  // toggles (contract): a retried ballot with the same value is a no-op on
+  // the server, so a retry cannot flip the vote.
   let removed = false
+  let ballot: 1 | -1 | null = value
+  let appliedCreatedAt = Date.now()
   if (existing) {
-    if (existing.value === value) { sg.votes = sg.votes.filter(v => v.userId !== userId); removed = true }
-    else existing.value = value
+    if (existing.value === value) { sg.votes = sg.votes.filter(v => v.userId !== scope.userId); removed = true; ballot = null }
+    else { existing.value = value; appliedCreatedAt = existing.createdAt = Date.now() }
   } else {
-    sg.votes.push({ userId, value, createdAt: Date.now() })
+    sg.votes.push({ userId: scope.userId, value, createdAt: appliedCreatedAt })
   }
+  const claimed = claimEnvelope(scope, tripId,
+    collabKey(scope, tripId, 'suggestion.ballot', suggestionId, `v:${ballot}`),
+    () => ({ type: 'suggestion.ballot', suggestionId, value: ballot }))
+  const command = claimed.command
+  if (command.type !== 'suggestion.ballot') return Promise.resolve({ status: 'unavailable' })
+  // Operation ownership (gate round 3, R2): THIS op owns the actor's
+  // optimistic entry until it settles, so a rollback can reclaim it even when
+  // a concurrent comment's clone moved the row object.
+  const ballotOwnership = claimSuggestionBallot(suggestionId, scope.userId,
+    { value: ballot, createdAt: appliedCreatedAt }, confirmedVote)
   cache.suggestions = [...cache.suggestions.slice(0, sgIdx), sg, ...cache.suggestions.slice(sgIdx + 1)]
-  addActivity(
-    tripId,
-    userId,
-    removed ? 'removed their vote on a suggestion' : value > 0 ? 'upvoted a suggestion' : 'downvoted a suggestion',
-    sg.title,
-  )
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId, actorId: scope.userId,
+    verb: removed ? 'removed their vote on a suggestion' : value > 0 ? 'upvoted a suggestion' : 'downvoted a suggestion',
+    target: sg.title, at: Date.now(),
+  }]
   commit()
-  fire('suggestions', supabase.from('suggestions').update({ votes: sg.votes }).eq('id', suggestionId))
+  const rowRef = cache.suggestions.find(x => x.id === suggestionId)
+  return runContributionCommand({
+    scope, tripId, commandId: claimed.commandId, command, pendingKey: claimed.pendingKey,
+    rowKind: 'suggestion', rowId: suggestionId, rowBefore, rowRef, ballotOwnership,
+    localActivityId, localNotificationIds: [],
+  })
 }
 
-export function addCommentToSuggestion(tripId: ID, suggestionId: ID, authorId: ID, text: string): void {
+export function addCommentToSuggestion(tripId: ID, suggestionId: ID, text: string): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  const trimmed = text.trim()
+  if (!trimmed) return Promise.resolve({ status: 'invalid', reason: 'empty comment' })
   const sgIdx = cache.suggestions.findIndex(x => x.id === suggestionId)
-  if (sgIdx < 0 || !text.trim()) return
-  const sg = structuredClone(cache.suggestions[sgIdx])
-  sg.comments.push({ id: uid('cm'), authorId, text: text.trim(), createdAt: Date.now() })
+  if (sgIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
+  const rowBefore = cache.suggestions[sgIdx]
+  const sg = structuredClone(rowBefore)
+  // The envelope (F2) owns the stable comment id and the whole command: a
+  // retry of an uncertain comment replays the FIRST try's ids and text,
+  // so a command that committed behind a lost response cannot duplicate
+  // itself. A different text is a NEW intentional action with a new id.
+  const claimed = claimEnvelope(scope, tripId,
+    collabKey(scope, tripId, 'suggestion.comment', suggestionId, `t:${trimmed}`),
+    () => ({ type: 'suggestion.comment', suggestionId, commentId: uid('cm'), text: trimmed }))
+  const command = claimed.command
+  if (command.type !== 'suggestion.comment') return Promise.resolve({ status: 'unavailable' })
+  const comment: Comment = { id: command.commentId, authorId: scope.userId, text: trimmed, createdAt: Date.now() }
+  sg.comments.push(comment)
+  // The draft overlay starts at DISPATCH (gate round 5, P2): while this
+  // comment has no receipt, a canonical replacement of the row — a peer
+  // receipt adoption or a recovery read — re-attaches it, so pending input
+  // stays on screen until its own action settles.
+  commentDrafts.set(draftKey('suggestion', suggestionId, claimed.commandId), comment)
   cache.suggestions = [...cache.suggestions.slice(0, sgIdx), sg, ...cache.suggestions.slice(sgIdx + 1)]
-  addActivity(tripId, authorId, 'commented on a suggestion', sg.title)
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId, actorId: scope.userId, verb: 'commented on a suggestion', target: sg.title, at: Date.now(),
+  }]
+  const localNotificationIds: string[] = []
   for (const v of new Set([...sg.votes.map(v => v.userId), sg.proposedBy])) {
-    if (v !== authorId) pushNotification(v, tripId, `${userName(authorId)} commented on “${sg.title}”.`)
+    if (v !== scope.userId) {
+      const nid = uuid()
+      localNotificationIds.push(nid)
+      cache.notifications = [{
+        id: nid, userId: v, tripId, read: false, at: Date.now(),
+        text: `${userName(scope.userId)} commented on “${sg.title}”.`,
+      }, ...cache.notifications]
+    }
   }
   commit()
-  fire('suggestions', supabase.from('suggestions').update({ comments: sg.comments }).eq('id', suggestionId))
+  const rowRef = cache.suggestions.find(x => x.id === suggestionId)
+  return runContributionCommand({
+    scope, tripId, commandId: claimed.commandId, command, pendingKey: claimed.pendingKey,
+    rowKind: 'suggestion', rowId: suggestionId, rowBefore, rowRef,
+    commentId: comment.id, localActivityId, localNotificationIds,
+  })
 }
 
-export function addCommentToDecision(tripId: ID, decisionId: ID, authorId: ID, text: string): void {
+export function addCommentToDecision(tripId: ID, decisionId: ID, text: string): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  const trimmed = text.trim()
+  if (!trimmed) return Promise.resolve({ status: 'invalid', reason: 'empty comment' })
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
-  if (dIdx < 0 || !text.trim()) return
+  if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
   const d = structuredClone(cache.decisions[dIdx])
-  d.comments.push({ id: uid('cm'), authorId, text: text.trim(), createdAt: Date.now() })
+  // The envelope (F2) owns the stable comment id and the whole command, same
+  // as the suggestion comment path.
+  const claimed = claimEnvelope(scope, tripId,
+    collabKey(scope, tripId, 'decision.comment', decisionId, `t:${trimmed}`),
+    () => ({ type: 'decision.comment', decisionId, commentId: uid('cm'), text: trimmed }))
+  const command = claimed.command
+  if (command.type !== 'decision.comment') return Promise.resolve({ status: 'unavailable' })
+  const comment: Comment = { id: command.commentId, authorId: scope.userId, text: trimmed, createdAt: Date.now() }
+  d.comments.push(comment)
+  // Same dispatch-time draft ownership as the suggestion comment path (gate
+  // round 5, P2): pending input survives any canonical row replacement.
+  commentDrafts.set(draftKey('decision', decisionId, claimed.commandId), comment)
+  const rowBefore = cache.decisions[dIdx]
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
-  addActivity(tripId, authorId, 'commented on a decision', d.question)
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId, actorId: scope.userId, verb: 'commented on a decision', target: d.question, at: Date.now(),
+  }]
   // Voters hear about it the same way suggestion voters do; the raiser is
   // included so a comment on their own question still pings the other side.
+  const localNotificationIds: string[] = []
   for (const v of new Set([...Object.keys(d.votesByUserId), d.raisedBy])) {
-    if (v !== authorId) pushNotification(v, tripId, `${userName(authorId)} commented on “${d.question}”.`)
+    if (v !== scope.userId) {
+      const nid = uuid()
+      localNotificationIds.push(nid)
+      cache.notifications = [{
+        id: nid, userId: v, tripId, read: false, at: Date.now(),
+        text: `${userName(scope.userId)} commented on “${d.question}”.`,
+      }, ...cache.notifications]
+    }
   }
   commit()
-  // The column ships in 20260920_decision_comments.sql: probe before writing so
-  // a pre-migration database keeps the comment session-only instead of firing a
-  // doomed UPDATE (the party-prefs degradation, same shape).
-  void decisionsHaveComments().then(ok => {
-    if (ok) fire('decisions', supabase.from('decisions').update({ comments: d.comments }).eq('id', decisionId))
+  const rowRef = cache.decisions.find(x => x.id === decisionId)
+  return runContributionCommand({
+    scope, tripId, commandId: claimed.commandId, command, pendingKey: claimed.pendingKey,
+    rowKind: 'decision', rowId: decisionId, rowBefore, rowRef,
+    commentId: comment.id, localActivityId, localNotificationIds,
   })
 }
 
@@ -4874,90 +5609,211 @@ export function acceptSuggestionIntoTimeline(tripId: ID, suggestionId: ID): void
     priority: 'nice-to-have', status: 'confirmed',
   })
   cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? { ...x, status: 'accepted' as const } : x)
-  const actor = cache.sessionUserId
-  if (actor) addActivity(tripId, actor, 'accepted suggestion into timeline', sg.title)
+  void addActivity(tripId, 'accepted suggestion into timeline', sg.title)
   commit()
   fire('suggestions', supabase.from('suggestions').update({ status: 'accepted' }).eq('id', suggestionId))
 }
 
-export function declineSuggestion(tripId: ID, suggestionId: ID): void {
+export function declineSuggestion(tripId: ID, suggestionId: ID): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
   const sg = cache.suggestions.find(x => x.id === suggestionId)
-  if (sg) { cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? { ...x, status: 'declined' as const } : x); addActivity(tripId, cache.sessionUserId!, 'declined a suggestion', sg.title); commit(); fire('suggestions', supabase.from('suggestions').update({ status: 'declined' }).eq('id', suggestionId)) }
+  if (!sg) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
+  // F13 — the decline lifecycle: a repeated decline is an idempotent no-op,
+  // and a terminal suggestion (accepted) cannot flip to declined.
+  if (sg.status === 'declined') return Promise.resolve({ status: 'alreadyApplied', tripRevision: tripRevisionOf(tripId) })
+  if (sg.status && sg.status !== 'open') return Promise.resolve({ status: 'invalid', reason: 'suggestion is not open' })
+  // A workflow update (status only) — it stays on the direct write path by
+  // contract; only create/ballot/comment/activity commands use the RPC. The
+  // outcome still reaches the caller, and a failed update retracts only THIS
+  // operation's change (surgical rollback, gate round 2 F1) instead of
+  // reading as success.
+  const rowBefore = sg
+  cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? { ...x, status: 'declined' as const } : x)
+  commit()
+  const rowRef = cache.suggestions.find(x => x.id === suggestionId)
+  void addActivity(tripId, 'declined a suggestion', sg.title)
+  const scopeAtAwait = scope
+  // `.select('id')` answers the rows the update actually reached: an empty
+  // answer means the contribution row is gone server-side, so there is
+  // nothing to mark declined and the optimistic status must go.
+  return Promise.resolve(supabase.from('suggestions').update({ status: 'declined' }).eq('id', suggestionId).select('id'))
+    .then(({ data, error }) => {
+      if (error) {
+        // A rollback is an identity-bound continuation too: writing the
+        // previous identity's state into the next identity's cache would be
+        // the #45 leak all over again.
+        if (isCurrentIdentity(scopeAtAwait)) {
+          rollbackContribution({ rowKind: 'suggestion', rowId: suggestionId, rowBefore, rowRef })
+        }
+        return { status: 'unavailable' }
+      }
+      if (Array.isArray(data) && data.length === 0) {
+        if (isCurrentIdentity(scopeAtAwait)) {
+          rollbackContribution({ rowKind: 'suggestion', rowId: suggestionId, rowBefore, rowRef })
+        }
+        return { status: 'invalid', reason: 'suggestion row is gone' }
+      }
+      return { status: 'applied', tripRevision: tripRevisionOf(tripId) }
+    })
 }
 
 // ---------------- Decisions ----------------
 
-export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'context'> & { options: NewDecisionOption[] }): void {
-  if (!cache.sessionUserId) return
-  // Same cache/DB id agreement as addSuggestion.
-  const id = uuid()
-  // #335: the caller's option id IS the contract, so keep it. The Map rail
-  // mints `slot:<key>:<hit>` for the join that puts a poll on its part and
-  // stamps `slotKey` on the stop it resolves to; the shortlist mints the place
-  // id so a re-add collapses into the poll already open; and votes recorded in
-  // other rows point at these ids. The old `uid('o')` rewrite broke all three
-  // (and destroyed the slot contract in the cache copy AND the row). Mint only
-  // when there is nothing to keep, or when two options in THIS poll collide —
-  // a shared id would make one vote count for both.
-  const seen = new Set<string>()
-  const options = d.options.map(o => {
-    const optionId = o.id && !seen.has(o.id) ? o.id : uid('o')
-    seen.add(optionId)
-    return { ...o, id: optionId }
-  })
-  const row = {
-    id, trip_id: tripId, question: d.question, context: d.context, options,
-    votes_by_user_id: {}, status: 'open', raised_by: cache.sessionUserId,
-  }
-  cache.decisions = [...cache.decisions, { ...d, id, tripId, votesByUserId: {}, comments: [], status: 'open', raisedBy: cache.sessionUserId, createdAt: Date.now(), options }]
-  addActivity(tripId, cache.sessionUserId, `raised decision “${d.question}”`, 'Decisions')
+export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'context'> & { options: NewDecisionOption[] }): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!d.question.trim()) return Promise.resolve({ status: 'invalid', reason: 'empty question' })
+  // The envelope (gate round 3, R1): the LOGICAL FORM is fingerprinted BEFORE
+  // any id is minted, and the retained action owns the whole normalized
+  // payload — question, context, the decision id and every option id. A retry
+  // of an uncertain poll reuses that payload verbatim; a caller-supplied
+  // option id is preserved inside it; and a settled intentional repeat (the
+  // envelope freed) mints everything fresh.
+  const formFingerprint = `f:${JSON.stringify({
+    question: d.question,
+    context: d.context ?? null,
+    options: d.options.map(o => ({ ...o, id: o.id ?? null })),
+  })}`
+  const claimed = claimEnvelope(scope, tripId,
+    collabKey(scope, tripId, 'decision.create', '', formFingerprint),
+    () => {
+      // #335: the caller's option id IS the contract, so keep it. The Map rail
+      // mints `slot:<key>:<hit>` for the join that puts a poll on its part and
+      // stamps `slotKey` on the stop it resolves to; the shortlist mints the place
+      // id so a re-add collapses into the poll already open; and votes recorded in
+      // other rows point at these ids. Mint only when there is nothing to keep, or
+      // when two options in THIS poll collide — a shared id would make one vote
+      // count for both.
+      const seen = new Set<string>()
+      const options = d.options.map(o => {
+        const optionId = o.id && !seen.has(o.id) ? o.id : uid('o')
+        seen.add(optionId)
+        return { ...o, id: optionId }
+      })
+      return {
+        type: 'decision.create',
+        decisionId: uuid(),
+        decision: { question: d.question, ...(d.context !== undefined ? { context: d.context } : {}), options: options.map(o => ({ ...o })) },
+      }
+    })
+  const command = claimed.command
+  if (command.type !== 'decision.create') return Promise.resolve({ status: 'unavailable' })
+  const id = command.decisionId
+  const options = command.decision.options as DecisionOption[]
+  cache.decisions = [...cache.decisions, {
+    ...d, id, tripId, options, votesByUserId: {}, comments: [], status: 'open' as const,
+    raisedBy: scope.userId, createdAt: Date.now(),
+  }]
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId, actorId: scope.userId, verb: `raised decision “${d.question}”`, target: 'Decisions', at: Date.now(),
+  }]
   // Notification parity with addSuggestion: the other members hear about new
   // group input too, not just suggestions.
+  const localNotificationIds: string[] = []
   const trip = tripById(tripId)
   if (trip) {
     for (const m of trip.members ?? []) {
-      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, tripId, `${userName(cache.sessionUserId)} raised a decision: “${d.question}”.`)
+      if (m.userId !== scope.userId) {
+        const nid = uuid()
+        localNotificationIds.push(nid)
+        cache.notifications = [{
+          id: nid, userId: m.userId, tripId, read: false, at: Date.now(),
+          text: `${userName(scope.userId)} raised a decision: “${d.question}”.`,
+        }, ...cache.notifications]
+      }
     }
   }
   commit()
-  fire('decisions', supabase.from('decisions').insert(row))
+  const rowRef = cache.decisions.find(x => x.id === id)
+  return runContributionCommand({
+    scope, tripId, commandId: claimed.commandId, command, pendingKey: claimed.pendingKey,
+    rowKind: 'decision', rowId: id, rowRef, localActivityId, localNotificationIds,
+  })
 }
 
-export function voteOnDecision(decisionId: ID, optionId: ID): void {
+export function voteOnDecision(decisionId: ID, optionId: ID): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
-  if (dIdx < 0 || !cache.sessionUserId || cache.decisions[dIdx].status !== 'open') return
-  const d = structuredClone(cache.decisions[dIdx])
-  d.votesByUserId[cache.sessionUserId] = optionId
+  if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
+  if (cache.decisions[dIdx].status !== 'open') return Promise.resolve({ status: 'invalid', reason: 'decision is not open' })
+  // The chosen option must exist — the contract validates it server-side too,
+  // and a ballot pointing nowhere would count a vote for nothing.
+  if (!cache.decisions[dIdx].options.some(o => o.id === optionId)) {
+    return Promise.resolve({ status: 'invalid', reason: 'unknown option' })
+  }
+  const rowBefore = cache.decisions[dIdx]
+  const d = structuredClone(rowBefore)
+  // One ballot per actor, keyed by auth.uid() on the server. A ballot change
+  // is a SET to the new option; a retried ballot with the same option
+  // is a no-op, never a toggle.
+  const priorOptionId = d.votesByUserId[scope.userId]
+  // The rollback baseline is the last CONFIRMED option, chained from an
+  // in-flight owner when one exists (gate round 5, P1 — the suggestion
+  // counterpart explains the ghost-vote chain this prevents).
+  const previousOwner = decisionBallotOwners.get(`${decisionId}:${scope.userId}`)
+  const confirmedOption = previousOwner ? previousOwner.confirmed : priorOptionId
+  d.votesByUserId[scope.userId] = optionId
+  const claimed = claimEnvelope(scope, d.tripId,
+    collabKey(scope, d.tripId, 'decision.ballot', decisionId, `o:${optionId}`),
+    () => ({ type: 'decision.ballot', decisionId, optionId }))
+  const command = claimed.command
+  if (command.type !== 'decision.ballot') return Promise.resolve({ status: 'unavailable' })
+  const ballotOwnership = claimDecisionBallot(decisionId, scope.userId, { optionId }, confirmedOption)
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
-  addActivity(d.tripId, cache.sessionUserId, 'voted on a decision', d.question)
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId: d.tripId, actorId: scope.userId, verb: 'voted on a decision', target: d.question, at: Date.now(),
+  }]
   // No per-vote member pings — on a 6-person trip every ballot pinged five
   // people and the bell became noise. The activity feed carries the vote;
   // members hear about the raise and the resolution only.
   commit()
-  fire('decisions', supabase.from('decisions').update({ votes_by_user_id: d.votesByUserId }).eq('id', decisionId))
+  const rowRef = cache.decisions.find(x => x.id === decisionId)
+  return runContributionCommand({
+    scope, tripId: d.tripId, commandId: claimed.commandId, command, pendingKey: claimed.pendingKey,
+    rowKind: 'decision', rowId: decisionId, rowBefore, rowRef, ballotOwnership,
+    localActivityId, localNotificationIds: [],
+  })
 }
 
-export function resolveDecision(decisionId: ID, optionId: ID): void {
+export function resolveDecision(decisionId: ID, optionId: ID): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
-  if (dIdx < 0) return
+  if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
   // Idempotence (#336): a decision resolves ONCE. A double-tap used to stamp
   // the status again AND run the landing branch twice, adding the winner twice
-  // (each addStop minted a new stop id). voteOnDecision already guards this —
-  // and like there, a row with no status is not yet resolved (older rows).
+  // (each addStop minted a fresh uid per call). The lifecycle now answers:
+  // the SAME winner again is an alreadyApplied no-op, a DIFFERENT one is a
+  // refused rewrite of a settled vote, and a chosen id that is not on the
+  // poll is invalid — the contract validates all three server-side too.
   const status = cache.decisions[dIdx].status
-  if (status && status !== 'open') return
+  if (status && status !== 'open') {
+    return Promise.resolve(cache.decisions[dIdx].resolvedOptionId === optionId
+      ? { status: 'alreadyApplied', tripRevision: tripRevisionOf(cache.decisions[dIdx].tripId) }
+      : { status: 'invalid', reason: 'decision is already resolved' })
+  }
+  if (!cache.decisions[dIdx].options.some(o => o.id === optionId)) {
+    return Promise.resolve({ status: 'invalid', reason: 'unknown option' })
+  }
   const d = structuredClone(cache.decisions[dIdx])
+  const rowBefore = cache.decisions[dIdx]
   d.status = 'resolved'; d.resolvedOptionId = optionId; d.resolvedAt = Date.now()
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
-  addActivity(d.tripId, cache.sessionUserId!, 'resolved a decision', d.question)
+  void addActivity(d.tripId, 'resolved a decision', d.question)
   const winning = d.options.find(o => o.id === optionId)
   const winningLabel = winning?.label ?? 'an option'
   const trip = tripById(d.tripId)
-  if (trip && cache.sessionUserId) {
+  const notifIdsBefore = new Set(cache.notifications.map(n => n.id))
+  if (trip) {
     for (const m of trip.members ?? []) {
-      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, d.tripId, `${userName(cache.sessionUserId)} resolved “${d.question}” — ${winningLabel}.`)
+      if (m.userId !== scope.userId) pushNotification(m.userId, d.tripId, `${userName(scope.userId)} resolved “${d.question}” — ${winningLabel}.`)
     }
   }
+  const localNotificationIds = cache.notifications.filter(n => !notifIdsBefore.has(n.id)).map(n => n.id)
   // The last mile of shortlist → vote → resolved (user ask): when the winning
   // option carries a place payload from the Map rail's vote, it LANDS on the
   // timeline as a confirmed stop — which also makes every surface reflect it
@@ -5008,7 +5864,25 @@ export function resolveDecision(decisionId: ID, optionId: ID): void {
     }
   }
   commit()
-  fire('decisions', supabase.from('decisions').update({ status: 'resolved', resolved_option_id: optionId, resolved_at: d.resolvedAt }).eq('id', decisionId))
+  const rowRef = cache.decisions.find(x => x.id === decisionId)
+  const scopeAtAwait = scope
+  // A workflow update (status + winner) — it stays on the direct write path by
+  // contract. A failed update retracts only THIS operation's decision change
+  // and notification entries (surgical rollback, gate round 2 F1); the landed
+  // stop is trip-write territory with its own write-through recovery (stage C
+  // owns the accept/resolve rollback union).
+  return Promise.resolve(supabase.from('decisions').update({ status: 'resolved', resolved_option_id: optionId, resolved_at: d.resolvedAt }).eq('id', decisionId).select('id')).then(({ data, error }) => {
+    if (error || (Array.isArray(data) && data.length === 0)) {
+      if (isCurrentIdentity(scopeAtAwait)) {
+        rollbackContribution({
+          rowKind: 'decision', rowId: decisionId, rowBefore, rowRef,
+          localNotificationIds,
+        })
+      }
+      return error ? { status: 'unavailable' } : { status: 'invalid', reason: 'decision row is gone' }
+    }
+    return { status: 'applied', tripRevision: tripRevisionOf(d.tripId) }
+  })
 }
 
 // ---------------- Publishing ----------------
@@ -5505,10 +6379,39 @@ export function activityFor(tripId: ID): ActivityEntry[] {
   return cache.activity.filter(a => a.tripId === tripId).sort((a, b) => b.at - a.at)
 }
 
-export function addActivity(tripId: ID, actorId: ID, verb: string, target?: string): void {
-  const entry: ActivityEntry = { id: uuid(), tripId, actorId, verb, target, at: Date.now() }
+/** Append one activity entry through the collab-command RPC. The actor NEVER
+ *  travels in the payload — the server derives it from auth.uid() (#801). The
+ *  client mints the activityId (the contract's client-supplied UUID for
+ *  activity.append), so the local entry and the server row share one id and
+ *  the realtime echo upserts instead of duplicating. Returns the outcome;
+ *  a refused command rolls the optimistic entry back and the caller decides
+ *  what the user sees. */
+export function addActivity(tripId: ID, verb: string, target?: string): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!verb.trim()) return Promise.resolve({ status: 'invalid', reason: 'empty verb' })
+  const entry: ActivityEntry = { id: uuid(), tripId, actorId: scope.userId, verb, target, at: Date.now() }
   cache.activity = [...cache.activity, entry]
-  fire('activity', supabase.from('activity').insert({ id: entry.id, trip_id: tripId, actor_id: actorId, verb, target, at: entry.at }))
+  commit()
+  // activity.append has no user retry gesture (it is fire-and-forget
+  // logging), so each call is its own logical action: no envelope, and the
+  // rollback retracts only THIS entry (gate round 2 F1 — a whole-slice
+  // restore here erased later successful appends).
+  return submitCollabCommand(uuid(), tripId, {
+    type: 'activity.append',
+    activityId: entry.id,
+    verb,
+    ...(target !== undefined ? { target } : {}),
+  }).then(receipt => {
+    if (!isCurrentIdentity(scope)) return receipt
+    if (receipt.status === 'applied' || receipt.status === 'alreadyApplied') {
+      noteTripRevision(tripId, receipt.tripRevision)
+      return receipt
+    }
+    if (receipt.status === 'conflict') return receipt
+    dropArtifacts(entry.id, [])
+    return receipt
+  })
 }
 
 export function notificationsFor(userId: ID): Notification[] {
@@ -6012,12 +6915,23 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       }
       break
     }
-    case 'suggestions':
-      cache.suggestions = reduceSlice(cache.suggestions, event, row ? rowToSuggestion(row) : undefined, oldRow?.id)
+    case 'suggestions': {
+      const mapped = row ? rowToSuggestion(row) : undefined
+      cache.suggestions = reduceSlice(cache.suggestions, event, mapped, oldRow?.id)
+      // A canonical row is server truth: refresh the confirmed-ballot
+      // baselines, and re-attach every in-flight comment draft a replacement
+      // would otherwise hide (gate rounds 3-5).
+      if (mapped) noteConfirmedBallots('suggestion', mapped)
+      if (id !== undefined) reattachCommentDrafts('suggestion', id)
       break
-    case 'decisions':
-      cache.decisions = reduceSlice(cache.decisions, event, row ? rowToDecision(row) : undefined, oldRow?.id)
+    }
+    case 'decisions': {
+      const mapped = row ? rowToDecision(row) : undefined
+      cache.decisions = reduceSlice(cache.decisions, event, mapped, oldRow?.id)
+      if (mapped) noteConfirmedBallots('decision', mapped)
+      if (id !== undefined) reattachCommentDrafts('decision', id)
       break
+    }
     case 'activity': {
       if (event === 'DELETE') {
         cache.activity = cache.activity.filter(a => a.id !== id)

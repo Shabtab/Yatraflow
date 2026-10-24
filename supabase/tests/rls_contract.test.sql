@@ -263,7 +263,8 @@ do $$
 declare
   child text;
 begin
-  -- suggestions / suggestions / activity: editor-or-public read, editor write.
+  -- Contribution JSON has no direct insert path. Editor workflow updates and
+  -- deletes remain available for suggestions and decisions. Activity is RPC-only.
   foreach child in array array['suggestions', 'decisions', 'activity'] loop
     if not exists (
       select 1 from pg_policies
@@ -272,12 +273,44 @@ begin
     ) then
       raise exception '% SELECT must be editor-or-public', child;
     end if;
-    if not exists (
+    if exists (
       select 1 from pg_policies
       where schemaname = 'public' and tablename = child
-        and cmd = 'ALL' and qual like '%is_editor%'
+        and cmd = 'ALL' and permissive = 'PERMISSIVE'
     ) then
-      raise exception '% write must be editor-scoped', child;
+      raise exception '% must not have a FOR ALL policy', child;
+    end if;
+    if exists (
+      select 1 from pg_policies
+      where schemaname = 'public' and tablename = child and cmd = 'INSERT'
+    ) then
+      raise exception '% direct INSERT is unsafe; use submit_collab_command', child;
+    end if;
+    if child in ('suggestions','decisions') and not exists (
+      select 1 from pg_policies
+      where schemaname='public' and tablename=child and cmd='UPDATE'
+        and qual like '%is_editor%' and with_check like '%is_editor%'
+    ) then
+      raise exception '% workflow UPDATE must stay editor-scoped', child;
+    end if;
+    if child in ('suggestions','decisions') and not exists (
+      select 1 from pg_policies
+      where schemaname='public' and tablename=child and cmd='DELETE' and qual like '%is_editor%'
+        and qual like '%auth.uid()%' and qual like '%owner_id%'
+    ) then
+      raise exception '% DELETE must be editor-scoped and author-or-owner', child;
+    end if;
+    if child='activity' and exists (
+      select 1 from pg_policies where schemaname='public' and tablename=child
+        and cmd in ('INSERT','UPDATE','DELETE')
+    ) then
+      raise exception 'activity is append-only through submit_collab_command';
+    end if;
+    if exists (
+      select 1 from pg_policies where schemaname='public' and tablename=child
+        and policyname='admin write'
+    ) then
+      raise exception '% admin direct-write escape hatch must be removed', child;
     end if;
   end loop;
 end $$;
@@ -285,20 +318,44 @@ end $$;
 -- ------------------------------------------------------------ 4. notifications
 do $$
 begin
-  -- Recipient-only read; recipient-or-orchestrator write.
+  -- Recipient-only read, update and delete. Editors may insert for members.
   if not exists (
     select 1 from pg_policies
     where schemaname = 'public' and tablename = 'notifications'
       and cmd = 'SELECT' and qual like '%auth.uid()%user_id%'
+      and policyname <> 'admin read'
   ) then
     raise exception 'notifications SELECT must be recipient-only';
   end if;
-  if not exists (
+  if exists (
     select 1 from pg_policies
     where schemaname = 'public' and tablename = 'notifications'
-      and cmd = 'ALL' and qual like '%is_editor%'
+      and cmd = 'ALL' and permissive = 'PERMISSIVE'
   ) then
-    raise exception 'notifications write must allow recipient or orchestrator';
+    raise exception 'notifications must not have a FOR ALL policy';
+  end if;
+  if exists (
+    select 1 from pg_policies where schemaname='public' and tablename='notifications'
+      and cmd='SELECT' and policyname='admin read'
+  ) then
+    raise exception 'notifications SELECT must remain recipient-only';
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='notifications'
+      and cmd='UPDATE' and qual like '%auth.uid()%user_id%'
+      and with_check like '%auth.uid()%user_id%'
+  ) or not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='notifications'
+      and cmd='DELETE' and qual like '%auth.uid()%user_id%'
+  ) then
+    raise exception 'notifications UPDATE and DELETE must be recipient-only';
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='notifications'
+      and cmd='INSERT' and with_check like '%is_editor%'
+      and with_check like '%trip_members%'
+  ) then
+    raise exception 'notifications INSERT must be editor-scoped to current members';
   end if;
 end $$;
 
@@ -708,6 +765,53 @@ begin
       and e.grantee = (select oid from pg_roles where rolname = 'service_role')
   ) then
     raise exception 'apply_order_refund must stay executable by service_role — the webhook path; a lockdown strands every refund event';
+  end if;
+end $$;
+
+-- ---------------------------------------------------------- 5. command layer
+do $$
+begin
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname='submit_collab_command'
+      and pg_get_function_identity_arguments(p.oid)='p_command_id text, p_trip_id text, p_command jsonb'
+  ) then raise exception 'submit_collab_command(text,text,jsonb) is required'; end if;
+  if not has_function_privilege('authenticated','public.submit_collab_command(text,text,jsonb)','EXECUTE') then
+    raise exception 'authenticated callers must execute submit_collab_command';
+  end if;
+  if exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) e
+    where n.nspname='public' and p.proname='submit_collab_command'
+      and e.grantee in (0::oid,(select oid from pg_roles where rolname='anon'))
+  ) then raise exception 'submit_collab_command must revoke PUBLIC and anon'; end if;
+
+  if not has_function_privilege('authenticated','public.restore_trip_contributions(text)','EXECUTE') then
+    raise exception 'authenticated owner restore path is missing';
+  end if;
+  if exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) e
+    where n.nspname='public' and p.proname='prune_trip_contribution_restore_events'
+      and (e.grantee=0::oid or e.grantee in (select oid from pg_roles where rolname in ('anon','authenticated')))
+  ) then
+    raise exception 'restore archive cleanup must remain service-role only';
+  end if;
+  if not has_function_privilege('service_role','public.prune_trip_contribution_restore_events()','EXECUTE') then
+    raise exception 'service_role must run archive cleanup';
+  end if;
+
+  if not (select relrowsecurity from pg_class where oid='public.collab_commands'::regclass)
+    or not (select relrowsecurity from pg_class where oid='public.trip_contribution_restore_events'::regclass) then
+    raise exception 'command and restore receipt tables must have RLS enabled';
+  end if;
+  if exists(select 1 from pg_policies where schemaname='public' and tablename in ('collab_commands','trip_contribution_restore_events')) then
+    raise exception 'command and restore receipt tables must have no client policies';
+  end if;
+  if not exists(select 1 from pg_trigger where tgrelid='public.suggestions'::regclass and tgname='suggestions_guard_contributions' and not tgisinternal)
+    or not exists(select 1 from pg_trigger where tgrelid='public.decisions'::regclass and tgname='decisions_guard_contributions' and not tgisinternal)
+    or not exists(select 1 from pg_trigger where tgrelid='public.trips'::regclass and tgname='trips_record_contribution_delete' and not tgisinternal) then
+    raise exception 'contribution guards and restore archive trigger need to exist';
   end if;
 end $$;
 

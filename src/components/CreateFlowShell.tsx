@@ -40,7 +40,7 @@ export function StepProgress({ step, errors, onGo }: {
             <li key={s} className={`ct-progress-item${s === step ? ' now' : ''}${done ? ' done' : ''}`}
               aria-current={s === step ? 'step' : undefined}>
               {stepIsLink(s, step, errors) ? (
-                <button type="button" className="ct-progress-link" onClick={() => onGo(s)}>{inner}</button>
+                <button type="button" className="ct-progress-link" onClick={() => { onGo(s) }}>{inner}</button>
               ) : (
                 <span className="ct-progress-plain">{inner}</span>
               )}
@@ -74,14 +74,14 @@ export function StepNav({ step, errors, onGo, submitting = false, failed = false
     <div className="ct-nav">
       {onPeek && <button type="button" className="gcf-peek" onClick={onPeek} aria-label="Open trip ticket">{peek}<ChevronRight size={16} aria-hidden /></button>}
       {back ? (
-        <button type="button" className="btn btn-outline ct-back" onClick={() => onGo(back)}><ChevronLeft size={16} aria-hidden />Back</button>
+        <button type="button" className="btn btn-outline ct-back" onClick={() => { onGo(back) }}><ChevronLeft size={16} aria-hidden />Back</button>
       ) : <span />}
       <span className="ct-nav-left" role="status">{remainingStepsLabel(step, errors)}</span>
       {next && (
         // Never disabled (spec §4 rule 1): a press with an incomplete answer
         // moves focus to the field that needs one, which is more use than a dead
         // button that explains nothing.
-        <button type="button" className="btn btn-primary ct-next" onClick={() => onGo(next)}>
+        <button type="button" className="btn btn-primary ct-next" onClick={() => { onGo(next) }}>
           Next: {next.charAt(0).toUpperCase() + next.slice(1)} <ChevronRight size={16} aria-hidden />
         </button>
       )}
