@@ -76,8 +76,7 @@ export function purchaseShareMessage(title: string, url: string): string {
  * Share-attribution vocabulary (#230, widened for F7 · #228). One `ref` value
  * per way a link can leave the building — or, for in-app forks with no link
  * at all, per surface the fork happened on. `null` is the honest answer for a
- * visitor who arrived some other way (typed/copied address, old link, shared
- * by hand) and is rendered as "direct", never guessed.
+ * visitor with no usable tag. This includes direct traffic, old links, and lost context.
  *
  * F7's addition is two values, deliberately an allowlist and not free text:
  * `wa` (the WhatsApp send stamps its own channel) and `community` (a
@@ -95,9 +94,7 @@ export function purchaseShareMessage(title: string, url: string): string {
 export const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community'] as const
 export type ShareSource = typeof SHARE_SOURCES[number]
 
-/** How each route reads on the admin console. `direct` is the read-side name
- *  for a NULL ref (the RPC's own coalesce), so it lives here and not in the
- *  vocabulary — nothing mints a `direct` link. */
+/** The legacy `direct` key includes all missing tags. It cannot identify genuine direct traffic separately. */
 export const SHARE_SOURCE_LABELS: Record<string, string> = {
   copy: 'Copy link',
   buyer: 'Buyer card',
@@ -106,7 +103,7 @@ export const SHARE_SOURCE_LABELS: Record<string, string> = {
   purchases: 'My purchases',
   wa: 'WhatsApp',
   community: 'Community post',
-  direct: 'Direct',
+  direct: 'Unattributed (includes direct)',
 }
 
 /** Is this `ref` one of ours? Hand-rolled params, no utm — an unknown value is

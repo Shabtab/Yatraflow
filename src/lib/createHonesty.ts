@@ -36,21 +36,21 @@ export function fuelFallbackNotice(mode: string, economyRaw: string, priceRaw: s
   const priceBad = priceTyped && price == null
 
   if (ecoBad && priceBad) {
-    return `The mileage and fuel price you typed are both out of range, so the bill prices the blended ₹${rate}/km rate — fix or clear them.`
+    return `The mileage and fuel price are out of range. Fix or clear them. The estimate uses ₹${rate}/km for now.`
   }
   if (ecoBad) {
     return price != null
-      ? `The mileage you typed is out of range, so the fuel math can't use it — the bill prices the blended ₹${rate}/km rate.`
+      ? `The mileage is out of range. The estimate uses ₹${rate}/km until you fix or clear it.`
       : `That mileage is out of range, and without a fuel price the bill prices the blended ₹${rate}/km rate anyway.`
   }
   if (priceBad) {
-    return `The fuel price you typed is out of range (₹50–₹250 per litre), so the bill prices the blended ₹${rate}/km rate — fix or clear it.`
+    return `The fuel price is out of range. Enter ₹50 to ₹250 per litre, or clear it. The estimate uses ₹${rate}/km for now.`
   }
   if (eco == null && price != null) {
-    return `Your fuel price is unused until you set a mileage — the bill prices the blended ₹${rate}/km rate instead.`
+    return `Add mileage to use your fuel price. The estimate uses ₹${rate}/km for now.`
   }
   if (eco != null && price == null) {
-    return `Mileage alone doesn't set the rate — add a fuel price too, or the bill keeps the blended ₹${rate}/km.`
+    return `Add a fuel price to use your mileage. The estimate uses ₹${rate}/km for now.`
   }
   return null
 }
@@ -97,7 +97,7 @@ export function revalidateCommitments<T extends { dayIndex: number }>(
 export function commitmentMoveMessage(moved: number, dropped = 0): string {
   const parts: string[] = []
   if (moved > 0) parts.push(`${moved} pinned plan${moved === 1 ? '' : 's'} moved to the last day`)
-  if (dropped > 0) parts.push(`${dropped} dropped — their day no longer exists`)
+  if (dropped > 0) parts.push(`${dropped} removed because their day no longer exists`)
   return parts.length ? `${parts.join('; ')}.` : ''
 }
 
@@ -110,7 +110,7 @@ export function composerRowError(title: string): string | null {
   const t = title.trim().replace(/\s+/g, ' ')
   if (!t) return null
   const shown = t.length > 48 ? `${t.slice(0, 47)}…` : t
-  return `Add “${shown}” as a pinned plan — or clear the row.`
+  return `Add "${shown}" as a pinned plan, or clear the row.`
 }
 
 /**

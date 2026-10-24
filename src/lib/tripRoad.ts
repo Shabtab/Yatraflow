@@ -262,6 +262,11 @@ export function correctionsFromLegs(
       distanceKm: legs[i].distanceKm,
       durationMinutes: legs[i].durationMinutes,
       geometry: legs[i].geometry,
+      // The chain admits a leg the router could not measure, and
+      // `resolvedLegs` accepts the chain when ANY leg resolved. Carry the
+      // fallback flag so a distance label can tell a road number from a
+      // haversine number on the same chain (#671).
+      ...(legs[i].source === 'estimate' ? { estimated: true } : {}),
     }
     map[legKey(chain.points[i], chain.points[i + 1])] = est
     const rk = legKey(chain.points[i + 1], chain.points[i])

@@ -731,13 +731,14 @@ function AnalyticsTab() {
           </button>} />
       )}
       <div className="creator-stats" role="group" aria-label="Funnels">
-        <div className="stat-tile"><div className="stat-label">Activation (users with a trip)</div><div className="stat-value">{cacheFigure(pct(funnel.activationPct))}</div></div>
-        <div className="stat-tile"><div className="stat-label">Trips with collaborators</div><div className="stat-value">{cacheFigure(pct(funnel.collabPct))}</div></div>
+        <div className="stat-tile"><div className="stat-label">Accounts owning any trip</div><div className="stat-value">{cacheFigure(pct(funnel.activationPct))}</div></div>
+        <div className="stat-tile"><div className="stat-label">Trips with two member IDs</div><div className="stat-value">{cacheFigure(pct(funnel.collabPct))}</div></div>
         <div className="stat-tile"><div className="stat-label">Trips published</div><div className="stat-value">{cacheFigure(pct(funnel.publishPct))}</div></div>
-        <div className="stat-tile"><div className="stat-label">Explore views → forks</div><div className="stat-value">{cacheFigure(pct(funnel.viewToCopyPct))}</div></div>
+        <div className="stat-tile"><div className="stat-label">Fork/view activity ratio</div><div className="stat-value">{cacheFigure(pct(funnel.viewToCopyPct))}</div></div>
       </div>
       <p className="hint-text adm-funnel-raw-totals">
         Raw: {cacheFigure(String(db.published.reduce((s, p) => s + p.views, 0)))} views · {cacheFigure(String(db.published.reduce((s, p) => s + p.copies, 0)))} forks.
+        {' '}These cached lifetime figures include demo and imported trips. Membership alone does not prove a collaborative action.
       </p>
       <Surface as="section" className="adm-section">
       <h2 className="adm-card-title">Growth — last 12 weeks</h2>
@@ -798,7 +799,7 @@ function AnalyticsTab() {
       {attr.phase === 'ready' && (attr.rows ?? []).length > 0 && (
         <>
           <table className="compare-table" tabIndex={0} aria-label="Share attribution — how readers arrived">
-            <thead><tr><th>Route in</th><th className="num">Views</th><th className="num">Forks</th><th className="num">View → fork</th><th>Last seen</th></tr></thead>
+            <thead><tr><th>Route in</th><th className="num">Views</th><th className="num">Forks</th><th className="num">Fork/view ratio</th><th>Last seen</th></tr></thead>
             <tbody>
               {(attr.rows ?? []).map(row => (
                 <tr key={row.source}>
@@ -812,10 +813,9 @@ function AnalyticsTab() {
             </tbody>
           </table>
           <p className="hint-text adm-attribution-explanation">
-            Route in = the ref a shared link carried, or the in-app surface that forked. Direct
-            is a visitor who arrived some other way. The two stages count the same kind of thing
-            (one view and one fork per browser session), so a rate above 100% is possible and
-            means a reader forked without a recorded visit.
+            Route in is the link tag or the surface where a fork started. Missing tags remain unattributed.
+            {' '}Views and forks count separate publication sessions. Their ratio is not a visitor conversion rate.
+            {' '}Card forks need no publication visit. Analytics failures can also lose events. Ratios can exceed 100%.
           </p>
         </>
       )}
@@ -914,16 +914,16 @@ function AnalyticsTab() {
       {cf.phase === 'ready' && cfStats && (
         <>
           <div className="creator-stats" role="group" aria-label="Create funnel">
-            <div className="stat-tile"><div className="stat-label">Started /new</div><div className="stat-value">{cfStats.counts.started}</div></div>
-            <div className="stat-tile"><div className="stat-label">Submitted</div><div className="stat-value">{cfStats.counts.submitted}</div></div>
-            <div className="stat-tile"><div className="stat-label">Started → submitted</div><div className="stat-value">{pct(cfStats.conversionPct)}</div></div>
+            <div className="stat-tile"><div className="stat-label">Start events</div><div className="stat-value">{cfStats.counts.started}</div></div>
+            <div className="stat-tile"><div className="stat-label">Distinct submitted trip IDs</div><div className="stat-value">{cfStats.submittedTrips}</div></div>
+            <div className="stat-tile"><div className="stat-label">Submit/start event ratio</div><div className="stat-value">{cfStats.counts.started ? pct(cfStats.conversionPct) : '—'}</div></div>
             <div className="stat-tile"><div className="stat-label">Drafts resumed</div><div className="stat-value">{cfStats.counts.draft_resumed}</div></div>
           </div>
           <table className="compare-table" tabIndex={0} aria-label="Create funnel events, last 30 days">
             <thead><tr><th>Event</th><th className="num">Count</th></tr></thead>
             <tbody>
               {(Object.entries(cfStats.counts) as [string, number][]).filter(([, n]) => n > 0).map(([ev, n]) => (
-                <tr key={ev}><td className="small">{ev}</td><td className="num">{n}</td></tr>
+                <tr key={ev}><td className="small">{ev === 'moment_invite_sent' ? 'Share destination opened' : ev}</td><td className="num">{n}</td></tr>
               ))}
             </tbody>
           </table>
@@ -932,6 +932,8 @@ function AnalyticsTab() {
             {cfStats.templates.length > 0 && ` Template picks: ${cfStats.templates.slice(0, 5).map(t => `${t.templateId} (${t.picks})`).join(', ')}.`}
             {' '}The abandoned event is best-effort (mobile kills page beacons), so it is
             directional — never read it as an exact denominator.
+            {' '}Events can repeat or fail. The ratio does not measure linked sessions or authoritative trip activation.
+            {' '}The legacy moment_invite_sent event means a share destination opened, not that a person joined.
           </p>
         </>
       )}

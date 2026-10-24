@@ -22,13 +22,13 @@ describe('fuelFallbackNotice', () => {
 
   it('names the blended rate when only a price is set (the priceIgnored shape)', () => {
     const msg = fuelFallbackNotice('car', '', '105')
-    expect(msg).toContain('blended')
+    expect(msg).toContain('Add mileage')
     expect(msg).toContain('₹9/km') // MODE_COST_PER_KM.car
   })
 
   it('nudges toward the price when only a mileage is set', () => {
     const msg = fuelFallbackNotice('car', '15', '')
-    expect(msg).toContain('blended')
+    expect(msg).toContain('Add a fuel price')
     expect(msg).toContain('₹9/km')
   })
 
@@ -40,7 +40,7 @@ describe('fuelFallbackNotice', () => {
   })
 
   it('handles both fields out of range in one sentence', () => {
-    expect(fuelFallbackNotice('car', '0', '999')).toContain('both')
+    expect(fuelFallbackNotice('car', '0', '999')).toContain('mileage and fuel price are out of range')
   })
 
   it('reads the rate from the MODE, not hard-coded car', () => {
@@ -113,7 +113,7 @@ describe('commitmentMoveMessage', () => {
 
   it('joins both counts and stays empty when nothing happened', () => {
     expect(commitmentMoveMessage(1, 1)).toContain('moved')
-    expect(commitmentMoveMessage(1, 1)).toContain('dropped')
+    expect(commitmentMoveMessage(1, 1)).toContain('removed because their day no longer exists')
     expect(commitmentMoveMessage(0, 0)).toBe('')
   })
 })

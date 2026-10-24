@@ -36,6 +36,7 @@ async function publishRow(
   store: typeof import('../src/store/store'),
   payload: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>,
 ): Promise<PublishedItinerary> {
+  store.getSnapshot().trips.push({ id: payload.tripId, visibility: 'public' } as import('../src/data/types').Trip)
   const outcome = await store.publishItinerary(payload)
   expect(outcome.ok, outcome.error).toBe(true)
   return store.getSnapshot().published.find(x => x.tripId === payload.tripId)!
@@ -99,7 +100,7 @@ describe('#363 — forks are counted once per session, like views', () => {
       expect(rowOf(store, p.id).copies).toBe(p.copies + 1)
       expect(bumps, 'three clicks must be one bump').toHaveLength(1)
       // #230 — the bump carries the step's route in; a bare click has none.
-      expect(bumps[0]).toEqual({ p_id: p.id, p_kind: 'copies', p_source: null })
+      expect(bumps[0]).toEqual({ p_id: p.id, p_kind: 'copies', p_source: null, p_campaign: null })
     } finally { restore() }
   })
 
@@ -274,11 +275,11 @@ describe('#363 — the rates say which unit they divide', () => {
   const hub = readFileSync(new URL('../src/pages/CreatorHubPage.tsx', import.meta.url), 'utf8')
   const funnel = readFileSync(new URL('../src/lib/pubFunnel.ts', import.meta.url), 'utf8')
 
-  it('names the denominator as visit-sessions, not bare "visits"', () => {
-    // Both stages are one-per-session now, so the qualifier is exact. Before
-    // #363 the numerator was raw clicks and the denominator session-deduped,
-    // which is why "of visits" read as a conversion rate over unlike units.
-    expect(hub).toContain('of visit-sessions')
+  it('names the activity ratio without claiming linked visitor conversion', () => {
+    // Equal counting units do not establish linked visitor cohorts.
+    expect(hub).toContain('fork/view ratio')
+    expect(hub).toContain('These ratios do not measure visitor conversion.')
+    expect(hub).not.toContain('of visit-sessions')
     expect(hub).not.toContain('of visits</span>')
   })
 

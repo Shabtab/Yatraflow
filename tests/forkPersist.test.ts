@@ -12,7 +12,16 @@ const state: {
   inserts: Array<{ table: string; payload: any }>
   /** table name → error object the next write returns */
   failures: Record<string, unknown>
-} = { inserts: [], failures: {} }
+  savedTrips: Map<string, any>
+  savedMembers: Map<string, any>
+  /** error the next single-row read answers with, or null for a clean read */
+  readError: unknown
+  /** the account this transport is signed in as, or null (see getSession) */
+  sessionUserId: string | null
+} = {
+  inserts: [], failures: {}, savedTrips: new Map(), savedMembers: new Map(),
+  readError: null, sessionUserId: null,
+}
 
 const { toast } = vi.hoisted(() => ({ toast: vi.fn() }))
 vi.mock('../src/components/ui', () => ({ toast }))
@@ -20,20 +29,28 @@ vi.mock('../src/components/ui', () => ({ toast }))
 vi.mock('../src/lib/supabase', () => {
   function query(table: string) {
     const qb: any = { table }
+    const filters = new Map<string, unknown>()
     qb.select = () => qb
-    qb.eq = () => qb
+    qb.eq = (key: string, value: unknown) => { filters.set(key, value); return qb }
     qb.in = () => qb
     qb.order = () => qb
     qb.limit = () => qb
+    qb.setHeader = () => qb
     // Optional-column probe reads: all columns present (truthy probe).
     qb.then = (res: (v: { data: unknown; error: null }) => unknown) =>
       Promise.resolve({ data: [], error: null }).then(res)
     // A single-row read that matches nothing resolves to null in the real
     // client (not []), which is what fetchSharedTrip branches on.
-    qb.maybeSingle = () => ({
-      then: (res: (v: { data: unknown; error: null }) => unknown) =>
-        Promise.resolve({ data: null, error: null }).then(res),
-    })
+    qb.maybeSingle = () => {
+      const single: any = {
+        setHeader: () => single,
+        then: (res: (v: { data: unknown; error: unknown }) => unknown) =>
+          Promise.resolve({ data: state.readError ? null : table === 'trips'
+            ? [...state.savedTrips.values()].find(row => [...filters].every(([key, value]) => row[key] === value)) ?? null
+            : [...state.savedMembers.values()].find(row => [...filters].every(([key, value]) => row[key] === value)) ?? null, error: state.readError }).then(res),
+      }
+      return single
+    }
     return qb
   }
   function write(table: string, method: string, payload: any) {
@@ -41,9 +58,21 @@ vi.mock('../src/lib/supabase', () => {
     qb.eq = () => qb
     qb.in = () => qb
     qb.select = () => qb
+    qb.setHeader = () => qb
     qb.then = (res: (v: { data: unknown; error: unknown }) => unknown) => {
-      const failure = state.failures[method === 'insert' ? table : '']
+      let failure = state.failures[method === 'insert' ? table : '']
       state.inserts.push({ table, payload })
+      if (!failure && method === 'insert' && table === 'trips') {
+        if (state.savedTrips.has(payload.id)) failure = { code: '23505' }
+        else state.savedTrips.set(payload.id, { ...payload, created_at: Date.now(), updated_at: Date.now() })
+      }
+      if (!failure && method === 'insert' && table === 'trip_members') {
+        for (const member of Array.isArray(payload) ? payload : [payload]) {
+          const key = `${member.trip_id}:${member.user_id}`
+          if (state.savedMembers.has(key)) failure = { code: '23505' }
+          else state.savedMembers.set(key, member)
+        }
+      }
       const out = failure ? { data: null, error: failure } : { data: null, error: null }
       return Promise.resolve(out).then(res)
     }
@@ -61,7 +90,9 @@ vi.mock('../src/lib/supabase', () => {
         return qb
       },
       auth: {
-        getSession: async () => ({ data: { session: null } }),
+        getSession: async () => ({
+          data: { session: state.sessionUserId ? { user: { id: state.sessionUserId }, access_token: 'fork-test' } : null },
+        }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
       },
       channel: () => ({ on() { return this }, subscribe() { return this } }),
@@ -73,7 +104,7 @@ vi.mock('../src/lib/supabase', () => {
   }
 })
 
-import { duplicateTripPersisted, duplicateTripPublicPersisted, tripById } from '../src/store/store'
+import { duplicateTripPersisted, duplicateTripPublicPersisted, getSnapshot, tripById, updateTrip, _flushTripWrites } from '../src/store/store'
 import { forkPublication } from '../src/lib/forkPub'
 import type { PublishedItinerary } from '../src/data/types'
 
@@ -83,6 +114,10 @@ const pubRow = { id: 'pub_test', tripId: 'trip-that-does-not-exist', title: 'A t
 beforeEach(() => {
   state.inserts.length = 0
   state.failures = {}
+  state.savedTrips.clear()
+  state.savedMembers.clear()
+  state.readError = null
+  state.sessionUserId = null
   toast.mockClear()
 })
 
@@ -146,7 +181,7 @@ describe('fork — the gate and its failure message are honest', () => {
     const nav = vi.fn()
     const ok = await forkPublication(pubRow, null, nav)
     expect(ok).toBe(false)
-    expect(nav).toHaveBeenCalledWith('/auth')
+    expect(nav).toHaveBeenCalledWith('/auth?next=%2Fpub%2Fpub_test')
     expect(toast).toHaveBeenCalledWith('Log in to fork this trip into your plans.')
     // The redirect is the whole interaction — no half-fork, no orphan rows.
     expect(state.inserts).toEqual([])
@@ -176,9 +211,90 @@ describe('fork stamp (#230) — the copy carries its own route in', () => {
   })
 
   it('never inherits the SOURCE trip’s ref — a copy of a copy starts a new chain', async () => {
-    const source: Trip = { ...structuredClone(base), ref: 'buyer' }
+    const source: Trip = { ...structuredClone(base), ref: 'buyer', creationKind: 'forked', sourcePubId: 'pub_old', campaignId: 'p_a7c1d9e4b206' }
     const { trip: copy } = await duplicateTripPublicPersisted(source, 'forker-8', [0], undefined)
     expect(copy.ref).toBeUndefined()
+    expect(copy.creationKind).toBe('copied')
+    expect(copy.sourcePubId).toBeUndefined()
+    expect(copy.campaignId).toBeUndefined()
     expect(state.inserts.find(i => i.table === 'trips')!.payload.ref).toBeNull()
+  })
+
+  it('recovers the same persisted fork row after a membership failure', async () => {
+    const origin = { publicationId: 'pub_growth_source', campaign: 'p_a7c1d9e4b206' as const, requestId: crypto.randomUUID() }
+    state.failures.trip_members = { code: '42501' }
+    const first = await duplicateTripPublicPersisted(base, 'retry-owner', [0], 'wa', origin)
+    expect(first.persisted).toBe(false)
+    const stored = state.savedTrips.get(origin.requestId)
+    expect(stored.creation_kind).toBe('forked')
+    expect(stored.source_pub_id).toBe(origin.publicationId)
+    expect(stored.campaign_id).toBe(origin.campaign)
+    state.failures = {}
+    const retried = await duplicateTripPublicPersisted(base, 'retry-owner', [0], 'wa', origin)
+    expect(retried.persisted).toBe(true)
+    expect(state.savedTrips.size).toBe(1)
+    expect(state.savedMembers.size).toBe(1)
+    expect(retried.trip.id).toBe(origin.requestId)
+    expect(retried.trip.days).toEqual(stored.days)
+  })
+
+  it('does not accept another publication as the pending action result', async () => {
+    const requestId = crypto.randomUUID()
+    const first = await duplicateTripPublicPersisted(base, 'same-owner', [0], 'wa', { requestId, publicationId: 'pub_first' })
+    expect(first.persisted).toBe(true)
+    const mismatch = await duplicateTripPublicPersisted(base, 'same-owner', [0], 'wa', { requestId, publicationId: 'pub_other' })
+    expect(mismatch.persisted).toBe(false)
+    expect(state.savedTrips.size).toBe(1)
+    expect(state.savedTrips.get(requestId).source_pub_id).toBe('pub_first')
+    // The failed retry shares the first fork's id, so it may not take the
+    // already-saved trip out of My Trips with it.
+    expect(tripById(requestId)).toBe(first.trip)
+    expect(tripById(requestId)?.sourcePubId).toBe('pub_first')
+  })
+
+  it('a failed verification read after a lost acknowledgement keeps the saved trip', async () => {
+    const requestId = crypto.randomUUID()
+    const owner = 'hydration-owner'
+    // Hydration loaded the trip that the earlier fork saved. Its
+    // acknowledgement never reached this tab, so the pending action id still
+    // names this trip and the retry builds a new optimistic copy for it.
+    const saved: Trip = {
+      ...structuredClone(base),
+      id: requestId,
+      name: 'Saved fork',
+      creationKind: 'forked',
+      sourcePubId: 'pub_saved',
+      writeVersion: 5,
+      members: [{ userId: owner, role: 'owner', joinedAt: 1 }],
+    }
+    getSnapshot().sessionUserId = owner
+    getSnapshot().trips = [...getSnapshot().trips.filter(t => t.id !== requestId), saved]
+    state.sessionUserId = owner
+    state.savedTrips.set(requestId, {
+      id: requestId, owner_id: owner, name: saved.name, creation_kind: 'forked',
+      source_pub_id: 'pub_saved', write_version: 5, deleted_at: null,
+    })
+    state.savedMembers.set(`${requestId}:${owner}`, { trip_id: requestId, user_id: owner, role: 'owner' })
+    // An edit to the saved trip is still on the debounce when the retry starts.
+    expect(updateTrip(requestId, { name: 'Edited before the retry' })).toBe(true)
+    const edited = tripById(requestId)!
+    // The retry's insert meets the saved row (23505), and the read that would
+    // verify the owned row fails.
+    state.readError = { message: 'connection reset' }
+    const retry = await duplicateTripPublicPersisted(base, owner, [0], 'wa', { requestId, publicationId: 'pub_saved' })
+    expect(retry.persisted).toBe(false)
+    // The saved trip stays, with its revision and its members.
+    expect(tripById(requestId)).toBe(edited)
+    expect(tripById(requestId)?.name).toBe('Edited before the retry')
+    expect(tripById(requestId)?.writeVersion).toBe(5)
+    expect(tripById(requestId)?.members).toEqual([{ userId: owner, role: 'owner', joinedAt: 1 }])
+    expect(getSnapshot().trips.filter(t => t.id === requestId)).toHaveLength(1)
+    // The edit that was already queued still reaches the server.
+    state.readError = null
+    state.inserts.length = 0
+    _flushTripWrites()
+    await vi.waitFor(() => {
+      expect(state.inserts.some(i => i.table === 'trips' && i.payload.name === 'Edited before the retry')).toBe(true)
+    })
   })
 })

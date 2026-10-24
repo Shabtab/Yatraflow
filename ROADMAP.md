@@ -15,8 +15,8 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-16, verified against the repo):** v0.77.0 is cut on `release/v0.77.0` for promotion to `main`. v0.76.0 reached `main` through PR #724 on 2026-10-12. `test` carries 160 commits that `main` does not. They hold the flight travel day, the one-designer consistency pass and the honesty fixes. One migration is new and unreleased: `supabase/migrations/20261012c_trip_flights.sql`. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
-Current version: **0.77.0**. Under it: **0.76.0**, promoted to `main` on 2026-10-12. Under that: **0.75.0**, promoted to `main` on 2026-10-12. Older releases appear in CHANGELOG.md.
+**Snapshot (2026-10-24, verified against the repo):** v0.79.1 is the release candidate that joins `test` and `main`. It keeps both histories. It adds the guided six-step create form and repairs eight defects in that form. The form stays behind the `guided` phase of `VITE_CREATE_FUNNEL`. No database migration goes with this release. The two v0.79.0 migrations keep their own status: `20261023a_collab_commands.sql` is applied, and `20261023b_collab_cutover.sql` waits for the client and `pg_cron`. Read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
+Current version: **0.79.1** — the candidate for promotion to `main`. Under it: **0.79.0**, the crew command contract. Under that: **0.78.0**, promoted to `main` on 2026-10-21. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
@@ -42,11 +42,13 @@ number collides with a shipped release, the ledger wins.
 ## Open issues
 
 You must read current counts from GitHub with `gh issue list --state open --limit 1000`.
-This table tracks two named sets, not the full queue. These sets are the
+This table tracks three named sets, not the full queue. These sets are the
 **launch-readiness criteria** (#227–#234), filed from
 [`docs/PLAN-LAUNCH-AND-DISTRIBUTION.md`](docs/PLAN-LAUNCH-AND-DISTRIBUTION.md) and its
 `STEP-0-DECISIONS.md` companion; the **milestone tracks** (#236–#240) are the M5 → M9 paragraphs
-below, now tracked as issues so the queue and this file cannot drift apart again. Corrected
+below, now tracked as issues so the queue and this file cannot drift apart again. The third set is
+the **mobile-experience workstream** (#809). Its acceptance contract is the issue itself: Android
+layout, Creator Hub navigation, map gestures and APK update notices. Corrected
 against `gh` on 2026-09-20, because it had drifted both ways: **#226 and #229 were closed** on
 2026-09-19 and still read as live here, while **#252 and #255** had been filed and never added.
 Corrected again on 2026-09-22: **#238 (M7) is closed** — the money rail shipped in v0.61.0 — so
@@ -70,6 +72,7 @@ the live milestone tracks are #236, #237, #239 and #240. Re-derive the count bef
 | #238 | P2 | M7 · Premium — the payment rail | **Closed 2026-09-19.** The rail shipped in v0.61.0 (order/entitlement tables, webhook, server-side paywall, unlock flow) and the fee model + `admin_revenue` analytics followed on 2026-09-21; the open remainder, F6 (#234 · the CA's merchant-of-record call), is tracked on its own issue — a row no commit can close |
 | #239 | P2 | M8 · 1.0 enablers → the 1.0 cut | The track below |
 | #240 | P2 | M9 · Invites & onboarding | The track below; exec plan already written |
+| #809 | P2 | Mobile experience and APK update notices — Android layout and insets, Creator Hub navigation, Map tab gestures, and update detection for the sideloaded APK | Open. Started 2026-10-18: the update decision core landed with its behavior tests, and the notice, the Profile control and the startup and resume checks are wired to it locally. The release feed, the published manifest and the permanent download page remain, and the check stays inert until they exist |
 
 The queue was empty for exactly one day, and this section said so — the launch set above is what
 replaced it. **#213** was filed and closed inside that day: a read-only audit of how the trip
@@ -742,6 +745,7 @@ The strategy freezes this track for six weeks, so pick it up after the creator g
 | P8 | Auth and DMCA |
 | P9 | Profile |
 | P10 | The creator hub |
+| P11 | Create trip, with the guided flag on. Local mock verification. The legacy form remains with the flag off. |
 | P12 | The workspace tabs |
 | P14 | The Android home |
 | P15 | Admin |
@@ -751,7 +755,6 @@ The strategy freezes this track for six weeks, so pick it up after the creator g
 | P2 | The workspace header and tab bar (a mockup is required) |
 | P4 | The creator page |
 | P7 | The public itinerary |
-| P11 | Create trip |
 | P13 | Landing (a mockup is required) |
 | P16 | The fold-in, which closes the track |
 
@@ -793,6 +796,44 @@ get a row here again.
 
 ---
 ## Idea bank
+
+### Transport-aware options (2026-10-19)
+
+Status: implemented by OpenCode on branch `feat/transport-aware-options` (2026-10-19).
+Codex owns integration and browser checks. MiniMax owns independent review.
+The schema migration and its contract tests are owned by Codex.
+
+Show only controls that apply to the selected transport and your role.
+Apply one shared transport policy to Create Trip, Trip Settings, summaries, and saved values.
+
+| Mode | Behaviour |
+| --- | --- |
+| Car, self-drive rental, motorcycle | Show driving controls and applicable vehicle costs. |
+| Train, bus, flight, taxi | Hide driver counts, driving allowances, and private vehicle controls. |
+| Mixed | Ask whether you drive any part of the trip. Show driving controls only after Yes. |
+
+Acceptance criteria:
+
+- Passenger modes must not show driver counts in controls, headings, summaries, or accessible labels.
+- Passenger modes must not show mileage, fuel price, tank size, rental rate, or driving-after-dinner controls.
+- Passenger modes must retain relevant traveller, budget, stay, and travel-style options.
+- Train must retain its local-train option. Flight must retain its flight-specific options.
+- Mixed must ask "Will you drive any part of this trip?" in creation and settings.
+- New Mixed trips must have an answer before creation.
+- Existing Mixed trips must keep their planning behaviour until you explicitly save an answer.
+- Mixed with No must follow passenger behaviour. Mixed with Yes must support driving options.
+- Hidden stale values must not affect passenger planning or reappear as driver summaries after save and reload.
+- The Mixed answer must survive save, reload, backups, and supported trip transfers.
+- Mode switches must update visible options and summaries immediately.
+- Self-drive behaviour must remain correct after passenger-to-driving switches.
+- Desktop, mobile, keyboard, and both themes must pass the changed-flow checks.
+- Regression tests, the full local gate, and independent review must pass before publication.
+
+Keep the existing design system and motion rules.
+Exclude bookings, timetable integrations, a detailed journey editor, and a visual redesign.
+OpenCode owns implementation. MiniMax owns independent review. Codex owns integration and browser checks.
+Start from the fixed integration branch revision. Preserve completed issue branches and their evidence.
+Pushes, merges, deployments, and live database changes need separate user approval.
 
 **Everything not yet built, in one place.** Consolidates the former Backlog pool, Idea pool,
 Suggestion-engine / Budget / Creator-hub idea tables (2026-09-11). If an idea is open, it is
@@ -847,6 +888,7 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | I-84 | Pace and rest line on free days | public page | 1 d | Show the pace and the rest stop of each free day from engine data. Locked days stay stubbed. |
 | I-85 | Crew receipt for an expense | budget | 1 d | After a save, offer a WhatsApp text for the crew. The text says "noted". It never says "paid". |
 | I-86 | Per-segment pace control | Timeline | 2 d | Let a planner slow one climb and see the new arrival time. Extends the travel-style caps in `src/lib/ridePlan.ts`. |
+| I-87 | Admin delete must not erase a published trip | security | 2–3 h | `admin_delete_trip` still removes a trip that backs a publication, and the orders and entitlements go with it. #807 closed the direct table DELETE only. Apply the same guard the owner delete now uses. Keep the refusal sentence honest. Pin it beside the owner delete tests. Deferred from #799 and #807. |
 
 ### Tier 2 — blocked on a named dependency
 

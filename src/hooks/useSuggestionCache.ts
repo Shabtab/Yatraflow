@@ -51,6 +51,10 @@ export function planInputsHash(input: {
   routeHash: string
   travelStyle: string
   transportMode: string
+  /** Mixed only (2026-10-19). Part of the hash because it changes the plan:
+   *  a cached segment plan built for a driving Mixed is wrong for a
+   *  passenger one, and the map would keep serving it after the answer. */
+  drivesPart?: boolean | undefined
   scopeKm: number
   travellers: number
   driverCount?: number | undefined
@@ -89,6 +93,9 @@ export function planInputsHash(input: {
     input.fuelPricePerL ?? '-',
     input.roundTrip === true ? 'rt' : input.roundTrip === false ? 'ow' : '-',
     input.vehicleProfile ? JSON.stringify(input.vehicleProfile) : '-',
+    // Three states, not two: unanswered must not collapse into No, or a cached
+    // legacy Mixed plan starts answering a question nobody was asked.
+    input.drivesPart === true ? 'mp-y' : input.drivesPart === false ? 'mp-n' : '-',
   ].join('|')
 }
 

@@ -15,19 +15,27 @@ import type { Trip } from '../src/data/types'
 
 type FakeError = { code?: string; message: string } | null
 
-const { state, toast, queue } = vi.hoisted(() => ({
-  state: {
-    tripErrors: [] as FakeError[],
-    memberErrors: [] as FakeError[],
-    /** a table whose write REJECTS instead of answering with an error object */
-    throwOn: null as string | null,
-    /** what every UPDATE answers — count models PostgREST's no-match reply */
-    updateAnswer: { error: null as unknown, count: null as number | null },
-    writes: [] as Array<{ table: string; method: string; payload: any }>,
-  },
-  toast: vi.fn(),
-  queue: { map: new Map<string, any>() },
-}))
+const { state, toast, queue, seeded, seedRow } = vi.hoisted(() => {
+  const rows = new Map<string, unknown>()
+  return {
+    state: {
+      replayTrip: null as any,
+      tripErrors: [] as FakeError[],
+      memberErrors: [] as FakeError[],
+      /** a table whose write REJECTS instead of answering with an error object */
+      throwOn: null as string | null,
+      /** what every UPDATE answers — count models PostgREST's no-match reply */
+      updateAnswer: { error: null as unknown, count: null as number | null },
+      writes: [] as Array<{ table: string; method: string; payload: any; filters: Record<string, unknown> }>,
+    },
+    toast: vi.fn(),
+    queue: { map: new Map<string, any>() },
+    /** The rows the retry's verification reads answer with. Empty until a test
+     *  seeds one, which keeps the wrapper's own revision reads in charge. */
+    seeded: rows,
+    seedRow: (table: string, row: unknown) => { rows.set(table, row) },
+  }
+})
 
 vi.mock('../src/components/ui', () => ({ toast }))
 
@@ -42,7 +50,12 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
   }
   return {
     ...actual,
-    queueWrite: async (entry: any) => { queue.map.set(entry.tripId, structuredClone(entry)) },
+    queueWrite: async (entry: any) => { queue.map.set(entry.tripId, structuredClone(entry)); return true },
+    dropQueuedWrite: async (entry: any) => {
+      if (!sameGeneration(entry.tripId, entry.capturedAt)) return false
+      queue.map.delete(entry.tripId)
+      return true
+    },
     pendingWrites: async () => [...queue.map.values()],
     dropWriteIfCurrent: async (tripId: string, capturedAt: number) => {
       if (!sameGeneration(tripId, capturedAt)) return false
@@ -57,25 +70,48 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
   }
 })
 
-vi.mock('../src/lib/supabase', () => {
-  function query() {
+vi.mock('../src/lib/supabase', async () => {
+  const { tripWriteClient } = await import('./helpers/tripWriteClient')
+  /** The rows this test seeds for the retry's verification reads, keyed by the
+   *  filter the store applies. Empty until a test seeds one, which keeps the
+   *  wrapper's own revision reads in charge everywhere else. */
+  function seededRow(table: string, filters: Map<string, unknown>): unknown {
+    if (!seeded.has(table)) return null
+    const row = seeded.get(table) as Record<string, unknown>
+    return [...filters].every(([key, value]) => row[key] === value) ? row : null
+  }
+  function query(table: string) {
     const qb: any = {}
+    const filters = new Map<string, unknown>()
     qb.select = () => qb
-    qb.eq = () => qb
+    qb.eq = (key: string, value: unknown) => {
+      filters.set(key, value)
+      return qb
+    }
     qb.in = () => qb
     qb.order = () => qb
     qb.limit = () => qb
     qb.then = (res: (v: { data: unknown; error: null }) => unknown) =>
       Promise.resolve({ data: [], error: null }).then(res)
-    qb.maybeSingle = () => ({
-      then: (res: (v: { data: unknown; error: null }) => unknown) =>
-        Promise.resolve({ data: null, error: null }).then(res),
-    })
+    // True only while a seeded row answers this read. The wrapper reads this flag
+    // after it calls `maybeSingle`: it must hand such a row straight to the
+    // caller, and must leave its own revision reads alone the rest of the time.
+    qb.maybeSingle = () => {
+      const row = seededRow(table, filters)
+      qb.maybeSingleHasRow = row != null
+      return {
+        maybeSingleHasRow: qb.maybeSingleHasRow,
+        then: (res: (v: { data: unknown; error: null }) => unknown) =>
+          Promise.resolve({ data: row, error: null }).then(res),
+      }
+    }
+    qb.maybeSingleHasRow = false
     return qb
   }
   function write(table: string, method: string, payload: any) {
     const qb: any = {}
-    qb.eq = () => qb
+    const filters: Record<string, unknown> = {}
+    qb.eq = (key: string, value: unknown) => { filters[key] = value; return qb }
     qb.in = () => qb
     qb.select = () => qb
     // Both handlers: a thenable that only accepts `res` hangs the awaiting
@@ -85,7 +121,7 @@ vi.mock('../src/lib/supabase', () => {
       res: (v: { data: unknown; error: unknown; count?: number | null }) => unknown,
       rej?: (e: unknown) => unknown,
     ) => {
-      state.writes.push({ table, method, payload })
+      state.writes.push({ table, method, payload, filters: { ...filters } })
       if (state.throwOn === table) return Promise.reject(new Error('fetch failed')).then(res, rej)
       const body: { data: unknown; error: unknown; count?: number | null } = { data: null, error: null }
       if (method === 'update') {
@@ -102,9 +138,9 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: () => true,
-    supabase: {
+    supabase: tripWriteClient({
       from: (table: string) => {
-        const qb = query()
+        const qb = query(table)
         qb.insert = (p: any) => write(table, 'insert', p)
         qb.update = (p: any) => write(table, 'update', p)
         qb.upsert = (p: any) => write(table, 'upsert', p)
@@ -118,11 +154,12 @@ vi.mock('../src/lib/supabase', () => {
       channel: () => ({ on() { return this }, subscribe() { return this } }),
       removeChannel: () => {},
       rpc: async () => ({ data: null, error: null }),
-    },
+    }, () => ({ trips: state.replayTrip ? [state.replayTrip] : [], members: state.replayTrip
+      ? [{ trip_id: state.replayTrip.id, user_id: IMPORTER, role: 'owner' }] : [] })),
   }
 })
 
-import { importTripPersisted, retryImportTrip, tripById, getSnapshot, replayQueuedWrites } from '../src/store/store'
+import { updateTrip, importTripPersisted, retryImportTrip, tripById, getSnapshot, replayQueuedWrites, _setTripWriteDebounceMs } from '../src/store/store'
 import { queueWrite, pendingWrites } from '../src/lib/writeQueue'
 
 const IMPORTER = 'importer-551'
@@ -137,11 +174,13 @@ function tripsInsertIds() {
 }
 
 beforeEach(() => {
+  state.replayTrip = null
   state.tripErrors.length = 0
   state.memberErrors.length = 0
   state.throwOn = null
   state.updateAnswer = { error: null, count: null }
   state.writes.length = 0
+  seeded.clear()
   toast.mockClear()
   queue.map.clear()
   getSnapshot().sessionUserId = IMPORTER
@@ -202,8 +241,27 @@ describe('#551 — the import retry re-uses the trip instead of minting a twin',
     const { trip } = await importTripPersisted(source(), IMPORTER)
     state.tripErrors.push({ code: '23505', message: 'duplicate key' })
     state.memberErrors.push({ code: '23505', message: 'duplicate key' })
+    const row = state.writes.find(write => write.table === 'trips')!.payload
+    // A real saved row carries the revision column. The retry must recover it,
+    // not leave the trip unversioned.
+    seedRow('trips', { ...row, created_at: trip.createdAt, updated_at: trip.updatedAt, write_version: 7 })
+    seedRow('trip_members', { trip_id: trip.id, user_id: IMPORTER, role: 'owner', joined_at: trip.createdAt })
     expect(await retryImportTrip(trip, IMPORTER)).toBe(true)
     expect(tripById(trip.id)).toBeDefined()
+    expect(tripById(trip.id)?.writeVersion).toBe(7)
+    // The next conditional update uses the recovered revision as its baseline.
+    state.replayTrip = { id: trip.id, owner_id: IMPORTER, write_version: 7 }
+    state.writes.length = 0
+    _setTripWriteDebounceMs(0)
+    try {
+      expect(updateTrip(trip.id, { name: 'Renamed after the retry' })).toBe(true)
+      await vi.waitFor(() => {
+        const update = state.writes.find(write => write.table === 'trips' && write.method === 'update')
+        expect(update?.filters.write_version).toBe(7)
+      })
+    } finally {
+      _setTripWriteDebounceMs(600)
+    }
   })
 
   it('a retry that fails again is rolled back again', async () => {
@@ -216,8 +274,14 @@ describe('#551 — the import retry re-uses the trip instead of minting a twin',
 })
 
 describe('#551 — the replay never confirms a write that touched no row', () => {
+  let sequence = 0
   function seedQueue(trip: Trip) {
-    return queueWrite({ tripId: trip.id, ownerId: IMPORTER, capturedAt: 1728000000000, attempts: 0, trip })
+    trip.id = `replay-${++sequence}`
+    trip.writeVersion = 0
+    trip.members = [{ userId: IMPORTER, role: 'owner', joinedAt: 1 }]
+    getSnapshot().trips = [...getSnapshot().trips.filter(t => t.id !== trip.id), trip]
+    state.replayTrip = { id: trip.id, owner_id: IMPORTER, write_version: 0 }
+    return queueWrite({ tripId: trip.id, ownerId: IMPORTER, capturedAt: 1728000000000, baseVersion: 0, attempts: 0, trip })
   }
 
   it('a { error: null, count: 0 } UPDATE stays queued, unsynced, and un-toasted', async () => {
@@ -230,22 +294,23 @@ describe('#551 — the replay never confirms a write that touched no row', () =>
     expect(synced).toBe(0)
     const left = await pendingWrites()
     expect(left.some(w => w.tripId === trip.id)).toBe(true)
-    expect(left[0].attempts).toBe(1) // the failure counter climbed; the cap still has room
+    expect(left[0].attempts).toBe(0)
+    expect(left[0].state).toBe('conflict')
     const toastTexts = toast.mock.calls.map(c => String(c[0]))
     expect(toastTexts.some(t => t.includes('synced'))).toBe(false)
   })
 
-  it('a real sync still lands: count 1 drops the entry and toasts the count', async () => {
+  it('a returned revision confirms sync and removes its queued edit', async () => {
     const trip = source()
     await seedQueue(trip)
     state.updateAnswer = { error: null, count: 1 }
 
     expect(await replayQueuedWrites()).toBe(1)
     expect((await pendingWrites()).some(w => w.tripId === trip.id)).toBe(false)
-    expect(toast).toHaveBeenCalledWith('1 offline change synced.')
+    expect(toast.mock.calls.some(c => String(c[0]).includes('could not sync'))).toBe(false)
   })
 
-  it('a null count (not answered) stays a success — only a DEFINITIVE 0 fails', async () => {
+  it('a returned revision confirms sync even when count is absent', async () => {
     const trip = source()
     await seedQueue(trip)
     state.updateAnswer = { error: null, count: null }
@@ -254,17 +319,17 @@ describe('#551 — the replay never confirms a write that touched no row', () =>
     expect((await pendingWrites()).some(w => w.tripId === trip.id)).toBe(false)
   })
 
-  it('the 0-row failure reaches the cap and is then dropped with the loud toast', async () => {
+  it('network failures pause at the cap and keep the local copy', async () => {
     const trip = source()
     await seedQueue(trip)
-    state.updateAnswer = { error: null, count: 0 }
+    state.updateAnswer = { error: { message: 'offline' }, count: null }
 
     await replayQueuedWrites()
     await replayQueuedWrites()
     await replayQueuedWrites() // MAX_WRITE_ATTEMPTS reached
 
-    expect((await pendingWrites()).some(w => w.tripId === trip.id)).toBe(false)
-    expect(toast).toHaveBeenCalledWith('An offline change could not be saved and was dropped.')
+    expect((await pendingWrites()).find(w => w.tripId === trip.id)).toMatchObject({ attempts: 3, state: 'failed' })
+    expect(toast).toHaveBeenCalledWith('Changes could not sync. Retry or download your copy from Saved edits.', 'err')
   })
 })
 
@@ -303,5 +368,23 @@ describe('#551 — the two callers await the truth (page contracts)', () => {
 
   it('the retry button carries the same-object contract', () => {
     expect(button).toMatch(/await retryImportTrip\(pending\.trip, ownerId\)/)
+  })
+})
+
+
+describe('imported flight day protection', () => {
+  it('assigns flight IDs to the copy and refuses to orphan its flight', async () => {
+    const original = source()
+    original.startDate = '2026-11-01'
+    original.endDate = '2026-11-02'
+    original.days = [0, 1].map(index => ({ id: `d${index}`, index, stops: [] }))
+    original.fixedCommitments = []
+    original.flights = [{ id: 'foreign-flight', dayIndex: 1, fromAirport: 'DEL', toAirport: 'BOM' }]
+    const { trip, persisted } = await importTripPersisted(original, IMPORTER)
+    expect(persisted).toBe(true)
+    expect(trip.flights![0].id).not.toBe('foreign-flight')
+    expect(updateTrip(trip.id, { endDate: '2026-11-01' })).toBe(false)
+    expect(tripById(trip.id)?.days).toHaveLength(2)
+    expect(tripById(trip.id)?.flights).toHaveLength(1)
   })
 })

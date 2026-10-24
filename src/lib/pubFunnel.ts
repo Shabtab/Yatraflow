@@ -37,9 +37,8 @@
 //      session each (`yf-viewed-<id>` / `yf-forked-<id>` in the store). Fork
 //      clicks used to be raw while visits were session-deduped, so the rate
 //      divided two different kinds of count and called the result a conversion.
-//      They are like-unit now, which is why the UI may say "of visit-sessions"
-//      without qualifying further — and why a future asymmetry would have to be
-//      introduced deliberately rather than by accident.
+//      Equal units do not establish linked cohorts. The UI names an activity
+//      ratio. It must not describe individual visitor conversion.
 //
 // WHAT IT WILL NOT DO: invent a stage. There is no "unlock started" or
 // "paywall seen" event to read, so this funnel begins at a visit and ends at a
@@ -83,7 +82,7 @@ export interface PubFunnel {
   lifetimeViews: number
   lifetimeForks: number
   lifetimeUnlocks: number
-  /** Each is a percentage of the stage before it; 0 when the denominator is 0. */
+  /** Aggregate activity ratios, not linked conversion. Legacy fields keep zero for an empty denominator. */
   forkRatePct: number
   unlockRatePct: number
   viewToUnlockPct: number
@@ -146,8 +145,7 @@ function inWindowAt(at: number, start: number, now: number): boolean {
   return Number.isFinite(at) && at >= start && at <= now
 }
 
-/** A stage's conversion. Rule 1 lives here: a missing denominator reads 0, and
- *  the result is never NaN or Infinity. Not clamped — see rule 2. */
+/** Legacy ratio helper. Callers must not describe its result as linked visitor conversion. */
 export function conversionPct(from: number, to: number): number {
   if (!(from > 0)) return 0
   return (to / from) * 100

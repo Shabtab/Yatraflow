@@ -93,6 +93,23 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 _Release highlights, newest first — the full record lives in [CHANGELOG.md](CHANGELOG.md)._
 
+## ✨ The v0.79 release, in plain words
+
+- **The plan-a-trip form now walks you through six steps.** The form asks one question at a time. The questions are where, how you travel, when you leave, who is coming, your budget, and a final check. A laptop shows the step list, the question and a live trip ticket. A phone shows a ticket sheet and a fixed Next bar. Next names the missing answers and moves focus to their control. Review has Change links and a retry after a failed save. A draft you resume reopens on the step you left. The form is behind the `guided` phase of `VITE_CREATE_FUNNEL`; with the flag off, the old long form stays available.
+- **A crew member is named even when the draft holds only a number.** A phone-only entry keeps a safe masked label through resume, autosave, Review and the moment-after screen. Two such entries stay distinct, and no masked label can build an invite link. WhatsApp and SMS stay unavailable on a row with no number; Telegram and the share sheet still work.
+- **A crew number is read in every form people write it.** Brackets, spaces, hyphens, "+91", "91" and a leading "0" all parse again. A free-form entry such as "Team 2 98450 21234" keeps its name and finds its number. A foreign country code such as "+971" is refused instead of being read as an Indian number.
+- **Two people with the same name and different numbers both join the crew.** The duplicate rule compares numbers first, so two numbers are two people and one number twice is still one person.
+- **The guided answers are square boxes.** Who, How, Budget and Mixed use boxed cards. Each one has a check mark, a subtle tint, and motion that respects reduced motion.
+
+## ✨ The v0.78 release, in plain words
+
+- **A public itinerary shows what is inside before you pay.** The first screen holds the cover, the facts and the buy box. A "What is inside" section counts the places by kind and shows one card per day. A locked day keeps its title and road time, and it hides its stop names.
+- **Creator pages and share pages read without JavaScript.** Search visitors see the public bio, the budget per person, the travel tips and the warnings. Private profile fields stay out.
+- **Only the owner can change who owns a trip.** An editor can no longer take ownership. A trip that backs a publication can no longer be deleted directly.
+- **Offline trip edits have conflict recovery.** A saved edit stays with its account and trip. Newer shared changes are never replaced silently. You can retry, download the edit, or choose between the local and shared plan.
+- **The Android app checks for a newer build.** Profile shows the installed build and a Check for updates button. The app installs nothing by itself. The check stays inert until a release feed is approved.
+- **Phone polish.** The trip header is compact, the Map tab takes one-finger drag, and Android screens start below the status bar.
+
 ## ✨ The v0.77 release, in plain words
 
 - **Flight trips plan the whole journey.** The travel day runs home → the origin airport → the sector → the destination airport → your stay. Ground legs use car timing and pricing. The sector uses the fare for your whole group.

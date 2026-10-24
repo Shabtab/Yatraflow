@@ -46,7 +46,7 @@ function isIllustrationPath(filePath: string): boolean {
  *  `VITE_CREATE_FUNNEL` has to carry to light up the v0.65.0 arc. Kept in step
  *  with the `createFunnelOn()` call sites and with the deploy table by
  *  `tests/deploy-flags.test.ts`, which reads all three. */
-const FUNNEL_PHASES = ['templates', 'budget', 'readiness', 'drafts', 'crew', 'moment', 'iq']
+const FUNNEL_PHASES = ['templates', 'budget', 'readiness', 'drafts', 'crew', 'moment', 'iq', 'guided']
 
 /**
  * Warn about a production build whose create-funnel switch is wrong (#427).

@@ -18,7 +18,7 @@ The app lives at **https://www.yatraflow.in**, connected to `hasnaina955/Yatrafl
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_ANON_KEY`
   - `VITE_CREATE_FUNNEL` — the create-flow funnel switch, and **the one that shipped dark** (#427). A comma-separated phase list, not a boolean; the value that lights up the whole v0.65.0 arc is
-    `templates,budget,readiness,drafts,crew,moment,iq`.
+    `templates,budget,readiness,drafts,crew,moment,iq,guided`.
     **Leaving it unset is a valid state, and in production it is a silent one**: unset in a production build means *dark* (the app renders, `/new` loads, every funnel phase is simply missing), while unset in a dev build means *everything on*. That asymmetry exists so `test` can dark-run a phase before `main` sees it, so do not "fix" a dark production build by changing the default — set the variable. `tests/deploy-flags.test.ts` keeps this list, the `createFunnelOn()` call sites and `FUNNEL_PHASES` in `vite.config.ts` identical, because a typo here silently darkens one phase while the other six light up. `vite.config.ts` warns (never aborts) when a **production** build has this empty or names a phase the code does not gate.
   - `VITE_AI_COMPANION` — deliberately **absent** from production until the 1.0 cut (M8), where the companion is unmounted as the premium perk; `AI_COMPANION_ENABLED` requires the exact value `on`. Its dark state is a decision, unlike the funnel's.
   Vite **inlines these at build time**, so changing them never affects an existing deployment — you must **Redeploy** (Vercel → Deployments → ⋯ → Redeploy) for a preview to pick them up. Since 2026-08-31 `vite.config.ts` aborts a Vercel build outright when either Supabase variable is missing, so a mis-scoped environment fails loudly instead of shipping an app whose login is broken.
@@ -81,6 +81,19 @@ Before closing #226:
 4. Confirm the card in WhatsApp or the Meta Sharing Debugger. An SSO-protected preview cannot satisfy anonymous crawler acceptance.
 
 The preview endpoint and the trip-JSON import that PR #235 also carried are both landed on `test`. What PR #235 still holds and this work does not is its route-to-title mapping (`src/lib/pageTitle.ts`, applied in `App.tsx`, so open tabs stop sharing one title) and its `.codacy.yml` exclusion, which was written for the older shell-injecting handler. PR #235's own `api/i.js` and `shareUrl.ts` are **superseded** by this implementation and must not be merged over it.
+
+## Public creator pages
+
+Vercel rewrites `/c/<creator-id>` to `api/c.js`. The HTML shows the public name, bio and live itinerary links.
+Search visitors can read it without JavaScript. A recognised `ref` tag redirects to `/creator/<id>` in the app.
+The canonical URL excludes the tag. `ProfilePage` structured data describes the public person.
+
+The function uses `SUPABASE_URL` and `SUPABASE_ANON_KEY`, like the itinerary endpoint.
+It selects only `name,creator_bio` from profiles and `id,title,tagline` from live publications.
+It reads publication pages in ID order. Private profile fields and trip details stay out of the response.
+
+A complete page can stay in the edge cache for five minutes.
+A failed catalogue read shows an error and uses `no-store`. A nameless profile stays `noindex` and uncached.
 
 ## Any other static host
 

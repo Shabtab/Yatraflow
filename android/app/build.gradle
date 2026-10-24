@@ -16,6 +16,11 @@ android {
         applicationId "app.yatraflow.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        // versionCode is the ONLY number the update check compares. Give each
+        // published release the next higher integer and never reuse one; a
+        // rebuild of a published release keeps its own code. Do not derive it
+        // from a date. See docs/APK-UPDATE-FEED.md. The value below follows
+        // package.json, so a release cut raises it on its own.
         versionCode versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
         versionName "${packageVersion}-native"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

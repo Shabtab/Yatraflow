@@ -34,7 +34,7 @@ const RULE_IDS = [
 ]
 
 // ---- key allowlists, mirrored from src/lib/itinerarySpec.ts
-const TRIP_KEYS = new Set(['id', 'name', 'startLocation', 'startLocationCoords', 'destinations', 'destinationCoords', 'startDate', 'endDate', 'travellers', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin', 'transportMode', 'fuelEconomyKmL', 'fuelPricePerL', 'roundTrip', 'vehicleProfile', 'budgetPerPersonInr', 'travelStyle', 'stayStyle', 'fixedCommitments', 'days', 'expenses', 'coverEmoji', 'coverImageUrl', 'visibility', 'createdAt', 'updatedAt'])
+const TRIP_KEYS = new Set(['id', 'name', 'startLocation', 'startLocationCoords', 'destinations', 'destinationCoords', 'startDate', 'endDate', 'travellers', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin', 'transportMode', 'drivesPart', 'fuelEconomyKmL', 'fuelPricePerL', 'roundTrip', 'vehicleProfile', 'tankL', 'rentPerDayInr', 'localTrain', 'flights', 'budgetPerPersonInr', 'travelStyle', 'stayStyle', 'fixedCommitments', 'days', 'expenses', 'coverEmoji', 'coverImageUrl', 'visibility', 'createdAt', 'updatedAt'])
 const STOP_KEYS = new Set(['id', 'title', 'category', 'locationName', 'placeId', 'lat', 'lng', 'description', 'visitMinutes', 'openTime', 'closeTime', 'entryFeeInrPerPerson', 'transportCostInrTotal', 'priority', 'notes', 'sourceUrl', 'status', 'orderInDay', 'weatherSensitive', 'auto'])
 
 // ---- enums mirrored from src/data/types.ts (keep in sync — pinned by tests/golden-itineraries.test.ts)
@@ -119,6 +119,10 @@ function validate(parsed) {
 
   if (!Number.isInteger(trip.travellers) || trip.travellers < 1) err(`trip.travellers: must be an integer ≥ 1`)
   if (!TRANSPORT_MODES.includes(trip.transportMode)) err(`trip.transportMode: "${trip.transportMode}" not in ${TRANSPORT_MODES.join(' · ')}`)
+  // Mixed-only, tri-state (2026-10-19): a real boolean or absent. A string or
+  // a number here would reach the planner as a truthy lie.
+  if (trip.drivesPart !== undefined && typeof trip.drivesPart !== 'boolean') err(`trip.drivesPart: "${trip.drivesPart}" must be true, false, or absent`)
+  if (trip.drivesPart !== undefined && trip.transportMode !== 'mixed') warn(`trip.drivesPart is set but transportMode is "${trip.transportMode}", which never asks`)
   if (!TRAVEL_STYLES.includes(trip.travelStyle)) err(`trip.travelStyle: "${trip.travelStyle}" not in ${TRAVEL_STYLES.join(' · ')}`)
   if (trip.stayStyle !== undefined && !STAY_STYLES.includes(trip.stayStyle)) err(`trip.stayStyle: "${trip.stayStyle}" not in ${STAY_STYLES.join(' · ')}`)
   if (trip.stayStyle === undefined) warn('trip.stayStyle: unset — it would derive from legacy travelStyle; set it explicitly so pricing is deliberate')

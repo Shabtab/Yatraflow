@@ -104,10 +104,8 @@ describe('#428 PII rule — the nastiest realistic state writes nothing identifi
 
   it('abandoned clamps lastStage to a stage key — no prose escapes', () => {
     expect(sanitizeCreateMeta('abandoned', { lastStage: 'crew' })).toEqual({ lastStage: 'crew' })
-    const long = sanitizeCreateMeta('abandoned', { lastStage: 'where? tell me call 9845012345 now' }) as Record<string, unknown>
-    // non-word characters are stripped entirely: no digits run, no prose
-    expect(String(long.lastStage)).not.toMatch(/\s/)
-    expect(String(long.lastStage)).not.toContain('9845012345')
+    expect(sanitizeCreateMeta('abandoned', { lastStage: 'where? tell me call 9845012345 now' })).toBeUndefined()
+    expect(sanitizeCreateMeta('abandoned', { lastStage: 'Priya' })).toBeUndefined()
   })
 
   it('meta-less events drop whatever is handed in', () => {
@@ -180,8 +178,11 @@ describe('#428 read derivations — the dashboard answer key', () => {
   // Fixture timestamps anchored to NOW (today minus N days) so the 30-day
   // window always contains them — the derivation buckets relative to now,
   // and a wall-calendar fixture would age out of its own test.
-  const at = (daysAgo: number, hour = 10) =>
-    new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000 + (hour - 12) * 3600 * 1000).toISOString()
+  const at = (daysAgo: number, hour = 10) => {
+    const now = new Date()
+    const day = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysAgo, hour)
+    return new Date(Math.min(day, Date.now() - 1)).toISOString()
+  }
 
   const rows: CreateFunnelRow[] = [
     { event: 'started', at: at(3), meta: null },
@@ -208,13 +209,39 @@ describe('#428 read derivations — the dashboard answer key', () => {
     expect(s.counts.draft_resumed).toBe(0)
   })
 
-  it('started → submitted conversion over sessions that started', () => {
+  it('reports an event activity ratio without claiming linked session conversion', () => {
     const s = deriveCreateFunnel(rows)
     expect(s.conversionPct).toBeCloseTo((2 / 3) * 100, 5)
   })
 
   it('zero starts means zero conversion, never NaN', () => {
     expect(deriveCreateFunnel([]).conversionPct).toBe(0)
+  })
+
+  it('deduplicates submitted trip acknowledgements and rejects invalid or out-of-window dates', () => {
+    const current = new Date().toISOString()
+    const s = deriveCreateFunnel([
+      { event: 'submitted', at: current, meta: null, trip_id: 'same-trip' },
+      { event: 'submitted', at: current, meta: null, trip_id: 'same-trip' },
+      { event: 'started', at: 'invalid', meta: null },
+      { event: 'started', at: new Date(Date.now() + 86400000).toISOString(), meta: null },
+      { event: 'started', at: '2000-01-01T00:00:00Z', meta: null },
+    ])
+    expect(s.counts.submitted).toBe(2)
+    expect(s.submittedTrips).toBe(1)
+    expect(s.counts.started).toBe(0)
+  })
+
+  it('does not expose private strings from legacy metadata as report labels', () => {
+    const at = new Date().toISOString()
+    const result = deriveCreateFunnel([
+      { event: 'template_picked', at, meta: { source: 'template', templateId: '9845012345' } },
+      { event: 'abandoned', at, meta: { lastStage: 'Priya' } },
+    ])
+    expect(result.templates).toEqual([])
+    expect(result.topAbandonStage).toBeNull()
+    expect(result.counts.template_picked).toBe(1)
+    expect(JSON.stringify(result)).not.toMatch(/Priya|9845012345/)
   })
 
   it('template breakdown ranks by picks, slugs only', () => {

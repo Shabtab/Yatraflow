@@ -34,6 +34,8 @@ import type {
 import {
   TRANSPORT_MODES, TRAVEL_STYLES, STOP_CATEGORIES, STOP_STATUSES, EXPENSE_CATEGORIES, STAY_STYLES,
 } from '../data/types'
+import { sanitizeFlights, sanitizeTankL, sanitizeRentPerDayInr } from './tripRow'
+import { normalizeVehicleProfile } from './vehicleProfile'
 import { PUBLISH_FIELD_LABELS, PUBLISH_FIELD_ORDER, publishValidation } from './publishRules'
 
 /** The wire format this build writes and reads. Bump it whenever the SHAPE
@@ -75,7 +77,7 @@ export type SpecRuleId = (typeof SPEC_RULE_IDS)[number]
 export const TRIP_KEYS = new Set([
   'id', 'name', 'startLocation', 'startLocationCoords', 'destinations', 'destinationCoords',
   'startDate', 'endDate', 'travellers', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin',
-  'transportMode', 'fuelEconomyKmL', 'fuelPricePerL', 'roundTrip', 'vehicleProfile',
+  'transportMode', 'drivesPart', 'fuelEconomyKmL', 'fuelPricePerL', 'roundTrip', 'vehicleProfile', 'tankL', 'rentPerDayInr', 'localTrain', 'flights',
   'budgetPerPersonInr', 'travelStyle', 'stayStyle', 'fixedCommitments', 'days', 'expenses',
   'coverEmoji', 'coverImageUrl', 'visibility', 'createdAt', 'updatedAt',
 ])
@@ -686,8 +688,22 @@ export function normalizeTrip(source: Record<string, unknown>, report: Normalize
     })
   })
 
-  // Nothing importable at all: no day carries a single placeable stop.
-  if (days.every(d => d.stops.length === 0)) return null
+  const dayReferences = new Map<number, number | null>()
+  rawDays.forEach((raw, index) => {
+    const original = num((raw as Record<string, unknown>).index, index)
+    dayReferences.set(original, dayReferences.has(original) ? null : index)
+  })
+  const flights = sanitizeFlights(Array.isArray(source.flights)
+    ? source.flights.filter(isObject).filter(raw => Number.isInteger(raw.dayIndex)).map(raw => ({
+      ...raw, id: freshId('fl'), dayIndex: dayReferences.get(raw.dayIndex as number),
+    })) : [])
+    .filter(f => f.dayIndex < days.length)
+  if (Array.isArray(source.flights) && flights.length !== source.flights.length) {
+    report.warnings.push('Some flights had no usable airports or itinerary day — dropped.')
+  }
+
+  // A recorded flight can be the only activity on an itinerary.
+  if (days.every(d => d.stops.length === 0) && flights.length === 0) return null
   if (renumberedDays > 0) report.repairs.push(`Rebuilt day numbering (${renumberedDays} day${renumberedDays > 1 ? 's' : ''} did not match their position in the list).`)
   if (renumberedStops > 0) report.repairs.push(`Rebuilt the per-day stop order (${renumberedStops} stop${renumberedStops > 1 ? 's' : ''} were numbered from 0 or out of sequence — this app numbers from 1).`)
   warnSharedPins(days, report)
@@ -831,9 +847,18 @@ export function normalizeTrip(source: Record<string, unknown>, report: Normalize
       ? num(source.driveAfterDinnerMin, 0)
       : undefined,
     transportMode: transportMode ?? 'car',
+    // Tri-state on purpose. Only a real boolean is an answer; anything else is
+    // "unanswered", which is what a file or payload from before this field
+    // existed means, and what the policy plans as Mixed's legacy behaviour.
+    drivesPart: typeof source.drivesPart === 'boolean' ? source.drivesPart : undefined,
     fuelEconomyKmL: num(source.fuelEconomyKmL, NaN) > 0 ? num(source.fuelEconomyKmL, 0) : undefined,
     fuelPricePerL: num(source.fuelPricePerL, NaN) > 0 ? num(source.fuelPricePerL, 0) : undefined,
     roundTrip: typeof source.roundTrip === 'boolean' ? source.roundTrip : undefined,
+    flights: source.flights === undefined ? undefined : flights,
+    vehicleProfile: normalizeVehicleProfile(source.vehicleProfile),
+    tankL: sanitizeTankL(num(source.tankL, NaN)) ?? undefined,
+    rentPerDayInr: sanitizeRentPerDayInr(num(source.rentPerDayInr, NaN)) ?? undefined,
+    localTrain: typeof source.localTrain === 'boolean' ? source.localTrain : undefined,
     budgetPerPersonInr: Math.max(0, num(source.budgetPerPersonInr, 0)),
     travelStyle: travelStyle ?? 'balanced',
     stayStyle,

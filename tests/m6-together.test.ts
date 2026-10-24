@@ -13,7 +13,8 @@ const { calls } = vi.hoisted(() => ({
   calls: [] as Array<{ table: string; method: string; payload?: unknown }>,
 }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { tripWriteClient } = await import('./helpers/tripWriteClient')
   const makeBuilder = (table: string) => {
     let method: string | undefined
     let payload: unknown
@@ -36,13 +37,23 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: false,
-    supabase: { from: (t: string) => makeBuilder(t) },
+    supabase: tripWriteClient({
+      from: (t: string) => makeBuilder(t),
+      // Stage A of #832: activity.append rides the collab-command RPC; the
+      // stub records the call so the activity-feed assertions can see it.
+      rpc: (fn: string, params?: unknown) => {
+        const qb: Record<string, unknown> = {}
+        qb.then = (res: (v: { data: unknown; error: unknown }) => unknown) =>
+          new Promise(resolve => { calls.push({ table: fn, method: 'rpc', payload: params }); resolve({ data: { status: 'applied', tripRevision: 1 }, error: null }) }).then(res)
+        return qb
+      },
+    }),
   }
 })
 
 import {
   duplicateTrip, addExpense, markExpenseSettled, markExpenseUnsettled,
-  tripById, _setTripWriteDebounceMs, _flushTripWrites, presenceClient, getSnapshot,
+  tripById, tripWriteVerdict, _setTripWriteDebounceMs, _flushTripWrites, presenceClient, getSnapshot,
   updateStop, moveStopBetweenDays, _applyRealtimeEventForTest,
   _clearRecentLocalWrites, _clearServerTripTimestamps, setStopStatus,
 } from '../src/store/store'
@@ -55,11 +66,13 @@ const ownerId = 'owner-test'
 
 function singleTrip() {
   calls.length = 0
+  getSnapshot().sessionUserId = ownerId
   return duplicateTrip(keralaTrip, ownerId)
 }
 
-function flush(): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, 0))
+async function flush(): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 0))
+  await Promise.all(getSnapshot().trips.map(trip => tripWriteVerdict(trip.id)))
 }
 
 function tripsUpdates() {
@@ -109,8 +122,12 @@ describe('B4 · markExpenseSettled', () => {
     calls.length = 0
     markExpenseSettled(trip.id, id, ownerId)
     await flush()
-    const activityRows = calls.filter(c => c.table === 'activity' && c.method === 'insert')
-    expect(activityRows.length).toBeGreaterThan(0)
+    // Stage A of #832: activity travels through the collab-command RPC as an
+    // activity.append command, not a direct activity-table insert.
+    const activityCommands = calls.filter(c => c.table === 'submit_collab_command' && c.method === 'rpc')
+      .map(c => (c.payload as { p_command?: { type?: string; verb?: string } })?.p_command)
+      .filter(cmd => cmd?.type === 'activity.append')
+    expect(activityCommands.length).toBeGreaterThan(0)
   })
 
   it('is idempotent — a settled line is not re-marked', async () => {

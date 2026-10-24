@@ -199,7 +199,8 @@ vi.mock('../src/lib/supabase', () => {
     builder.maybeSingle = () => builder
     builder.single = () => builder
     builder.then = (res: (v: { data: unknown; error: unknown }) => unknown) =>
-      Promise.resolve({ data: table === 'trips' ? state.resyncRows : [], error: null }).then(res)
+      Promise.resolve({ data: table === 'trips' ? state.resyncRows
+        : table === 'trip_members' ? state.resyncRows.map(r => ({ trip_id: r.id, user_id: 'owner-test', role: 'owner', joined_at: 1 })) : [], error: null }).then(res)
     return builder
   }
   const chainObj: Record<string, unknown> = {
@@ -228,12 +229,13 @@ vi.mock('../src/lib/supabase', () => {
 
 import {
   connectRealtime, disconnectRealtime, tripById, duplicateTrip, _applyRealtimeEventForTest,
-  _clearRecentLocalWrites, _setTripWriteDebounceMs,
+  _clearRecentLocalWrites, _setTripWriteDebounceMs, getSnapshot,
 } from '../src/store/store'
 
 const keralaTrip = seedData.trips[0]
 
 beforeEach(() => {
+  getSnapshot().sessionUserId = 'owner-test'
   calls.length = 0
   state.resyncRows = []
   _clearRecentLocalWrites()
@@ -306,7 +308,7 @@ describe('reconnect resync — re-SUBSCRIBED replays cached trips through the li
     // feedSynthetic grammar for every slice, and feedSynthetic wraps the same
     // applyRealtimeEvent.
     const store = read('src/store/store.ts')
-    expect(store).toContain('void resyncTripsAfterReconnect()')
+    expect(store).toContain('void resyncTripsAfterReconnect(scope)')
     expect(store).toMatch(/resyncTripsAfterReconnect[\s\S]*?feedSynthetic\('trips'/)
     const fnStart = store.indexOf('function feedSynthetic')
     expect(store.slice(fnStart, fnStart + 500)).toContain('applyRealtimeEvent(table,')

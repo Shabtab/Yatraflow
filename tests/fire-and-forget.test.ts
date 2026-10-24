@@ -19,7 +19,7 @@ vi.mock('../src/lib/supabase', () => {
     const qb: any = { table, method }
     const chain = () => qb
     qb.select = chain; qb.eq = chain; qb.in = chain; qb.order = chain
-    qb.limit = chain; qb.lt = chain; qb.gt = chain
+    qb.limit = chain; qb.lt = chain; qb.gt = chain; qb.setHeader = chain
     qb.maybeSingle = () => qb; qb.single = () => qb; qb.throwOnError = chain
     qb.then = (f: any, r?: any) =>
       new Promise(resolve => { sent.push({ table, method }); resolve({ data: null, error: null }) }).then(f, r)
@@ -42,12 +42,13 @@ vi.mock('../src/lib/supabase', () => {
       const table = fn === 'bump_published_stats' ? 'published_itineraries' : fn
       const method = 'rpc'
       const qb: any = { table, method, fn }
+      qb.setHeader = () => qb
       qb.then = (f: any, r?: any) =>
         new Promise(resolve => { sent.push({ table, method }); resolve({ data: null, error: null }) }).then(f, r)
       return qb
     },
     auth: {
-      getSession: async () => ({ data: { session: null } }),
+      getSession: async () => ({ data: { session: { access_token: 'fixture-token', user: { id: 'amelia' } } } }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     },
     channel: () => ({ on: () => ({}), subscribe: () => ({}) }),
@@ -105,25 +106,34 @@ describe('#52 — every optimistic write must actually reach the client', () => 
   const cases: Array<{ name: string; table: string; method: 'insert' | 'update' | 'delete'; run: (s: any) => void }> = [
     { name: 'restoreMember', table: 'trip_members', method: 'insert', run: s => s.restoreMember('trip-1', { userId: 'diego', role: 'editor', joinedAt: 3 }) },
     { name: 'setMemberRole', table: 'trip_members', method: 'update', run: s => s.setMemberRole('trip-1', 'priya', 'viewer') },
-    { name: 'joinViaInvite', table: 'join_trip', method: 'rpc', run: s => s.joinViaInvite('trip-1', 'newcomer', 'GOA-K7QF') },
+    // #804 (B2a) — joinViaInvite now refuses a caller id that is not the
+    // signed-in account, and an EXISTING member short-circuits to the reload
+    // path without an RPC. This harness signs in as 'amelia' and seeds her as
+    // the owner of trip-1, so the case joins a second trip she is NOT on, which
+    // is the shape that actually issues the join_trip RPC.
+    { name: 'joinViaInvite', table: 'join_trip', method: 'rpc', run: s => s.joinViaInvite('trip-2', 'amelia', 'GOA-K7QF') },
     { name: 'removeMember', table: 'trip_members', method: 'delete', run: s => s.removeMember('trip-1', 'priya') },
     {
       name: 'addSuggestion',
-      table: 'suggestions',
-      method: 'insert',
+      table: 'submit_collab_command',
+      method: 'rpc',
       run: s => s.addSuggestion('trip-1', {
-        title: 'LX Factory', dayIndex: 0, proposedBy: 'amelia', category: 'food', locationName: 'Rua',
+        title: 'LX Factory', dayIndex: 0, category: 'food', locationName: 'Rua',
         lat: 38.7, lng: -9.1, description: '', visitMinutes: 45, estimatedEntryFeeInr: 0, estimatedTransportInr: 0,
       }),
     },
-    { name: 'voteSuggestion', table: 'suggestions', method: 'update', run: s => s.voteSuggestion('trip-1', 'sug-1', 'amelia', 1) },
-    { name: 'addCommentToSuggestion', table: 'suggestions', method: 'update', run: s => s.addCommentToSuggestion('trip-1', 'sug-1', 'amelia', 'great idea') },
+    // Stage A of #832: the contribution writers submit through the
+    // collab-command RPC instead of whole-JSON table writes. The lazy-rpc
+    // stub records the call on then(), so these cases still prove the
+    // request is actually issued (issue #52's property, new path).
+    { name: 'voteSuggestion', table: 'submit_collab_command', method: 'rpc', run: s => s.voteSuggestion('trip-1', 'sug-1', 1) },
+    { name: 'addCommentToSuggestion', table: 'submit_collab_command', method: 'rpc', run: s => s.addCommentToSuggestion('trip-1', 'sug-1', 'great idea') },
     { name: 'acceptSuggestionIntoTimeline', table: 'suggestions', method: 'update', run: s => s.acceptSuggestionIntoTimeline('trip-1', 'sug-1') },
     { name: 'declineSuggestion', table: 'suggestions', method: 'update', run: s => s.declineSuggestion('trip-1', 'sug-1') },
-    { name: 'addDecision', table: 'decisions', method: 'insert', run: s => s.addDecision('trip-1', { question: 'Beach or museum?', context: '', options: [{ id: 'o1', label: 'Beach' }] }) },
-    { name: 'voteOnDecision', table: 'decisions', method: 'update', run: s => s.voteOnDecision('dec-1', 'opt-1') },
+    { name: 'addDecision', table: 'submit_collab_command', method: 'rpc', run: s => s.addDecision('trip-1', { question: 'Beach or museum?', context: '', options: [{ id: 'o1', label: 'Beach' }] }) },
+    { name: 'voteOnDecision', table: 'submit_collab_command', method: 'rpc', run: s => s.voteOnDecision('dec-1', 'opt-1') },
     { name: 'resolveDecision', table: 'decisions', method: 'update', run: s => s.resolveDecision('dec-1', 'opt-1') },
-    { name: 'addActivity', table: 'activity', method: 'insert', run: s => s.addActivity('trip-1', 'amelia', 'checked in') },
+    { name: 'addActivity', table: 'submit_collab_command', method: 'rpc', run: s => s.addActivity('trip-1', 'checked in') },
     { name: 'pushNotification', table: 'notifications', method: 'insert', run: s => s.pushNotification('priya', 'trip-1', 'Amelia liked Time Out Market') },
     { name: 'markAllNotificationsRead', table: 'notifications', method: 'update', run: s => s.markAllNotificationsRead('amelia') },
     { name: 'registerPubView', table: 'published_itineraries', method: 'rpc', run: s => s.registerPubView('pub-1') },

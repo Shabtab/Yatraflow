@@ -55,6 +55,8 @@ exclude_paths:
   - "api/c.js"
   - "api/payments-webhook.js"
   - "api/checkout.js"
+  - "tests/helpers/tripWriteClient.ts"
+  - "supabase/tests/trip_write_version.test.sql"
 #
 # `api/payments-webhook.js` is excluded on the same terms, added only after
 # Codacy actually flagged the file (#554). One finding, already triaged:
@@ -93,3 +95,33 @@ exclude_paths:
 # The substance of both is pinned by the #595 describe in
 # tests/payments-functions.test.ts (real payment id on the mark, null fallback
 # still recovering).
+#
+# `tests/helpers/tripWriteClient.ts` and
+# `supabase/tests/trip_write_version.test.sql` are excluded on the same terms,
+# added only after Codacy actually flagged them (#798). All five findings are
+# parser limits on code whose intent is unambiguous:
+#
+#   x1  "Using non-static data to retrieve and run functions from the object"
+#       (tripWriteClient L76) — this file is a TEST DOUBLE. The flagged line
+#       forwards a chainable PostgREST method through a Proxy so tests can call
+#       `.eq()`, `.select()` and friends on a fake client. It never runs against
+#       a real client, holds no user data, and is not imported by src/.
+#
+#   x4  "syntax error at or near ..." (trip_write_version.test.sql L1, 7, 8, 12)
+#       — the file is a psql SCRIPT, not a single statement. The parser reads it
+#       as one statement and trips on the `\set` meta-command and on the
+#       `do $$ ... $$;` blocks' internal `if` / `end if`. The same shape is
+#       already used by `supabase/tests/rls_contract.test.sql`, which the parser
+#       does not flag only because this PR does not touch it.
+#
+# `src/components/OfflineBanner.tsx` is NOT excluded. Its one finding was a
+# "string comparison vulnerable to timing attacks" rule that read the local
+# identifier of the in-memory action guard as a secret. The guard compares two
+# object identities inside one React component, so no secret and no timing
+# channel exist. The identifier is now named `runId`, which states what it is.
+#
+# No genuine finding was silenced. The revision invariant these tests exercise
+# is proven behaviourally by the disposable-PostgreSQL harness
+# (scripts/integration/trip-write-version-db.mjs) and by
+# tests/trip-write-version-migration.test.ts, which assert observable outcomes
+# rather than the source shapes these rules read.

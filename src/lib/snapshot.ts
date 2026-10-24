@@ -3,6 +3,11 @@
 // is JSON-encoded, deflated and base64url'd into the hash
 // (#/share/<payload>) so no server storage is needed.
 //
+// The payload is the whole trip in reversible base64, and a browser never
+// sends a fragment in a request. That is what keeps it out of a server's
+// reach, so it is the one link in the app that must not be given a path or a
+// query. See the snapshot-fragment rule in CODING_STANDARDS (#805).
+//
 // Two different directions, two different treatments — both versioned:
 //
 //   A SNAPSHOT is our own trip, so decoding must be LOSSLESS for a clean
@@ -85,6 +90,11 @@ const SNAPSHOT_IDENTITY_KEYS = [
   'id', 'createdAt', 'updatedAt', 'visibility',
   'deletedAt', 'ref', 'vehicleProfile', 'startLocationCoords',
   'destinationCoords', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin',
+  // `drivesPart` is deliberately NOT here (2026-10-19). This block restores
+  // RAW payload keys over the walled trip, so anything it copies bypasses the
+  // parse `normalizeTrip` already did: a payload carrying drivesPart:'false',
+  // 0 or null would overwrite the parsed answer with the raw lie. The wall
+  // keeps the real booleans, which is the only thing that must cross.
 ] as const
 
 /** Put the payload's own identity back on the walled trip. A clean trip then
@@ -95,6 +105,7 @@ function restoreSnapshotIdentity(raw: Record<string, unknown>, walled: Trip): Tr
   return {
     ...walled,
     ...identity,
+    flights: walled.flights === undefined ? undefined : restoreOwnRows(Array.isArray(raw.flights) ? raw.flights : [], walled.flights),
     expenses: restoreOwnRows(Array.isArray(raw.expenses) ? raw.expenses : [], walled.expenses) as Trip['expenses'],
     fixedCommitments: restoreOwnRows(
       Array.isArray(raw.fixedCommitments) ? raw.fixedCommitments : [], walled.fixedCommitments,
@@ -145,9 +156,92 @@ function stripVersion(raw: Record<string, unknown>): Record<string, unknown> {
   return rest
 }
 
+const SHARE_ROUTE = '/share'
+
+/** The link a reader opens. The path is the bare root and the payload is the
+ *  fragment, so the request this link makes carries no part of the trip. */
 export function snapshotUrl(trip: Trip, payload: string): string {
   void trip
-  return `${location.origin}/share/${payload}`
+  return `${location.origin}/#${SHARE_ROUTE}/${payload}`
+}
+
+/** How many percent-decoding passes redaction tries. A browser, chat app or
+ *  template adds one or two layers. The bound stops a crafted address from
+ *  making this loop expensive. */
+const REDACTION_DECODE_PASSES = 8
+
+/** Decode one percent layer. A malformed sequence must not stop the whole
+ *  address: `decodeURIComponent` refuses a string that holds one bad sequence,
+ *  which would keep an encoded payload alive beside it. */
+function decodePercentOnce(value: string): string {
+  return value.replace(/(?:%[0-9a-f]{2})+/gi, run => {
+    try {
+      return decodeURIComponent(run)
+    } catch {
+      return run.replace(/%([0-9a-f]{2})/gi, (_, hex: string) =>
+        String.fromCharCode(parseInt(hex, 16)))
+    }
+  })
+}
+
+/** Remove every snapshot token, whatever the case of the route label. */
+function stripSnapshotTokens(value: string): string {
+  return value.replace(/\/share\/+\s*[^/?#\s]+/gi, SHARE_ROUTE)
+}
+
+/** Return the page label without carrying its query, fragment suffix, or an
+ *  encoded snapshot value into an outbound diagnostic. */
+function safePageLabel(url: string): string {
+  const absolute = /^[a-z][a-z\d+.-]*:\/\//i.test(url)
+  let address: URL
+  try {
+    address = new URL(url, 'https://snapshot-redaction.invalid')
+  } catch {
+    return ''
+  }
+
+  const prefix = absolute ? address.origin : ''
+  const path = address.pathname || '/'
+  const hashRoute = address.hash.startsWith('#/')
+    ? address.hash.slice(1).split(/[?#]/, 1)[0]
+    : ''
+  const isShareRoute = (route: string) => /^\/+share\/+\s*[^/?#\s]+/i.test(decodePercentOnce(route))
+
+  if (isShareRoute(path)) return `${prefix}/share`
+  if ((path === '/' || path === '/index.html') && isShareRoute(hashRoute)) {
+    return `${prefix}/#/share`
+  }
+  if (path === '/' || path === '/index.html') return `${prefix}/`
+  if (/%|yf1_/i.test(path)) return `${prefix}/`
+  return `${prefix}${path}`
+}
+
+/** An address with any snapshot payload removed, leaving the route itself.
+ *  A browser does not put a fragment in a request, but an analytics collector
+ *  reads the page's own URL in the page and can carry the token onward. This
+ *  keeps the page view and drops the trip.
+ *
+ *  A percent-encoded address can hide a second copy of the route inside a
+ *  query value, so the outer `/share/` is not the only one. Redaction decodes
+ *  the address a bounded number of times and strips every copy it finds. If a
+ *  snapshot token remains or another encoded layer may remain, it emits a safe
+ *  page label. A ninth layer is discarded even when it is harmless. Addresses
+ *  that finish decoding within the bound and contain no snapshot stay unchanged. */
+export function redactSnapshotUrl(url: string): string {
+  let decoded = url
+  let exhausted = true
+  for (let pass = 0; pass < REDACTION_DECODE_PASSES; pass++) {
+    const next = decodePercentOnce(decoded)
+    if (next === decoded) {
+      exhausted = false
+      break
+    }
+    decoded = next
+  }
+  const hasSnapshotToken = /yf1_[a-z0-9_-]+/i.test(decoded)
+  if (exhausted && decodePercentOnce(decoded) !== decoded) return safePageLabel(url)
+  const redacted = stripSnapshotTokens(decoded)
+  return redacted === decoded && !hasSnapshotToken ? url : safePageLabel(url)
 }
 
 // ---- decompression helper ----

@@ -121,8 +121,8 @@ export interface ExperienceTier {
 export const EXPERIENCE_TIERS: readonly ExperienceTier[] = [
   { from: 0, label: 'shoestring', blurb: 'dorm beds and budget rooms, buses or shared cabs, local food' },
   { from: 6000, label: 'budget', blurb: 'private budget rooms, a self-drive car, mostly local restaurants' },
-  { from: 11000, label: 'comfort', blurb: 'comfort rooms, your own car, a mix of local and proper restaurants' },
-  { from: 20000, label: 'premium', blurb: 'good hotels, your own car, meals without watching the menu' },
+  { from: 11000, label: 'comfort', blurb: 'comfort rooms, your own transport, a mix of local and proper restaurants' },
+  { from: 20000, label: 'premium', blurb: 'good hotels, your own transport, meals without watching the menu' },
   { from: 32000, label: 'heritage', blurb: 'heritage and boutique stays, chauffeur-driven if you want it' },
 ]
 

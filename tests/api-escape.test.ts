@@ -20,8 +20,14 @@ const XML_ENTITIES: [string, string][] = [
 
 const UNICODE = 'नमस्ते · ₹18,500/person · Leh → Khardung La — 🏔'
 
-// The four handlers that used to carry a local escape function.
-const SITES = ['../api/c.js', '../api/i.js', '../api/_publicBody.js', '../api/sitemap.js']
+// The handlers and renderers that used to carry a local escape function.
+const SITES = [
+  '../api/c.js',
+  '../api/i.js',
+  '../api/_publicBody.js',
+  '../api/_creatorBody.js',
+  '../api/sitemap.js',
+]
 
 // Matches a declaration such as `function escapeHtml(` or `const escapeXml =`.
 // An import or a call does not match.

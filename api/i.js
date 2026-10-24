@@ -5,6 +5,7 @@
 import { resolveOrigin } from './_origin.js'
 import { escapeHtml } from './_escape.js'
 import { renderBodyHTML, touristTripJsonLd } from './_publicBody.js'
+import pilotCampaigns from '../src/data/growthCampaigns.json' with { type: 'json' }
 
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const DEFAULT_DESCRIPTION = 'Plan realistic India trips together. See the time, distance and cost impact of every stop.'
@@ -113,7 +114,7 @@ function renderNotFound() {
 </html>`
 }
 
-function renderPublication(publication, id, buyer = null, ref = null, trip = null, shared = false) {
+function renderPublication(publication, id, buyer = null, ref = null, trip = null, shared = false, campaign = null) {
   // A row the database could not read is a 404-without-canonical card, never
   // the brand card under the id it failed to find (#362).
   if (!publication) return renderNotFound()
@@ -154,7 +155,10 @@ function renderPublication(publication, id, buyer = null, ref = null, trip = nul
   // `/pub/<id>` directly instead of a hash the boot bridge would have to
   // promote. `ref` was sanitized at the handler — only vocabulary values
   // arrive here.
-  const target = ref ? `/pub/${id}?ref=${encodeURIComponent(ref)}` : `/pub/${id}`
+  const params = new URLSearchParams()
+  if (ref) params.set('ref', ref)
+  if (campaign) params.set('campaign', campaign)
+  const target = `/pub/${id}${params.size ? `?${params}` : ''}`
   const canonical = `${origin}/i/${id}`
   // #691 — a shared link (it carries `ref` or `buyer`) opens the app as before.
   // A search visitor and a crawler have neither, and they read the page. With
@@ -214,6 +218,8 @@ export default async function handler(req, res) {
   // tests/share-attribution.test.ts pins the two lists to each other).
   const rawRef = req.query?.ref
   const ref = typeof rawRef === 'string' && SHARE_SOURCES.includes(rawRef) ? rawRef : null
+  const rawCampaign = req.query?.campaign
+  const campaign = typeof rawCampaign === 'string' && Object.hasOwn(pilotCampaigns, rawCampaign) ? rawCampaign : null
 
   let publication = null
   let status = 503
@@ -227,7 +233,7 @@ export default async function handler(req, res) {
         // missing-row fallback alone no longer reaches them).
         `${url.replace(/\/+$/, '')}/rest/v1/published_itineraries?id=eq.${encodeURIComponent(id)}` +
         '&unpublished_at=is.null' +
-        '&select=id,title,tagline,route_summary,cover_image_url,duration_days,estimated_budget_per_person_inr,premium_price_inr,free_day_indexes&limit=1',
+        '&select=id,title,tagline,route_summary,cover_image_url,duration_days,estimated_budget_per_person_inr,travel_tips,warnings_and_assumptions,premium_price_inr,free_day_indexes&limit=1',
         {
           headers: { apikey: key, authorization: `Bearer ${key}` },
           signal: AbortSignal.timeout(4000),
@@ -254,7 +260,7 @@ export default async function handler(req, res) {
   // #691 — the readable body. The anonymous RPC stubs locked days; the body
   // module locks again. Any failure here leaves the plain card, never an error.
   // A shared link redirects and a HEAD sends no body, so neither pays for the read.
-  const shared = Boolean(ref || buyer)
+  const shared = Boolean(ref || buyer || campaign)
   let trip = null
   if (publication && url && key && !shared && req.method !== 'HEAD') {
     try {
@@ -278,5 +284,5 @@ export default async function handler(req, res) {
   // A page whose trip read failed is not cached: crawlers would keep the empty card.
   if (publication && (trip || shared)) res.setHeader('cache-control', CARD_CACHE_CONTROL)
   res.status(status)
-  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer, ref, trip, shared))
+  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer, ref, trip, shared, campaign))
 }

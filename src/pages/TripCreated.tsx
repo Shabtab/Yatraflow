@@ -16,10 +16,11 @@ import { collectWarnings } from '../lib/engine'
 import { anticipate, type AnticipationItem } from '../lib/anticipation'
 import { estimateLunchStop } from '../lib/routeIq'
 import { planJourneyHalts } from '../lib/geocode'
+import { transportPolicy } from '../lib/transportPolicy'
 import { MODE_SPEED, isRoadMeasuredMode } from '../lib/engine'
 import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../lib/weather'
 import { useWeatherRefreshTick } from '../hooks/useWeatherRefresh'
-import { readHandoff, clearHandoff, billTotal } from '../lib/createHandoff'
+import { readHandoff, clearHandoff, billTotal, type HandoffCrew } from '../lib/createHandoff'
 import { shareBillImage } from '../lib/billCapture'
 import { crewInviteMessage, PLANNER_ROLE_LINE, CREW_CHANNELS, inviteChannelUrl, channelNeedsPhone, telegramShareUrl, addCrewEntry, parseCrewEntry, type CrewChannel, type CrewEntry } from '../lib/crewInvite'
 import { recordCreateEvent } from '../lib/createEvents'
@@ -55,6 +56,39 @@ const CHANNEL_LABEL = new Map<CrewChannel, string>([
 /** The label for a channel, falling back to the channel id itself. */
 function channelLabel(ch: CrewChannel): string {
   return CHANNEL_LABEL.get(ch) ?? ch
+}
+
+/** What a handoff crew row is called on screen, before it re-enters the parser.
+ *
+ *  A row with a number gives its name and its number. A row without one gives
+ *  its name, or the masked `label` a resumed draft carries instead of a number.
+ *  The label is the ONLY thing that can name a phone-only entry here: dropping
+ *  it made the row parse to an empty string, and the render then fell through to
+ *  `+91 ${phone}` with a null phone - so two resumed entries both read "+91 null"
+ *  and could not be told apart.
+ *
+ *  The mask is a name, never a number. It goes through the parser as text, the
+ *  parser finds no mobile in it, and `phone` stays null, so WhatsApp and SMS
+ *  stay disabled and no link can be built from it. */
+export function handoffCrewText(m: { name: string; phone: string | null; label?: string }): string {
+  if (m.phone) return `${m.name} ${m.phone}`.trim()
+  return (m.name || m.label || '').trim()
+}
+
+/** What a crew row prints as its name. Never `+91 null`: an entry with no number
+ *  and no name is an empty row, not a malformed one. */
+export function crewRowName(m: CrewEntry): string {
+  return m.name || m.label || (m.phone ? `+91 ${m.phone}` : '')
+}
+
+/** The crew list the page renders: the handoff's crew, re-entering the same
+ *  parse and dedupe as a newly typed one, then the entries added on this screen.
+ *  The page calls this, so the rules pinned in the tests are the page's own. */
+export function composeCrew(handoffCrew: HandoffCrew[], extras: string[], limit: number): CrewEntry[] {
+  return extras.reduce<CrewEntry[]>(
+    (acc, raw) => addCrewEntry(acc, raw, limit),
+    handoffCrew.map(handoffCrewText).map(parseCrewEntry),
+  )
 }
 
 /** The receipt capture inlines fonts and can stall on a cross-origin stylesheet
@@ -186,7 +220,10 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     let alive = true
     planJourneyHalts(
       points, totalKm, driveMinutes,
-      { includeFuel: true, travellers: trip.travellers, travelStyle: trip.travelStyle, transportMode: trip.transportMode, multiDay: days > 1 },
+      // Fuel halts are the traveller's own wheel (2026-10-19). A bus, a taxi or a
+  // Mixed trip the traveller does not drive has no tank to fill, so the shared
+  // capability gates it here; the facade gates it again as a backstop.
+  { includeFuel: transportPolicy({ transportMode: trip.transportMode, drivesPart: trip.drivesPart }).driving, drivesPart: trip.drivesPart, travellers: trip.travellers, travelStyle: trip.travelStyle, transportMode: trip.transportMode, multiDay: days > 1 },
     )
       .then(hits => {
         if (!alive) return
@@ -293,15 +330,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
   // useMemo here crashed the screen on first load - "Rendered more hooks
   // than during the previous render" - because trips hydrate after mount).
   const crew = useMemo(
-    () =>
-      extras.reduce<CrewEntry[]>(
-        (acc, raw) => addCrewEntry(acc, raw, CREW_LIMIT),
-        // handoff entries re-enter through the same parse/dedupe as new ones,
-        // so a duplicate added here is refused no matter which side it came from
-        (handoff?.crew ?? [])
-          .map(m => (m.phone ? `${m.name} ${m.phone}` : m.name).trim())
-          .map(parseCrewEntry),
-      ),
+    () => composeCrew(handoff?.crew ?? [], extras, CREW_LIMIT),
     [handoff, extras],
   )
 
@@ -349,7 +378,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
          row "invite opened" before it tried. */
       if (openExternal(url)) {
         // #428: the channel enum only — never the recipient, never the message.
-        recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+        recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id, userId: me?.id })
         setStatuses(s => new Map(s).set(index, { opened: true }))
         return
       }
@@ -365,7 +394,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     /* A dismissed or unavailable sheet did not send. */
     if (shareDidSend(res)) {
       // #428: the channel enum only — never the recipient, never the message.
-      recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+      recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id, userId: me?.id })
       setStatuses(s => new Map(s).set(index, { opened: true }))
       return
     }
@@ -406,7 +435,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
       /* Same rule as a row send: the event fires only when the window opened. */
       if (openExternal(url)) {
         // #428: the channel enum only — never the recipient, never the message.
-        recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+        recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id, userId: me?.id })
         return
       }
       toast('The browser blocked the link - the invite is on this page to copy.', 'err')
@@ -416,7 +445,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     /* A dismissed or unavailable sheet did not send. */
     if (shareDidSend(res)) {
       // #428: the channel enum only — never the recipient, never the message.
-      recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+      recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id, userId: me?.id })
       return
     }
     if (res === 'unavailable') {
@@ -573,7 +602,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
             {crew.map((m, i) => (
               <div key={`${m.phone ?? m.name}-${i}`} className={`created-crew-row${['opened', 'copied'].includes(inviteRowStatus(statuses.get(i) ?? null)) ? ' done' : ''}`}>
                 <span className="created-dot" aria-hidden />
-                <span className="created-crew-name">{m.name || `+91 ${m.phone}`}</span>
+                <span className="created-crew-name">{crewRowName(m)}</span>
                 <span className="created-channels" role="group" aria-label="Send the invite">
                   {CREW_CHANNELS.map(ch => {
                     const off = (channelNeedsPhone(ch) && !m.phone) || !joinUrl

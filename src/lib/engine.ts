@@ -240,6 +240,13 @@ export interface LegEstimate {
    *  The two kinds are priced and drawn differently, so a consumer that does not
    *  check this silently bills a flight at the car's ₹/km. */
   kind?: LegKind
+  /**
+   * True when this correction came from the haversine fallback, not from a
+   * routing provider. A chain can hold some measured legs and some fallbacks;
+   * `correctionsFromLegs` keeps both, so a leg count alone cannot tell whether
+   * a day's total is a road number. Absent reads as measured. (#671)
+   */
+  estimated?: boolean
 }
 
 /** How a leg is travelled — the split that makes a flight trip honest. */
@@ -398,8 +405,7 @@ export interface LegAnchor {
 
 /**
  * Current location before the insertion point of `dayIndex`: the last active
- * stop of that day, else the last stop of the nearest previous day, else the
- * trip's geocoded start anchor (point A).
+ * stop of that day, else the resolved journey origin for this day.
  */
 export function predecessorOf(trip: Trip, dayIndex: number): LegAnchor | null {
   const day = trip.days.find(d => d.index === dayIndex)
@@ -408,12 +414,12 @@ export function predecessorOf(trip: Trip, dayIndex: number): LegAnchor | null {
     const last = active[active.length - 1]
     if (last) return { name: last.locationName || last.title, point: { lat: last.lat, lng: last.lng } }
   }
-  for (let d = dayIndex - 1; d >= 0; d--) {
-    const stops = trip.days.find(x => x.index === d)?.stops.filter(s => s.status !== 'rejected') ?? []
-    if (stops.length) {
-      const last = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)[stops.length - 1]
-      return { name: last.locationName || last.title, point: { lat: last.lat, lng: last.lng } }
-    }
+  const hasOrigin = trip.startLocationCoords
+    || trip.days.some(d => d.index < dayIndex && d.stops.some(s => s.status !== 'rejected'))
+    || trip.flights?.some(f => f.dayIndex < dayIndex)
+  if (dayIndex > 0 && hasOrigin) {
+    const point = originOf(trip, dayIndex)
+    return { name: dayStartLabel(trip, dayIndex, point), point }
   }
   if (trip.startLocationCoords) {
     return { name: `${trip.startLocation} (start)`, point: { lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng } }
@@ -517,14 +523,20 @@ function synthesizedAnchor(id: string, title: string, p: { lat: number; lng: num
   }
 }
 
-/** Where the traveller wakes up on `dayIndex`: last stop of the previous day, else the trip start. */
-function dayStartLabel(trip: Trip, dayIndex: number): string {
+/** Name the resolved origin, including destinations reached after the last stored stop. */
+function dayStartLabel(trip: Trip, dayIndex: number, origin: { lat: number; lng: number }): string {
   for (let d = dayIndex - 1; d >= 0; d--) {
     const stops = trip.days.find(x => x.index === d)?.stops.filter(s => s.status !== 'rejected') ?? []
     if (stops.length) {
       const last = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)[stops.length - 1]
-      return cleanPlaceName(last.locationName || last.title)
+      if (coLocates(last, origin)) return cleanPlaceName(last.locationName || last.title)
     }
+    const target = nextAfter(trip, d)
+    if (target && coLocates(target.point, origin)) return cleanPlaceName(target.name)
+  }
+  if (dayIndex > 0 && isAirMode(trip.transportMode)) {
+    const airport = nearestAirport(origin)
+    if (airport && coLocates(airport, origin)) return `${airport.iata} · ${airport.name}`
   }
   return cleanPlaceName(trip.startLocation)
 }
@@ -557,7 +569,7 @@ export function flightForDay(trip: Trip, dayIndex: number): FlightLeg | null {
  * A day near the same airport stays on the ground. Destination visits can follow an estimated outbound flight.
  */
 export function synthesizedFlight(
-  trip: Trip,
+  trip: Pick<Trip, 'transportMode'>,
   dayIndex: number,
   startPoint: { lat: number; lng: number } | null | undefined,
   endPoint: { lat: number; lng: number } | null | undefined,
@@ -759,7 +771,7 @@ export function buildJourney(
     startPoint = { lat: active[0].lat, lng: active[0].lng }
     startStop = active[0]
   } else {
-    startTitle = dayStartLabel(trip, day.index)
+    startTitle = dayStartLabel(trip, day.index, origin)
     startPoint = origin
   }
 

@@ -11,6 +11,8 @@ import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } fr
 import { ArrowRight } from 'lucide-react'
 import { dayStripItems } from '../../lib/dayStrip'
 import { loadSavedIds, saveSavedIds, flipSavedId } from '../../lib/uiPrefs'
+import { DAY_START_SETTLE_MS, createDayStartBurst, dayStartAnnouncement } from '../../lib/dayStartBurst'
+import { formatHM, getTimeFormat } from '../../lib/timefmt'
 
 /**
  * MR8: the hearts' saved set. It lives in lib/uiPrefs, so it survives a reload
@@ -48,6 +50,7 @@ import {
   collectWarnings, buildJourney, dayRoadPolyline, groupWarnings,
 } from '../../lib/engine'
 import type { LegEstimate, ScheduleWarning } from '../../lib/engine'
+import type { RoadStatus } from '../../lib/tripRoad'
 import type { ImpactResult } from '../../lib/impact'
 import { loadOpenDay, loadReviewAll, saveOpenDay, saveReviewAll } from '../../lib/uiPrefs'
 import { accordionNext } from '../../lib/daySummary'
@@ -95,7 +98,7 @@ function measureStickyStack(): number {
 }
 // ================= Timeline =================
 
-export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorrections, suggestionCache, onOpenBoard, focusDay, focusStopId, onFocusConsumed }: {
+export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorrections, roadStatus, suggestionCache, onOpenBoard, focusDay, focusStopId, onFocusConsumed }: {
   trip: Trip
   editable: boolean
   /** `onKept` runs only when the user keeps the staged change — the hook the
@@ -105,6 +108,9 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
    *  write the committed row directly, so they must not race a preview (#334). */
   previewOpen?: boolean
   legCorrections?: Record<string, LegEstimate>
+  /** The workspace's road-chain status (#671): the day headers say whether
+   *  their distance is a measured road number or a straight-line estimate. */
+  roadStatus?: RoadStatus
   suggestionCache: ReturnType<typeof useSuggestionCache>
   /** M5: the doc's §6.3 "Open in Board" bridge — Board now exists. */
   onOpenBoard?: () => void
@@ -191,6 +197,12 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   // the IDENTITIES stable while each body still runs against the current pair.
   const latest = useRef({ applyChange, trip })
   latest.current = { applyChange, trip }
+
+  // #828: the Departure control's burst tracker and its flush timer. Refs, not
+  // state — they carry no render output, and a state update per spin would be
+  // the same waste the toast spam was.
+  const dayStartBurst = useRef(createDayStartBurst())
+  const dayStartFlush = useRef<number | null>(null)
 
   /** THE add commit (#422): ONE write path for a new stop, whether it came from
    *  the inspector editor or the leg's quick add. `position` is the slot the
@@ -577,8 +589,30 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
     if (refuseWhileStaged(previewOpen)) return
     const { trip } = latest.current
     updateTrip(trip.id, { days: trip.days.map(d => d.index === dayIndex ? { ...d, startTime: time || undefined } : d) })
-    toast(time ? `Day ${dayIndex + 1} now starts ${time}` : 'Ride start reset to the default')
+    // #828: the input fires `change` on every spin of its minute field, so a
+    // ten-minute adjustment arrives as ten calls with ten DIFFERENT times.
+    // Announcing each one stacked ten toasts and buzzed ten times for one
+    // intent, and deduplicating identical text could not help because the text
+    // changes every time. The write above stays immediate — the plan and the
+    // arrival clock stay live while the person spins — but the announcement is
+    // coalesced to the value they settle on.
+    dayStartBurst.current.push(dayIndex, time)
+    if (dayStartFlush.current !== null) window.clearTimeout(dayStartFlush.current)
+    dayStartFlush.current = window.setTimeout(() => {
+      dayStartFlush.current = null
+      const settled = dayStartBurst.current.take()
+      if (!settled) return
+      toast(dayStartAnnouncement(settled.dayIndex, settled.time, formatHM(settled.time, getTimeFormat())))
+    }, DAY_START_SETTLE_MS)
   }, [previewOpen])
+
+  // A pending announcement must not outlive the tab: an unmount mid-burst would
+  // otherwise speak for a surface the person has already left.
+  useEffect(() => () => {
+    if (dayStartFlush.current !== null) window.clearTimeout(dayStartFlush.current)
+    dayStartFlush.current = null
+    dayStartBurst.current.take()
+  }, [])
 
   /** Insert a batch of long-ride break halts, each at a user-chosen km point, ordered by
       distance along the route so the arrival clock and map reflect true stop order. Impact
@@ -653,8 +687,9 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
               <PenLine size={14} aria-hidden />Plan
             </button>
             <button type="button" data-pill-key="inspect" className={`tab-btn${mode === 'inspect' ? ' active' : ''}`}
-              onClick={() => changeMode('inspect')} aria-pressed={mode === 'inspect'}>
-              <Eye size={14} aria-hidden />Inspect
+              onClick={() => changeMode('inspect')} aria-pressed={mode === 'inspect'}
+              title="Study the day without changing it">
+              <Eye size={14} aria-hidden />Review
             </button>
           </PillNav>
           </>
@@ -759,7 +794,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       )}
 
       {days.map(day => (
-        <DaySection key={day.id} day={day} trip={openDayIndex === day.index || (reviewAll && visibleDays.has(day.index)) ? trip : undefined} facts={cards.byDay.get(day.index)!} editable={planEditable} open={reviewAll || openDayIndex === day.index} reviewMode={reviewAll} inView={!reviewAll || visibleDays.has(day.index)} onToggleOpen={toggleDay} onInsertHere={handleInsertHere} legCorrections={legCorrections} suggestionCache={suggestionCache} dayTotals={totalsByDay.get(day.index)}
+        <DaySection key={day.id} day={day} trip={openDayIndex === day.index || (reviewAll && visibleDays.has(day.index)) ? trip : undefined} facts={cards.byDay.get(day.index)!} editable={planEditable} open={reviewAll || openDayIndex === day.index} reviewMode={reviewAll} inView={!reviewAll || visibleDays.has(day.index)} onToggleOpen={toggleDay} onInsertHere={handleInsertHere} legCorrections={legCorrections} roadStatus={roadStatus} suggestionCache={suggestionCache} dayTotals={totalsByDay.get(day.index)}
           onAdd={handleAdd}
           onEdit={handleEdit}
           onDelete={handleDelete}

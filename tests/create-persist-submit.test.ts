@@ -29,6 +29,8 @@ const { state, toast } = vi.hoisted(() => ({
     /** a table whose write REJECTS instead of answering with an error object */
     throwOn: null as string | null,
     writes: [] as Array<{ table: string; method: string; payload: any }>,
+    savedTrip: null as any,
+    savedOwner: null as any,
   },
   toast: vi.fn(),
 }))
@@ -37,10 +39,11 @@ vi.mock('../src/components/ui', () => ({ toast }))
 
 vi.mock('../src/lib/supabase', () => {
   const next = (queue: FakeError[]) => (queue.length ? queue.shift()! : null)
-  function query() {
+  function query(table: string) {
     const qb: any = {}
+    const filters = new Map<string, unknown>()
     qb.select = () => qb
-    qb.eq = () => qb
+    qb.eq = (key: string, value: unknown) => { filters.set(key, value); return qb }
     qb.in = () => qb
     qb.order = () => qb
     qb.limit = () => qb
@@ -48,7 +51,10 @@ vi.mock('../src/lib/supabase', () => {
       Promise.resolve({ data: [], error: null }).then(res)
     qb.maybeSingle = () => ({
       then: (res: (v: { data: unknown; error: null }) => unknown) =>
-        Promise.resolve({ data: null, error: null }).then(res),
+        Promise.resolve({ data: (() => {
+          const row = table === 'trips' ? state.savedTrip : state.savedOwner
+          return row && [...filters].every(([key, value]) => row[key] === value) ? row : null
+        })(), error: null }).then(res),
     })
     return qb
   }
@@ -77,7 +83,7 @@ vi.mock('../src/lib/supabase', () => {
     isSupabaseConfigured: () => true,
     supabase: {
       from: (table: string) => {
-        const qb = query()
+        const qb = query(table)
         qb.insert = (p: any) => write(table, 'insert', p)
         qb.update = (p: any) => write(table, 'update', p)
         qb.upsert = (p: any) => write(table, 'upsert', p)
@@ -120,6 +126,8 @@ beforeEach(() => {
   state.memberErrors.length = 0
   state.throwOn = null
   state.writes.length = 0
+  state.savedTrip = null
+  state.savedOwner = null
   toast.mockClear()
 })
 
@@ -208,6 +216,9 @@ describe('#374 — the retry re-uses the trip instead of minting a twin', () => 
 
     state.tripErrors.push({ code: '23505', message: 'duplicate key value violates unique constraint "trips_pkey"' })
     state.memberErrors.push({ code: '23505', message: 'duplicate key value violates unique constraint "trip_members_pkey"' })
+    const row = state.writes.find(write => write.table === 'trips')!.payload
+    state.savedTrip = { ...row, created_at: trip.createdAt, updated_at: trip.updatedAt }
+    state.savedOwner = { trip_id: trip.id, user_id: OWNER, role: 'owner', joined_at: trip.createdAt }
     const ok = await retryCreateTrip(trip, OWNER)
 
     expect(ok).toBe(true)
@@ -229,6 +240,14 @@ describe('#374 — the retry re-uses the trip instead of minting a twin', () => 
     state.tripErrors.push({ code: '23505', message: 'duplicate key' })
     const { persisted, trip } = await createTripPersisted(OWNER, input())
     expect(persisted).toBe(false)
+    expect(tripById(trip.id)).toBeUndefined()
+  })
+
+  it('refuses a duplicate response without a verified owned row', async () => {
+    state.tripErrors.push({ message: 'offline' })
+    const { trip } = await createTripPersisted(OWNER, input())
+    state.tripErrors.push({ code: '23505', message: 'duplicate key' })
+    expect(await retryCreateTrip(trip, OWNER)).toBe(false)
     expect(tripById(trip.id)).toBeUndefined()
   })
 })
@@ -259,8 +278,11 @@ describe('#373 — the page cannot submit twice, and cannot route on a failed sa
   it('both submit surfaces wait, and say so', () => {
     const guarded = [...page.matchAll(/className="(tk-cta|dock-cta)" disabled=\{submitting\}/g)]
     expect(guarded.map(m => m[1]).sort()).toEqual(['dock-cta', 'tk-cta'])
-    // both primaries + the retry button
-    expect([...page.matchAll(/submitting \? 'Creating…' : /g)]).toHaveLength(3)
+    // both primaries + the retry button. The busy label is one constant now, so
+    // count the uses of the constant rather than a repeated literal: the point is
+    // that every surface says the same thing while it waits.
+    expect([...page.matchAll(/CREATE_ACTION_BUSY_LABEL/g)].length).toBeGreaterThanOrEqual(2)
+    expect([...page.matchAll(/submitting \? 'Creating…' : /g)]).toHaveLength(1)
     expect(page).toMatch(/aria-busy=\{submitting\}/)
   })
 

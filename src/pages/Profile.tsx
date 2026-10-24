@@ -10,6 +10,8 @@ import {
 import { Avatar, Chip, Field, toast, undoToast } from '../components/ui'
 import { useTimeFormat, setTimeFormat, formatHM, type TimeFormat } from '../lib/timefmt'
 import { isNative } from '../lib/native'
+import { apkUpdateCheck } from '../lib/apkUpdateRuntime'
+import { useApkUpdateStatus } from '../lib/useApkUpdate'
 import { feedbackHref } from '../lib/feedback'
 import { setTheme, useTheme } from '../lib/theme'
 import {
@@ -42,6 +44,69 @@ function formatTimeAgo(ms: number): string {
   const d = Math.round(h / 24)
   if (d < 7) return `${d}d ago`
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+/**
+ * Android builds only: the installed native version, and the manual check.
+ *
+ * The states are the core's own, spoken plainly. Until boot answers, the panel
+ * says it is reading the build — it never claims a configuration fault it has
+ * not confirmed. A failed or offline check never blocks anything.
+ * `unconfigured` disables the button, so a build with no feed never offers a
+ * control that cannot work.
+ */
+function UpdatePanel() {
+  const { booting, unavailable, installed, state } = useApkUpdateStatus()
+  const [busy, setBusy] = useState(false)
+
+  if (!isNative || unavailable === 'web' || unavailable === 'unsupported-app') return null
+
+  const phase = state.phase
+  const checking = busy || phase === 'checking'
+  const line = booting
+    ? 'Reading the installed build…'
+    : unavailable === 'unconfigured'
+      ? 'Update checks are not configured in this build.'
+      : checking
+        ? 'Checking for a newer build…'
+        : phase === 'newer' && state.manifest
+          ? `Version ${state.manifest.versionName} is available.`
+          : phase === 'suppressed' && state.manifest
+            ? `Version ${state.manifest.versionName} is available. Reminders are paused.`
+            : phase === 'offline'
+              ? 'No connection. You can check again later.'
+              : phase === 'failed'
+                ? 'The check failed. The app keeps working.'
+                : phase === 'current'
+                  ? 'You are on the newest build.'
+                  : 'Check for a newer Android build.'
+
+  async function run() {
+    setBusy(true)
+    await apkUpdateCheck({ manual: true })
+    setBusy(false)
+  }
+
+  return (
+    <Surface className="prof-panel">
+      <h2 className="prof-panel-title">App updates</h2>
+      <hr className="divider" />
+      {installed && (
+        <p className="small muted">
+          Installed build {installed.versionName} (version code {installed.versionCode}).
+        </p>
+      )}
+      <p className="hint-text prof-hint-tight" role="status" aria-live="polite">{line}</p>
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        disabled={booting || checking || unavailable === 'unconfigured'}
+        onClick={run}
+      >
+        Check for updates
+      </button>
+    </Surface>
+  )
 }
 
 export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -146,6 +211,9 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
               </div>
             </Field>
           </Surface>
+
+          {/* Android only: the installed build and the manual update check. */}
+          <UpdatePanel />
 
           {/* The companion drawer mounts only under VITE_AI_COMPANION=on
               (until M8) — its settings cards follow the same flag, so a build

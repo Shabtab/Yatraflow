@@ -61,7 +61,7 @@ git rev-list --count origin/main..origin/test
 5. Tick a UI-audit finding in `ROADMAP.md` in the same commit that fixes it. Full text: docs/agents/AGENTS-FULL.md §2.5
 6. Check each "done" claim against git first. Rules 6a to 6z live in `CODING_STANDARDS.md`. Full text: docs/agents/AGENTS-FULL.md §2.6
 7. Prove a localhost URL serves this tree with its backend. A server without its backend looks broken. Full text: docs/agents/AGENTS-FULL.md §2.7
-8. Run `npm run verify` before any push. Wait for the user to confirm the branch. Full text: docs/agents/AGENTS-FULL.md §2.8
+8. Run `npm run verify` before any push. Wait for the user to confirm the branch. Every PR to `hasnaina955/Yatraflow` targets `test`, security fixes included. Full text: docs/agents/AGENTS-FULL.md §2.8
 9. Edit `CHANGELOG.md` with editor primitives only. A bulk rewrite once cut it from 830 lines to 21. Full text: docs/agents/AGENTS-FULL.md §2.9
 10. Every interactive surface ships motion from `docs/MOTION-TOKENS.md`. A raw `ms` value is a review flag. Full text: docs/agents/AGENTS-FULL.md §2.10
 11. Keep work local until the batch is complete and the localhost check passes. Full text: docs/agents/AGENTS-FULL.md §2.11

@@ -19,7 +19,11 @@ const codeOf = (source: string) => source
   .replace(/--[^\n]*/g, ' ')
   .replace(/(^|\n)[^\S\n]*\/\/[^\n]*/g, '$1')
 
-const NEWEST = '20261002_trash_purge_publication_guard.sql'
+const NEWEST = readdirSync(new URL('../supabase/migrations/', import.meta.url))
+  .filter(file => file.endsWith('.sql'))
+  .filter(file => bodyOf(read(`../supabase/migrations/${file}`), 'get_public_trip') !== '')
+  .sort()
+  .at(-1)
 
 /** The `$$`-delimited body of a named function, comments stripped. Located by
  *  index rather than by a built pattern, so no `RegExp` is ever constructed
@@ -108,7 +112,7 @@ describe('#352 — the client cannot fork what the server withheld', () => {
     const fn = fork()
     expect(fn).toMatch(/restubLockedDays\(src, pub\.freeDayIndexes, \(pub\.premiumPriceInr \?\? 0\) > 0\)/)
     expect(fn).toMatch(
-      /unlockedFork\s*\? await duplicateTripPersisted\(safe, meId, undefined, source\)\s*: await duplicateTripPublicPersisted\(safe, meId, pub\.freeDayIndexes, source\)/,
+      /unlockedFork\s*\? await duplicateTripPersisted\(safe, meId, undefined, source, origin\)\s*: await duplicateTripPublicPersisted\(safe, meId, pub\.freeDayIndexes, source, origin\)/,
     )
     // The fragile check is gone: a wire-stubbed row whose days came back empty
     // (the RPC's own fail-closed branch) read as "nothing locked" and took the
@@ -131,7 +135,8 @@ describe('every redefinition keeps what the previous three fixes added', () => {
   it('the newest body still carries #350, #351, #352 and #353', () => {
     const fn = body()
     expect(fn, '#350 (soft unpublish) was dropped').toMatch(/if v_pub\.unpublished_at is not null then/)
-    expect(fn, '#351 (invite_code) was dropped').toMatch(/null::text as invite_code/)
+    expect(fn, '#351 (invite_code) was dropped').toMatch(/null::text as invite_code|'invite_code', null::text/)
+    expect(fn, '#351 (invite_code) must not read the secret').not.toMatch(/\bt\.invite_code\b/)
     expect(fn, '#351 (whole-row select) came back').not.toMatch(/select\s+\*\s+into v_trip/i)
     expect(fn, '#352 (money) was dropped').toMatch(/v_trip\.fixed_commitments := '\[\]'::jsonb/)
     expect(fn, '#353 (free-day guard) was dropped').toMatch(/jsonb_typeof\(v_pub\.free_day_indexes\) = 'array'/)
@@ -139,17 +144,8 @@ describe('every redefinition keeps what the previous three fixes added', () => {
     expect(fn).toMatch(/Locked — the full plan is on the original itinerary/)
   })
 
-  it('is the last word on this function, and keeps the anon grant', () => {
-    const dir = new URL('../supabase/migrations/', import.meta.url)
-    const definers = readdirSync(dir)
-      .filter(f => f.endsWith('.sql'))
-      .filter(f => codeOf(read(`../supabase/migrations/${f}`)).includes('create or replace function public.get_public_trip('))
-      .sort()
-    // Five files now define it; whichever sorts LAST is what a fresh in-order
-    // apply leaves behind (§6k — and the last one must carry the previous
-    // four's guards, which is what the tests above pin).
-    expect(definers.length).toBeGreaterThan(1)
-    expect(definers[definers.length - 1]).toBe(NEWEST)
+  it('keeps the anon grant on the latest function definition', () => {
+    expect(NEWEST).toBeDefined()
     expect(read(`../supabase/migrations/${NEWEST}`)).toMatch(
       /grant execute on function public\.get_public_trip\(text\) to anon, authenticated/,
     )

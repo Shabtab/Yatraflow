@@ -24,6 +24,7 @@ async function publishedRow(
   store: typeof import('../src/store/store'),
   pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>,
 ): Promise<PublishedItinerary> {
+  store.getSnapshot().trips.push({ id: pub.tripId, visibility: 'public' } as import('../src/data/types').Trip)
   const outcome = await store.publishItinerary(pub)
   expect(outcome.ok, outcome.error).toBe(true)
   return getSnapshot().published.find(x => x.tripId === pub.tripId)!
@@ -72,18 +73,20 @@ describe('acceptSuggestionIntoTimeline tolerate missing session (regression #9)'
         transportMode: 'car', budgetPerPersonInr: 5000, travelStyle: 'balanced',
         fixedCommitments: [],
       })
-      // sessionUserId is null in this test environment; addSuggestion sets it
-      // via cache.sessionUserId (null) — call the internal path directly to
-      // simulate accepting with no session.
-      store.addSuggestion(trip.id, {
-        dayIndex: 0, proposedBy: 'u-x', title: 'Fort', category: 'sightseeing',
-        locationName: 'Fort', lat: 10, lng: 76, visitMinutes: 60,
-        estimatedEntryFeeInr: 50, estimatedTransportInr: 100,
+      // Stage A of #832: addSuggestion without a session answers `forbidden`
+      // and creates nothing — the actor is server-derived, so there is no
+      // anonymous suggestion to accept. Seed the suggestion directly, which
+      // is the state this regression is about: accepting with no session.
+      const db = getSnapshot() as any
+      db.suggestions.push({
+        id: 'sug-robust', tripId: trip.id, dayIndex: 0, proposedBy: 'u-x',
+        title: 'Fort', category: 'sightseeing', locationName: 'Fort', lat: 10, lng: 76,
+        visitMinutes: 60, estimatedEntryFeeInr: 50, estimatedTransportInr: 100,
+        votes: [], comments: [], status: 'open', createdAt: 1,
       })
-      const sg = getSnapshot().suggestions[0]
-      // Should not throw on the unguarded `cache.sessionUserId!`
-      expect(() => acceptSuggestionIntoTimeline(trip.id, sg.id)).not.toThrow()
-      const updated = getSnapshot().suggestions.find(s => s.id === sg.id)
+      // The guard path must not throw on the unguarded `cache.sessionUserId!`
+      expect(() => acceptSuggestionIntoTimeline(trip.id, 'sug-robust')).not.toThrow()
+      const updated = getSnapshot().suggestions.find(s => s.id === 'sug-robust')
       expect(updated?.status).toBe('accepted')
     })
   })
