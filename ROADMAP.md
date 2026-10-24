@@ -1214,6 +1214,14 @@ what a picked place IS, how it survives a save, and how it survives a delete and
   and verifies it and owns integration, the full gate, browser evidence and
   publication. The full gate, browser proof, live SQL and rollout stay outside this
   batch's own proof.
+- **Recovery after a failed restore.** The failure carries an action, and the action
+  is bound to the account, the trip and the payload captured at delete time — a
+  repeat re-reads that capture rather than asking who is signed in now. An account
+  switch, a moved access generation, or a newer deletion refuses the stale recovery
+  instead of writing someone else's rows. Contribution recovery runs through the
+  guarded archive function, because the direct insert policies are gone; a database
+  without that support refuses honestly and keeps the payload. No new hard-delete
+  entry point is added, and the ordinary trash workflow is unchanged.
 
 ## Historical plans (executed — kept for the record, not live guidance)
 
