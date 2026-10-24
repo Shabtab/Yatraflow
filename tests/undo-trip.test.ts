@@ -18,6 +18,10 @@ const { state } = vi.hoisted(() => ({
     log: [] as string[],
     /** Tables whose write should come back failed, to exercise RLS rejection. */
     fail: new Set<string>(),
+    /** Tables whose INSERT must come back failed while every other statement on
+     *  them succeeds. The recovery's primary phase is an insert, and failing the
+     *  whole table would also fail the delete that captured the payload. */
+    failInsert: new Set<string>(),
     /** Columns a pre-migration database does not have. A `select` naming one
      *  answers with Postgres' unknown-column error, the same shape
      *  `isMissingColumnError` reads. */
@@ -29,8 +33,23 @@ const { state } = vi.hoisted(() => ({
     /** Milliseconds the archive answer waits before it resolves. Lets a test
      *  hold a recovery in flight while something else happens. */
     archiveDelay: 0,
+    /** Milliseconds the trips insert waits, so a test can switch accounts while
+     *  the primary phase is still in the air. */
+    tripsDelay: 0,
+    /** Set when a primary-phase response waits for the test to RELEASE it. */
+    tripsGate: null as null | Promise<void>,
     /** The session token `auth.getSession` answers with. */
     token: 'token-amelia',
+    /** Toasts the store raised, so a test can press the action it offered. */
+    toasts: [] as { msg: string; kind: string; action?: { label: string; run: () => void } }[],
+  },
+}))
+
+// The store only imports `toast` from the UI, so a capture is enough — and it
+// lets a test press the retry action a failure offers.
+vi.mock('../src/components/ui', () => ({
+  toast: (msg: string, kind = 'ok', action?: { label: string; run: () => void }) => {
+    state.toasts.push({ msg, kind, action })
   },
 }))
 
@@ -51,15 +70,27 @@ vi.mock('../src/lib/supabase', () => {
       maybeSingle: () => b,
       setHeader: (name: string, value: string) => { b.authHeader = `${name}: ${value}`; return b },
       delete: () => (record(table, 'delete', null), b),
-      insert: (p: unknown) => (record(table, 'insert', p), b),
-      upsert: (p: unknown) => (record(table, 'upsert', p), b),
-      then: (res: (v: { data: unknown; error: unknown }) => unknown) =>
-        Promise.resolve({
+      insert: (p: unknown) => (record(table, 'insert', p), b, b.method = 'insert', b),
+      upsert: (p: unknown) => (record(table, 'upsert', p), b, b.method = 'upsert', b),
+      then: (res: (v: { data: unknown; error: unknown }) => unknown) => {
+        const answer = () => Promise.resolve({
           data: [],
-          error: state.fail.has(table) ? { message: 'row-level security' }
+          error: state.fail.has(table) || (b.method === 'insert' && state.failInsert.has(table))
+            ? { message: 'row-level security' }
             : b.missingColumn ? { code: '42703', message: `column ${b.missingColumn} does not exist` }
               : null,
-        }).then(res),
+        })
+        // Hold the primary phase in the air until the test releases it, so a
+        // test can switch accounts or delete again while the trip insert waits.
+        if (table === 'trips' && b.method === 'insert' && state.tripsGate) {
+          const gate = state.tripsGate
+          return gate.then(answer).then(res)
+        }
+        if (table === 'trips' && b.method === 'insert' && state.tripsDelay > 0) {
+          return new Promise(r => setTimeout(r, state.tripsDelay)).then(answer).then(res)
+        }
+        return answer().then(res)
+      },
     }
     return b
   }
@@ -138,6 +169,11 @@ function flush(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0))
 }
 
+/** The action on the most recent toast that offered one, if any. */
+function lastAction(): { label: string; run: () => void } | undefined {
+  return state.toasts.filter(t => t.action).pop()?.action
+}
+
 async function freshStoreWith(seed = true, withPub = false) {
   vi.resetModules()
   const store = await import('../src/store/store')
@@ -166,10 +202,14 @@ beforeEach(() => {
   state.calls = []
   state.log = []
   state.fail = new Set()
+  state.failInsert = new Set()
   state.missingColumns = new Set()
   state.archive = { status: 'applied' }
   state.archiveDelay = 0
+  state.tripsDelay = 0
+  state.tripsGate = null
   state.token = 'token-amelia'
+  state.toasts = []
 })
 
 describe('undo after trip delete (#43)', () => {
@@ -355,5 +395,87 @@ describe('undo after trip delete (#43)', () => {
     await flush()
     await flush()
     expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(2)
+  })
+
+  it('stops the primary phase when the account switches mid-insert', async () => {
+    // The outer guard cannot see inside persistTripRows: the trip insert awaits,
+    // and while it waits the account can change. The guard and the captured
+    // bearer travel into those phases now, so the membership write that used to
+    // follow never happens.
+    const store = await freshStoreWith()
+    const trip = store.getSnapshot().trips[0]
+    let release = () => {}
+    state.tripsGate = new Promise<void>(r => { release = r })
+
+    store.deleteTrip('trip-1')
+    store.restoreTrip(trip, 0)
+    await flush()
+    expect(writesTo('trips', 'insert')).toHaveLength(1)
+
+    // The account switches while the trip insert is still in the air.
+    store.getSnapshot().sessionUserId = 'priya'
+    release()
+    await flush()
+    await flush()
+    await flush()
+
+    // No membership write, no archive call, and nothing toasted to the new
+    // account: the retired try performs no later write or cache mutation.
+    expect(writesTo('trip_members', 'insert')).toHaveLength(0)
+    expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(0)
+  })
+
+  it('keeps the payload and offers the retry when the trip row cannot be written', async () => {
+    const store = await freshStoreWith()
+    const trip = store.getSnapshot().trips[0]
+    state.failInsert = new Set(['trips'])
+
+    store.deleteTrip('trip-1')
+    store.restoreTrip(trip, 0)
+    await flush()
+    await flush()
+
+    // The primary phase failed, so nothing downstream ran and the payload is
+    // still on the slot: the archive was never consulted and no member row was
+    // written.
+    expect(writesTo('trip_members', 'insert')).toHaveLength(0)
+    expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(0)
+
+    // Fix the database and press the button the failure offered.
+    state.failInsert = new Set()
+    const action = lastAction()
+    expect(action?.label).toBe('Try again')
+    action?.run()
+    await flush()
+    await flush()
+
+    // The whole recovery runs this time, and the payload is released.
+    expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(1)
+    expect(writesTo('trip_members', 'insert')).toHaveLength(1)
+    store.restoreTrip(trip, 0)
+    await flush()
+    await flush()
+    expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(1)
+  })
+
+  it('consults the archive even when the local contribution cache is empty', async () => {
+    // The device may have no suggestion, decision, activity or notification row
+    // while the server holds some this device never saw. Local emptiness is not
+    // proof of an empty archive, so the guarded call is made on every recovery.
+    const store = await freshStoreWith()
+    const trip = store.getSnapshot().trips[0]
+    store.getSnapshot().suggestions = []
+    store.getSnapshot().decisions = []
+    store.getSnapshot().activity = []
+    store.getSnapshot().notifications = []
+
+    store.deleteTrip('trip-1')
+    store.restoreTrip(trip, 0)
+    await flush()
+    await flush()
+
+    const call = state.calls.find(c => c.fn === 'restore_trip_contributions')
+    expect(call).toBeDefined()
+    expect((call!.args as { p_trip_id: string }).p_trip_id).toBe('trip-1')
   })
 })

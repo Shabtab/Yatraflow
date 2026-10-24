@@ -1915,26 +1915,56 @@ function refreshNegativeCapabilityProbes(): void {
 
 const tripCreates = new Map<string, Promise<boolean>>()
 
-async function persistTrip(trip: Trip, ownerId: ID, opts: { retry?: boolean } = {}): Promise<boolean> {
+/** Everything a recovery must carry into primary persistence, in ONE object so a
+ *  caller cannot supply half of it: a guard without a token would let a retired
+ *  try keep writing, and a token without a guard would pin the wrong account. */
+export interface RecoveryWriteGuard {
+  /** True while this recovery still owns the trip. Checked before and after every
+   *  awaited phase, so a retired try performs no later write or cache mutation. */
+  live: AttemptGuard
+  /** The bearer captured for the recovery's account. */
+  token: string
+}
+
+/** Pin a request to the captured account. Ordinary callers pass no token and get
+ *  the client's own session, exactly as before. */
+function pinBearer<T extends { setHeader(name: string, value: string): T }>(query: T, token?: string): T {
+  return token ? query.setHeader('Authorization', `Bearer ${token}`) : query
+}
+
+async function persistTrip(trip: Trip, ownerId: ID, opts: { retry?: boolean; recovery?: RecoveryWriteGuard } = {}): Promise<boolean> {
   const operation = persistTripRows(trip, ownerId, opts)
   tripCreates.set(trip.id, operation)
   try { return await operation } finally { if (tripCreates.get(trip.id) === operation) tripCreates.delete(trip.id) }
 }
 
-async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean }): Promise<boolean> {
+async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean; recovery?: RecoveryWriteGuard }): Promise<boolean> {
+  const recovery = opts.recovery
   const epoch = identityEpoch
   const sessionId = cache.sessionUserId
+  // A retired recovery must perform no later write or cache mutation, so this
+  // gate runs before and after every awaited phase below. Ordinary callers pass
+  // no guard and keep their existing behaviour unchanged.
+  const guard = (): boolean => !recovery || recovery.live()
+  // A recovery reports its own failure through the guarded toast that carries the
+  // retry action, so the generic create message must not fire underneath it.
+  const refuse = (reason: string): false => { if (!recovery) toast(reason); return false }
+  if (!guard()) return false
   // Claim the echo window before the await — see persistTripFieldNow.
   markLocalWrite('trips', trip.id)
   const cols = await tripsHaveOptionalColumns()
+  if (!guard()) return false
   // Guard AFTER the awaited probe, at the writer, not at the caller (2026-10-19).
   // Every `tripToRow` below silently omits a column the probe says is missing,
   // so an explicit Mixed answer would be dropped here and the save would still
   // report success. This is the seam where that has to stop.
   const drivesPartVerdict = drivesPartWriteVerdict(trip, cols)
-  if (!drivesPartVerdict.ok) { toast(drivesPartVerdict.reason, 'err'); return false }
-  const { data: inserted, error } = await supabase.from('trips').insert(tripToRow(trip, ownerId, cols))
-    .select('id, write_version')
+  if (!drivesPartVerdict.ok) return refuse(drivesPartVerdict.reason)
+  const { data: inserted, error } = await pinBearer(
+    supabase.from('trips').insert(tripToRow(trip, ownerId, cols)).select('id, write_version'),
+    recovery?.token,
+  )
+  if (!guard()) return false
   const row = Array.isArray(inserted) && inserted.length === 1 ? inserted[0] : null
   if (!error && row?.id === trip.id && validWriteVersion(row.write_version)
     && epoch === identityEpoch && cache.sessionUserId === sessionId) {
@@ -1957,32 +1987,44 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean 
   // policy is `is_editor`, which reads the member row that the same first
   // attempt may not have written yet, so it is refused.)
   const duplicateMyOwnRow = (e: unknown) => (e as { code?: string } | null)?.code === '23505'
-  if (error && !(opts.retry && duplicateMyOwnRow(error))) { toast('Could not save trip.'); return false }
+  if (error && !(opts.retry && duplicateMyOwnRow(error))) return refuse('Could not save trip.')
   if (error) {
+    if (!guard()) return false
     // A conflict proves only that some row exists. Verify this owner's row before accepting a retry.
-    const { data: saved, error: readError } = await supabase.from('trips').select('*')
-      .eq('id', trip.id).eq('owner_id', ownerId).maybeSingle()
+    const { data: saved, error: readError } = await pinBearer(
+      supabase.from('trips').select('*').eq('id', trip.id).eq('owner_id', ownerId).maybeSingle(),
+      recovery?.token,
+    )
+    if (!guard()) return false
     if (readError || !saved) return false
     if (trip.creationKind === 'forked' && saved.creation_kind != null
       && (saved.creation_kind !== 'forked' || saved.source_pub_id !== trip.sourcePubId)) return false
     Object.assign(trip, rowToTrip(saved as TripRow, trip.members ?? []))
     commit()
   }
-  const { error: mErr } = await supabase.from('trip_members').insert(
-    (trip.members ?? []).map(m => ({ trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
+  const { error: mErr } = await pinBearer(
+    supabase.from('trip_members').insert(
+      (trip.members ?? []).map(m => ({ trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
+    ),
+    recovery?.token,
   )
+  if (!guard()) return false
   // A member row is what makes the trip visible to its owner after a reload —
   // without it the trips row is an invisible orphan, so a failure here counts
   // as "not persisted" even though the trips row landed. Same tolerance on a
   // retry: the membership we are inserting may already be there.
   if (mErr && !(opts.retry && duplicateMyOwnRow(mErr))) {
     console.error('member insert failed', mErr)
-    toast('Could not save trip.')
-    return false
+    return refuse('Could not save trip.')
   }
   if (mErr) {
-    const { data: owner, error: readError } = await supabase.from('trip_members')
-      .select('user_id, role, joined_at').eq('trip_id', trip.id).eq('user_id', ownerId).maybeSingle()
+    if (!guard()) return false
+    const { data: owner, error: readError } = await pinBearer(
+      supabase.from('trip_members').select('user_id, role, joined_at')
+        .eq('trip_id', trip.id).eq('user_id', ownerId).maybeSingle(),
+      recovery?.token,
+    )
+    if (!guard()) return false
     if (readError || !owner || owner.role !== 'owner') return false
     trip.members = [{ userId: owner.user_id, role: 'owner', joinedAt: owner.joined_at }]
     commit()
@@ -2640,22 +2682,46 @@ async function restoreTripData(snap: TripSnapshot, retry: boolean): Promise<void
   // ride along on this recovery.
   const token = await tripWriteToken(scope, live)
   if (!token || !live()) return
-  // `retry` lets persistTrip tolerate the trip row (and the member rows) its own
-  // first try already wrote — a duplicate key there is proof the row landed, not
-  // a failure, exactly as it is for a trip-create retry (#374).
-  if (ownerId && !(await persistTrip(trip, ownerId, { retry }))) return
+  // Primary persistence: the trip row and its members. The recovery's own guard
+  // and bearer travel into every awaited phase inside it, because a second
+  // deletion or a lost grant during those awaits used to let a retired try keep
+  // writing. A failure here — an error OR a throw — keeps the snapshot and is
+  // reported through the same guarded feedback as a child failure, so the user
+  // always has the button rather than a stranded optimistic trip.
+  let primaryFailed = false
+  if (ownerId) {
+    try {
+      primaryFailed = !(await persistTrip(trip, ownerId, { retry, recovery: { live, token } }))
+    } catch (e) {
+      console.error('[yatraflow] undo could not restore the trip row', e)
+      primaryFailed = true
+    }
+    // A retired recovery is not a failure to report: its writes either landed or
+    // not, and neither outcome belongs to whoever is signed in now. Stay silent
+    // and keep the payload for that account's own retry.
+    if (primaryFailed && !live()) return
+  }
+  if (primaryFailed) {
+    toast('The trip could not be put back.', 'err', { label: 'Try again', run: () => retryRecovery(snap) })
+    return
+  }
   if (!live()) return
 
   // Stage A removed the direct insert policies on the contribution tables, so a
   // client-side re-insert is refused by the database and proves nothing. The
   // guarded archive function is the one seam that can put those rows back: it
   // runs as the definer, checks the caller against the owner the delete
-  // archived, and is idempotent by row id. `alreadyApplied` is success — the
-  // rows are back and re-running would add nothing.
+  // archived, and is idempotent by row id.
+  //
+  // It is consulted on EVERY recovery, never skipped for an empty local cache.
+  // The local arrays can be empty while the server holds rows this device never
+  // saw — a contribution made after the snapshot was taken, or one that arrived
+  // while the device was away — and local emptiness is not proof of an empty
+  // archive. An archive with nothing in it answers `applied` with zero rows,
+  // which is success, so there is nothing to skip. `alreadyApplied` is success
+  // too: the rows are back and re-running would add nothing.
   let sharedFailed: string | null = null
-  const contributions = snap.suggestions.length + snap.decisions.length
-    + snap.activity.length + snap.notifications.length
-  if (contributions > 0) {
+  {
     const { data, error } = await supabase.rpc('restore_trip_contributions', { p_trip_id: trip.id })
       .setHeader('Authorization', `Bearer ${token}`)
     if (!live()) return
