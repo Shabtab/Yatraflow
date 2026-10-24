@@ -941,8 +941,11 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    and false of the other, and the discriminator is the call site, not the string.
    Three mechanics: (1) one union is the source of truth — `PlaceProvider` in
    `src/data/types.ts` — and every allowlist (the runtime guard, the import
-   validator, the SQL CHECK, the RPC validation, the schema mirror) is derived
-   from it rather than re-typed, so a provider is added in one place; (2) a
+   validator, the dependency-free CLI validator, the SQL CHECK, the RPC
+   validation, the schema mirror) is derived from it rather than re-typed, so a
+   provider is added in one place. The CLI is the mirror most easily forgotten,
+   because it lives outside `src/`; `tests/geocoder-cli-provenance.test.ts` now
+   parses its list and spawns it, so a missed mirror fails there; (2) a
    special case that downgrades a value to "unknown provider" is a second,
    quieter allowlist — `persistedPlaceFromHit` and `placeKeysOf` each had one, and
    each silently discarded a real provenance on the way to the database, which is
