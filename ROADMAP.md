@@ -1193,6 +1193,14 @@ what a picked place IS, how it survives a save, and how it survives a delete and
   Export uses format 3 when the shape it needs changes; legacy reads stay readable and
   incompatible future versions are rejected honestly. Server-atomic acceptance remains
   Stage C — Stage B must not claim that separate writes are atomic.
+- **Provider provenance.** `open-meteo` is a place provider, because the free stack's
+  city geocoder returns real populated places through it. The earlier reading — that a
+  weather hostname cannot be a place engine — refused every keyless city pick and is
+  corrected: one vendor serves both a geocoder and a forecast, and the call site
+  decides which is which. `PlaceProvider` in `src/data/types.ts` is the single source
+  of truth, and the runtime guard, the import validator, the SQL CHECK, the RPC
+  validation and the schema mirror all follow it. Unknown provider strings, unusable
+  coordinates and blank names are still refused.
 - **Corrections carried into the build.** The CHECK validates the full allowed
   shape and data types with an `IS TRUE` form, so missing and null exposure are both
   rejected (R1). Missing columns or an older RPC produce a recoverable refusal on

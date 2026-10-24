@@ -929,6 +929,30 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    Test the actual archive producer with mixed legacy and new rows.
    A fixture with missing keys does not test an explicit JSON null field.
 
+6az. **A provider's identity is not its data domain — read what the value MEANS in
+   this context, not whose name it carries (learned 2026-10-25, #839 geocoder
+   repair).** `searchOpenMeteo` calls `geocoding-api.open-meteo.com` and returns
+   real cities with real coordinates, so a pick from it is a PLACE. The Stage B
+   allowlist read the hostname instead of the value and refused every one of those
+   hits — the keyless default geocoder returned results nothing could pick. One
+   vendor legitimately serves two domains here: the same hostname family also runs
+   the forecast calls in `src/lib/weather.ts`, which are weather reads and must
+   keep their own treatment. So "open-meteo means weather" is true of one surface
+   and false of the other, and the discriminator is the call site, not the string.
+   Three mechanics: (1) one union is the source of truth — `PlaceProvider` in
+   `src/data/types.ts` — and every allowlist (the runtime guard, the import
+   validator, the SQL CHECK, the RPC validation, the schema mirror) is derived
+   from it rather than re-typed, so a provider is added in one place; (2) a
+   special case that downgrades a value to "unknown provider" is a second,
+   quieter allowlist — `persistedPlaceFromHit` and `placeKeysOf` each had one, and
+   each silently discarded a real provenance on the way to the database, which is
+   worse than refusing because the data still looked saved; (3) the boundary that
+   matters is still enforced — unknown provider strings, non-finite and
+   out-of-range coordinates, zero coordinates and blank names are all refused by
+   the same guards as before. A wider allowlist is a behaviour change, so prove the
+   pick through the real seam (facade + provider + draft, fixture HTTP) and prove the
+   rejections still reject, in the same run.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 - **Separate crew fields must stay separate during parsing.** Normalize the mobile field alone. A name can contain digits. A parser that joins both fields can change that name or make the mobile number invalid. Keep the existing structured draft fields and duplicate rules.

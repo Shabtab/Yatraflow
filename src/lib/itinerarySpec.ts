@@ -87,7 +87,11 @@ export const STOP_KEYS = new Set([
   'visitMinutes', 'openTime', 'closeTime', 'entryFeeInrPerPerson', 'transportCostInrTotal',
   'priority', 'notes', 'sourceUrl', 'status', 'orderInDay', 'weatherSensitive', 'auto',
 ])
-const PLACE_SOURCES = ['google', 'mappls', 'wikipedia', 'osm'] as const
+/** Mirrors PlaceProvider in src/data/types.ts. `open-meteo` is a place engine (the
+ *  free stack's city geocoder), so a stop or suggestion picked from it keeps its
+ *  provenance through an export/import round-trip instead of being repaired away
+ *  (#839). Anything outside this list is still dropped and named. */
+const PLACE_SOURCES = ['google', 'mappls', 'open-meteo', 'wikipedia', 'osm'] as const
 export const EXPENSE_KEYS = new Set([
   'id', 'label', 'category', 'amountInr', 'perPerson', 'optional', 'stopId', 'dayIndex', 'paidBy', 'settled',
 ])
