@@ -951,9 +951,42 @@ export function tripDayAttribution(
     }
     return trip.days[trip.days.length - 1]?.index ?? null
   }
+  // #846: a closing overnight IS the day boundary, so its own position decides
+  // its day - never the candidate's. A stay whose best place sits a few km past
+  // the halt used to file into the NEXT day, which took the night away from the
+  // day it closes and gave the following day two of them. The segment target is
+  // the authoritative position: `effectiveDrivingDays` keeps it in step with an
+  // accepted pin, so the pin's day wins too. The tolerance only absorbs float
+  // noise between the corridor target and the effective boundary - both are the
+  // same number by construction - and the FIRST match wins, so a degenerate
+  // zero-length day never steals the night from the day that closes there.
+  const CLOSING_BOUNDARY_TOLERANCE_KM = 1
+  const boundaryPosFor = (km: number): number | null => {
+    if (!planned) return null
+    let best = -1
+    let bestGap = CLOSING_BOUNDARY_TOLERANCE_KM
+    for (let pos = 0; pos < planned.length; pos++) {
+      const gap = Math.abs(planned[pos].endKm - km)
+      if (gap < bestGap) {
+        best = pos
+        bestGap = gap
+      }
+    }
+    return best < 0 ? null : best
+  }
   return {
     dayForKm,
-    dayOfSegment: sh => dayForKm(sh.hit?.cumKm ?? sh.segment.targetKm),
+    dayOfSegment: sh => {
+      const segment = sh.segment
+      if (segment.dayEnd && Number.isFinite(segment.targetKm)) {
+        const pos = boundaryPosFor(segment.targetKm)
+        if (pos != null) return trip.days[pos]?.index ?? null
+        // No boundary claims it: the halt sits past the plan (unassigned) or
+        // there is no shared plan, so its own target decides.
+        return dayForKm(segment.targetKm)
+      }
+      return dayForKm(sh.hit?.cumKm ?? segment.targetKm)
+    },
     daySpanKm: dayIndex => {
       const pos = trip.days.findIndex(d => d.index === dayIndex)
       if (pos < 0) return null
