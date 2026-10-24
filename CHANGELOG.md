@@ -4,9 +4,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 > **Two version lines, cut from the same commits.** `X.Y.Z` headings are the **web app**
 > (semver, mirrored in `package.json`, deployed by Vercel from `main`). The `-native` suffix
-> is the **Android shell's** own numbering (`versionCode`/`versionName` in
-> `android/app/build.gradle`, surfaced in Settings → Apps), which does **not** interleave
-> with web semver — so `0.7.0-native` is newer than `0.48.0` despite the smaller number.
+> marks the **Android shell** (`versionCode`/`versionName` in `android/app/build.gradle`,
+> surfaced in Settings → Apps). The build now reads that version from `package.json`, so
+> `0.79.1` ships as `0.79.1-native` with code 7901. Older entries keep their own numbering,
+> so `0.7.0-native` is newer than `0.48.0` despite the smaller number.
 > Entries below are ordered newest-first by date, not by version number.
 >
 > **History note.** Entries before `0.42.0` were removed in `adf5f66` (Sep 7, 2026) — that
@@ -14,6 +15,14 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 > [`docs/history/`](docs/history/).
 
 ## [Unreleased]
+
+### Fixed
+
+- **A release cut now attaches its APK to the GitHub release.** Each tag run built the APK and kept it as an Actions artifact for 14 days. The release page stayed empty, so `v0.79.0` and `v0.79.1` shipped with no file. The tag run now uploads the APK to its release.
+
+- **The Android build takes its version from `package.json`.** `versionCode` sat at 14 and `versionName` at `0.14-native` while the web app reached `0.79.1`. Every APK looked older than every release, so the in-app update check could never offer one (#809). The build now reads the package version: `0.79.1` becomes `0.79.1-native` with code 7901.
+
+- **A late place-search answer can no longer overwrite a newer one.** In the location field, an older answer could replace the hits of a newer search. It could also switch off the spinner while the newer search still ran. Only the newest search now updates the list. A pick, or a query under two characters, cancels any search in flight. `src/lib/latestRequest.ts` holds the guard.
 
 ## [0.79.1] - 2026-10-24
 
@@ -81,6 +90,11 @@ Two database migrations go with this release: `20261023a_collab_commands.sql` an
 
 ### Changed
 
+- **The Android workflow uses current GitHub Actions versions.** `checkout`, `setup-node`, `setup-java` and `upload-artifact` move from `v4` to `v5`. The `v4` actions target a Node 20 runtime that the runners no longer provide. Every run carried a deprecation warning.
+
+- **The share-page and sitemap escape code lives in one file.** Four copies of one entity table could drift apart. `api/_escape.js` now holds the table. The output is byte-identical to before, so the sitemap still writes `&apos;`.
+
+- **Agents must search for prior art before they build.** Rule 18 in `AGENTS.md` sets the steps. It limits code reuse to MIT, Apache-2.0, BSD and ISC projects. The full text is in `docs/agents/AGENTS-FULL.md` §2.18.
 - **The public-page and sitemap escape code lives in one file.** Five copies of one entity table could drift apart. `api/_escape.js` now holds the table. The output is byte-identical to before, so the sitemap still writes `&apos;`.
 
 ## [0.78.0] - 2026-10-21
