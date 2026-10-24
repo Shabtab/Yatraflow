@@ -22,7 +22,7 @@ import {
 } from '../src/lib/ridePlan'
 import { tripDayAttribution } from '../src/lib/daySlots'
 import { plannerDrives } from '../src/lib/transportPolicy'
-import type { ApplyChange } from '../src/lib/mutationLifecycle'
+import { workspacePreviewActions, type PendingChange } from '../src/pages/TripWorkspace'
 import type { Trip } from '../src/data/types'
 
 /** The relaxed/vulnerable fixture Stage D names: 1400 km, 1500 wheel minutes,
@@ -235,36 +235,18 @@ vi.mock('../src/lib/supabase', () => {
 describe('case 5 — rejected previews change nothing; Keep applies the proposal; Undo restores', () => {
   it('stages, discards, keeps and undoes a removal through the workspace\'s own wiring', async () => {
     const { seedData } = await import('../src/data/seed')
-    const { duplicateTrip, tripById, updateTrip, _setTripWriteDebounceMs } = await import('../src/store/store')
-    const { stagedChange, keepIsStale } = await import('../src/lib/previewChain')
+    const { duplicateTrip, tripById, _setTripWriteDebounceMs } = await import('../src/store/store')
     const { removeStopWithUndo } = await import('../src/lib/mutationLifecycle')
     _setTripWriteDebounceMs(0)
     calls.length = 0
     toasts.length = 0
     const seedTrip = seedData.trips[0]
     const trip = duplicateTrip(seedTrip, 'lane3-owner')
-    const flush = () => new Promise(resolve => setTimeout(resolve, 0))
-
-    /** The workspace's applyChange/keep/discard, reduced to the lifecycle: chain
-     *  onto the staged proposal, remember the base the preview started from,
-     *  Keep refuses a stale base, then writes the DISPLAYED proposal. */
-    let staged: Trip | null = null
-    let base: Trip | null = null
-    let onKept: (() => void) | undefined
-    const applyChange: ApplyChange = (mutator, _kind, _dayIndex, kept) => {
-      const committed = tripById(trip.id)!
-      staged = stagedChange(committed, staged, mutator)
-      if (!base) base = committed
-      onKept = kept
-    }
-    const discard = () => { staged = null }
-    const keep = (): 'kept' | 'refused' => {
-      if (keepIsStale(base, tripById(trip.id)!)) return 'refused'
-      updateTrip(trip.id, staged!)
-      staged = null
-      onKept?.()
-      return 'kept'
-    }
+    const pendingRef: { current: PendingChange | null } = { current: null }
+    const baseRef: { current: Trip | null } = { current: null }
+    const { applyChange, keepPending, removePending } = workspacePreviewActions({
+      trip, pendingRef, baseRef, legCorrRef: { current: undefined }, setPending: vi.fn(),
+    })
 
     const day = trip.days.find(d => d.stops.length >= 2) ?? trip.days[0]
     const before = day.stops.map(s => s.id)
@@ -276,15 +258,16 @@ describe('case 5 — rejected previews change nothing; Keep applies the proposal
     const outcome = removeStopWithUndo({ trip: tripById(trip.id)!, stopId: victim, dayIndex: day.index, applyChange })
     expect(outcome).toBe('staged-undo')
     expect(tripById(trip.id)!.days[day.index].stops.map(s => s.id)).toEqual(before)
-    discard()
+    removePending()
     expect(tripById(trip.id)!.days[day.index].stops.map(s => s.id)).toEqual(before)
 
     // Keep applies the DISPLAYED proposal: re-stage, keep, and the committed
     // row becomes what the sheet showed — the stop gone, 1..n again.
     removeStopWithUndo({ trip: tripById(trip.id)!, stopId: victim, dayIndex: day.index, applyChange })
-    const displayed = staged!
+    const displayed = pendingRef.current!.proposed
     expect(displayed.days[day.index].stops.map(s => s.id)).toEqual(before.filter(id => id !== victim))
-    expect(keep()).toBe('kept')
+    keepPending()
+    expect(pendingRef.current).toBeNull()
     expect(tripById(trip.id)!.days[day.index].stops.map(s => s.id)).toEqual(before.filter(id => id !== victim))
 
     // Undo restores the prior one: the toast the Keep leaves puts the stop
@@ -292,7 +275,6 @@ describe('case 5 — rejected previews change nothing; Keep applies the proposal
     const undo = toasts[toasts.length - 1]
     expect(undo).toBeDefined()
     undo.run()
-    await flush()
     expect(tripById(trip.id)!.days[day.index].stops.map(s => s.id)).toEqual(before)
     expect(tripById(trip.id)!.days[day.index].stops.map(s => s.orderInDay)).toEqual(orders)
   })
