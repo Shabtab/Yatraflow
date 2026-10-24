@@ -9,7 +9,7 @@ import type { Trip, StopSuggestion } from '../src/data/types'
 
 const { state, toasts } = vi.hoisted(() => ({
   state: {
-    /** Guarded calls, in order. */
+    /** Guarded calls, so a test can compare them. */
     calls: [] as { fn: string; args: unknown; header: string | null }[],
     archive: { status: 'applied' } as { status: string } | { error: string },
     archiveDelay: 0,

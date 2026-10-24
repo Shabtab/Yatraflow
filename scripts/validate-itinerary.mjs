@@ -43,7 +43,12 @@ const TRAVEL_STYLES = ['relaxed', 'balanced', 'packed', 'adventure', 'luxury', '
 const STOP_CATEGORIES = ['sightseeing', 'food', 'nature', 'beach', 'temple', 'adventure', 'shopping', 'museum', 'travel', 'hotel', 'rest', 'event', 'transport-hub']
 const STOP_STATUSES = ['suggested', 'confirmed', 'rejected', 'maybe', 'needs-booking']
 const PRIORITIES = ['must-do', 'nice-to-have', 'optional']
-const PLACE_SOURCES = ['google', 'mappls', 'wikipedia', 'osm']
+// Mirrors PlaceProvider in src/data/types.ts. `open-meteo` is the free stack's
+// city geocoder, so a stop picked from it is a legitimate persisted provenance —
+// the same list the app's importer accepts (PLACE_PROVIDERS in
+// src/lib/placeDraft.ts). tests/geocoder-cli-provenance.test.ts pins the two
+// together and runs this CLI against a real geocoder stop.
+const PLACE_SOURCES = ['google', 'mappls', 'open-meteo', 'wikipedia', 'osm']
 const EXPENSE_CATEGORIES = ['transport', 'accommodation', 'food', 'activities', 'entry-fees', 'tolls-parking', 'local-travel', 'emergency-buffer']
 const COMMITMENT_TYPES = ['hotel-checkin', 'train-departure', 'flight-departure', 'event', 'other']
 const STAY_STYLES = ['budget', 'comfort', 'luxury']
