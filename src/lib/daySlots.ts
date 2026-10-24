@@ -31,6 +31,7 @@ import {
   reasonForSegmentHit,
   scoreHitForSegment,
   type AssignOpts,
+  type DrivingPlanDay,
   type RideSegment,
   type SegmentHit,
 } from './ridePlan'
@@ -923,6 +924,7 @@ export function tripReadiness(
 export function tripDayAttribution(
   trip: Trip,
   dayRoadKm?: number[] | null,
+  boundaries?: readonly DrivingPlanDay[] | null,
 ): {
   /** Which trip day a road km belongs to (null = unpositionable). */
   dayForKm: (km: number | null | undefined) => number | null
@@ -932,11 +934,16 @@ export function tripDayAttribution(
   daySpanKm: (dayIndex: number) => { fromKm: number; toKm: number } | null
 } {
   const perDay = dayRoadKm ?? trip.days.map(d => buildJourney(trip, d).distanceKm)
-  // #161: unknown km used to silently attribute to Day 1 - an off-polyline
-  // hit's budget, day lookup and pick-day default all lied. Return null and let
-  // each consumer decide honestly.
+  const planned = boundaries && boundaries.length > 0 ? boundaries : null
+  // #832: when the shared plan owns the boundaries, positions are ordinal and
+  // a km past the plan is unassigned. Do not invent a stored day for a halt the
+  // user has not applied. Without a plan, keep the stored-day estimate.
   const dayForKm = (km: number | null | undefined): number | null => {
     if (km == null || !Number.isFinite(km)) return null
+    if (planned) {
+      const pos = planned.findIndex(day => km <= day.endKm)
+      return pos < 0 ? null : trip.days[pos]?.index ?? null
+    }
     let covered = 0
     for (let i = 0; i < trip.days.length; i++) {
       covered += perDay[i] ?? 0
@@ -950,6 +957,12 @@ export function tripDayAttribution(
     daySpanKm: dayIndex => {
       const pos = trip.days.findIndex(d => d.index === dayIndex)
       if (pos < 0) return null
+      if (planned) {
+        const boundary = planned[pos]
+        if (!boundary) return null
+        const from = pos === 0 ? 0 : planned[pos - 1].endKm
+        return { fromKm: from, toKm: Math.max(boundary.endKm, from + 1) }
+      }
       let from = 0
       for (let i = 0; i < pos; i++) from += perDay[i] ?? 0
       const span = perDay[pos] ?? 0

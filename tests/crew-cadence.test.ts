@@ -2,7 +2,8 @@
 // Relaxed crews and big groups tire faster; packed crews push further.
 // Defaults stay 150/300 when no crew facts are given.
 import { describe, it, expect } from 'vitest'
-import { planRideSegments, cadenceForCrew } from '../src/lib/ridePlan'
+import { cadenceForCrew } from '../src/lib/ridePlan'
+import { planRide as planRideSegments } from './helpers/sharedDrivingPlan'
 
 describe('cadenceForCrew', () => {
   it('returns defaults with no facts', () => {

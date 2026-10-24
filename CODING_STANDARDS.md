@@ -1153,6 +1153,8 @@ process.
 
 - **A worktree's `node_modules` must be its own install (learned 2026-10-21).** A junction to another clone can point at an empty folder. Every run then fails with `Cannot find module` for `vitest.mjs`. Run `npm ci` in the worktree, with `NODE_ENV` cleared first (`AGENTS.md` §2.15).
 
+- **A derived boundary must travel as one typed plan, not as a boolean a consumer re-reads (learned 2026-10-24, #832).** The banner, corridor, day attribution and readiness each split the same journey. A `multiDay` flag let them split it from partial facts. A late start, rain, terrain or a vulnerable crew could then move one and not the others. `deriveDrivingPlan` now builds one readonly result from the full facts. `planRideSegments` must receive its `dayBoundaries`. There is no fallback. The cache carries the effective projection and its fingerprint, and the version moved so old boundaries evict. When a boolean becomes a typed input, migrate every caller in the same change. A test helper may keep the old fixture meaning, but an explicit boundary input must win over its default.
+
 ## 3. Scripted edits
 
 - **Day-start names must match the resolved origin.** Stored route points can precede a flight. Match location names against the journey coordinates.

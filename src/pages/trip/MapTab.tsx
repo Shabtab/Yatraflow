@@ -17,7 +17,7 @@ import { Select } from '../../components/Select'
 import { DetourWhisk } from '../../components/DetourWhisk'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { openExternal } from '../../lib/native'
-import { corridorAnchors, asymmetricDetourKm, asymmetricDetourMinutes, googleEnabled, reasonForSegmentHit, searchPlacesText, kmFromStartForHit, planDriveDays, planTravelClock, rainFactorFor, directionalKm, alongRouteKmOf, DEFER_START, type NearbyOpts, type PlaceHit, type TravelClockVerdict } from '../../lib/geocode'
+import { corridorAnchors, asymmetricDetourKm, asymmetricDetourMinutes, googleEnabled, reasonForSegmentHit, searchPlacesText, kmFromStartForHit, deriveDrivingPlan, effectiveDrivingDays, rainFactorFor, directionalKm, alongRouteKmOf, DEFER_START, type NearbyOpts, type PlaceHit } from '../../lib/geocode'
 import { useResolvePick } from '../../components/ResolvePickDialog'
 import { clockHM, deriveClockMilestones } from '../../lib/clockOverlay'
 import { SHEET_TABS, sheetHiddenClass, sheetTabMove } from '../../lib/mapSheet'
@@ -52,7 +52,7 @@ import {
  *  grammar needs the same page size the rows are rendered with, so it lives here
  *  once instead of as a bare literal in the label, the slice and the key handler. */
 const SEARCH_PAGE = 5
-import { isSightCategory, roadProfileFromLegs, loopProfile } from '../../lib/ridePlan'
+import { isSightCategory, roadProfileFromLegs } from '../../lib/ridePlan'
 import { QuotaExhaustedError } from '../../lib/providers/google'
 import { isElectric } from '../../lib/vehicleProfile'
 import { dayShape, tripDayAttribution, SLOT_URGENCY_MIN, type DaySlot, type DaySlotKind } from '../../lib/daySlots'
@@ -364,25 +364,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     return { km: routeTotalKm ?? km, min: routeTotalMin ?? min }
   }, [trip, stopSig, routeTotalKm, routeTotalMin])
 
-  /** ONE day attribution for this tab, and the very same helper the Overview
-   *  matrix reads (`tripDayAttribution`) — road-true per-day km from the
-   *  routing legs when resolved, keyed by the day's own index (#161: indexes
-   *  can skip when a day is deleted, and position ≠ index). A second definition
-   *  here is how two surfaces start disagreeing about which day it is. */
-  const dayAttribution = useMemo(() => tripDayAttribution(trip, dayRoadKm), [trip, dayRoadKm])
-  /** Which day's cumulative drive covers a given along-route km (pick-a-day
-   *  defaults, per-day budgets, day chips). #161: unknown km returns null and
-   *  each consumer decides honestly — never a silent Day 1. */
-  const dayForKm = dayAttribution.dayForKm
 
-  // #420 slice 9: the add draft lives in ./map/useAddModal now — same inputs
-  // in, same outputs out, no behavior change. Called here because the day
-  // default reads the attribution above. Hook order changes once, then stays
-  // fixed — every hook here runs each render.
-  const {
-    poiDraft, setPoiDraft, pickDay, setPickDay,
-    pickDayGuessed, setPickDayGuessed, openAddModal,
-  } = useAddModal({ identity, dayForKm, days: trip.days })
 
   // search the WHOLE route corridor (start → stops → destination); the home
   // zone around the starting point is excluded inside the engine
@@ -549,23 +531,19 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // #126: conducted modes (train/bus/flight/taxi) have no driving fatigue —
   // the split verdict stays null and every banner/chip/arming consumer below
   // goes quiet through that single gate.
-  const splitVerdict = useMemo(
-    () => planDriveDays({ totalKm: planKm * loopFactor, driveMinutes: wholeTrip.min * loopFactor, rainFactor, profile: tripIsRoundTrip ? loopProfile(roadProfile) : roadProfile, ...partyOpts }),
+  const drivingPlan = useMemo(
+    () => deriveDrivingPlan({
+      totalKm: planKm, driveMinutes: wholeTrip.min, dayStart: trip.days[0]?.startTime,
+      rainFactor, dayRainPct: dayRainPct ?? undefined, dayWeatherCode: dayWeatherCode ?? undefined,
+      roundTrip: tripIsRoundTrip, profile: roadProfile, ...partyOpts, anchors: tripAnchors,
+    }),
     // #213 Phase 3: dayWeatherCode IS a dep (rainFactor reads it for severity
     // weighting, #141) — same omission the clockVerdict had. The two verdicts
     // now invalidate together on a forecast fetch.
-    [planKm, wholeTrip.min, trip.travelStyle, trip.transportMode, trip.drivesPart, trip.driverCount, trip.hasVulnerable, loopFactor, dayRainPct, dayWeatherCode, roadProfile],
-  )
-  const clockVerdict = useMemo(
-    // #127 per-day rain array; #142 party cap; #122 anchors; #145 a round trip
-    // walks the OUTBOUND leg and returns a directed `returnDays` pass — the walk
-    // no longer fakes the loop as a single 2× line.
-    () => planTravelClock({ totalKm: planKm, driveMinutes: wholeTrip.min, dayStart: trip.days[0]?.startTime, rainFactor, dayRainPct: dayRainPct ?? undefined, roundTrip: tripIsRoundTrip, profile: roadProfile, ...partyOpts, anchors: tripAnchors }),
-    // Stable keys only (#135): the walk reads startTimes + party/mode, never the
-    // days array identity. #213 Phase 3: dayWeatherCode was missing — a storm
-    // code change with unchanged rainChancePct left the banner stale.
     [planKm, wholeTrip.min, trip.travelStyle, trip.transportMode, trip.drivesPart, trip.driverCount, trip.hasVulnerable, trip.driveAfterDinnerMin, dayStartSig, dayRainPct, dayWeatherCode, tripIsRoundTrip, roadProfile],
   )
+  const clockVerdict = drivingPlan.clock
+  const splitVerdict = drivingPlan.split
   // The travel clock drawn ON the route as clean road LABELS: one text pair per
   // planned clock anchor (meal / overnight / destination) — its wall-clock time
   // + calendar date on the LEFT of the road, its road km on the RIGHT. No pins,
@@ -598,11 +576,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // knows the start time; planDriveDays stays the geometry-free estimator.
   // defer → 0 usable days today; hop → tonight's hop + full days from tomorrow.
   // #145: a round trip needs BOTH walks counted — out + back.
-  const travelDayNeed = clockVerdict.verdict === 'ok'
-    ? clockVerdict.days.length + (clockVerdict.returnDays?.length ?? 0)
-    : clockVerdict.verdict === 'hop'
-      ? 1
-      : splitVerdict?.driveDayCount ?? 1
+  const travelDayNeed = drivingPlan.dayCount
   // #141: drizzle-grade rain (a 40%+ chance whose WMO code says drizzle or
   // light rain) damps the cap gently — the note keeps it a "slow day", never
   // a verdict flip; storms damp fully and the split banner flips honestly.
@@ -646,10 +620,28 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   const { fractionPois, corridorQuotaOut, loadingPois, poisFailed } = useCorridorCache({
     trip, anchors, routeGeometry, scopeKm, dayRainPct, dayWeatherCode, crewSeeds,
     dnaTick, onInputsHash, pois, setPois, nearbyOpts, planKm,
-    wholeTripMin: wholeTrip.min, travelDayNeed,
-    clockVerdict: clockVerdict.verdict, splitDriveDayCount: splitVerdict?.driveDayCount,
+    wholeTripMin: wholeTrip.min, drivingPlan,
     refreshTick, suggestionCache,
   })
+
+  // #832: attribution reads the EFFECTIVE plan projection (accepted pins and
+  // drift included), not a second POI-derived guess. A halt the plan needs
+  // beyond the created days stays unassigned until the user applies it.
+  const effectiveDays = useMemo(
+    () => effectiveDrivingDays(drivingPlan, pois),
+    [drivingPlan, pois],
+  )
+  const dayAttribution = useMemo(
+    () => tripDayAttribution(trip, dayRoadKm, effectiveDays),
+    [trip, dayRoadKm, effectiveDays],
+  )
+  const dayForKm = dayAttribution.dayForKm
+  // #420 slice 9: the add draft reads the same attribution. A known km with no
+  // derived plan day still discloses its pick-day guess.
+  const {
+    poiDraft, setPoiDraft, pickDay, setPickDay,
+    pickDayGuessed, setPickDayGuessed, openAddModal,
+  } = useAddModal({ identity, dayForKm, days: trip.days })
 
   // When the activation came from the map (pin hover/click), bring the matching
   // panel row into view so the two surfaces visibly point at the same place.
