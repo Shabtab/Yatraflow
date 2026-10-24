@@ -1653,7 +1653,7 @@ begin
 
   for v_row in select value from jsonb_array_elements(v_event.suggestions) loop
     insert into public.suggestions(id,trip_id,day_index,day_id,place,proposed_by,title,category,location_name,lat,lng,description,visit_minutes,estimated_entry_fee_inr,estimated_transport_inr,votes,comments,status,created_at)
-    values((v_row->>'id')::uuid,v_trip,(v_row->>'day_index')::integer,nullif(v_row->>'day_id',''),v_row->'place',(v_row->>'proposed_by')::uuid,v_row->>'title',v_row->>'category',v_row->>'location_name',nullif(v_row->>'lat','')::double precision,nullif(v_row->>'lng','')::double precision,v_row->>'description',(v_row->>'visit_minutes')::integer,(v_row->>'estimated_entry_fee_inr')::integer,(v_row->>'estimated_transport_inr')::integer,v_row->'votes',v_row->'comments',v_row->>'status',(v_row->>'created_at')::bigint)
+    values((v_row->>'id')::uuid,v_trip,(v_row->>'day_index')::integer,nullif(v_row->>'day_id',''),nullif(v_row->'place','null'::jsonb),(v_row->>'proposed_by')::uuid,v_row->>'title',v_row->>'category',v_row->>'location_name',nullif(v_row->>'lat','')::double precision,nullif(v_row->>'lng','')::double precision,v_row->>'description',(v_row->>'visit_minutes')::integer,(v_row->>'estimated_entry_fee_inr')::integer,(v_row->>'estimated_transport_inr')::integer,v_row->'votes',v_row->'comments',v_row->>'status',(v_row->>'created_at')::bigint)
     on conflict(id) do nothing;
     if found then v_count:=v_count+1; end if;
   end loop;

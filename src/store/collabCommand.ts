@@ -147,6 +147,39 @@ function idListOf(v: unknown): string[] | undefined {
   return ids.length === v.length ? ids : undefined
 }
 
+/** Does this receipt keep what the command promised?
+ *
+ *  A `suggestion.create` that carried stable-day or place identity is only
+ *  APPLIED when the stored row comes back carrying it. An older
+ *  `submit_collab_command` refuses unfamiliar keys outright (`invalid`), so a
+ *  receipt that answers `applied` while the promised fields are absent is a
+ *  server that dropped them — accepting it would report a save the user did not
+ *  get, with the picked place gone and nothing said. Anything other than a
+ *  success status has nothing to prove. */
+function receiptKeepsPromisedMetadata(command: CollabCommand, outcome: CollabOutcome): boolean {
+  if (command.type !== 'suggestion.create') return true
+  if (outcome.status !== 'applied' && outcome.status !== 'alreadyApplied') return true
+  const promised = command.suggestion
+  const wantedDayId = typeof promised.dayId === 'string' ? promised.dayId.trim() : ''
+  const wantedPlace = promised.place
+  if (!wantedDayId && !wantedPlace) return true
+  const row = outcome.suggestion
+  if (!row) return false
+  if (wantedDayId && (typeof row.dayId !== 'string' || row.dayId.trim() !== wantedDayId)) return false
+  if (wantedPlace) {
+    const stored = row.place
+    // The row must carry a readable identity that still names the same provider
+    // keys. A different (or absent) key is a different entity, not this pick.
+    if (!stored) return false
+    for (const key of ['placeId', 'eLoc'] as const) {
+      const wanted = wantedPlace[key]
+      if (wanted && stored[key] !== wanted) return false
+    }
+    if (wantedPlace.source && stored.source !== wantedPlace.source) return false
+  }
+  return true
+}
+
 function receiptToOutcome(data: unknown): CollabOutcome {
   if (!data || typeof data !== 'object' || typeof (data as RawReceipt).status !== 'string') {
     // A 200 without a parseable receipt is a database answer this client
@@ -224,7 +257,16 @@ export async function submitCollabCommand(
       p_command: command,
     })
     if (error) return rpcErrorToOutcome(error as { code?: unknown })
-    return receiptToOutcome(data)
+    const outcome = receiptToOutcome(data)
+    if (!receiptKeepsPromisedMetadata(command, outcome)) {
+      // A recoverable refusal, NOT a success: the row may exist, but without the
+      // identity the user gave, so nothing is confirmed. `unavailable` keeps the
+      // caller's envelope pending, so its next call retries the SAME command id
+      // and payload — the metadata is never stripped to make the retry look like
+      // it worked.
+      return { status: 'unavailable' }
+    }
+    return outcome
   } catch {
     return { status: 'unavailable' }
   }

@@ -14,6 +14,10 @@ const { state } = vi.hoisted(() => ({
     writes: [] as { table: string; method: string; payload: unknown }[],
     /** Tables whose write should come back failed, to exercise RLS rejection. */
     fail: new Set<string>(),
+    /** Columns a pre-migration database does not have. A `select` naming one
+     *  answers with Postgres' unknown-column error, the same shape
+     *  `isMissingColumnError` reads. */
+    missingColumns: new Set<string>(),
   },
 }))
 
@@ -21,7 +25,10 @@ vi.mock('../src/lib/supabase', () => {
   const record = (table: string, method: string, payload: unknown) => state.writes.push({ table, method, payload })
   const builder = (table: string) => {
     const b: Record<string, unknown> = {
-      select: () => b,
+      select: (column?: string) => {
+        if (column && state.missingColumns.has(column)) b.missingColumn = column
+        return b
+      },
       eq: () => b,
       in: () => b,
       limit: () => b,
@@ -30,7 +37,12 @@ vi.mock('../src/lib/supabase', () => {
       insert: (p: unknown) => (record(table, 'insert', p), b),
       upsert: (p: unknown) => (record(table, 'upsert', p), b),
       then: (res: (v: { data: unknown; error: unknown }) => unknown) =>
-        Promise.resolve({ data: [], error: state.fail.has(table) ? { message: 'row-level security' } : null }).then(res),
+        Promise.resolve({
+          data: [],
+          error: state.fail.has(table) ? { message: 'row-level security' }
+            : b.missingColumn ? { code: '42703', message: `column ${b.missingColumn} does not exist` }
+              : null,
+        }).then(res),
     }
     return b
   }
@@ -114,6 +126,7 @@ const writesTo = (table: string, method?: string) =>
 beforeEach(() => {
   state.writes = []
   state.fail = new Set()
+  state.missingColumns = new Set()
 })
 
 describe('undo after trip delete (#43)', () => {
@@ -209,5 +222,120 @@ describe('undo after trip delete (#43)', () => {
     expect(writesTo('trip_members', 'insert')).toHaveLength(1)
     expect(writesTo('suggestions', 'insert')).toHaveLength(0)
     expect(writesTo('published_itineraries', 'upsert')).toHaveLength(0)
+  })
+
+  it('refuses rather than strips metadata a pre-migration database cannot store (#839)', async () => {
+    // The suggestion carries a picked place. A database without the column must
+    // NOT get the row written with the place quietly removed: that would spend
+    // the snapshot on a restore where the user silently loses the identity they
+    // picked. The capability is probed once per session, so running Undo again
+    // on the same database keeps refusing rather than degrading the write.
+    const store = await freshStoreWith()
+    const trip = store.getSnapshot().trips[0]
+    store.getSnapshot().suggestions.push({
+      ...suggestion, id: 'sg-2', place: { source: 'google', placeId: 'g1', exposure: 'unknown' },
+    })
+    state.missingColumns = new Set(['place', 'day_id'])
+
+    store.deleteTrip('trip-1')
+    store.restoreTrip(trip, 0)
+    await flush()
+    await flush()
+    const afterFirst = state.writes.length
+
+    store.restoreTrip(trip, 0) // Undo again, on the same un-migrated database
+    await flush()
+    await flush()
+
+    // No suggestion row was written at all — not with the place, and not
+    // without it. The other children are still attempted every time.
+    expect(writesTo('suggestions', 'insert')).toHaveLength(0)
+    expect(writesTo('suggestions', 'upsert')).toHaveLength(0)
+    expect(state.writes.length).toBeGreaterThan(afterFirst)
+    // And the cache copy is untouched: the restore never edited the suggestion.
+    expect(store.getSnapshot().suggestions.find(s => s.id === 'sg-2')?.place)
+      .toEqual({ source: 'google', placeId: 'g1', exposure: 'unknown' })
+  })
+
+  it('still restores a legacy suggestion that carries no metadata on an old database', async () => {
+    // Legacy rows have no place and no day, so the missing columns must not
+    // block their restore — the capability gap only applies to metadata.
+    const store = await freshStoreWith()
+    const trip = store.getSnapshot().trips[0]
+    state.missingColumns = new Set(['place', 'day_id'])
+
+    store.deleteTrip('trip-1')
+    store.restoreTrip(trip, 0)
+    await flush()
+    await flush()
+
+    const rows = writesTo('suggestions', 'insert')[0].payload as Record<string, unknown>[]
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).not.toHaveProperty('place')
+    expect(rows[0]).not.toHaveProperty('day_id')
+    expect(rows[0].id).toBe('sg-1')
+  })
+
+  it('does not clear a newer deletion\'s snapshot when an older restore finishes (#839)', async () => {
+    const store = await freshStoreWith()
+    const trip = store.getSnapshot().trips[0]
+
+    store.deleteTrip('trip-1')
+    // Start the restore but do NOT let it finish: its writes are still in flight
+    // when the user deletes the trip a second time.
+    store.restoreTrip(trip, 0)
+    store.deleteTrip('trip-1')
+    await flush()
+    await flush()
+
+    // The in-flight restore succeeded, so an id comparison would have released
+    // the SECOND deletion's payload here. Comparing the snapshot object instead
+    // keeps it, and running Undo again restores the children from it.
+    const before = writesTo('suggestions', 'insert').length
+    store.restoreTrip(trip, 0)
+    await flush()
+    await flush()
+    expect(writesTo('suggestions', 'insert').length).toBe(before + 1)
+  })
+
+  it('runs Undo again when the first try failed, and is idempotent (#839)', async () => {
+    // The toast promises "Run Undo again to retry". The trip is already back in
+    // the cache by then (its row insert is what succeeded), so the duplicate
+    // guard used to swallow the retry and the retained payload was unreachable.
+    const store = await freshStoreWith()
+    const trip = store.getSnapshot().trips[0]
+
+    store.deleteTrip('trip-1')
+    state.fail = new Set(['suggestions'])
+    store.restoreTrip(trip, 0)
+    await flush()
+    await flush()
+
+    expect(store.getSnapshot().trips.filter(t => t.id === 'trip-1')).toHaveLength(1)
+    expect(writesTo('suggestions', 'insert')).toHaveLength(1)
+    const afterFirst = state.writes.length
+
+    // Undo again: the trip exists, so this is the retry seam, not a re-add.
+    state.fail = new Set()
+    store.restoreTrip(trip, 0)
+    await flush()
+    await flush()
+
+    const retryWrites = state.writes.slice(afterFirst)
+    const retriedSuggestion = retryWrites.find(w => w.table === 'suggestions' && w.method === 'upsert')
+    expect(retriedSuggestion).toBeDefined()
+    expect((retriedSuggestion!.payload as { id: string }[])[0].id).toBe('sg-1')
+    // Idempotent, not duplicated: the repeat upserts the same ids, and the cache
+    // still holds exactly one copy of the trip.
+    expect(store.getSnapshot().trips).toHaveLength(1)
+    expect(store.getSnapshot().suggestions.filter(s => s.tripId === 'trip-1')).toHaveLength(1)
+
+    // A third Undo has nothing left to do: a successful retry releases the
+    // payload, so the seam closes instead of re-writing forever.
+    const afterRetry = state.writes.length
+    store.restoreTrip(trip, 0)
+    await flush()
+    await flush()
+    expect(state.writes.length).toBe(afterRetry)
   })
 })

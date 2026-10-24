@@ -130,8 +130,10 @@ describe('the surfaces that must not race a preview (#334)', () => {
     // ONE refusal helper, spoken by EVERY crew-signal writer — resolve, accept
     // and decline all write the committed row, so all three refuse while a
     // preview holds a staged proposal (the definition takes a typed parameter,
-    // so it is not among these three).
-    expect(src.match(/refuseWhileStaged\(previewOpen\)/g) ?? []).toHaveLength(3)
+    // so it is not among them). #839 added a fourth: the retarget /
+    // add-another-visit follow-up writes the same row from its own buttons, so
+    // it refuses too rather than being the one path around the guard.
+    expect(src.match(/refuseWhileStaged\(previewOpen\)/g) ?? []).toHaveLength(4)
     // #424: this surface's own helper went into the shared lifecycle — its rule,
     // its wording and its six call sites are one contract now, not a copy.
     expect(src).toMatch(/import \{ refuseWhileStaged \} from '\.\.\/\.\.\/lib\/mutationLifecycle'/)

@@ -43,6 +43,9 @@ const CLASSES: Array<[selector: string, declarations: string[]]> = [
   ['.gin-option-grid', ['display: grid', 'gap: 7px']],
   ['.gin-card-title', ['font-family: var(--font-body)', 'font-size: 18px', 'font-weight: 800', 'line-height: 1.3', 'color: var(--text)']],
   ['.yf-surface.gin-panel', ['border-radius: var(--radius)', 'box-shadow: var(--shadow-card)']],
+  // #839 stage B — the retarget / add-another-visit follow-up. Motion only: the
+  // panel's own spacing comes from .gin-item-actions, which it is combined with.
+  ['.gin-followup', ['animation: popover-in var(--motion-fast) var(--ease-glide)']],
 ]
 
 // Every inline style attribute the change removed from the tab.

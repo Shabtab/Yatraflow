@@ -24,6 +24,15 @@ const { server } = vi.hoisted(() => {
     /** When true, submissions park in `held` until release() answers them. */
     hold: false,
     held: [] as Array<{ params: any; resolve: (v: any) => void }>,
+    /** Every command the client submitted, whatever the answer. A writer that
+     *  resubmits a stripped payload to force a success shows up here twice. */
+    submissions: [] as any[],
+    /** An OLD submit_collab_command: it answers `invalid` for a suggestion
+     *  payload naming keys it does not know (dayId/place, #839 stage B). */
+    rejectSuggestionMetadata: false,
+    /** A server that stores the row but drops the metadata columns: its receipt
+     *  still claims `applied`, which is the silent-strip case. */
+    stripSuggestionMetadata: false,
     tripRevision: 1 as number,
     suggestions: new Map<string, Row>(),
     decisions: new Map<string, Row>(),
@@ -35,6 +44,9 @@ const { server } = vi.hoisted(() => {
       server.failWith = null
       server.hold = false
       server.held = []
+      server.submissions = []
+      server.rejectSuggestionMetadata = false
+      server.stripSuggestionMetadata = false
       server.tripRevision = 1
       server.suggestions.clear()
       server.decisions.clear()
@@ -101,12 +113,21 @@ vi.mock('../src/lib/supabase', () => {
           return { data: { status: 'conflict', tripRevision: server.tripRevision }, error: null }
         }
         const s = command.suggestion
+        // The pre-#839 function answers `invalid` for a payload naming keys it
+        // does not know, instead of storing what it understands.
+        if (server.rejectSuggestionMetadata && (s.dayId !== undefined || s.place !== undefined)) {
+          return { data: { status: 'invalid', tripRevision: null }, error: null }
+        }
         row = {
           id: command.suggestionId, trip_id: tripId, day_index: s.dayIndex, proposed_by: actor,
           title: s.title, category: s.category, location_name: s.locationName, lat: s.lat, lng: s.lng,
           description: s.description ?? null, visit_minutes: s.visitMinutes,
           estimated_entry_fee_inr: s.estimatedEntryFeeInr, estimated_transport_inr: s.estimatedTransportInr,
           votes: [], comments: [], status: 'open', created_at: 1,
+          ...(server.stripSuggestionMetadata ? {} : {
+            ...(s.dayId !== undefined ? { day_id: s.dayId } : {}),
+            ...(s.place !== undefined ? { place: s.place } : {}),
+          }),
         }
         server.suggestions.set(row.id, row)
         kind = 'suggestion'
@@ -204,6 +225,7 @@ vi.mock('../src/lib/supabase', () => {
           if (fn === 'submit_collab_command' && server.hold) {
             server.held.push({ params, resolve })
           } else {
+            if (fn === 'submit_collab_command') server.submissions.push(params.p_command)
             resolve(fn === 'submit_collab_command' ? apply(params) : { data: null, error: null })
           }
         }).then(res, rej)
@@ -464,6 +486,102 @@ describe('tripRevision is an acknowledgment, not a trip snapshot', () => {
     expect(outcome.status).toBe('applied')
     const trip = store.getSnapshot().trips.find(t => t.id === TRIP) as any
     expect(trip.writeVersion).toBe(0)
+  })
+})
+
+describe('a receipt must keep the metadata the command promised (#839)', () => {
+  const PLACE = { source: 'google', placeId: 'g1', exposure: 'unknown' } as const
+  const SUG2 = '30000000-0000-4000-8000-000000000009'
+
+  it('an applied receipt that dropped the place identity is a recoverable refusal', async () => {
+    server.reset()
+    seedServer()
+    server.stripSuggestionMetadata = true
+    const commandId = '55555555-5555-4555-8555-555555555555'
+    const command = {
+      type: 'suggestion.create', suggestionId: SUG2,
+      suggestion: {
+        dayIndex: 0, dayId: 'day-1', place: PLACE, title: 'Fort Aguada', category: 'sightseeing',
+        locationName: 'Fort Aguada', lat: 15.4, lng: 73.7, description: '', visitMinutes: 45,
+        estimatedEntryFeeInr: 0, estimatedTransportInr: 0,
+      },
+    } as const
+
+    const outcome = await submitCollabCommand(commandId, TRIP, command)
+
+    // The server said `applied`, but the stored row has no place and no day.
+    // Reporting that as a save would show the user a suggestion whose picked
+    // place is gone, so the client answers with the recoverable refusal.
+    expect(outcome.status).toBe('unavailable')
+    expect(server.suggestions.get(SUG2)!.place).toBeUndefined()
+    // It MAY have committed — the ledger entry proves the command was seen, so
+    // the outcome must not claim the write never happened either.
+    expect(server.commands.has(commandId)).toBe(true)
+    // And the same command is still idempotent: a replay answers the same
+    // refusal rather than a second commit.
+    const replay = await submitCollabCommand(commandId, TRIP, command)
+    expect(replay.status).toBe('unavailable')
+    expect(server.activity.filter(a => a.verb.includes('Fort Aguada'))).toHaveLength(1)
+  })
+
+  it('a server that keeps the metadata is applied with it (control)', async () => {
+    server.reset()
+    seedServer()
+    const commandId = '66666666-6666-4666-8666-666666666666'
+    const outcome = await submitCollabCommand(commandId, TRIP, {
+      type: 'suggestion.create', suggestionId: SUG2,
+      suggestion: {
+        dayIndex: 0, dayId: 'day-1', place: PLACE, title: 'Fort Aguada', category: 'sightseeing',
+        locationName: 'Fort Aguada', lat: 15.4, lng: 73.7, description: '', visitMinutes: 45,
+        estimatedEntryFeeInr: 0, estimatedTransportInr: 0,
+      },
+    })
+    expect(outcome.status).toBe('applied')
+    expect(outcome.suggestion?.dayId).toBe('day-1')
+    expect(outcome.suggestion?.place).toEqual(PLACE)
+  })
+
+  it('a create without metadata is applied with no receipt check at all', async () => {
+    server.reset()
+    seedServer()
+    server.stripSuggestionMetadata = true
+    const commandId = '77777777-7777-4777-8777-777777777777'
+    const outcome = await submitCollabCommand(commandId, TRIP, {
+      type: 'suggestion.create', suggestionId: SUG2,
+      suggestion: {
+        dayIndex: 0, title: 'Old idea', category: 'sightseeing', locationName: 'Old idea',
+        lat: 15.4, lng: 73.7, description: '', visitMinutes: 45,
+        estimatedEntryFeeInr: 0, estimatedTransportInr: 0,
+      },
+    })
+    expect(outcome.status).toBe('applied')
+    expect(outcome.suggestion?.place).toBeUndefined()
+  })
+
+  it('the old RPC refusal never becomes a stripped retry', async () => {
+    // The pre-#839 function answers `invalid` for a payload naming keys it does
+    // not know. The writer must refuse, roll back, and NOT resubmit the same
+    // idea with its metadata removed so it looks saved.
+    const store = await freshStore()
+    server.rejectSuggestionMetadata = true
+
+    const outcome = await store.addSuggestion(TRIP, {
+      dayIndex: 0, dayId: 'day-1', place: PLACE, title: 'Fort Aguada', category: 'sightseeing',
+      locationName: 'Fort Aguada', lat: 15.4, lng: 73.7, description: '', visitMinutes: 45,
+      estimatedEntryFeeInr: 0, estimatedTransportInr: 0,
+    })
+
+    expect(outcome.status).toBe('invalid')
+    // Exactly one submission, and it still carries the metadata: the writer
+    // never resubmits the same idea with its place removed to force a save.
+    expect(server.submissions).toHaveLength(1)
+    const sent = JSON.stringify(server.submissions[0])
+    expect(sent).toContain('"place"')
+    expect(sent).toContain('"dayId"')
+    expect(server.suggestions.has(SUG2)).toBe(false)
+    // The optimistic row is retracted — nothing was confirmed.
+    const db = store.getSnapshot() as any
+    expect(db.suggestions.some((x: any) => x.title === 'Fort Aguada')).toBe(false)
   })
 })
 
