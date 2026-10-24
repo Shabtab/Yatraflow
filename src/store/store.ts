@@ -1947,8 +1947,14 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean;
   // no guard and keep their existing behaviour unchanged.
   const guard = (): boolean => !recovery || recovery.live()
   // A recovery reports its own failure through the guarded toast that carries the
-  // retry action, so the generic create message must not fire underneath it.
-  const refuse = (reason: string): false => { if (!recovery) toast(reason); return false }
+  // retry action, so the generic create message must not fire underneath it. The
+  // severity is the caller's and must not change with it: the drives-part refusal
+  // was always an error, the create failures were plain, and both stay as they
+  // were for ordinary callers.
+  const refuse = (reason: string, kind: 'ok' | 'err' = 'ok'): false => {
+    if (!recovery) toast(reason, kind)
+    return false
+  }
   if (!guard()) return false
   // Claim the echo window before the await — see persistTripFieldNow.
   markLocalWrite('trips', trip.id)
@@ -1959,7 +1965,7 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean;
   // so an explicit Mixed answer would be dropped here and the save would still
   // report success. This is the seam where that has to stop.
   const drivesPartVerdict = drivesPartWriteVerdict(trip, cols)
-  if (!drivesPartVerdict.ok) return refuse(drivesPartVerdict.reason)
+  if (!drivesPartVerdict.ok) return refuse(drivesPartVerdict.reason, 'err')
   const { data: inserted, error } = await pinBearer(
     supabase.from('trips').insert(tripToRow(trip, ownerId, cols)).select('id, write_version'),
     recovery?.token,
@@ -1977,6 +1983,10 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean;
         trip: { ...held.trip as Trip, writeVersion: row.write_version } }
       queuedLocalTrips.set(trip.id, rebased)
       await requeueIfCurrent(rebased)
+      // Re-basing the queued copy awaits, so the guard runs again here: a
+      // recovery retired while this awaited must not reach the membership writes
+      // below. This closes the last unguarded await in the stated contract.
+      if (!guard()) return false
     }
   }
   // A RETRY can meet the row its own first attempt wrote (#374): the insert

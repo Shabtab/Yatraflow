@@ -5,6 +5,7 @@
 // product does: the failure toast's own action, and the guards that must refuse
 // it once the account, the trip's access generation, or the payload has moved.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { readFileSync } from 'node:fs'
 import type { Trip, StopSuggestion } from '../src/data/types'
 
 const { state, toasts } = vi.hoisted(() => ({
@@ -252,5 +253,30 @@ describe('the recovery action a failed undo displays', () => {
 
     expect(archiveCalls()[0].header).toBe('Authorization: Bearer token-amelia')
     expect((archiveCalls()[0].args as { p_trip_id: string }).p_trip_id).toBe('trip-1')
+  })
+
+  it('leaves no unguarded await inside primary persistence', () => {
+    // The every-await contract: no phase inside persistTripRows may continue
+    // after a retired recovery. The queue re-base was the one await without a
+    // guard behind it. Source review did not prove that branch reachable during a
+    // recovery, so this is a contract pin, not a reproduced exploit — and it is
+    // pinned so the omission cannot come back unnoticed.
+    const src = readFileSync('src/store/store.ts', 'utf8')
+    const from = src.indexOf('async function persistTripRows')
+    const to = src.indexOf('function buildTripCopy(')
+    expect(from).toBeGreaterThan(0)
+    expect(to).toBeGreaterThan(from)
+    const body = src.slice(from, to)
+
+    const awaits = (body.match(/await /g) ?? []).length
+    const guards = (body.match(/if \(!guard\(\)\) return false/g) ?? []).length
+    expect(awaits).toBeGreaterThan(0)
+    expect(guards).toBeGreaterThanOrEqual(awaits)
+
+    const marker = 'await requeueIfCurrent(rebased)'
+    expect(body).toContain(marker)
+    const after = body.slice(body.indexOf(marker) + marker.length)
+    // The next statement after the re-base await is the guard, with comments allowed between.
+    expect(after.replace(/^\s*(?:\/\/[^\n]*\n\s*)*/, '').startsWith('if (!guard()) return false')).toBe(true)
   })
 })
