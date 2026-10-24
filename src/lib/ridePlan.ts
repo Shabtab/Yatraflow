@@ -379,8 +379,7 @@ export type TravelClockVerdict =
       split: DriveDaysPlan | null
     }
 
-/** Module-level default drive start (the planRideSegments-local one is not in
- *  this scope). Derived days 2+ always start here. */
+/** Default departure when a day has no valid saved start. */
 const CLOCK_DEFAULT_START = '08:30'
 
 function savedStartMin(raw: string | null | undefined): number | null {
@@ -620,7 +619,7 @@ export interface TravelClockInput {
   driveMinutes: number
   /** "HH:MM" drive start of day 1 — derived days default to 08:30 */
   dayStart?: string
-  /** Saved "HH:MM" departure per outbound day ordinal. A valid entry beats the
+  /** Saved "HH:MM" departure per complete-trip day ordinal. A valid entry beats the
    *  day-1 start or the 08:30 default; a missing entry keeps that default. */
   dayStartTimes?: readonly (string | null | undefined)[]
   travelStyle?: string
@@ -743,7 +742,7 @@ export function planTravelClock(input: TravelClockInput, splitOverride?: DriveDa
       // over-cap last day.
       const isFinal = i === restDays && remaining <= capKmFor(i) + 0.5
       const budget = isFinal ? remaining : Math.min(remaining / (restDays - i + 1), capKmFor(i))
-      const laterStartMin = dayOffset === 0 ? savedStartFor(i) : hmToMinutes(CLOCK_DEFAULT_START)
+      const laterStartMin = savedStartFor(dayOffset + i)
       const day = walkClockDay({ dayIndex: dayOffset + i, startKm, kmBudget: budget, startMin: laterStartMin, kmPerMin, isFinal, capKm: isFinal ? Infinity : endnoCap, anchors: input.anchors, profile: input.profile ?? null })
       days.push(day)
       // kmCovered is ABSOLUTE within this leg — the budget is RELATIVE
@@ -757,7 +756,7 @@ export function planTravelClock(input: TravelClockInput, splitOverride?: DriveDa
     // keep walking capped days until the walk reaches totalKm.
     for (let guard = 0; remaining > 0.5 && guard < 30; guard++) {
       const isFinal = remaining <= capKmFor(days.length) + 0.5
-      const laterStartMin = dayOffset === 0 ? savedStartFor(days.length) : hmToMinutes(CLOCK_DEFAULT_START)
+      const laterStartMin = savedStartFor(dayOffset + days.length)
       const day = walkClockDay({
         dayIndex: dayOffset + days.length, startKm, kmBudget: isFinal ? remaining : Math.min(remaining, capKmFor(days.length)),
         startMin: laterStartMin, kmPerMin, isFinal, capKm: isFinal ? Infinity : endnoCap, anchors: input.anchors, profile: input.profile ?? null,
@@ -770,11 +769,11 @@ export function planTravelClock(input: TravelClockInput, splitOverride?: DriveDa
   }
   const days = walkLeg(startMin, 0)
   // #145: the drive home is its OWN walk on the reversed corridor — same
-  // engine, starting fresh at the destination (next morning's default
-  // start; the overnight is implicit in the reset clock). Circuits are not
+  // engine, starting fresh at the destination with its saved or default
+  // departure. The overnight is implicit in the reset clock. Circuits are not
   // round trips by construction (isRoundTrip keys on the toggle + same
   // start/end), so this never double-walks a loop.
-  const returnDays = input.roundTrip && driveMin > 0 ? walkLeg(hmToMinutes(CLOCK_DEFAULT_START), days.length) : null
+  const returnDays = input.roundTrip && driveMin > 0 ? walkLeg(savedStartFor(days.length), days.length) : null
   return { verdict: 'ok', days, returnDays, split }
 }
 
@@ -975,7 +974,7 @@ export interface RideSegment {
   label: string
   /** ideal km along the route from the journey origin */
   targetKm: number
-  /** acceptance window (never below 0, never past totalKm − ENDNO_KM) */
+  /** Acceptance window. Shared overnights can enter the destination exclusion. */
   minKm: number
   maxKm: number
   /** distance since the previous segment target (0 for the first) */
@@ -1128,7 +1127,8 @@ function annotateRoadPersonality(
  * Split a drive into fatigue-budget segments in journey order. Empty for short
  * drives. Cadences are walked independently, then merged: collisions closer
  * than MIN_BREAK_GAP_KM fold into one segment (priority overnight > meal >
- * fuel/stretch), and nothing lands within ENDNO_KM of the destination.
+ * fuel/stretch). Cadence stops stay outside ENDNO_KM of the destination.
+ * Shared overnight boundaries remain authoritative inside that zone.
  */
 export function planRideSegments(input: RidePlanInput): RideSegment[] {
   const total = Number.isFinite(input.totalKm) ? Math.max(0, input.totalKm) : 0
@@ -1153,17 +1153,14 @@ export function planRideSegments(input: RidePlanInput): RideSegment[] {
   // The destination exclusion zone scales down for short journeys — a fixed
   // 60 km off a 80 km drive would leave no bookable road at all.
   const endno = Math.min(ENDNO_KM, total * 0.15)
-  const cap = total - endno // nothing past here
+  const cap = total - endno // cadence stops end here
 
-  // Day boundaries for multi-day plans — derived from the duration fatigue
-  // cap (planDriveDays), not the user's day count and not a fixed 550 km tick
-  // (550 @ blended 42 km/h = a 13.1 h day by the engine's own speed table).
-  // Falls back to the old km tick only when the journey lacks reliable wheel
-  // time (planDriveDays verdict null).
+  // Keep every valid shared boundary before the leg endpoint.
+  // The destination exclusion applies only to cadence stops.
   const dayEnds: number[] = input.dayBoundaries
     .filter(day => day.leg === 'outbound')
     .map(day => day.endKm)
-    .filter(km => Number.isFinite(km) && km > 0 && km < cap)
+    .filter(km => Number.isFinite(km) && km > 0 && km < total)
   const dayStarts = [0, ...dayEnds]
 
   // Clock stretch twin — fatigue accrues by hours behind the wheel, not km:
@@ -1402,7 +1399,7 @@ function etaAt(km: number, dayStarts: number[], dayStartTimes: string[] | undefi
     const prevKm = i === 0 ? 0 : merged[i - 1].km
     const nextKm = i === merged.length - 1 ? total : merged[i + 1].km
     const minKm = i === 0 ? 0 : Math.max(0, m.km - (m.km - prevKm) * 0.5)
-    const maxKm = i === merged.length - 1 ? Math.min(cap, m.km + (total - m.km) * 0.5) : m.km + (nextKm - m.km) * 0.5
+    const maxKm = i === merged.length - 1 ? Math.min(purpose === 'overnight' ? total : cap, m.km + (total - m.km) * 0.5) : m.km + (nextKm - m.km) * 0.5
     const kmFromPrev = Math.max(0, m.km - prevKm)
     const minutesFromPrev = total > 0 ? Math.round((drive * kmFromPrev) / total) : 0
     const hasMeal = m.purposes.includes('meal')
