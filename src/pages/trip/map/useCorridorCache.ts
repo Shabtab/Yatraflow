@@ -13,7 +13,8 @@ import type { Trip } from '../../../data/types'
 import { MODE_SPEED } from '../../../lib/engine'
 import {
   planJourneyHalts, searchNearbyPoisMulti, routeHash,
-  type NearbyOpts, type PlaceHit, type SegmentHit, type TravelClockVerdict,
+  effectiveDrivingDays, drivingPlanFingerprint,
+  type DrivingPlan, type NearbyOpts, type PlaceHit, type SegmentHit,
 } from '../../../lib/geocode'
 import { anchorHash } from '../../../lib/providers/hits'
 import { QuotaExhaustedError } from '../../../lib/providers/google'
@@ -38,10 +39,7 @@ export type CorridorCacheArgs = {
   nearbyOpts: NearbyOpts
   planKm: number
   wholeTripMin: number
-  travelDayNeed: number
-  clockVerdict: TravelClockVerdict['verdict']
-  /** `splitVerdict?.driveDayCount`: undefined means the split stays silent. */
-  splitDriveDayCount: number | undefined
+  drivingPlan: DrivingPlan
   refreshTick: number
   suggestionCache: ReturnType<typeof useSuggestionCache>
 }
@@ -49,7 +47,7 @@ export type CorridorCacheArgs = {
 export function useCorridorCache({
   trip, anchors, routeGeometry, scopeKm, dayRainPct, dayWeatherCode, crewSeeds,
   dnaTick, onInputsHash, pois, setPois, nearbyOpts, planKm, wholeTripMin,
-  travelDayNeed, clockVerdict, splitDriveDayCount, refreshTick, suggestionCache,
+  drivingPlan, refreshTick, suggestionCache,
 }: CorridorCacheArgs) {
   const [loadingPois, setLoadingPois] = useState(false)
 
@@ -80,7 +78,10 @@ export function useCorridorCache({
     fuelPricePerL: trip.fuelPricePerL,
     roundTrip: trip.roundTrip,
     vehicleProfile: trip.vehicleProfile,
-  }), [anchors, routeGeometry, trip, scopeKm, dayRainPct, dayWeatherCode, crewSeeds, dnaTick]) // eslint-disable-line react-hooks/exhaustive-deps -- dnaTick re-reads the DNA log after each accept or decline
+    planFingerprint: drivingPlanFingerprint(drivingPlan),
+    // dnaTick re-reads the DNA log after each accept or decline.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [anchors, routeGeometry, trip, scopeKm, dayRainPct, dayWeatherCode, crewSeeds, dnaTick, drivingPlan])
 
   // #404: the Overview's slot matrix gates on the SAME freshness this tab's cache
   // was written with — `isMapCacheFresh(cache.map, scopeKm, mapInputsHash)` — and
@@ -159,12 +160,9 @@ export function useCorridorCache({
     // walk when it speaks ('ok' → its day count), the drive-day split when the
     // clock defers, tonight's hop otherwise. NEVER the planned day count: a
     // 700 km 1-day plan still needs its night halt; a 3-day 200 km trip none.
-    const derivedMultiDay = clockVerdict === 'ok'
-      ? travelDayNeed > 1
-      : splitDriveDayCount != null
-        ? splitDriveDayCount > 1
-        : clockVerdict === 'hop'
-    planJourneyHalts(anchors, planKm, wholeTripMin, { ...nearbyOpts, multiDay: derivedMultiDay, signal: controller.signal, rejectOnFailure: true }, scopeKm * 1000)
+    planJourneyHalts(anchors, planKm, wholeTripMin, {
+      ...nearbyOpts, plan: drivingPlan, signal: controller.signal, rejectOnFailure: true,
+    }, scopeKm * 1000)
       .then(plan => {
         if (!cancelled) {
           setCorridorQuotaOut(false)
@@ -178,7 +176,9 @@ export function useCorridorCache({
           // the full 4 h TTL. The scan effect re-fires when geometry arrives
           // (nearbyOpts depends on it), and the fresh plan then caches.
           const degradedScan = routeGeometry == null && anchors.length >= 2
-          if (plan.length > 0 && !degradedScan) suggestionCache.setMapCache(plan, inputsHash, scopeKm)
+          if (plan.length > 0 && !degradedScan) {
+            suggestionCache.setMapCache(plan, inputsHash, scopeKm, effectiveDrivingDays(drivingPlan, plan))
+          }
         }
       })
       .catch((err: unknown) => {
@@ -198,7 +198,9 @@ export function useCorridorCache({
       // the detour-scope slider until a full reload.
       setLoadingPois(false)
     }
-  }, [anchors, nearbyOpts, scopeKm, mapInputsHash, planKm, wholeTripMin, travelDayNeed, clockVerdict, refreshTick, splitDriveDayCount]) // eslint-disable-line react-hooks/exhaustive-deps -- the scan reads the split count through its dep; the cache identity and the raw geometry stay out (nearbyOpts covers geometry, the cache would loop)
+    // The cache identity and raw geometry stay out; nearbyOpts covers geometry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchors, nearbyOpts, scopeKm, mapInputsHash, planKm, wholeTripMin, drivingPlan, refreshTick])
 
   return { mapInputsHash, fractionPois, corridorQuotaOut, loadingPois, poisFailed: scanFailed || fractionFailed }
 }

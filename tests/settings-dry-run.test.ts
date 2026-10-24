@@ -268,7 +268,7 @@ describe('#408/#412/#414 — the form and its neighbours are wired as pinned', (
 
   it('halt plans are stamped, freshness-checked, and zombies pruned', () => {
     // One version bump so un-stamped payloads evict rather than hydrate "fresh".
-    expect(cache).toMatch(/const CACHE_VERSION = 7/)
+    expect(cache).toMatch(/const CACHE_VERSION = 8/)
     expect(cache).toMatch(/inputsHash: string; ts: number \}>/)
     expect(cache).toMatch(/setHaltCache = useCallback\(\(dayIndex: number, segments: SegmentHit\[\], plan: HaltPlanItem\[\], inputsHash: string\)/)
     // The stamp and the check are the pure exports, not inline copies.

@@ -4,12 +4,12 @@
 // detour-scope slider, 📍 Suggest) re-run the expensive corridor searches.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { SegmentHit, HaltPlanItem } from '../lib/ridePlan'
+import type { SegmentHit, HaltPlanItem, DrivingPlanDay } from '../lib/ridePlan'
 import type { PlaceHit } from '../lib/providers/hits'
 import type { VehicleProfile } from '../data/types'
 
 export interface SuggestionCache {
-  map: { segments: SegmentHit[]; inputsHash: string; scopeKm: number; ts: number } | null
+  map: { segments: SegmentHit[]; plan?: DrivingPlanDay[]; inputsHash: string; scopeKm: number; ts: number } | null
   /** fraction fallback pool cached under the same map TTL */
   fraction: { hits: PlaceHit[]; inputsHash: string; scopeKm: number; ts: number } | null
   /** per-day manual halt planner: the user's {km, minutes, purpose} list + best real spots */
@@ -37,8 +37,12 @@ const CACHE_TTL_MS = 1000 * 60 * 60 * 4 // 4 hours
  * 3-day bus trip used to be served verbatim against a 4-day private car,
  * because nothing recorded what the km points meant. Un-stamped v6 payloads
  * evict with the version bump rather than hydrating as "always fresh".
+ *
+ * Bumped to 8 on 2026-10-24 (#832): map entries carry the effective driving
+ * plan that produced their boundaries. Readiness and attribution must use that
+ * stored projection, never a fresh POI-derived guess.
  */
-const CACHE_VERSION = 7
+const CACHE_VERSION = 8
 
 /**
  * Build the cache key from every input the corridor search reads. Kept here
@@ -71,6 +75,7 @@ export function planInputsHash(input: {
   fuelPricePerL?: number | undefined
   roundTrip?: boolean | undefined
   vehicleProfile?: VehicleProfile | undefined
+  planFingerprint?: string | undefined
 }): string {
   return [
     input.anchorsHash,
@@ -96,6 +101,7 @@ export function planInputsHash(input: {
     // Three states, not two: unanswered must not collapse into No, or a cached
     // legacy Mixed plan starts answering a question nobody was asked.
     input.drivesPart === true ? 'mp-y' : input.drivesPart === false ? 'mp-n' : '-',
+    input.planFingerprint ?? '-',
   ].join('|')
 }
 
@@ -189,11 +195,11 @@ export function useSuggestionCache(tripId: string, dayCount: number) {
     })
   }, [tripId, dayCount])
 
-  const setMapCache = useCallback((segments: SegmentHit[], inputsHash: string, scopeKm: number) => {
+  const setMapCache = useCallback((segments: SegmentHit[], inputsHash: string, scopeKm: number, plan?: readonly DrivingPlanDay[]) => {
     setCache(prev => {
       const next: SuggestionCache = {
         ...prev,
-        map: { segments, inputsHash, scopeKm, ts: Date.now() },
+        map: { segments, plan: plan ? [...plan] : undefined, inputsHash, scopeKm, ts: Date.now() },
       }
       save(tripId, next)
       return next

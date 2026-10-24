@@ -46,7 +46,7 @@ describe('the Map publishes the freshness the Overview gates on (#404)', () => {
   it('reads and writes the map cache under that one hash', () => {
     expect(corridorCache).toContain('const inputsHash = mapInputsHash')
     expect(corridorCache).toContain('isMapCacheFresh(cached, scopeKm, inputsHash)')
-    expect(corridorCache).toContain('setMapCache(plan, inputsHash, scopeKm)')
+    expect(corridorCache).toContain('setMapCache(plan, inputsHash, scopeKm, effectiveDrivingDays(drivingPlan, plan))')
   })
 
   it('keeps the freshness predicate comparing scope and hash, not age', () => {
