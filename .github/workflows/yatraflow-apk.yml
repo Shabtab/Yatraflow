@@ -95,7 +95,7 @@ jobs:
           fi
 
       - name: Upload APK
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.apkname }}
           # The file carries its own versioned name from build.gradle, so the

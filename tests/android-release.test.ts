@@ -35,6 +35,9 @@ describe('Android release workflow', () => {
 
   it('runs every action on a runtime the runners still provide', () => {
     expect(workflow).not.toMatch(/uses:\s+actions\/[a-z-]+@v4\b/)
+    // v5 of upload-artifact still defaults to Node 20; v6 is the first that
+    // runs on Node 24 by default.
+    expect(workflow).not.toMatch(/actions\/upload-artifact@v5\b/)
   })
 
   it('takes the Android version from package.json', () => {
