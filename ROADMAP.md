@@ -234,7 +234,7 @@ Preserve its seven-stage order and existing issue ownership. Stage A shipped in 
 | A | Contribution ownership, acknowledged writes, notification policies; F1, F2, F13 | First | Shipped through #835 and #836 in v0.79.0. The author reports both migrations applied and nineteen live assertions passed. |
 | B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Planned under #839. The merged command contract is available. Preserve imported trips and unambiguous legacy references. |
 | C | Atomic acceptance, resolution, lifecycle, and honest UI results; F2, F7, F11, F13 | A and B | Planned under #838. Preserve drafts and release busy state on every refusal. |
-| D | One authoritative driving plan; F3 | Before E and final F | Implemented locally under #840. Source review and the previous local gate passed. Current upstream integration remains unverified. |
+| D | One authoritative driving plan; F3 | Before E and final F | Implemented under #840. Its pull request records candidate verification and landing status. Preserve all five regression checks. |
 | E | Day-scoped candidates, slot identity, placement, and shortlist outcomes; F5, F6, F8, F12, F15 | B, C, and D | Planned under #841. Preserve existing option IDs and legacy poll reads. |
 | F | Request ownership, semantic cache freshness, and discovery context; F16, F17, F18 | D and E for final integration | F16 merged through #834. Remaining discovery and cache work belongs to #842. Do not duplicate the search guard. |
 | G | Schedule-based companion advice and explicit uncertainty; F9, F10 | B, D, and authoritative schedules | Planned under #843. Companion activation remains the separate #236 decision. |
@@ -242,9 +242,9 @@ Preserve its seven-stage order and existing issue ownership. Stage A shipped in 
 The current fixed integration base is 9f1916ddd27b40d2c54832ecb05d7904b1bf04f3, upstream test after #844.
 This base includes the guided create flow and v0.79.1. Preserve its confirmation-screen crew labels during integration.
 The coordinator inspected CI logs. The coordinator did not repeat the author's hosted database assertions.
-The local Stage D candidate remains cc12117e. Its gate, twenty-one probes, and seventy-three browser checks passed.
-Those browser checks use synthetic providers and local state. Hosted integration and final readiness and Undo reruns remain pending.
-Reconcile the local candidate with current upstream before resuming repairs. Check concurrent #844 changes to TripCreated during integration.
+Verify the merged Stage D candidate before publication. Keep the full gate and browser evidence bound to that revision.
+Synthetic browser checks do not prove hosted integration. Check readiness and preview lifecycle behavior separately.
+Preserve the merged #844 crew labels and guided create flow. Recheck upstream changes before each integration.
 Keep publication and live SQL separately approved.
 
 ### Approved Stage D contract
