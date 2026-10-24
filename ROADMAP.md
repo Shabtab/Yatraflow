@@ -224,6 +224,28 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 
 ---
 
+## Suggestions repair sequence (#832)
+
+The [full issue specification](https://github.com/hasnaina955/Yatraflow/issues/832) owns the contracts and all five checks per stage.
+Preserve its seven-stage order and existing issue ownership. Do not replace its unpublished server changes from assumptions.
+
+| Stage | Scope | Dependency | Current state |
+|---|---|---|---|
+| A | Contribution ownership, acknowledged writes, notification policies; F1, F2, F13 | First | Client merged through #835 at f0368c41. Server51a97911 and its migrations remain unavailable for review. |
+| B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Planned. Preserve imported trips and unambiguous legacy references. |
+| C | Atomic acceptance, resolution, lifecycle, and honest UI results; F2, F7, F11, F13 | A and B | Planned. Preserve drafts and release busy state on every refusal. |
+| D | One authoritative driving plan; F3 | Before E and final F | Planned. Preserve transport policy, explicit halts, previews, Keep, and Undo. |
+| E | Day-scoped candidates, slot identity, placement, and shortlist outcomes; F5, F6, F8, F12, F15 | B, C, and D | Planned. Preserve existing option IDs and legacy poll reads. |
+| F | Request ownership, semantic cache freshness, and discovery context; F16, F17, F18 | D and E for final integration | The isolated search-race work belongs to #834. Do not duplicate it. |
+| G | Schedule-based companion advice and explicit uncertainty; F9, F10 | B, D, and authoritative schedules | Planned. Companion activation remains the separate #236 decision. |
+
+The current fixed inspection base is f0368c41671a843a6f5eb276f58365ef808b1435.
+The existing collaboration command and repair suites pass43tests at this base.
+These are mocked transport tests. They do not prove the unpublished SQL or live two-account behavior.
+OpenCode and MiniMax are inspecting the remaining client conditions and dependencies without product edits.
+The next implementation packet must name a reproduced defect, fixed base, owned files, and observable checks.
+Record the agreed next batch here before implementation delegation. Keep publication and live SQL separately approved.
+
 ## Stabilization track — COMPLETE (M0–M4 landed; see the ledger)
 
 **Status note (2026-09-11 audit; corrected 2026-09-15).** This track shipped across v0.26.0–v0.39.0
