@@ -265,6 +265,7 @@ The reproduced 1400 km fixture needs four driving days with relaxed pace and vul
 Verify all five Stage D checks from the full issue. Add behavioural regressions before the repair.
 Change driver count, rain, and vulnerable crew independently. Check both banner days and halt placement.
 Check readiness attribution through the real day-slot functions. Preserve non-contiguous stored day indexes.
+Leave a proposed day unassigned until its stored day exists. Disclose any fallback in the day picker.
 Check late starts, round trips, terrain profiles, accepted halts, and preview decisions.
 OpenCode owns the implementation branch. MiniMax reviews its fixed candidate without edits.
 Codex owns integration, the full gate, and browser evidence. This batch needs no live SQL.
