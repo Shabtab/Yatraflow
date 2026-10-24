@@ -31,6 +31,27 @@ describe('separate create crew fields', () => {
 })
 
 describe('a free-form crew entry', () => {
+  it.each(['Ammu (98450) 21234', 'Ammu +91 (98450) 21234', 'Ammu 0 (98450) 21234', 'Ammu 91-98450-21234', 'Team 2 (98450) 21234'])('accepts the complete formatted number in %s', raw => {
+    expect(parseCrewEntry(raw)).toMatchObject({ name: raw.startsWith('Team') ? 'Team 2' : 'Ammu', phone: '9845021234' })
+  })
+  it.each(['+971 9845021234', 'Ammu +971 9845021234', '+44 (98450) 21234', '+1 9845021234', '971 9845021234', '98450212345', '9845021234 999', '+91 9845021234 999'])('refuses a suffix of an unsupported or ambiguous number in %s', raw => {
+    expect(parseCrewEntry(raw).phone).toBeNull()
+  })
+  it.each([
+    ['Ammu 9845021234', 'Ammu 9876543210', 2],
+    ['Ammu 9845021234', 'Other 9845021234', 1],
+    ['Ammu', 'ammu', 1],
+    ['Ammu', 'Ammu 9845021234', 1],
+    ['Ammu 9845021234', 'Ammu', 1],
+    ['9845021234', '+91 9845021234', 1],
+    ['Ammu', 'Ravi 9845021234', 2],
+  ])('applies the same duplicate rule to both input paths: %s / %s', (first, second, length) => {
+    const crew = addCrewEntry([], first, 4)
+    expect(addCrewEntry(crew, second, 4)).toHaveLength(length)
+    const entry = parseCrewEntry(second)
+    const result = addCrewFields(crew, { name: entry.name, mobile: entry.phone || '' }, 4)
+    expect(result.kind).toBe(length === 2 ? 'added' : 'unchanged')
+  })
   it('lifts the number out before the name is read, so a digit in the name cannot eat it', () => {
     expect(parseCrewEntry('Ammu 98450 21234')).toEqual({ raw: 'Ammu 98450 21234', name: 'Ammu', phone: '9845021234' })
     // The regression: normalizing the whole string folded the name's "2" into

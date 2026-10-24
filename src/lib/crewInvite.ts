@@ -22,6 +22,18 @@ export interface CrewEntry {
   name: string
   /** A 10-digit Indian mobile, or null when the entry had no usable number. */
   phone: string | null
+  /** A display label for an entry resumed from a draft whose number could not be
+   *  restored, such as "••• 234". It names the person on screen and is never a
+   *  link target: `phone` stays null, so no channel can message it. */
+  label?: string
+}
+
+/** The only display label this module accepts: the three-digit mask. A full
+ *  number is refused, so a label can never become a hidden copy of one. */
+const MASKED_LABEL = /^\u2022\u2022\u2022 \d{3}$/
+
+export function isMaskedLabel(value: unknown): value is string {
+  return typeof value === 'string' && MASKED_LABEL.test(value)
 }
 
 /** Normalise an Indian mobile number to its 10 digits, or null.
@@ -38,6 +50,58 @@ export function normalizeIndianMobile(raw: string): string | null {
   return d
 }
 
+/** A candidate number: an Indian mobile, with an optional Indian prefix, and
+ *  separators allowed anywhere inside it. The leading `\+?` and the `91`/`0`
+ *  alternatives are the only prefixes the normalizer accepts, so the match is
+ *  the whole number the planner typed, not a tail of it. */
+const NUMBER_CANDIDATE = /\(?\+?(?:91[\s\-()]*|0[\s\-()]*)?[6-9](?:[\s\-()]*\d){9}\)?/g
+
+const SEPARATOR = /[\s\-()]/
+const isDigit = (c: string | undefined) => !!c && c >= '0' && c <= '9'
+
+/** True when a run's parentheses are one pair, opened before it closes. A run
+ *  that carries a stray bracket is not a number shape we accept. */
+function bracketsMatch(run: string): boolean {
+  const open = run.indexOf('(')
+  const close = run.indexOf(')')
+  if (open === -1 && close === -1) return true
+  if (open === -1 || close < open) return false
+  return run.indexOf('(', open + 1) === -1 && run.indexOf(')', close + 1) === -1
+}
+
+/** True when the text just before `at` is the end of a country code or of a
+ *  longer number, so this candidate is only a suffix of something we do not
+ *  accept.
+ *
+ *  A digit directly against the candidate means the candidate is a tail of one
+ *  longer number ("98450212345"). A separated token of two or more digits is a
+ *  country code ("971 …", "44 …"), and so is a single digit after a plus
+ *  ("+1 …"). A separated single digit is a name digit ("Team 2 98450 21234"),
+ *  so it leaves the candidate alone. */
+function suffixOfLongerNumber(text: string, at: number): boolean {
+  if (at === 0) return false
+  if (isDigit(text[at - 1])) return true
+  let q = at - 1
+  while (q >= 0 && SEPARATOR.test(text[q])) q--
+  if (q < 0) return false
+  if (text[q] === '+') return true
+  if (!isDigit(text[q])) return false
+  let start = q
+  while (start >= 0 && isDigit(text[start])) start--
+  if (q - start >= 2) return true
+  let before = start
+  while (before >= 0 && SEPARATOR.test(text[before])) before--
+  return before >= 0 && text[before] === '+'
+}
+
+/** True when a digit follows the match, so the match is the head of a longer
+ *  number ("9845021234 999", "98450212345"). */
+function prefixOfLongerNumber(text: string, end: number): boolean {
+  let q = end
+  while (q < text.length && SEPARATOR.test(text[q])) q++
+  return q < text.length && isDigit(text[q])
+}
+
 /** Split a free-form entry into a name and a number. "Ammu 98450 21234" gives
  * both; a bare number gives a number; a bare name gives a name.
  *
@@ -45,33 +109,42 @@ export function normalizeIndianMobile(raw: string): string | null {
  * string folds the name's own digits into the number, so "Team 2
  * 98450 21234" fails the 10-digit test and the number is silently swallowed
  * into the name — the entry then looks complete but carries no way to reach
- * the person. */
+ * the person.
+ *
+ * The candidate is the WHOLE number, prefix included, and it goes through the
+ * same normalizer as a typed field. So a foreign country code or an overlong
+ * string fails as a whole instead of handing back its last ten
+ * digits. The forms accepted here are the forms the normalizer accepts:
+ * brackets, spaces, hyphens, "+91", "91" and a leading "0". */
 export function parseCrewEntry(raw: string): CrewEntry {
   const trimmed = (raw ?? '').trim()
-  // Find a run of digits and separators that is a mobile number, then remove
-  // exactly that run from the name. The run is matched with separators allowed
-  // INSIDE it, because a number typed "98450 21234" is one number spread over
-  // two tokens; and it is bounded on both sides by something that is not a
-  // digit or separator, so an 11+ digit string cannot yield its last ten.
-  const run = trimmed.match(/(?<![^\s(])(?:\+?91|0)?[\s-]*([6-9](?:[\s-]*\d){9})(?![\s-]*\d)/)
-  const at = run?.index ?? -1
-  if (run && at >= 0) {
-    const phone = normalizeIndianMobile(run[1])
-    // A country prefix that is not India's must not be peeled off to leave a
-    // valid-looking Indian number behind: "+1 9845021234" is a US number with
-    // an Indian subscriber part, and treating it as Indian would silently
-    // mis-file the crew member.
-    const prefix = trimmed.slice(Math.max(0, at - 4), at)
-    const foreign = /\+/.test(prefix) && !/\+?\s*91\s*$/.test(prefix)
-    if (phone && !foreign) {
-      const name = (trimmed.slice(0, at) + trimmed.slice(at + run[0].length))
-        .replace(/[+\-()]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-      return { raw: trimmed, name, phone }
-    }
+  for (const run of trimmed.matchAll(NUMBER_CANDIDATE)) {
+    const at = run.index ?? 0
+    const text = run[0]
+    if (!bracketsMatch(text)) continue
+    if (suffixOfLongerNumber(trimmed, at)) continue
+    if (prefixOfLongerNumber(trimmed, at + text.length)) continue
+    const phone = normalizeIndianMobile(text)
+    if (!phone) continue
+    const name = (trimmed.slice(0, at) + trimmed.slice(at + text.length))
+      .replace(/[\s\-()]+/g, ' ')
+      .trim()
+    return { raw: trimmed, name, phone }
   }
   return { raw: trimmed, name: trimmed, phone: null }
+}
+
+/** One rule for both input paths.
+ *
+ *  Two numbers settle it: the same number twice is the same person, and two
+ *  different numbers are two different people even when the names match. A
+ *  name match is a duplicate only when there is no pair of numbers to compare,
+ *  so "Ammu" then "Ammu 9845021234" stays one row while two colleagues both
+ *  called Ammu keep their own chips. */
+function isSameCrewMember(a: { name: string; phone: string | null }, b: { name: string; phone: string | null }): boolean {
+  if (a.phone && b.phone) return a.phone === b.phone
+  const name = a.name.trim().toLowerCase()
+  return !!name && name === b.name.trim().toLowerCase()
 }
 
 /** Add an entry to a crew list without duplicates or blanks. Returns a new list,
@@ -80,12 +153,7 @@ export function addCrewEntry(list: CrewEntry[], raw: string, limit: number): Cre
   const entry = parseCrewEntry(raw)
   if (!entry.raw) return list
   if (list.length >= Math.max(0, limit)) return list
-  // The same person on two chips sends two invitations. A number match is the
-  // strong signal; a name match catches the case where the same name arrives
-  // once with a number and once without, which would otherwise be two rows for
-  // one traveller.
-  const dupe = (!!entry.name && list.some(e => e.name.toLowerCase() === entry.name.toLowerCase())) ||
-    (!!entry.phone && list.some(e => e.phone === entry.phone))
+  const dupe = list.some(existing => isSameCrewMember(existing, entry))
   return dupe ? list : [...list, entry]
 }
 
@@ -100,9 +168,8 @@ export function addCrewFields(list: CrewEntry[], fields: { name: string; mobile:
   const phone = mobile ? normalizeIndianMobile(mobile) : null
   if (mobile && !phone) return { kind: 'invalid', field: 'mobile', message: 'Enter a valid Indian mobile number, with 10 digits starting with 6 to 9.' }
   if (list.length >= Math.max(0, limit)) return { kind: 'unchanged', message: 'The crew list is full. Increase the party size or remove a member.' }
-  const duplicate = (!!name && list.some(entry => entry.name.toLowerCase() === name.toLowerCase())) ||
-    (!!phone && list.some(entry => entry.phone === phone))
-  if (duplicate) return { kind: 'unchanged', message: 'This crew member is already on the list.' }
+  const entry = { name, phone }
+  if (list.some(existing => isSameCrewMember(existing, entry))) return { kind: 'unchanged', message: 'This crew member is already on the list.' }
   return { kind: 'added', crew: [...list, { raw: [name, mobile].filter(Boolean).join(' '), name, phone }] }
 }
 

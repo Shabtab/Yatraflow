@@ -12213,41 +12213,19 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
   .trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn, .ct-mini):active { transform: none; }
 }
 
-/* ---- Guard: the guided flow's pills outrank the legacy create choices ----
-   The choice block above (`.trip-starter …`) was appended after the `.gcf`
-   block and shares its specificity, so it silently flattened the guided
-   flow's pill rows: `border-radius` 999px -> 0, `min-height` 44px -> 52px and
-   a 1px border onto every pill, which is what screens 4 and 5 render as. These
-   rules are one class deeper (`.gcf.trip-starter`, specificity 0,3,0), so they
-   win regardless of order and the legacy create page is untouched — it never
-   carries `gcf`. */
-.gcf.trip-starter .ct-tier {
-  display: flex; padding: 4px; border: 1px solid var(--line);
-  background: var(--bg-soft); border-radius: 999px; flex-wrap: wrap; gap: 6px;
-}
-.gcf.trip-starter .ct-tier button {
-  flex: 1; min-height: 44px; font-size: 15px; padding: 8px 26px 8px 12px;
-  border: 0; border-radius: 999px; background: transparent;
-}
-.gcf.trip-starter .ct-tier button.on { background: var(--teal-deep); color: var(--card); }
-.gcf.trip-starter .crew-row {
-  display: flex; padding: 4px; border: 1px solid var(--line);
-  background: var(--bg-soft); border-radius: 999px; gap: 6px;
-}
-.gcf.trip-starter .crew-row .crew-btn {
-  flex: 1; width: auto; min-height: 44px; font-size: 14px; padding: 8px 12px;
-  border: 0; border-radius: 999px; background: transparent;
-}
-.gcf.trip-starter .crew-row .crew-btn.on { background: var(--teal-deep); color: var(--card); }
-.gcf.trip-starter .transport-answer-pair {
-  display: grid; grid-template-columns: 1fr 1fr; padding: 4px;
-  border: 1px solid var(--line); background: var(--bg-soft); border-radius: 999px; gap: 6px;
-}
-.gcf.trip-starter .transport-answer-pair .crew-btn {
-  min-height: 44px; padding: 8px; font-size: 14px;
-  border: 0; border-radius: 999px; background: transparent;
-}
-.gcf.trip-starter .transport-answer-pair .crew-btn.on { background: var(--teal-deep); color: var(--card); }
-.gcf.trip-starter .ct-style { min-height: 40px; font-size: 13px; }
-.gcf.trip-starter .ct-mini { min-height: 40px; padding: 8px 12px; font-size: 13px; }
+/* ---- The guided flow's answers are square boxes, not pills ----
+   This block used to re-assert 999px pills on the accommodation row, the
+   driver row and the Mixed answer pair. It was added on the reading that the
+   older `.gcf` pill rules were the intended shape and the boxed block above had
+   flattened them by accident. The approved mockup is the other way round: every
+   answer on Who, How, Budget and Mixed is a square box with a subtle tint, a
+   check mark and a short settle, and the legacy long form keeps its own boxes.
+   So the boxed block above is the intent, and nothing here may re-pill it.
+
+   Do not add a `.gcf.trip-starter` rule for these rows without a new mockup.
+   The boxed look already comes from `.trip-starter` above, which wins on source
+   order. A pill rule here needs specificity 0,3,0 or higher, so it silently
+   beats that block and every later session reads the CSS as "pill intent".
+   Probe the computed `border-radius` of an answer button in a browser after any
+   change here, the way `CODING_STANDARDS.md` 6d(4) says. */
 

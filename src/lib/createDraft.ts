@@ -11,6 +11,7 @@
 //  - Only explicit user actions clear a draft. Unmounting never does.
 
 import { CREATE_STEPS, type CreateStep } from './createSteps'
+import { isMaskedLabel } from './crewInvite'
 
 export const DRAFT_KEY = 'yf.createDraft.v1'
 export const DRAFT_VERSION = 1
@@ -23,6 +24,23 @@ export interface DraftDest {
   lng?: number
 }
 
+export interface DraftCrew {
+  name: string
+  phone: string | null
+  /** The masked label that names the person on screen, such as "••• 234".
+   *  Stored separately from `phone` so a resumed entry keeps its identity
+   *  without ever holding a number that could be messaged. */
+  label?: string
+}
+
+/** A stored crew row worth resuming: an object with at least one string field.
+ *  Kept out of the filter call so the sentence stays short. */
+function isStoredCrewRow(c: unknown): c is { name?: unknown; phone?: unknown; label?: unknown } {
+  if (!c || typeof c !== 'object') return false
+  const row = c as { name?: unknown; phone?: unknown; label?: unknown }
+  return typeof row.name === 'string' || typeof row.phone === 'string' || typeof row.label === 'string'
+}
+
 export interface DraftPayload {
   /** The page's `f` state, verbatim. Treated as opaque passthrough. */
   form: Record<string, unknown>
@@ -30,7 +48,7 @@ export interface DraftPayload {
   returnCount: number
   /** P5: crew collected for the invite, so a resumed draft does not lose the
    *  people the planner already typed. Optional - older drafts simply have none. */
-  crew?: { name: string; phone: string | null }[]
+  crew?: DraftCrew[]
   /**
    * The guided flow's step, so a resumed draft reopens where it was left.
    * Optional on purpose: drafts written before the guided flow have no step, and
@@ -77,7 +95,11 @@ export function saveDraft(payload: DraftPayload, opts: Opts = {}): boolean {
       // number that they never agreed to keep, so only the last three digits are
       // written. So a resumed draft cannot re-invite by number. The planner
       // retypes it, which is the honest cost of not storing it.
-      crew: payload.crew?.map(c => ({ name: c.name, phone: c.phone ? maskPhone(c.phone) : null })),
+      //
+      // The mask goes in `label`, and `phone` is written as null. A phone-only
+      // entry ("••• 234" and no name) then still has an identity on resume: the
+      // label names the person, and nothing can build a link from it.
+      crew: payload.crew?.map(c => ({ name: c.name, phone: null, label: c.phone ? maskPhone(c.phone) : c.label })),
       step: payload.step,
     }
     store.setItem(DRAFT_KEY, JSON.stringify(envelope))
@@ -127,15 +149,18 @@ export function loadDraft(opts: Opts = {}): StoredDraft | null {
     if (!parsed.form || typeof parsed.form !== 'object') return null
     const dests = Array.isArray(parsed.dests) ? parsed.dests.filter(d => d && typeof d.name === 'string') : []
     const returnCount = typeof parsed.returnCount === 'number' && Number.isFinite(parsed.returnCount) ? Math.max(0, Math.round(parsed.returnCount)) : 0
-    const crew = Array.isArray(parsed.crew)
-      ? parsed.crew.filter((c: unknown) => !!c && typeof c === 'object' && (typeof (c as { name?: unknown }).name === 'string' || typeof (c as { phone?: unknown }).phone === 'string'))
-          .map((c: { name?: unknown; phone?: unknown }) => ({
-            name: typeof c.name === 'string' ? c.name : '',
+    const crew: DraftCrew[] = Array.isArray(parsed.crew)
+      ? parsed.crew.filter(isStoredCrewRow)
+          .map((c: { name?: unknown; phone?: unknown; label?: unknown }) => {
             // Mask on the way in as well as on the way out. A draft written
             // before D7 still holds full numbers on the device, and this build
             // must not hand them back just because they were already there.
-            phone: typeof c.phone === 'string' ? maskPhone(c.phone) : null,
-          }))
+            const stored = typeof c.phone === 'string' ? maskPhone(c.phone) : ''
+            // A label is only ever the three-digit mask. Anything else - a full
+            // number in a hand-edited draft, say - is dropped rather than shown.
+            const label = isMaskedLabel(c.label) ? c.label : stored || undefined
+            return { name: typeof c.name === 'string' ? c.name : '', phone: null, ...(label ? { label } : {}) }
+          })
       : []
     return { v: DRAFT_VERSION, savedAt: parsed.savedAt, form: parsed.form as Record<string, unknown>, dests, returnCount, crew, step: readStep(parsed.step) }
   } catch {

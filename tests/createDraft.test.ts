@@ -42,8 +42,9 @@ describe('create drafts - the unfinished trip that waits', () => {
     expect(got!.dests).toHaveLength(1)
     // the crew rides along - a resumed draft does not lose the people. The
     // NUMBER does not: only the last three digits are stored (D7), so a number
-    // sitting in localStorage is not a copy of someone else's phone number.
-    expect(got!.crew).toEqual([{ name: 'Ammu', phone: '••• 234' }, { name: 'Rahul', phone: null }])
+    // sitting in localStorage is not a copy of someone else's phone number. The
+    // mask lives in `label`, and `phone` is null, so nothing can message it.
+    expect(got!.crew).toEqual([{ name: 'Ammu', phone: null, label: '••• 234' }, { name: 'Rahul', phone: null }])
     expect(store.map.has(DRAFT_KEY)).toBe(true)
   })
 
@@ -92,7 +93,7 @@ describe('create drafts - the unfinished trip that waits', () => {
     const store = fakeStore()
     store.map.set(DRAFT_KEY, JSON.stringify({ v: DRAFT_VERSION, savedAt: 'x', form: { name: 'X' }, dests: [], returnCount: 0, crew: [{ phone: 42 }, null, { name: 'ok', phone: '9845021234' }] }))
     const got = loadDraft({ store })!
-    expect(got.crew).toEqual([{ name: 'ok', phone: '••• 234' }])
+    expect(got.crew).toEqual([{ name: 'ok', phone: null, label: '••• 234' }])
   })
 
   it('clear removes it for good', () => {
@@ -213,7 +214,46 @@ describe('create drafts - crew numbers are masked (D7)', () => {
       v: DRAFT_VERSION, savedAt: 'x', form: { name: 'X' }, dests: [], returnCount: 0,
       crew: [{ name: 'Ammu', phone: '9845021234' }],
     }))
-    expect(loadDraft({ store })!.crew).toEqual([{ name: 'Ammu', phone: '••• 234' }])
+    expect(loadDraft({ store })!.crew).toEqual([{ name: 'Ammu', phone: null, label: '••• 234' }])
+  })
+
+  it('keeps the identity of a phone-only entry, and keeps two of them apart', () => {
+    // The regression: a phone-only chip resumed with an empty name and a null
+    // phone, so it lost its name, its Remove label and its identity on the next
+    // autosave. The label carries who it is without carrying the number.
+    const store = fakeStore()
+    saveDraft({
+      ...payload,
+      crew: [{ name: '', phone: '9845021234' }, { name: '', phone: '9845077777' }],
+    }, { store })
+    const got = loadDraft({ store })!
+    expect(got.crew).toEqual([
+      { name: '', phone: null, label: '••• 234' },
+      { name: '', phone: null, label: '••• 777' },
+    ])
+    // Two entries, two different labels: they do not collapse into one chip.
+    expect(new Set(got.crew!.map(c => c.label)).size).toBe(2)
+  })
+
+  it('keeps the label through a second save, so autosave cannot lose it', () => {
+    const store = fakeStore()
+    saveDraft({ ...payload, crew: [{ name: '', phone: '9845021234' }] }, { store })
+    const resumed = loadDraft({ store })!
+    // What the page hands back on the next autosave: phone is null, label rides
+    // along. The stored copy must still name the person.
+    saveDraft({ ...payload, crew: resumed.crew! }, { store })
+    expect(loadDraft({ store })!.crew).toEqual([{ name: '', phone: null, label: '••• 234' }])
+  })
+
+  it('refuses a full number stored in the label slot', () => {
+    // A label is a display string, never a number. A hand-edited draft that puts
+    // a full number there is dropped rather than shown or linked.
+    const store = fakeStore()
+    store.map.set(DRAFT_KEY, JSON.stringify({
+      v: DRAFT_VERSION, savedAt: 'x', form: { name: 'X' }, dests: [], returnCount: 0,
+      crew: [{ name: '', phone: null, label: '9845021234' }],
+    }))
+    expect(loadDraft({ store })!.crew).toEqual([{ name: '', phone: null }])
   })
 
   it('leaves a crew member with no number alone', () => {

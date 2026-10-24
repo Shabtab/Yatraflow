@@ -38,7 +38,7 @@ import { CreateFlowCalendar } from '../components/CreateFlowCalendar'
 import { CreateFlowTicket } from '../components/CreateFlowTicket'
 import { currentQuery, navigate, onRouteChange } from '../lib/router'
 import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
-import { addCrewFields, normalizeIndianMobile, type CrewEntry } from '../lib/crewInvite'
+import { addCrewFields, isMaskedLabel, normalizeIndianMobile, type CrewEntry } from '../lib/crewInvite'
 import { recordCreateEvent } from '../lib/createEvents'
 import { stashHandoff } from '../lib/createHandoff'
 import { routeIq, routeIqLine, type RoutePoint } from '../lib/routeIq'
@@ -422,7 +422,10 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   useEffect(() => {
     if (!createFunnelOn('drafts') || !draftDecided) return
     const t = setTimeout(() => {
-      saveDraft({ form: f as unknown as Record<string, unknown>, dests, returnCount, crew: crew.map(c => ({ name: c.name, phone: c.phone })), step })
+      // `label` rides along so a resumed phone-only entry keeps its identity
+      // through every later autosave. saveDraft writes the mask into `label` and
+      // null into `phone`, so the stored copy never holds a number.
+      saveDraft({ form: f as unknown as Record<string, unknown>, dests, returnCount, crew: crew.map(c => ({ name: c.name, phone: c.phone, label: c.label })), step })
     }, 800)
     return () => clearTimeout(t)
   }, [f, dests, returnCount, crew, step, draftDecided])
@@ -472,16 +475,17 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     // Crew numbers come back masked (only the last three digits were stored, see
     // saveDraft). A masked string is a LABEL, not a number: keeping it as
     // `phone` would build a wa.me link to "••• 234" and fail at the last step,
-    // which is worse than asking for the number again. So the person is kept and
-    // the number is dropped, and the chip says so.
+    // which is worse than asking for the number again. So the label is kept as
+    // `label`, `phone` stays null, and the chip shows who the person is.
     if (draft.crew?.length) {
       setCrew(draft.crew.map(c => ({
-        raw: c.name || c.phone || '',
+        raw: c.name || c.label || '',
+        name: c.name,
         // A number is kept only if it normalizes. A masked string ("••• 234")
         // does not, so it degrades to `null` without a string sniff — and a full
         // number written by another build is refused rather than re-admitted.
-        name: c.name,
         phone: c.phone ? normalizeIndianMobile(c.phone) : null,
+        label: isMaskedLabel(c.label) ? c.label : undefined,
       })))
     }
     // the restored budget is the user's own number - hand the field back to them
@@ -916,7 +920,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
         rangeKm: bill.rangeKm,
         days: bill.days,
         travellers: f.travellers,
-        crew: crew.map(c => ({ name: c.name, phone: c.phone })),
+        crew: crew.map(c => ({ name: c.name, phone: c.phone, label: c.label })),
         bill,
       })
       navigateWithTransition(`/created/${trip.id}`)
@@ -1516,13 +1520,18 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   {crew.length > 0 && (
                     <div className="crew-chips">
                       {crew.map((m, i) => (
-                        <span className="crew-chip" key={`${m.phone ?? m.name}-${i}`}>
+                        <span className="crew-chip" key={`${m.phone ?? m.label ?? m.name}-${i}`}>
                           {/* The number is masked in BOTH flows. The draft
                               masks it on write (D7), so printing the full number
-                              here contradicts the project's own privacy rule. */}
-                          {m.name || (m.phone ? maskPhone(m.phone) : '')}
-                          {m.name && m.phone ? <small>{maskPhone(m.phone)}</small> : null}
-                          <button type="button" aria-label={`Remove ${m.name || m.phone}`}
+                              here contradicts the project's own privacy rule.
+                              A resumed entry carries `label` instead of a number:
+                              it names the person and cannot build a link. */}
+                          {m.name || m.label || (m.phone ? maskPhone(m.phone) : '')}
+                          {/* A resumed entry has `label` where it used to have a
+                              masked `phone`, so the hint reads from either and
+                              the chip still shows which number it is. */}
+                          {m.name && (m.phone || m.label) ? <small>{m.phone ? maskPhone(m.phone) : m.label}</small> : null}
+                          <button type="button" aria-label={`Remove ${m.name || m.label || m.phone}`}
                             onClick={() => setCrew(list => list.filter((_, n) => n !== i))}>&#10005;</button>
                         </span>
                       ))}

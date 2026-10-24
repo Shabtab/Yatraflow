@@ -62,16 +62,24 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    computed style, and when a class changes role (kicker → boarding-pass head bar),
    REMOVE it from the shared-recipe list — that is the delete-cheaper-than-add fix.
    (4) **An appended block at the SAME specificity silently beats everything above it.**
-   The guided create flow's `.gcf` pill rules (999px corners, 44px pills, no border)
-   lost to the later `.trip-starter .ct-tier` block at equal specificity, so the
-   pills rendered as separate bordered 8px boxes — found only by reading
-   `getComputedStyle` in a real browser, because the source looked correct and the
-   screenshot had already been called a success. The fix is one class deeper
-   (`.gcf.trip-starter …`, 0,3,0), which wins regardless of order. **Rule: after
-   appending any `.trip-starter` / page-scoped block, probe the computed style of a
-   control the earlier block styled.** `:not(.gcf)` on the later rule works only for
-   one property at a time — line 12206 got it right and 12204 did not, so a whole
-   block still leaked.
+   The guided create flow's answer rows were read once as pills and repaired in the
+   wrong direction: a `.gcf.trip-starter …` block (0,3,0) re-asserted 999px corners,
+   44px heights and no border on the accommodation row, the driver row and the Mixed
+   pair, on the reading that the older `.gcf` pill rules were the intent and the
+   later `.trip-starter` block had flattened them by accident. The approved mockup
+   says the opposite, and the legacy long form was always boxed: Who, How, Budget
+   and Mixed are square boxes with 8px corners, a 1px border, a per-answer tint, a
+   check mark and a short settle. Found only by reading `getComputedStyle` in a real
+   browser, because the source looked correct and the screenshot had already been
+   called a success. **Rule: a higher-specificity block is the defect, not the fix,
+   when it contradicts the mockup.** Match the approved shape and let source order
+   do the overriding; never reach for a deeper selector to win an argument the
+   design never made. `tests/create-answer-shape.test.ts` now fails on a 999px
+   radius below the boxed block, and on any `.gcf.trip-starter` answer rule.
+   **Rule: after appending any `.trip-starter` / page-scoped block, probe the
+   computed style of a control the earlier block styled.** `:not(.gcf)` on the later
+   rule works only for one property at a time — line 12206 got it right and 12204
+   did not, so a whole block still leaked.
  6e. **Two silent killers from the crew-channels pass (learned 2026-09-23).**
    (1) `window.open(url, '_blank', 'noopener')` **always returns null** — the
    `noopener` feature implies no window handle — so `if (!win) throw` or
