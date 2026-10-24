@@ -6,7 +6,12 @@
 import type { PersistedPlaceIdentity, PlaceProvider, ResolvedPlace } from '../data/types'
 import type { PlaceHit } from './providers/hits'
 
-export const PLACE_PROVIDERS: readonly PlaceProvider[] = ['google', 'mappls', 'wikipedia', 'osm']
+/** Every provider this build can round-trip as a place identity. `open-meteo`
+ *  belongs here: the free stack's city geocoder returns real populated places
+ *  through it, so rejecting its hits left keyless city searches unpickable
+ *  (#839). A provider that is NOT on this list is still refused — the allowlist
+ *  is what keeps an unknown provenance from being persisted as a known one. */
+export const PLACE_PROVIDERS: readonly PlaceProvider[] = ['google', 'mappls', 'open-meteo', 'wikipedia', 'osm']
 
 export type PlaceDraft =
   | { kind: 'unresolved'; text: string; reason?: 'edited' | 'empty' }
@@ -25,8 +30,10 @@ function cleanKey(value: unknown): string | undefined {
 }
 
 /** A usable pick: finite, in-range, non-zero coordinates and no provider this
- *  build cannot round-trip. `open-meteo` is a weather source, never a place
- *  identity. Latitude is −90..90 and longitude is −180..180 (#839 R4). */
+ *  build cannot round-trip. Latitude is −90..90 and longitude is −180..180
+ *  (#839 R4). `open-meteo` is a legitimate place engine here — the free stack's
+ *  geocoder returns cities and towns through it — so a hit from it resolves like
+ *  any other, and an unknown provider is what gets refused. */
 export function resolvedPlaceFromHit(hit: PlaceHit): ResolvedPlace | null {
   if (!hit || !Number.isFinite(hit.latitude) || !Number.isFinite(hit.longitude)) return null
   if (hit.latitude < -90 || hit.latitude > 90 || hit.longitude < -180 || hit.longitude > 180) return null
@@ -72,7 +79,7 @@ export function persistedPlace(place: ResolvedPlace): PersistedPlaceIdentity {
 /** Identity only, from a provider hit whose coordinates were resolved by the
  *  caller. Used by the map rails, which keep the pinned coordinates separate. */
 export function persistedPlaceFromHit(hit: PlaceHit): PersistedPlaceIdentity | undefined {
-  const source = hit.source === 'open-meteo' ? undefined : hit.source
+  const source = hit.source
   const placeId = cleanKey(hit.placeId)
   const eLoc = cleanKey(hit.eLoc)
   if (!source && !placeId && !eLoc) return undefined

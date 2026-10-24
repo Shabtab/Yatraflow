@@ -47,7 +47,10 @@ export interface PlaceLike {
   name?: string
   placeId?: string
   eLoc?: string
-  source?: PlaceProvider | 'open-meteo'
+  /** Any provider this build can round-trip. `open-meteo` is a place engine (the
+   *  free stack's city geocoder), so its hits keep their provenance instead of
+   *  being downgraded to "unknown provider" (#839). */
+  source?: PlaceProvider
   lat?: number
   lng?: number
 }
@@ -64,7 +67,7 @@ export function normalizePlaceName(name: string | undefined | null): string {
 
 /** A typed provider key. A provider is optional so legacy rows still match. */
 export function placeKeysOf(p: PlaceLike): PlaceKey[] {
-  const provider = p.source === 'open-meteo' ? undefined : p.source
+  const provider = p.source
   const out: PlaceKey[] = []
   if (typeof p.placeId === 'string' && p.placeId.length > 0) out.push({ provider, kind: 'placeId', value: p.placeId })
   if (typeof p.eLoc === 'string' && p.eLoc.length > 0) out.push({ provider, kind: 'eLoc', value: p.eLoc })
@@ -178,7 +181,7 @@ export interface VisitPlaceLike extends PlaceLike {
   title?: string
   locationName?: string
   /** An ItineraryStop keeps its provider here, not in `source` (#839 R2). */
-  placeSource?: PlaceProvider | 'open-meteo'
+  placeSource?: PlaceProvider
   /** Identity captured beside the row, as persisted for a suggestion or a
    *  decision place. The flat fields still win when a caller supplies them. */
   place?: PersistedPlaceIdentity

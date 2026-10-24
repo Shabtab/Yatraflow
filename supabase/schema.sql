@@ -142,7 +142,7 @@ create table if not exists public.suggestions (
         and place ? 'exposure'
         and jsonb_typeof(place->'exposure')='string'
         and place->>'exposure'='unknown'
-        and (not (place ? 'source') or (jsonb_typeof(place->'source')='string' and place->>'source' in ('google','mappls','wikipedia','osm')))
+        and (not (place ? 'source') or (jsonb_typeof(place->'source')='string' and place->>'source' in ('google','mappls','open-meteo','wikipedia','osm')))
         and (not (place ? 'placeId') or (jsonb_typeof(place->'placeId')='string' and length(btrim(place->>'placeId')) between 1 and 300))
         and (not (place ? 'eLoc') or (jsonb_typeof(place->'eLoc')='string' and length(btrim(place->>'eLoc')) between 1 and 300))
         and case when jsonb_typeof(place) = 'object' then place - array['source','placeId','eLoc','exposure'] = '{}'::jsonb else false end
@@ -1321,7 +1321,7 @@ begin
             not (v_payload->'place' ? 'exposure')
             or jsonb_typeof(v_payload->'place'->'exposure') is distinct from 'string'
             or v_payload->'place'->>'exposure' is distinct from 'unknown'
-            or (v_payload->'place' ? 'source' and (jsonb_typeof(v_payload->'place'->'source') is distinct from 'string' or v_payload->'place'->>'source' not in ('google','mappls','wikipedia','osm')))
+            or (v_payload->'place' ? 'source' and (jsonb_typeof(v_payload->'place'->'source') is distinct from 'string' or v_payload->'place'->>'source' not in ('google','mappls','open-meteo','wikipedia','osm')))
             or (v_payload->'place' ? 'placeId' and (jsonb_typeof(v_payload->'place'->'placeId') is distinct from 'string' or length(btrim(v_payload->'place'->>'placeId')) not between 1 and 300))
             or (v_payload->'place' ? 'eLoc' and (jsonb_typeof(v_payload->'place'->'eLoc') is distinct from 'string' or length(btrim(v_payload->'place'->>'eLoc')) not between 1 and 300))
             or exists(select 1 from jsonb_object_keys(v_payload->'place') as x(key) where key<>all(array['source','placeId','eLoc','exposure']))

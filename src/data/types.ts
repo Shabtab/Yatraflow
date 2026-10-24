@@ -147,7 +147,12 @@ export interface Expense {
   settled?: { by: ID; at: number }
 }
 
-export type PlaceProvider = 'google' | 'mappls' | 'wikipedia' | 'osm'
+/** Every provider that can hand the app a place. `open-meteo` is on the list
+ *  because its geocoding endpoint is one of the free stack's place engines: it
+ *  returns real cities and towns with real coordinates, so a pick from it is a
+ *  place selection, not a weather reading (#839). The weather forecast calls in
+ *  src/lib/weather.ts are a different surface and are unaffected. */
+export type PlaceProvider = 'google' | 'mappls' | 'open-meteo' | 'wikipedia' | 'osm'
 /** Stage B records only what is known. #843 owns indoor/outdoor classification. */
 export type PlaceExposure = 'unknown'
 
