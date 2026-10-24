@@ -234,7 +234,7 @@ Preserve its seven-stage order and existing issue ownership. Do not replace its 
 | A | Contribution ownership, acknowledged writes, notification policies; F1, F2, F13 | First | Client merged through #835 at f0368c41. Server51a97911 and its migrations remain unavailable for review. |
 | B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Planned. Preserve imported trips and unambiguous legacy references. |
 | C | Atomic acceptance, resolution, lifecycle, and honest UI results; F2, F7, F11, F13 | A and B | Planned. Preserve drafts and release busy state on every refusal. |
-| D | One authoritative driving plan; F3 | Before E and final F | Planned. Preserve transport policy, explicit halts, previews, Keep, and Undo. |
+| D | One authoritative driving plan; F3 | Before E and final F | Approved for implementation. OpenCode implements, MiniMax reviews, and Codex verifies. |
 | E | Day-scoped candidates, slot identity, placement, and shortlist outcomes; F5, F6, F8, F12, F15 | B, C, and D | Planned. Preserve existing option IDs and legacy poll reads. |
 | F | Request ownership, semantic cache freshness, and discovery context; F16, F17, F18 | D and E for final integration | The isolated search-race work belongs to #834. Do not duplicate it. |
 | G | Schedule-based companion advice and explicit uncertainty; F9, F10 | B, D, and authoritative schedules | Planned. Companion activation remains the separate #236 decision. |
@@ -242,9 +242,32 @@ Preserve its seven-stage order and existing issue ownership. Do not replace its 
 The current fixed inspection base is f0368c41671a843a6f5eb276f58365ef808b1435.
 The existing collaboration command and repair suites pass43tests at this base.
 These are mocked transport tests. They do not prove the unpublished SQL or live two-account behavior.
-OpenCode and MiniMax are inspecting the remaining client conditions and dependencies without product edits.
-The next implementation packet must name a reproduced defect, fixed base, owned files, and observable checks.
-Record the agreed next batch here before implementation delegation. Keep publication and live SQL separately approved.
+Stage D does not need the unpublished Stage A server. Its client repair can proceed independently.
+Keep publication and live SQL separately approved.
+
+### Approved Stage D contract
+
+The user approved this first repair batch on 2026-10-24. It addresses F3 only.
+One shared driving plan must supply the banner, overnight targets, segment days, and readiness.
+The current corridor drops crew, pace, and weather inputs. It then computes different day boundaries.
+The reproduced 1400 km fixture needs four driving days with relaxed pace and vulnerable travellers.
+
+- Build the plan from route facts, transport policy, crew, weather, departure times, and dinner limits.
+- Use the clock's actual boundaries when its walk differs from the initial distance split.
+- Keep outward and return legs distinct. The banner must still count the complete trip.
+- Preserve car, motorcycle, passenger modes, and all three Mixed answer states.
+- Preserve accepted halt pins, route endpoints, departure constraints, and existing stop identities.
+- Keep planning free of itinerary writes. Reject, Keep, and Undo must retain their existing contracts.
+- The halt-planning boundary must take the computed plan. Remove the default overnight replan.
+- Include the plan in cache identity. Old cached boundaries must not survive this repair.
+- Keep pricing, provider selection, collaboration commands, and other audit stages outside this batch.
+
+Verify all five Stage D checks from the full issue. Add behavioural regressions before the repair.
+Change driver count, rain, and vulnerable crew independently. Check both banner days and halt placement.
+Check readiness attribution through the real day-slot functions. Preserve non-contiguous stored day indexes.
+Check late starts, round trips, terrain profiles, accepted halts, and preview decisions.
+OpenCode owns the implementation branch. MiniMax reviews its fixed candidate without edits.
+Codex owns integration, the full gate, and browser evidence. This batch needs no live SQL.
 
 ## Stabilization track — COMPLETE (M0–M4 landed; see the ledger)
 
