@@ -918,6 +918,17 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    leans on a coercion. Do not add a coercion at the comparison site. Keep the parse at
    the boundary.
 
+6ay. **A SQL CHECK passes on TRUE or NULL, so a nullable shape check without an
+   existence gate admits malformed rows (learned 2026-10-25, #839).** `check (col
+   is null or (col->>'k' = 'v'))` passes a bad row when `k` is absent, because
+   `col->>'k'` is NULL and the predicate is NULL. Gate every optional key with
+   `col ? 'k'`, and force the unknown-key test with a CASE, so only TRUE passes.
+   Prove it with a disposable local PostgreSQL insert that expects a 23514
+   rejection for the malformed row.
+   When you restore a JSON archive, normalize JSON null to SQL NULL for nullable fields.
+   Test the actual archive producer with mixed legacy and new rows.
+   A fixture with missing keys does not test an explicit JSON null field.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 - **Separate crew fields must stay separate during parsing.** Normalize the mobile field alone. A name can contain digits. A parser that joins both fields can change that name or make the mobile number invalid. Keep the existing structured draft fields and duplicate rules.

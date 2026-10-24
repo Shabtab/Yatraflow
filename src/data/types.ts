@@ -147,6 +147,29 @@ export interface Expense {
   settled?: { by: ID; at: number }
 }
 
+export type PlaceProvider = 'google' | 'mappls' | 'wikipedia' | 'osm'
+/** Stage B records only what is known. #843 owns indoor/outdoor classification. */
+export type PlaceExposure = 'unknown'
+
+/** The provider facts that survive a save and a reload. Kept beside the
+ *  authoritative `location_name`/`lat`/`lng` columns, never duplicated in them. */
+export interface PersistedPlaceIdentity {
+  source?: PlaceProvider
+  placeId?: string
+  eLoc?: string
+  exposure: PlaceExposure
+}
+
+export interface ResolvedPlace {
+  label: string
+  lat: number
+  lng: number
+  source?: PlaceProvider
+  placeId?: string
+  eLoc?: string
+  exposure: PlaceExposure
+}
+
 export interface ItineraryStop {
   id: ID
   title: string
@@ -155,6 +178,10 @@ export interface ItineraryStop {
   /** provider place-id (Google/OSM) when the stop was picked from a geocoded
    *  place — the strongest lodging identity (#146): same id, one base. */
   placeId?: string
+  /** Mappls' provider key, and the provider that supplied either key. */
+  eLoc?: string
+  placeSource?: PlaceProvider
+  exposure?: PlaceExposure
   /** lat/lng kept as plain numbers so any maps provider can consume them later */
   lat: number
   lng: number
@@ -331,12 +358,18 @@ export interface StopSuggestion {
   id: ID
   tripId: ID
   dayIndex: number
+  /** The stable day this idea belongs to. Absent on rows written before the
+   *  column existed; those resolve by legacy index only while it is unique. */
+  dayId?: ID
   proposedBy: ID
   title: string
   category: StopCategory
   locationName: string
   lat: number
   lng: number
+  /** Provider identity beside the authoritative coordinates. Null/absent on
+   *  legacy rows, which stay readable. */
+  place?: PersistedPlaceIdentity
   description?: string
   visitMinutes: number
   estimatedEntryFeeInr: number
@@ -374,6 +407,11 @@ export interface DecisionPlacePayload {
   visitMinutes: number
   openTime?: string
   closeTime?: string
+  /** The stable day the planner suggested this place for. It wins over the
+   *  legacy index when present. */
+  dayId?: ID
+  /** Provider identity captured when the place was pinned. */
+  place?: PersistedPlaceIdentity
   /** The day the planner suggested this place for. ABSENT when the planner
    *  could not place it on the route (no along-route measurement) — the
    *  resolution then refuses to guess a day instead of landing it on Day 1

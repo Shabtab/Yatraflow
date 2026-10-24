@@ -13,7 +13,8 @@
 // payload answers `conflict` — so a command ID is minted once per logical
 // action and kept for the retry.
 
-import type { Comment, StopCategory, StopSuggestion, TripDecision, Vote } from '../data/types'
+import type { Comment, PersistedPlaceIdentity, StopCategory, StopSuggestion, TripDecision, Vote } from '../data/types'
+import { persistedPlaceFromJson } from '../lib/placeDraft'
 import { supabase } from '../lib/supabase'
 
 /** What the caller hands the RPC. Field names follow the contract exactly. */
@@ -23,6 +24,8 @@ export type CollabCommand =
       suggestionId: string
       suggestion: {
         dayIndex: number
+        dayId?: string
+        place?: PersistedPlaceIdentity
         title: string
         category: string
         locationName: string
@@ -80,7 +83,7 @@ export type CollabOutcome =
  *  (snake_case columns — the same shape hydration maps). Moved here from
  *  store.ts so the receipt and the hydrate/realtime paths share one mapping. */
 type DbSuggestionRow = {
-  id: string; trip_id: string; day_index: number; proposed_by: string
+  id: string; trip_id: string; day_index: number; day_id?: string | null; place?: unknown; proposed_by: string
   title: string; category: StopCategory; location_name: string; lat: number; lng: number
   description?: string | null; visit_minutes?: number
   estimated_entry_fee_inr?: number; estimated_transport_inr?: number
@@ -89,8 +92,12 @@ type DbSuggestionRow = {
 
 export function suggestionRowToEntry(row: unknown): StopSuggestion {
   const r = row as DbSuggestionRow
+  const place = persistedPlaceFromJson(r.place)
   return {
-    id: r.id, tripId: r.trip_id, dayIndex: r.day_index, proposedBy: r.proposed_by,
+    id: r.id, tripId: r.trip_id, dayIndex: r.day_index,
+    ...(typeof r.day_id === 'string' && r.day_id ? { dayId: r.day_id } : {}),
+    ...(place ? { place } : {}),
+    proposedBy: r.proposed_by,
     title: r.title, category: r.category, locationName: r.location_name, lat: r.lat, lng: r.lng,
     description: r.description ?? undefined, visitMinutes: r.visit_minutes ?? 0,
     estimatedEntryFeeInr: r.estimated_entry_fee_inr ?? 0, estimatedTransportInr: r.estimated_transport_inr ?? 0,

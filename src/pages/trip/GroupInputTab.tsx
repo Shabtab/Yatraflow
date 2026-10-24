@@ -32,6 +32,8 @@ import { reportCollabOutcome } from '../../lib/collabFeedback'
 import type { BusyClaim } from '../../lib/busyClaim'
 import { isClaimed, takeClaim } from '../../lib/busyClaim'
 import { LocationInput } from '../../components/LocationInput'
+import { dayRefFor } from '../../lib/dayRef'
+import { editPlaceDraft, persistedPlace, pickPlaceDraft, unresolvedPlace, type PlaceDraft } from '../../lib/placeDraft'
 import { cap, timeAgo } from './shared'
 
 // ================= Group input tab =================
@@ -313,6 +315,32 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
   const consensusPct = memberCount ? Math.round((ups / memberCount) * 100) : 0
   const author = userById(sg.proposedBy)
   const { busy, claim, release } = useBusyClaim(sg.id)
+  const [retarget, setRetarget] = useState<null | { days: Array<{ id: string; index: number; title?: string }>; dayId: string }>(null)
+  const [duplicate, setDuplicate] = useState<null | { dayId: string; dayIndex: number }>(null)
+
+  function accept(opts: { dayId?: string; dayIndex?: number; allowDuplicate?: boolean } = {}) {
+    const outcome = acceptSuggestionIntoTimeline(trip.id, sg.id, opts)
+    if (outcome.status === 'applied') {
+      setRetarget(null); setDuplicate(null)
+      toast('Added to timeline')
+      return
+    }
+    if (outcome.status === 'alreadyApplied') {
+      setRetarget(null); setDuplicate(null)
+      toast('This idea is already on the timeline.')
+      return
+    }
+    if (outcome.status === 'retarget') {
+      setRetarget({ days: outcome.availableDays, dayId: '' })
+      return
+    }
+    if (outcome.status === 'visitConflict') {
+      setDuplicate({ dayId: outcome.dayId, dayIndex: outcome.dayIndex })
+      return
+    }
+    toast(outcome.reason ?? 'Could not add this idea to the timeline.', 'err')
+    release()
+  }
   return (
     <Surface id={`gi-item-${sg.id}`} tabIndex={-1} className={`card gi-item gin-item-card gin-panel${needsMe ? ' gi-needs-you' : ''}`}>
       <div className="gin-item-layout">
@@ -356,8 +384,7 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
             <button className="btn btn-primary btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
               if (refuseWhileStaged(previewOpen)) return
               if (!claim()) return
-              acceptSuggestionIntoTimeline(trip.id, sg.id)
-              toast('Added to timeline')
+              accept()
             }}>Add to timeline</button>
             <button className="btn btn-danger btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
               if (refuseWhileStaged(previewOpen)) return
@@ -369,6 +396,29 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
                 if (o.status !== 'applied' && o.status !== 'alreadyApplied') release()
               })
             }}>Decline</button>
+          </div>
+        )}
+
+        {retarget && (
+          <div className="gin-item-actions" role="group" aria-label="Choose a day for this idea">
+            <p className="small muted">That day is no longer on this trip. Choose another day, or cancel to keep the idea here.</p>
+            <select className="select" aria-label="Day for this idea" value={retarget.dayId}
+              onChange={e => setRetarget(r => r ? { ...r, dayId: e.target.value } : r)}>
+              <option value="">Pick a day</option>
+              {retarget.days.map(d => <option key={d.id} value={d.id}>Day {d.index + 1}{d.title ? ` · ${d.title}` : ''}</option>)}
+            </select>
+            <button className="btn btn-primary btn-sm" onClick={() => {
+              if (retarget.dayId) accept({ dayId: retarget.dayId })
+            }}>Add to chosen day</button>
+            <button className="btn btn-outline btn-sm" onClick={() => { setRetarget(null); release() }}>Cancel</button>
+          </div>
+        )}
+
+        {duplicate && (
+          <div className="gin-item-actions" role="group" aria-label="Add another visit">
+            <p className="small muted">This place is already on Day {duplicate.dayIndex + 1}. Add another visit, or cancel to keep the idea open.</p>
+            <button className="btn btn-primary btn-sm" onClick={() => accept({ dayId: duplicate.dayId, allowDuplicate: true })}>Add another visit</button>
+            <button className="btn btn-outline btn-sm" onClick={() => { setDuplicate(null); release() }}>Cancel</button>
           </div>
         )}
 
@@ -534,44 +584,34 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
 
 // ================= Composer forms =================
 
-/** Where a suggestion pins when the proposer didn't pick a real place: the
- *  trip's own start, then its first geocoded destination, then its first
- *  stop — never a hardcoded Munnar. */
-export function tripAnchor(trip: Trip): { lat: number; lng: number } {
-  if (trip.startLocationCoords) return trip.startLocationCoords
-  const dest = trip.destinationCoords?.find(c => c !== null && c !== undefined)
-  if (dest) return dest
-  for (const d of trip.days) {
-    const s = d.stops.find(x => x.status !== 'rejected') ?? d.stops[0]
-    if (s) return { lat: s.lat, lng: s.lng }
-  }
-  // Degenerate: a trip with no geography at all. Anchor at 0,0 (visible as a
-  // "To be decided" pin) rather than silently inventing a real place.
-  return { lat: 0, lng: 0 }
-}
-
 function SuggestionComposerForm({ trip }: {
   trip: Trip
 }) {
   const [form, setForm] = useState({
-    title: '', dayIndex: 0, category: 'sightseeing' as StopCategory, locationName: '',
+    title: '', dayIndex: 0, category: 'sightseeing' as StopCategory,
     description: '', visitMinutes: 60, entryFee: 0, transportCost: 200,
   })
-  const [coords, setCoords] = useState<{ lat?: number; lng?: number }>({})
+  const [place, setPlace] = useState<PlaceDraft>(() => unresolvedPlace(''))
   const [pending, setPending] = useState(false)
 
   function submit(e: FormEvent) {
     e.preventDefault()
     if (pending) return
     if (!form.title.trim()) { toast('Give your suggestion a name.', 'err'); return }
-    const anchor = coords.lat !== undefined && coords.lng !== undefined
-      ? { lat: coords.lat, lng: coords.lng }
-      : tripAnchor(trip)
+    if (place.kind !== 'resolved') {
+      toast('Pick the place from the search suggestions so the idea keeps its exact location.', 'err')
+      return
+    }
+    const day = trip.days.find(d => d.index === form.dayIndex)
+    if (!day) { toast('That day is no longer on this trip. Choose another day.', 'err'); return }
+    const ref = dayRefFor(trip, day.index)
     setPending(true)
     void addSuggestion(trip.id, {
-      dayIndex: form.dayIndex, title: form.title.trim(),
-      category: form.category, locationName: form.locationName || 'To be decided',
-      lat: anchor.lat, lng: anchor.lng, description: form.description,
+      dayIndex: day.index, ...(ref.dayId ? { dayId: ref.dayId } : {}),
+      title: form.title.trim(), category: form.category,
+      locationName: place.place.label, lat: place.place.lat, lng: place.place.lng,
+      place: persistedPlace(place.place),
+      description: form.description,
       visitMinutes: form.visitMinutes, estimatedEntryFeeInr: form.entryFee,
       estimatedTransportInr: form.transportCost,
     }).then(o => {
@@ -580,7 +620,7 @@ function SuggestionComposerForm({ trip }: {
       // must not erase what the planner typed (#802's optimistic-success half).
       if (o.status === 'applied' || o.status === 'alreadyApplied') {
         setForm(f => ({ ...f, title: '', description: '' }))
-        setCoords({})
+        setPlace(unresolvedPlace(''))
       }
       setPending(false)
     })
@@ -594,7 +634,7 @@ function SuggestionComposerForm({ trip }: {
       <div className="form-row">
         <Field label="Day">
           <select className="select" value={form.dayIndex} onChange={e => setForm(f => ({ ...f, dayIndex: Number(e.target.value) }))}>
-            {trip.days.map(d => <option key={d.index} value={d.index}>Day {d.index + 1}{d.title ? ` · ${d.title}` : ''}</option>)}
+            {trip.days.map(d => <option key={d.id} value={d.index}>Day {d.index + 1}{d.title ? ` · ${d.title}` : ''}</option>)}
           </select>
         </Field>
         <Field label="Category">
@@ -603,7 +643,9 @@ function SuggestionComposerForm({ trip }: {
           </select>
         </Field>
       </div>
-      <Field label="Area"><LocationInput value={form.locationName} onChange={v => setForm(f => ({ ...f, locationName: v }))} onPick={p => setCoords({ lat: p.latitude, lng: p.longitude })} placeholder="Search, e.g. Munnar" /></Field>
+      <Field label="Area" hint={place.kind === 'unresolved' && place.text ? 'Pick a search result to pin the idea to an exact place.' : undefined}>
+        <LocationInput value={place.text} onChange={v => setPlace(d => editPlaceDraft(d, v))} onPick={p => setPlace(pickPlaceDraft(p))} placeholder="Search, e.g. Munnar" />
+      </Field>
       <div className="form-row">
         <Field label="Visit minutes"><input type="number" className="input" min={15} step={5} value={form.visitMinutes} onChange={e => setForm(f => ({ ...f, visitMinutes: Number(e.target.value) }))} /></Field>
         <Field label="Entry fee ₹/person"><input type="number" className="input" min={0} value={form.entryFee} onChange={e => setForm(f => ({ ...f, entryFee: Number(e.target.value) }))} /></Field>

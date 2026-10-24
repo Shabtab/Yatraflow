@@ -16,6 +16,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **A suggestion now stays attached to its place and its day.** A location text edit now clears the old pin, so a text-only idea is never pinned to the origin. A suggestion whose day was deleted stays open with a day picker instead of landing elsewhere. Provider namespaces keep different places apart, and a place with no known provider stays valid. Accepted or declined suggestions stop seeding duplicate crew preferences. (#839)
+
 ## [0.79.2] - 2026-10-24
 
 **This patch fixes the Android release pipeline.** A tag run now attaches its APK, and the installed build names the same version as the tag.

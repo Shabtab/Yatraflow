@@ -6,7 +6,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   normalizePlaceName, placeKeysOf, tripPresence, placeIdentity, isAlreadyAdded, discardedStagedIds,
+  isSameEntity, sameVisitPlace, placeKeyMatches, placeDistanceKm,
 } from '../src/lib/placeIdentity'
+import { resolvedPlaceFromHit } from '../src/lib/placeDraft'
 import type { Trip } from '../src/data/types'
 
 function stop(over: Record<string, unknown>) {
@@ -47,8 +49,8 @@ describe('trip presence', () => {
       stop({ id: 'b', title: 'Basilica', eLoc: 'eloc-9' }),
     ]))
     expect(p.names.has('hotel taj')).toBe(true)
-    expect(p.keys.has('pid-1')).toBe(true)
-    expect(p.keys.has('eloc-9')).toBe(true)
+    expect(p.keys).toContainEqual({ provider: undefined, kind: 'placeId', value: 'pid-1' })
+    expect(p.keys).toContainEqual({ provider: undefined, kind: 'eLoc', value: 'eloc-9' })
   })
   it('a REJECTED stop does not block its own name', () => {
     const t = tripOf([
@@ -89,7 +91,7 @@ describe('isAlreadyAdded', () => {
     expect(isAlreadyAdded(hit({ name: 'Fort Aguada', eLoc: 'eloc-9' }), id)).toBe(true)
   })
   it('placeKeysOf skips blanks', () => {
-    expect(placeKeysOf({ placeId: '', eLoc: 'x' })).toEqual(['x'])
+    expect(placeKeysOf({ placeId: '', eLoc: 'x' })).toEqual([{ provider: undefined, kind: 'eLoc', value: 'x' }])
     expect(placeKeysOf({})).toEqual([])
   })
 })
@@ -109,5 +111,90 @@ describe('a discarded preview leaves no ghost', () => {
     for (const id of released) stillAdded.delete(id)
     const id = placeIdentity(tripOf([]), stillAdded)
     expect(isAlreadyAdded(hit({ id: 'h1', name: 'Hotel Taj' }), id)).toBe(false)
+  })
+})
+
+describe('place keys and visit entities', () => {
+  it('a known provider conflict separates equal keys even when names match', () => {
+    const google = { name: 'Fort', placeId: 'p1', source: 'google' as const }
+    const mappls = { name: 'Fort', placeId: 'p1', source: 'mappls' as const }
+    expect(placeKeyMatches(placeKeysOf(google)[0], placeKeysOf(mappls)[0])).toBe(false)
+    expect(isSameEntity(google, mappls)).toBe(false)
+  })
+  it('an unknown provider key still matches the same value', () => {
+    expect(isSameEntity(
+      { name: 'Fort', placeId: 'p1' },
+      { name: 'Another name', placeId: 'p1', source: 'osm' },
+    )).toBe(true)
+  })
+  it('compares same names by proximity when both carry coordinates', () => {
+    const near = { name: 'Sharma Dhaba', lat: 15.0001, lng: 73.0001 }
+    const far = { name: 'Sharma Dhaba', lat: 15.01, lng: 73.01 }
+    expect(isSameEntity({ name: 'Sharma Dhaba', lat: 15, lng: 73 }, near)).toBe(true)
+    expect(isSameEntity({ name: 'Sharma Dhaba', lat: 15, lng: 73 }, far)).toBe(false)
+    expect(placeDistanceKm({ lat: 15, lng: 73 }, far)).toBeGreaterThan(0.5)
+  })
+  it('falls back to the name only when a legacy record has no coordinates', () => {
+    expect(isSameEntity({ name: 'Legacy Stop' }, { title: ' legacy   stop ', lat: 15, lng: 73 })).toBe(true)
+  })
+  it('reads identity stored beside a suggestion, with flat fields winning', () => {
+    const persisted = { placeId: 'nested', source: 'google' as const, exposure: 'unknown' as const }
+    expect(sameVisitPlace(
+      { title: 'Fort', place: persisted },
+      { title: 'Fort', placeId: 'flat', source: 'mappls' },
+    )).toBe(false)
+    expect(sameVisitPlace(
+      { title: 'Fort', place: persisted },
+      { title: 'Different label', placeId: 'nested', source: 'google' },
+    )).toBe(true)
+  })
+  it('does not treat a same-name place far away as already added', () => {
+    const id = placeIdentity(tripOf([stop({ title: 'Sharma Dhaba', lat: 15, lng: 73 })]))
+    expect(isAlreadyAdded(hit({ name: 'Sharma Dhaba', lat: 15.01, lng: 73.01 }), id)).toBe(false)
+    expect(isAlreadyAdded(hit({ name: 'Sharma Dhaba', lat: 15.0001, lng: 73.0001 }), id)).toBe(true)
+    expect(isAlreadyAdded(hit({ name: 'Sharma Dhaba' }), id)).toBe(true)
+  })
+})
+
+describe('reproduced resume defects R1-R4 (issue #839)', () => {
+  const pick = (over: Record<string, unknown>) => ({ id: 1, name: 'Fort', latitude: 15, longitude: 73, kind: 'poi', ...over } as never)
+
+  it('R1: a conflicting known key beats the name fallback on the rail', () => {
+    const id = placeIdentity(tripOf([stop({ title: 'Fort', lat: 15, lng: 73, placeSource: 'google', placeId: 'same-raw', status: 'confirmed' })]))
+    // Same name and coordinates, but the hit is OSM while the planned stop is Google.
+    expect(isAlreadyAdded({ name: 'Fort', lat: 15, lng: 73, source: 'osm', placeId: 'same-raw' }, id)).toBe(false)
+    // The same provider key still matches.
+    expect(isAlreadyAdded({ name: 'Fort', lat: 15, lng: 73, source: 'google', placeId: 'same-raw' }, id)).toBe(true)
+    // A hit with no key keeps the legacy name fallback.
+    expect(isAlreadyAdded({ name: 'Fort', lat: 15, lng: 73 }, id)).toBe(true)
+  })
+
+  it('R2: a suggestion with OSM metadata does not match a Google stop', () => {
+    const stopRow = { title: 'Fort', locationName: 'Fort', lat: 15, lng: 73, placeSource: 'google', placeId: 'same-raw' }
+    expect(isSameEntity(
+      { title: 'Fort', lat: 15, lng: 73, place: { source: 'osm', placeId: 'same-raw', exposure: 'unknown' } },
+      stopRow,
+    )).toBe(false)
+    // The matching provider reads through placeSource.
+    expect(isSameEntity(
+      { title: 'Fort', lat: 15, lng: 73, place: { source: 'google', placeId: 'same-raw', exposure: 'unknown' } },
+      stopRow,
+    )).toBe(true)
+  })
+
+  it('R3: a shared raw id does not outrank a provider conflict', () => {
+    expect(isSameEntity(
+      { id: 1, name: 'A', source: 'google', placeId: 'g1' },
+      { id: 1, name: 'B', source: 'osm', placeId: 'o1' },
+    )).toBe(false)
+  })
+
+  it('R4: a picked place rejects out-of-range or placeholder coordinates', () => {
+    expect(resolvedPlaceFromHit(pick({ latitude: 100 }))).toBeNull()
+    expect(resolvedPlaceFromHit(pick({ longitude: 200 }))).toBeNull()
+    expect(resolvedPlaceFromHit(pick({ latitude: Infinity }))).toBeNull()
+    expect(resolvedPlaceFromHit(pick({ latitude: 0 }))).toBeNull()
+    // A legitimate provider-free pick inside range still resolves.
+    expect(resolvedPlaceFromHit(pick({ latitude: 15.2, longitude: 73.3 }))).toMatchObject({ label: 'Fort', lat: 15.2, lng: 73.3 })
   })
 })
