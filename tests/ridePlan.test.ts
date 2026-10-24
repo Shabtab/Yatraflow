@@ -5,11 +5,12 @@
 // dedupe). The network-backed search itself stays best-effort live data.
 import { describe, it, expect } from 'vitest'
 import {
-  planRideSegments, assignSegmentHits, fitScoreForPurpose, nearestCityName, kmFromStartForHit,
+  assignSegmentHits, fitScoreForPurpose, nearestCityName, kmFromStartForHit,
   scoreHitForSegment, preferTownGrade, segmentsFromPlan, planDriveDays,
   STRETCH_INTERVAL_KM, MEAL_INTERVAL_KM, ENDNO_KM, MIN_BREAK_GAP_KM, STRETCH_CLOCK_MIN,
   type RideSegment,
 } from '../src/lib/ridePlan'
+import { planRide as planRideSegments } from './helpers/sharedDrivingPlan'
 import type { PlaceHit } from '../src/lib/providers/hits'
 
 // ---- helpers ---------------------------------------------------------------

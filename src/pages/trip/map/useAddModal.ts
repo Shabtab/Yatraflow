@@ -24,6 +24,19 @@ export type UseAddModalDeps = {
   days: Trip['days']
 }
 
+/** Resolve the picker default and whether it is a guess. A known km is not
+ *  enough: the shared plan can leave it unassigned (a halt past the created
+ *  days), so absence of the derived day is the honest disclosure. */
+export function resolvePickDay(
+  kmForPick: number | null | undefined,
+  dayOverride: number | null | undefined,
+  dayForKm: (km: number | null | undefined) => number | null,
+  days: readonly { index: number }[],
+): { day: number; guessed: boolean } {
+  const derivedDay = dayOverride ?? dayForKm(kmForPick)
+  return { day: derivedDay ?? days[0]?.index ?? 0, guessed: derivedDay == null }
+}
+
 export function useAddModal({ identity, dayForKm, days }: UseAddModalDeps): {
   poiDraft: { hit: PlaceHit } | null
   setPoiDraft: (draft: { hit: PlaceHit } | null) => void
@@ -52,13 +65,13 @@ export function useAddModal({ identity, dayForKm, days }: UseAddModalDeps): {
     const kmForPick = kmOverride ?? hit.cumKm
     // #I-41: the omnibar passes the day its placement label already named.
     // The label and this editor then open on one day, never two.
-    const derivedDay = dayOverride ?? dayForKm(kmForPick)
-    setPickDay(derivedDay ?? days[0]?.index ?? 0)
+    const pick = resolvePickDay(kmForPick, dayOverride, dayForKm, days)
+    setPickDay(pick.day)
     // #333 A9: an unknown position still cannot preselect honestly — but the
     // fallback to Day 1 used to happen in silence, with the reasoning living
-    // only in this comment. The modal discloses the guess now, and it stops
-    // being a guess the moment the user picks a day themselves.
-    setPickDayGuessed(kmForPick == null)
+    // only in this comment. A known km with no derived plan day is also a guess:
+    // disclose it, and stop treating it as one once the user picks a day.
+    setPickDayGuessed(pick.guessed)
     setPoiDraft({ hit })
   }
 

@@ -45,10 +45,63 @@ import { cap } from './trip/shared'
 import { roadChainSig } from '../lib/tripRoad'
 import { normalizeFocus, canFocusDay, focusDayRequest, dayFromFocus, focusForDay, type TripFocus } from '../lib/tripFocus'
 import { keepIsStale, stagedChange } from '../lib/previewChain'
+import type { ApplyChange } from '../lib/mutationLifecycle'
 
 /** A staged change: the proposed shape, its impact against the committed trip,
  *  and an optional follow-up its caller runs when the change is kept. */
-type PendingChange = { proposed: Trip; result: ImpactResult; onKept?: () => void }
+export type PendingChange = { proposed: Trip; result: ImpactResult; onKept?: () => void }
+
+type PreviewState = {
+  pendingRef: { current: PendingChange | null }
+  baseRef: { current: Trip | null }
+  setPending: (next: PendingChange | null) => void
+}
+
+function stageWorkspacePreview({ pendingRef, baseRef, setPending }: PreviewState, next: PendingChange | null) {
+  pendingRef.current = next
+  if (!next) baseRef.current = null
+  setPending(next)
+}
+
+/** Build the workspace handlers without React. Tests use these same handlers. */
+export function workspacePreviewActions({ trip, pendingRef, baseRef, legCorrRef, setPending }: PreviewState & {
+  trip: Trip | undefined
+  legCorrRef: { current: Parameters<typeof computeImpact>[4] }
+}) {
+  function stage(next: PendingChange | null) {
+    stageWorkspacePreview({ pendingRef, baseRef, setPending }, next)
+  }
+
+  function applyChange(mutator: (draft: Trip) => void, kind: ImpactResult['kind'], dayIndex: number, onKept?: () => void) {
+    if (!trip) return
+    const staged = pendingRef.current
+    const proposed = stagedChange(trip, staged?.proposed ?? null, mutator)
+    const result = computeImpact(trip, proposed, kind, dayIndex, legCorrRef.current)
+    if (!staged) baseRef.current = trip
+    stage({ proposed, result, onKept: onKept ?? staged?.onKept })
+  }
+
+  function keepPending() {
+    const pending = pendingRef.current
+    if (!pending || !trip) return
+    if (keepIsStale(baseRef.current, trip)) {
+      toast('The plan changed while you were reviewing — remove this preview and redo the change.', 'err')
+      return
+    }
+    const onKept = pending.onKept
+    updateTrip(trip.id, pending.proposed)
+    stage(null)
+    if (onKept) onKept()
+    else toast('Change saved to your plan')
+  }
+
+  function removePending() {
+    stage(null)
+    toast('Change discarded')
+  }
+
+  return { applyChange, keepPending, removePending, stage }
+}
 
 type TabKey = 'overview' | 'timeline' | 'board' | 'map' | 'group' | 'budget' | 'share' | 'settings'
 
@@ -181,10 +234,16 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
    *  Keep can tell when a direct write landed underneath it. */
   const pendingRef = useRef<PendingChange | null>(null)
   const baseRef = useRef<Trip | null>(null)
+  // The handlers read the same refs that back the rendered preview.
+  const previewActions = useCallback(
+    () => workspacePreviewActions({ trip, pendingRef, baseRef, legCorrRef, setPending }),
+    [trip],
+  )
+  const applyChange = useCallback<ApplyChange>((...args) => previewActions().applyChange(...args), [previewActions])
+  const keepPending = () => previewActions().keepPending()
+  const removePending = () => previewActions().removePending()
   const stage = useCallback((next: PendingChange | null) => {
-    pendingRef.current = next
-    if (!next) baseRef.current = null
-    setPending(next)
+    stageWorkspacePreview({ pendingRef, baseRef, setPending }, next)
   }, [])
 
   // Phase 3 (the living plan): a halt label on the map asks the timeline to open
@@ -244,25 +303,6 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   // the clear path: focusForDay(id, null) is the 'all' state.
   const sharedDay = trip ? dayFromFocus(focus, trip.id) : 'all'
 
-  // Stable identity for applyChange (useCallback over the trip reference): it
-  // flows into TimelineTab → DaySection props, and an unstable identity would
-  // defeat the DaySection React.memo on every workspace render.
-  const applyChange = useCallback((mutator: (draft: Trip) => void, kind: ImpactResult['kind'], dayIndex: number, onKept?: () => void) => {
-    if (!trip) return
-    // #334: chain onto the open preview instead of forking from the committed
-    // row — the fork silently discarded the first staged change. The impact is
-    // still measured against the committed trip, so the sheet shows the
-    // COMBINED delta, which is what Keep will actually write.
-    const staged = pendingRef.current
-    const proposed = stagedChange(trip, staged?.proposed ?? null, mutator)
-    const result = computeImpact(trip, proposed, kind, dayIndex, legCorrRef.current)
-    // The baseline is recorded only when a NEW preview starts: a chain keeps
-    // the original, so a direct write that landed mid-preview still reads stale.
-    if (!staged) baseRef.current = trip
-    // A previous step's follow-up (the day plan's Fill Undo) survives a chain.
-    stage({ proposed, result, onKept: onKept ?? staged?.onKept })
-  }, [trip, stage])
-
   // #334 pitfall: this workspace outlives trips (it is not keyed by trip id),
   // so a pending preview must not survive a trip switch — Keep would write one
   // trip's shape into another. Cleared on switch, and said out loud.
@@ -304,30 +344,6 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   const effective = pending?.proposed ?? trip
   const health = computeHealth(effective, legCorrections)
   const totals = computeTotals(effective, legCorrections)
-
-  function keepPending() {
-    if (!pending || !trip) return
-    // #334: the preview is not modal, so a direct write (a resolved decision,
-    // an accepted suggestion, a realtime edit) can land while it is open.
-    // Saving the proposal would overwrite that edit with no trace, so refuse
-    // and let the person look — remove the preview, then redo the change.
-    if (keepIsStale(baseRef.current, trip)) {
-      toast('The plan changed while you were reviewing — remove this preview and redo the change.', 'err')
-      return
-    }
-    const onKept = pending.onKept
-    updateTrip(trip.id, pending.proposed)
-    stage(null)
-    // A caller carrying its own follow-up (the day plan's Fill, with its Undo)
-    // speaks for the change; the generic confirmation would double-toast it.
-    if (onKept) onKept()
-    else toast('Change saved to your plan')
-  }
-
-  function removePending() {
-    stage(null)
-    toast('Change discarded')
-  }
 
   /** Move the previewed day's last stop to the day after it. #334: staged
    *  THROUGH applyChange so the sheet's numbers describe what Save will write
