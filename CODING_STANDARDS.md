@@ -30,9 +30,15 @@ anywhere in this repo means the entry labelled `6b` below.
 
 ## 1. Pitfall entries (`AGENTS.md` §2 rules 6a–6z)
 
+Source-contract tests must handle both LF and CRLF line endings.
+Tests for helper use must check the call site. A function definition does not prove that callers use it.
+
 Flight records can exist without stored stops. Protect their days during date reconciliation and preserve them through imports and snapshots.
 Use resolved journey points for exports and insertion origins. Stored stops can omit airports and arrival anchors.
 Settings previews must use validated draft fields. Reuse road measurements only while the route and day assignment still match.
+
+SECURITY DEFINER functions bypass RLS, including restrictive disabled-account policies. Recheck account and trip state inside each function.
+Row policies cannot protect authors or ballots inside JSON arrays. Check stored shapes before merging, and reject malformed data.
 
  6a. **Async operations need input guards.** The AI drawer's `ask()` function had no protection against rapid re-submission during its 650ms processing delay — users could trigger duplicate questions. Fix: `disabled={thinking}` on input and button. When adding async paths (API calls, simulated latency, data processing), always disable user inputs to prevent race conditions, duplicate requests, or state inconsistency. The guard should match the visual feedback state (spinner, disabled button, etc.).
  6b. **A release cut is not done until every change in it has a CHANGELOG entry — check coverage, not just the heading.** The v0.60.0 refinement pass ran 20 commits and only 10 of them touched `CHANGELOG.md`, so the release was about to go out describing the first half of its own work — while the plan document recording that work also stopped mid-way and read as finished. Both artifacts agreed with each other and neither agreed with `git log`. Before cutting a release, diff the two lists — `git log --oneline <base>..HEAD -- CHANGELOG.md` against `git log --oneline <base>..HEAD` — and account for every commit: it has a bullet, or it is genuinely invisible to a user (a doc reconciliation, a de-duplication, a test-only change). The entries are also where a superseded claim gets *edited* rather than appended, so that diff is the audit.
@@ -203,6 +209,14 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    rewrite of the same function, and the rewrite is exactly where it would have
    been dropped) — pin that ordering with a test, because the failure is invisible
    until someone rebuilds the database from scratch.
+   **Trip reader projections must tolerate added columns.** Map approved fields by name with `jsonb_populate_record`.
+   Use each function's latest preceding migration as its baseline.
+   Preserve that function's access gates and content filters.
+   Start from a NULL record. Unlisted columns must remain NULL.
+   Keep every access check and content filter unchanged.
+   Test the reader after another column is added.
+   `tests/transport-schema-contract.test.ts` checks the projection and preserves the existing guards.
+
  6l. **A grant is API surface, and `service_role` is the right default for a
    caller-independent delete (learned 2026-09-25, #356).** `prune_pub_events`
    deletes on `at < horizon` — no pub, no creator, no caller — and shipped
@@ -440,7 +454,7 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    gate also needs the failure to survive `pending`); latch in RENDER, not in
    an effect, so a same-tick flip never reads stale, and clear it on `ok` AND on
    a chain rebuild (a stale latched failure must not pin a dead banner after a
-   route edit — the new chain measures on its own).
+    route edit — the new chain measures on its own).
    (2) the in-flight must be SAID, not implied: "Measuring…" copy plus a
    disabled/hidden control (§6a's input-guard family — a retry button that
    stays clickable mid-flight double-fires the counter, which is harmless here
@@ -828,6 +842,21 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    does, and it is the precedent to copy. Check `TripWorkspace.tsx` for an inline value
    before you write a margin rule for that header.
 
+ 6av. **A structural cast over a vendor's type hides the real shape (learned 2026-10-18, #806).**
+   The SDK types `presenceState()` as a map of session key to a LIST of records.
+   The parser cast that to one flat record per key.
+   Every real peer was dropped. `meta.userId` on an array is `undefined`.
+   Read the installed serializer in `node_modules` before you write a cast over its type.
+   Type the boundary parameter `unknown`. Narrow it with a named guard.
+   The cast then has nowhere to live.
+   A global coercion is also unsafe: `Number(value)` on an untrusted JSON object can throw.
+   Read a clock from a number or a numeric string only.
+   Fall back to 0 for anything else.
+   Pin the shape with a contract test that runs the installed serializer.
+   Feed its real output to the parser.
+   A hand-built fixture cannot fail the way the wire does.
+   Run the test against the pre-fix source. Read the failures.
+
 - **A CSS pin must stop at the end of its own block.** `footer-route-mark.test.ts`
   read `styles.css` from its marker to the end of the file. The rule is "append
   CSS at the end". So the next appended section made the pin fail on rules that
@@ -874,6 +903,10 @@ The store, maps and UI entries live in `docs/standards/` now (2026-10-05
 split); the index table says which file a change touches. What follows is
 the cross-cutting residue: data model, platform APIs, verification and
 process.
+
+- **An identity check is not a request binding (learned 2026-10-21, #804).** A guard that re-reads the session after an await cannot see who the request was dispatched as. Capture identity and the access generation before the first await. Pin the bearer on each fresh builder, then re-check both. Take a new try id from a module-level counter, never from state a remount resets.
+- **Shared async cleanup must compare the captured owner before deleting (learned 2026-10-21, #804).** An older try can finish after a newer one replaces the same keyed state. In `finally`, remove or release the entry only when the current value is still the one this try installed.
+- **A source-extracted probe must use the extracted lexical state (learned 2026-10-21, #804).** Do not shadow a module map with a synthetic context map. Expose extracted maps through test accessors. Include each helper the extracted code calls. Describe every synthetic async bridge.
 
 - **You must test both sides of a shared focus or schedule contract.** A prop-presence test cannot prove that a child reads the prop. Check a tab round trip through the browser. Compare arrivals and warnings for the same stop after road measurements resolve.
 
@@ -1066,13 +1099,62 @@ process.
   A line-ending check with `grep -c $'\r'` in a shell loop printed 0 on CRLF
   files. Use `node -e "fs.readFileSync(f,'utf8').includes('\r')"` instead.
 
+- **A PowerShell rewrite of a `.tsx` file eats JSX and template literals, and
+  `tsc` finds it only after you have lost the anchor (learned 2026-10-19).**
+  `Get-Content -Raw` plus a `.Replace()` round-trip through `Set-Content`
+  interpolates `$name` first, because the replacement argument is a
+  double-quoted string. A JSX line like
+  `{bill.transportFormula || 'add a geocoded stop to price the drive'}` became
+  `{bill.transportFormula || dd a geocoded stop to price the }`: the quote
+  characters and the word went with the empty interpolation. Line-number edits
+  via `RemoveRange` then cut a *balanced* JSX block in half and left a stray
+  `)}`, which reads as a parse error three hundred lines from the real cause.
+  A scripted edit also cannot tell a unique anchor from a repeated one, so the
+  block landed in the wrong component and looked correct while it was there.
+  **Use the editor's replace tool for any `.tsx` file.** It fails loudly on a
+  missing anchor, it cannot interpolate, and it refuses an ambiguous match. If
+  a script is genuinely unavoidable, single-quote every replacement string,
+  re-read the exact lines afterwards, and run `tsc -b` before the next edit
+  rather than after the batch. `git checkout --` on the one damaged file is
+  cheaper than reconstructing the block, and safe here precisely because the
+  rest of the change was already committed.
+
 - **Route paths, not hash fragments, address pages (learned 2026-10-11).** The
   app routes by path (`/trips`). A signed-out visit to a signed-in route keeps
   its URL and shows the landing page in place. A check that compares URLs
   reports success on a wrong page. Compare the page content, such as the h1.
   `AGENTS.md` still says "hash routing". Treat that line as stale. Link to a page with `appLink('/path')`, never with a `#/` anchor. `tests/app-link.test.ts` fails when a source file does.
 
+- **A snapshot payload keeps its fragment, and every reader of it must agree (learned 2026-10-18, #805).**
+  `snapshotUrl` returns `<origin>/#/share/<payload>`. A browser sends `pathname
+  + search` and never the fragment, so that is what keeps the trip out of a
+  server's reach. Four readers each leaked the payload when left alone.
+  - `settleLegacyHash` must not promote the fragment into the path, and
+    `currentRoute` must read it. App starts the route from
+    `settleLegacyHash() ?? currentRoute()`, so both need one precedence rule.
+    A real path such as `/trips#/share/<p>` wins in the bridge exactly as it
+    wins in the reader. Test the startup expression, not only the reader.
+  - Analytics reads the page URL inside the page. The network's fragment rule
+    never reaches it. Strip the token in `beforeSend`, and keep the page view.
+  - A support draft leaves the device. `feedbackHref` must redact, and must
+    keep the route label and the app version a reporter needs.
+  `redactSnapshotUrl` is the one redaction. `tests/snapshot-transport-privacy.test.ts`
+  and `tests/snapshot-feedback-privacy.test.ts` pin all four. An old
+  `/share/<payload>` link still renders and cannot be un-exposed.
+  A bounded percent decoder must fail closed when another layer remains. Its
+  recovery test must decode independently to a fixed point and report an
+  exhausted oracle budget; matching the production bound can certify a leak.
+  An unrecognized hash route can hold a snapshot token outside the share
+  prefix. Outbound fallback must use a fixed root label, not copy that route.
+  `strict-origin-when-cross-origin` sends a full same-origin path, so an old
+  link recurs in same-origin referrers. Say that in copy, and never write a
+  test that certifies a control the app does not have.
+
 - **You must parse CSS time units before you use motion tokens in JavaScript.** Production CSS can change `180ms` to `.18s`. Convert seconds to milliseconds before you start timers or browser animations.
+
+- **Vitest's JSON report can miss an unhandled error (learned 2026-10-21).** Vitest 4.1.11 does not pass unhandled errors to its JSON reporter. A run with one can exit 1 and still show `success: true`. Read the errors from a second reporter, as `scripts/mutation-error-reporter.mjs` does. Vitest reports a skipped test as `skipped` and a todo test as `todo`. Count only `passed` and `failed` records as executed.
+
+- **A worktree's `node_modules` must be its own install (learned 2026-10-21).** A junction to another clone can point at an empty folder. Every run then fails with `Cannot find module` for `vitest.mjs`. Run `npm ci` in the worktree, with `NODE_ENV` cleared first (`AGENTS.md` §2.15).
 
 ## 3. Scripted edits
 

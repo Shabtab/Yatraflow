@@ -63,6 +63,22 @@ const routerPath = '../src/lib/router'
 import { forceNativeRouting } from '../src/lib/router'
 
 describe('share preview handler in node', () => {
+  it('forwards a registered campaign with its existing source and keeps the canonical clean', async () => {
+    respond([publication])
+    const res = await runHandler('GET', publication.id, { ref: 'wa', campaign: 'p_a7c1d9e4b206' })
+    expect(res.body).toContain(`/pub/${publication.id}?ref=wa&campaign=p_a7c1d9e4b206`)
+    expect(res.body).toContain(`<link rel="canonical" href="https://www.yatraflow.in/i/${publication.id}"`)
+  })
+
+  it.each(['person@example.com', '9845012345', 'p_unknown', ['p_a7c1d9e4b206']])('drops an invalid campaign without breaking a legacy link: %s', async campaign => {
+    respond([publication])
+    const res = await runHandler('GET', publication.id, { ref: 'copy', campaign })
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toContain(`/pub/${publication.id}?ref=copy`)
+    expect(res.body).not.toContain('campaign=')
+    expect(res.body).not.toContain('person@example.com')
+    expect(res.body).not.toContain('9845012345')
+  })
   it('renders publication-specific metadata and escapes benign ampersands and quotes', async () => {
     respond([publication])
     const res = await runHandler()
@@ -558,10 +574,13 @@ describe('the legacy-hash bridge (#426 slice 2)', () => {
     expect(route).toBeNull()
   })
 
-  it('snapshot links are rooted at the origin without a fragment', async () => {
+  it('snapshot links are rooted at the origin and keep the payload in the fragment (#805)', async () => {
     vi.stubGlobal('location', new URL('https://app.example.test/pub/kerala-trip_1'))
     const { snapshotUrl } = await import('../src/lib/snapshot')
-    expect(snapshotUrl({} as Parameters<typeof snapshotUrl>[0], 'yf1_payload')).toBe('https://app.example.test/share/yf1_payload')
+    const url = new URL(snapshotUrl({} as Parameters<typeof snapshotUrl>[0], 'yf1_payload'))
+    expect(url.origin).toBe('https://app.example.test')
+    expect(url.pathname + url.search).toBe('/')
+    expect(url.hash).toBe('#/share/yf1_payload')
   })
 })
 
@@ -820,7 +839,9 @@ describe('a shared link carries its channel', () => {
     // The page consumes the arrival ref once (#552) and passes that ONE value
     // to its own send: a link that travelled through a post keeps that post's
     // reference, for the whole life of the page it arrived on.
-    expect(source).toMatch(/const \[arrivalRef\] = useState\(\(\) => shareRefFromSearch\(window\.location\.search\)\)/)
+    expect(source).toContain('const [arrival] = useState(() => {')
+    expect(source).toContain('source: shareRefFromSearch(query)')
+    expect(source).toContain('const arrivalRef = arrival.source')
     expect(source).toMatch(/sharePublicationOnWhatsApp\(pub, arrivalRef \?\? 'wa'\)/)
   })
 
@@ -832,7 +853,7 @@ describe('a shared link carries its channel', () => {
     // channel the way the old sync could. The boot bridge's query ride-through
     // stays pinned in the bridge describe above.
     expect(read('../src/lib/shareUrl.ts')).not.toContain('syncPublicAddress')
-    expect(read('../src/pages/PublicItinerary.tsx')).toContain('useEffect(() => { clearShareRefFromLocation() }, [])')
+    expect(read('../src/pages/PublicItinerary.tsx')).toContain('useEffect(() => { clearShareRefFromLocation(); clearCampaignFromLocation() }, [])')
   })
 })
 describe('sending a publication on WhatsApp', () => {

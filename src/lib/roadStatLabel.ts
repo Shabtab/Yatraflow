@@ -1,0 +1,116 @@
+// ============ The day header's distance stat: which truth is on screen (#671) ============
+// The Timeline's per-day distance is honest ONLY after the workspace's road
+// chain (src/lib/tripRoad.ts) has measured it. While the measurement is
+// pending, or fails, or the trip's mode is never road-measured, the engine
+// falls back to haversine × 1.25 — a number that on the Kerala demo trip reads
+// ~83 km where the road is ~146 km. The `~` prefix marks the approximation,
+// but nothing said WHICH kind of number it was. This module is that wording:
+// one rule the header prints and a screen reader hears, pure and node-testable.
+import { legKey, type Journey, type LegEstimate } from './engine'
+import type { RoadStatus } from './tripRoad'
+
+/** The five truths a day header's distance can be showing. 'ok' = EVERY one of
+ *  the day's legs carries a measured road figure, so the day's total is a road
+ *  number. 'partial' = only some legs are measured, so the total still mixes
+ *  chord math and must keep the estimate wording. */
+export type RoadState = RoadStatus | 'not-measured' | 'partial'
+
+/**
+ * The journey fields a distance label needs. A real `Journey` satisfies it;
+ * tests construct the two fields directly, with plain {lat,lng} points.
+ */
+export type DistanceJourney = Pick<Journey, 'distanceKm'> & {
+  points: Array<{ lat: number; lng: number }>
+}
+
+/**
+ * How many of the day's legs carry a REAL road number: a correction that exists
+ * and is not the router's haversine fallback. `measuredLegCount` in engine.ts
+ * counts keys, and `correctionsFromLegs` keys fallback legs too, so a day whose
+ * whole chain fell back would otherwise look measured. (#671)
+ */
+export function measuredRoadLegs(
+  journey: Pick<DistanceJourney, 'points'>,
+  corrections?: Record<string, LegEstimate>,
+): number {
+  if (!corrections) return 0
+  let n = 0
+  for (let i = 0; i + 1 < journey.points.length; i++) {
+    const c = corrections[legKey(journey.points[i], journey.points[i + 1])]
+    if (c && !c.estimated) n++
+  }
+  return n
+}
+
+/**
+ * Resolve the day's road state from the workspace's road status.
+ *
+ * `points` and `corrections` decide what an 'ok' status MEANS for this day:
+ * every one of the day's own legs carries a measured correction → 'ok'; some
+ * but not all → 'partial'; none → 'not-measured', so a mode the road layer
+ * never measures (a flight trip) and a day that never moves both tell the
+ * estimate truth instead of implying a road number. The status alone is not
+ * enough: tripRoad.ts calls the chain 'ok' when its legs resolve, but an
+ * individual day can still be short of measurements.
+ *
+ * A day whose every key is a fallback reads 'not-measured', not 'partial': no
+ * part of that road was measured, so the "part of this day's road is measured"
+ * wording would be a lie of its own.
+ */
+export function roadStateOf(
+  status: RoadStatus | undefined,
+  journey: Pick<DistanceJourney, 'points'>,
+  corrections?: Record<string, LegEstimate>,
+): RoadState {
+  if (status === 'pending') return 'pending'
+  if (status === 'failed') return 'failed'
+  if (measuredRoadLegs(journey, corrections) === 0) return 'not-measured'
+  return fullyMeasured(journey, corrections) ? 'ok' : 'partial'
+}
+
+/**
+ * True when EVERY leg of this day carries a MEASURED road figure, so the day's
+ * total is a road number. Two things can make a leg not measured: no correction
+ * at all (chord math), or a correction that is itself the router's haversine
+ * fallback — `correctionsFromLegs` keeps those legs keyed, so a key count alone
+ * would pass them. A day with fewer than two points has no leg to measure.
+ */
+export function fullyMeasured(
+  journey: Pick<DistanceJourney, 'points'>,
+  corrections?: Record<string, LegEstimate>,
+): boolean {
+  const legs = journey.points.length - 1
+  if (legs < 1 || !corrections) return false
+  for (let i = 0; i < legs; i++) {
+    const c = corrections[legKey(journey.points[i], journey.points[i + 1])]
+    if (!c || c.estimated) return false
+  }
+  return true
+}
+
+/**
+ * The distance stat the day header prints: `~83 km · straight-line estimate —
+ * road not measured yet` while the road is unknown, `146 km · road measured`
+ * once every leg of the day is measured. A partly measured day keeps the `~`
+ * and says its estimate is mixed. The wording rides the text itself — a screen
+ * reader hears the same distinction a sighted reader sees — and reuses the
+ * language the Optimise tooltip already speaks ("straight-line estimate: the
+ * road has not been measured yet", DaySection.tsx). The number is always the
+ * journey's own engine-computed distance; this module only names whose kind of
+ * number it is.
+ */
+export function distanceStatLabel(journey: DistanceJourney, state: RoadState): string {
+  const km = Math.round(journey.distanceKm)
+  switch (state) {
+    case 'ok':
+      return `${km} km · road measured`
+    case 'pending':
+      return `~${km} km · straight-line estimate — measuring the road`
+    case 'failed':
+      return `~${km} km · straight-line estimate — road measurement failed`
+    case 'partial':
+      return `~${km} km · mixed estimate — part of this day's road is measured`
+    default:
+      return `~${km} km · straight-line estimate — road not measured yet`
+  }
+}

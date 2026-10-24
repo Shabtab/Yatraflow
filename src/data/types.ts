@@ -230,6 +230,14 @@ export interface Trip {
   driveAfterDinnerMin?: number
   transportMode: TransportMode
   /**
+   * Mixed only (2026-10-19): does the traveller drive any part of the trip?
+   * `undefined` means nobody has answered, and a Mixed trip in that state keeps
+   * the planning behaviour it always had. The answer is scoped to Mixed, so a
+   * stale value on a row that later became a car trip is ignored. See
+   * `lib/transportPolicy`, which owns what this means everywhere.
+   */
+  drivesPart?: boolean
+  /**
    * Optional user-stated fuel economy (km per litre) for self-drive modes.
    * When set on a car/motorcycle trip the engine derives fuel ₹/km from it
    * (distance ÷ economy × indicative ₹/L) instead of the blended mode table.
@@ -305,6 +313,10 @@ export interface Trip {
    * the trips.ref column carries the same vocabulary.
    */
   ref?: string
+  /** Persisted origin. Older trips remain unknown. */
+  creationKind?: import('../lib/growthAttribution').TripCreationKind
+  sourcePubId?: string
+  campaignId?: import('../lib/growthAttribution').CampaignId
   /**
    * Soft-delete tombstone (ms epoch). Null/undefined = live. A trashed trip is
    * hidden from normal reads by the `trips read hide trashed` RLS policy and

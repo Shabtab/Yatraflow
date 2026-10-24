@@ -103,6 +103,7 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
     routeHash: routeHash(roadPolyline ? roadPolyline.map(p => [p.lng, p.lat] as [number, number]) : null),
     travelStyle: trip.travelStyle,
     transportMode: trip.transportMode,
+    drivesPart: trip.drivesPart,
     scopeKm: 0,
     travellers: trip.travellers,
     driverCount: trip.driverCount,

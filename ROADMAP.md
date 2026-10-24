@@ -15,8 +15,8 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-21, verified against the repo):** v0.78.0 is the release candidate that joins `test` and `main`. It keeps both histories. It carries the public itinerary page and the Android update check. It also carries the trip owner and delete guards and the offline conflict recovery. The v0.77.1 flight fixes are already in `test` under other commit ids. Two migrations are new and unreleased: `20261017_trip_write_version.sql` and `20261020_trip_owner_and_delete_guards.sql`. Run the first one, deploy the app, then run the second. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
-Current version: **0.78.0** — the candidate for promotion to `main`. Under it: **0.77.1**, a hotfix cut from `main` on 2026-10-18. Under that: **0.77.0**, promoted to `main` through PR #772. Older releases appear in CHANGELOG.md.
+**Snapshot (2026-10-24, verified against the repo):** v0.79.0 is the release candidate that joins `test` and `main`. It keeps both histories. It moves crew collaboration onto an idempotent command contract. A suggestion or a decision can now be deleted only by its author or by the trip owner. Two migrations go with this release: `20261023a_collab_commands.sql` is applied, and `20261023b_collab_cutover.sql` waits for the client and `pg_cron`. Read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
+Current version: **0.79.0** — the candidate for promotion to `main`. Under it: **0.78.0**, promoted to `main` on 2026-10-21. Under that: **0.77.1**, a hotfix cut from `main` on 2026-10-18. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
@@ -796,6 +796,44 @@ get a row here again.
 
 ---
 ## Idea bank
+
+### Transport-aware options (2026-10-19)
+
+Status: implemented by OpenCode on branch `feat/transport-aware-options` (2026-10-19).
+Codex owns integration and browser checks. MiniMax owns independent review.
+The schema migration and its contract tests are owned by Codex.
+
+Show only controls that apply to the selected transport and your role.
+Apply one shared transport policy to Create Trip, Trip Settings, summaries, and saved values.
+
+| Mode | Behaviour |
+| --- | --- |
+| Car, self-drive rental, motorcycle | Show driving controls and applicable vehicle costs. |
+| Train, bus, flight, taxi | Hide driver counts, driving allowances, and private vehicle controls. |
+| Mixed | Ask whether you drive any part of the trip. Show driving controls only after Yes. |
+
+Acceptance criteria:
+
+- Passenger modes must not show driver counts in controls, headings, summaries, or accessible labels.
+- Passenger modes must not show mileage, fuel price, tank size, rental rate, or driving-after-dinner controls.
+- Passenger modes must retain relevant traveller, budget, stay, and travel-style options.
+- Train must retain its local-train option. Flight must retain its flight-specific options.
+- Mixed must ask "Will you drive any part of this trip?" in creation and settings.
+- New Mixed trips must have an answer before creation.
+- Existing Mixed trips must keep their planning behaviour until you explicitly save an answer.
+- Mixed with No must follow passenger behaviour. Mixed with Yes must support driving options.
+- Hidden stale values must not affect passenger planning or reappear as driver summaries after save and reload.
+- The Mixed answer must survive save, reload, backups, and supported trip transfers.
+- Mode switches must update visible options and summaries immediately.
+- Self-drive behaviour must remain correct after passenger-to-driving switches.
+- Desktop, mobile, keyboard, and both themes must pass the changed-flow checks.
+- Regression tests, the full local gate, and independent review must pass before publication.
+
+Keep the existing design system and motion rules.
+Exclude bookings, timetable integrations, a detailed journey editor, and a visual redesign.
+OpenCode owns implementation. MiniMax owns independent review. Codex owns integration and browser checks.
+Start from the fixed integration branch revision. Preserve completed issue branches and their evidence.
+Pushes, merges, deployments, and live database changes need separate user approval.
 
 **Everything not yet built, in one place.** Consolidates the former Backlog pool, Idea pool,
 Suggestion-engine / Budget / Creator-hub idea tables (2026-09-11). If an idea is open, it is

@@ -211,8 +211,23 @@ async function liveStore() {
 
 const portoRow = () => ({
   id: 'trip-new', title: 'Porto', destination: 'Porto, Portugal',
+  owner_id: 'amelia',
   start_date: '2026-10-01', end_date: '2026-10-02', days: [], expenses: [],
   cover_url: '', notes: '', template_id: null,
+  // The shared admission refuses a row with no usable revision, which is the
+  // point of R2: a real row always carries these.
+  created_at: 1_700_000_000_000, updated_at: 1_700_000_000_000, write_version: 1,
+  // The five protected columns a full row carries.
+  flights: [], tank_l: null, rent_per_day_inr: null, local_train: null, ref: null,
+  // Round 10 — admission reads the WHOLE row before any default applies, so the
+  // fixture names every column a real `select('*')` row carries.
+  name: 'Porto', start_location: 'Lisbon', start_location_coords: null,
+  destinations: ['Porto'], destination_coords: null, travellers: 2,
+  transport_mode: 'car', budget_per_person_inr: 10000, travel_style: 'balanced',
+  fixed_commitments: [], cover_emoji: 'x', invite_code: null, visibility: 'private',
+  fuel_economy_km_per_l: null, fuel_price_per_l: null, round_trip: null,
+  cover_image_url: null, stay_style: null, driver_count: null, has_vulnerable: null,
+  drive_after_dinner_min: null, vehicle_profile: null, deleted_at: null,
 })
 
 beforeEach(() => {
@@ -232,14 +247,16 @@ beforeEach(() => {
 describe('#36-11 — vote activity text', () => {
   it('says "upvoted" for a new upvote', async () => {
     const store = await freshStore()
-    store.voteSuggestion('trip-1', 'sug-1', 'amelia', 1)
+    // Stage A of #832: the ballot actor is the signed-in account; the writer
+    // takes no userId parameter any more.
+    store.voteSuggestion('trip-1', 'sug-1', 1)
     expect(verbs(store)).toContain('upvoted a suggestion')
   })
 
   it('says the vote was REMOVED when the same vote is toggled off', async () => {
     const store = await freshStore()
-    store.voteSuggestion('trip-1', 'sug-1', 'amelia', 1)
-    store.voteSuggestion('trip-1', 'sug-1', 'amelia', 1)
+    store.voteSuggestion('trip-1', 'sug-1', 1)
+    store.voteSuggestion('trip-1', 'sug-1', 1)
 
     // The second call takes the upvote back. Logging "upvoted a suggestion" again
     // told everyone the opposite of what happened.
@@ -249,8 +266,8 @@ describe('#36-11 — vote activity text', () => {
 
   it('still says downvoted when a vote flips side', async () => {
     const store = await freshStore()
-    store.voteSuggestion('trip-1', 'sug-1', 'amelia', 1)
-    store.voteSuggestion('trip-1', 'sug-1', 'amelia', -1)
+    store.voteSuggestion('trip-1', 'sug-1', 1)
+    store.voteSuggestion('trip-1', 'sug-1', -1)
 
     expect(verbs(store)).toContain('downvoted a suggestion')
     expect(verbs(store)).not.toContain('removed their vote on a suggestion')

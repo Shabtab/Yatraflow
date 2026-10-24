@@ -6,9 +6,9 @@
  * counter columns on trips (the #363 drift lesson); every aggregate derives
  * from the rows at read time.
  *
- * PII RULE (load-bearing, teeth-tested): the log says a step happened, never
- * who took it or what they typed. `meta` carries counts, slugs, enums and
- * booleans ONLY. Crew names and phone numbers, trip names, destination
+ * Metadata must not contain private contents. Signed-in rows use the existing
+ * account ID. Anonymous history stays anonymous. `meta` carries counts,
+ * allowed slugs, enums and booleans only. Crew names and phone numbers, trip names, destination
  * strings and budget figures never enter the log — a free-text field is how a
  * phone number ends up in analytics. `sanitizeCreateMeta` is the one gate
  * every write goes through, and the test suite constructs the nastiest
@@ -19,7 +19,8 @@
  * dropped, never surfaced to the user.
  */
 import { supabase, isSupabaseConfigured } from './supabase'
-import type { TransportMode } from '../data/types'
+import { TRANSPORT_MODES, type TransportMode } from '../data/types'
+import { TRIP_TEMPLATES } from './tripTemplates'
 
 /** The closed event vocabulary — mirrored by the table's CHECK constraint
  *  (supabase/migrations/20260929_create_funnel_events.sql). The two lists are
@@ -63,15 +64,13 @@ export interface CreateEventMeta {
   abandoned: { lastStage: string }
 }
 
-const LAST_STAGE_MAX = 40
+export const CREATE_STAGES = ['where', 'when', 'crew', 'name', 'route', 'dates', 'party', 'budget', 'cover', 'commitments'] as const
 
 /** The one gate every write passes. Takes the caller's meta (typed loosely on
  *  purpose — this is the boundary) and returns ONLY the allow-listed fields of
  *  the event's own shape, coerced to safe values. Anything not in the event's
  *  shape is dropped; strings that are not from a closed enum are dropped.
- *  `lastStage` is the one free-ish string and it is clamped to 40 chars of
- *  stage key (`where`, `when`, `crew`…) — the funnel's own vocabulary, not
- *  user content. */
+ *  Template IDs and stage keys must match platform vocabulary. Arbitrary strings are dropped. */
 export function sanitizeCreateMeta<E extends CreateEvent>(
   event: E,
   meta?: Partial<CreateEventMeta[E]> | Record<string, unknown>,
@@ -79,27 +78,24 @@ export function sanitizeCreateMeta<E extends CreateEvent>(
   if (meta == null || typeof meta !== 'object') return undefined
   const m = meta as Record<string, unknown>
   const num = (v: unknown): number | undefined => {
-    const n = typeof v === 'number' ? v : Number(v)
-    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined
+    return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 366 ? Math.floor(v) : undefined
   }
   switch (event) {
     case 'template_picked': {
       const source = CREATE_TEMPLATE_SOURCES.find(s => s === m.source)
       if (!source) return undefined
-      const templateId = typeof m.templateId === 'string' && /^[\w-]{1,60}$/.test(m.templateId)
-        ? m.templateId
-        : undefined
+      const templateId = TRIP_TEMPLATES.find(template => template.id === m.templateId)?.id
       return { source, ...(templateId ? { templateId } : {}) } as unknown as Partial<CreateEventMeta[E]>
     }
     case 'crew_added': {
       const count = num(m.count)
-      return count == null ? undefined : { count } as unknown as Partial<CreateEventMeta[E]>
+      return count == null || count > 100 ? undefined : { count } as unknown as Partial<CreateEventMeta[E]>
     }
     case 'submitted': {
       const days = num(m.days)
       const travellers = num(m.travellers)
-      const mode = typeof m.mode === 'string' && m.mode.length <= 20 ? m.mode : undefined
-      if (days == null || travellers == null || mode == null) return undefined
+      const mode = TRANSPORT_MODES.find(value => value === m.mode)
+      if (days == null || days < 1 || travellers == null || travellers < 1 || travellers > 100 || mode == null) return undefined
       return { days, travellers, mode } as unknown as Partial<CreateEventMeta[E]>
     }
     case 'moment_invite_sent': {
@@ -107,13 +103,8 @@ export function sanitizeCreateMeta<E extends CreateEvent>(
       return channel ? ({ channel } as unknown as Partial<CreateEventMeta[E]>) : undefined
     }
     case 'abandoned': {
-      // Stage keys are alphabetic words from the funnel's own vocabulary
-      // (`where`, `when`, `crew`…). The charset strip drops EVERYTHING else —
-      // digits included — so a phone number pasted here cannot survive, even
-      // with its separators stripped (the teeth test caught exactly that).
-      const lastStage = typeof m.lastStage === 'string' && m.lastStage.length > 0
-        ? m.lastStage.slice(0, LAST_STAGE_MAX).replace(/[^a-zA-Z_-]/g, '')
-        : undefined
+      // Character restrictions cannot establish that a string is a real stage key.
+      const lastStage = CREATE_STAGES.find(value => value === m.lastStage)
       return lastStage ? ({ lastStage } as unknown as Partial<CreateEventMeta[E]>) : undefined
     }
     default:
@@ -130,11 +121,11 @@ const SESSION_KEY = 'yatraflow_create_funnel_session'
 /** This browser session's funnel id — generated once per tab session and
  *  never the Supabase user id (the funnel starts pre-signup). A session is a
  *  SESSION, not a person: it dies with the tab and is never joined across
- *  sessions except through the user_id backfill. */
+ *  sessions. Anonymous rows remain anonymous. */
 export function createFunnelSessionId(): string {
   try {
     const existing = sessionStorage.getItem(SESSION_KEY)
-    if (existing) return existing
+    if (existing && /^[0-9a-f]{32}$/.test(existing)) return existing
     const bytes = new Uint8Array(16)
     crypto.getRandomValues(bytes)
     const id = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
@@ -146,32 +137,6 @@ export function createFunnelSessionId(): string {
     const bytes = new Uint8Array(16)
     crypto.getRandomValues(bytes)
     return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
-  }
-}
-
-/** Sign-in backfill: the rows this session wrote before auth adopt the user.
- *  Exactly one keyed UPDATE; fire-and-forget like every write here. */
-export function backfillCreateFunnelSession(userId: string): void {
-  if (!isSupabaseConfigured || !userId) return
-  const sessionId = createFunnelSessionId()
-  // Best-effort by design: analytics never surfaces to the user, so a builder
-  // chain that throws (a mocked supabase in tests, a client mid-teardown) is
-  // caught HERE rather than escaping as an unhandled rejection.
-  try {
-    void Promise.resolve(
-      supabase
-        .from('create_funnel_events')
-        .update({ user_id: userId })
-        .eq('session_id', sessionId)
-        .is('user_id', null)
-        .then(({ error }) => {
-          if (error) console.warn('[yatraflow] funnel session backfill failed', { message: error.message })
-        }),
-    ).catch((err: unknown) => {
-      console.warn('[yatraflow] funnel session backfill failed', { message: err instanceof Error ? err.message : String(err) })
-    })
-  } catch (err) {
-    console.warn('[yatraflow] funnel session backfill failed', { message: err instanceof Error ? err.message : String(err) })
   }
 }
 
@@ -239,13 +204,15 @@ export interface CreateFunnelRow {
   event: CreateEvent
   at: string
   meta: Record<string, unknown> | null
+  trip_id?: string | null
 }
 
 export interface CreateFunnelStats {
   /** per-event counts over the window */
   counts: Record<CreateEvent, number>
-  /** started → submitted, over sessions that started */
+  /** Submit events divided by start events. These are not linked visitor cohorts. */
   conversionPct: number
+  submittedTrips: number
   /** template picks per template id (slugs only) */
   templates: { templateId: string; picks: number }[]
   /** the most common abandonment stage, or null */
@@ -259,18 +226,25 @@ const DAY_MS = 24 * 60 * 60 * 1000
 /** Derive the read surface's numbers from a window of rows. Pure: same rows
  *  in, same numbers out — the tests pin the arithmetic. */
 export function deriveCreateFunnel(rows: CreateFunnelRow[], days = 30): CreateFunnelStats {
+  days = Number.isFinite(days) ? Math.min(90, Math.max(1, Math.floor(days))) : 30
   const counts = Object.fromEntries(CREATE_EVENTS.map(e => [e, 0])) as Record<CreateEvent, number>
   const templates = new Map<string, number>()
   const abandonStages = new Map<string, number>()
   const perDay = new Map<string, { started: number; submitted: number }>()
+  const submittedTrips = new Set<string>()
   const now = Date.now()
+  const today = new Date(now)
+  const start = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) - (days - 1) * DAY_MS
   for (let i = days - 1; i >= 0; i--) {
     perDay.set(new Date(now - i * DAY_MS).toISOString().slice(0, 10), { started: 0, submitted: 0 })
   }
   for (const row of rows) {
     if (!CREATE_EVENTS.includes(row.event)) continue // unknown rows never poison the window
+    const at = Date.parse(row.at)
+    if (!Number.isFinite(at) || at < start || at > now) continue
     counts[row.event]++
-    const meta = (row.meta ?? {}) as Record<string, unknown>
+    if (row.event === 'submitted' && row.trip_id) submittedTrips.add(row.trip_id)
+    const meta = (sanitizeCreateMeta(row.event, row.meta ?? undefined) ?? {}) as Record<string, unknown>
     if (row.event === 'template_picked' && typeof meta.templateId === 'string') {
       templates.set(meta.templateId, (templates.get(meta.templateId) ?? 0) + 1)
     }
@@ -291,6 +265,7 @@ export function deriveCreateFunnel(rows: CreateFunnelRow[], days = 30): CreateFu
   return {
     counts,
     conversionPct,
+    submittedTrips: submittedTrips.size,
     templates: [...templates.entries()]
       .map(([templateId, picks]) => ({ templateId, picks }))
       .sort((a, b) => b.picks - a.picks),

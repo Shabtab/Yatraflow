@@ -39,13 +39,18 @@ describe('#428 wiring — every funnel event fires at its real call site', () =>
   })
 
   it('submitted carries counts and the mode — and the trip id', () => {
-    expect(create).toMatch(/recordCreateEvent\('submitted', \{ days: bill\.days, travellers: f\.travellers, mode: f\.transportMode \}, \{ tripId: trip\.id, userId: me\.id \}\)/)
+    expect(create).toMatch(/recordCreateEvent\('submitted', \{ days: trip\.days\.length, travellers: trip\.travellers, mode: trip\.transportMode \}, \{ tripId: trip\.id, userId: me\?\.id \}\)/)
+    const finish = create.slice(create.indexOf('function finishCreate'), create.indexOf('function addCommitment'))
+    expect(finish).toContain("recordCreateEvent('submitted'")
+    expect(create).toContain('finishCreate(retry)')
   })
 
-  it('the signup backfill runs on the hydrate settle path in the store', () => {
+  it('keeps anonymous history append-only instead of attempting a session-token backfill', () => {
     const store = codeOf('../src/store/store.ts')
-    expect(store).toContain("backfillCreateFunnelSession(userId)")
-    expect(store).toMatch(/from '\.\.\/lib\/createEvents'/)
+    expect(store).not.toContain('backfillCreateFunnelSession')
+    expect(codeOf('../src/lib/createEvents.ts')).not.toContain('.update({ user_id:')
+    expect(create).toContain("recordCreateEvent('started', undefined, { userId: me.id })")
+    expect(created).toContain('{ tripId: trip?.id, userId: me?.id }')
   })
 
   it('the vocabulary constant is the single source (call sites never hardcode a second list)', () => {

@@ -1,6 +1,6 @@
 {
   "name": "yatraflow",
-  "version": "0.78.0",
+  "version": "0.79.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,6 +16,7 @@
     "check:ui": "node scripts/uiAntipatterns.mjs",
     "art:build": "node scripts/build-art.mjs",
     "check:motion": "npm run build && node scripts/browser-motion-check.mjs",
+    "probe:landing-overflow": "node scripts/landing-overflow-probe.mjs",
     "probe:next-step": "node scripts/next-step-probe.mjs",
     "lint": "eslint src",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
@@ -50,6 +51,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.0.0",

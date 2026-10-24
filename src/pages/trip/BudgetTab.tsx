@@ -76,6 +76,30 @@ function patchOf(form: FormState): Omit<Expense, 'id'> {
   }
 }
 
+/** The fields an EDIT actually changed, as a patch (#829).
+ *
+ *  `baseline` is the line as the editor opened it, NOT the line as it stands
+ *  now. The difference matters: the form only ever holds what the person has
+ *  typed, so a field they never touched must not be in the patch. Diffing
+ *  against the live line would put the stale value back — the exact overwrite
+ *  this is here to prevent.
+ *
+ *  A field cleared back to empty is sent as `undefined`, not omitted — that is
+ *  a real edit (un-tag the payer, detach the stop), and omitting it would make
+ *  the clear impossible to express. */
+function changedFields(form: FormState, baseline: Expense): Partial<Omit<Expense, 'id'>> {
+  const next = patchOf(form)
+  const patch: Partial<Omit<Expense, 'id'>> = {}
+  if (next.label !== baseline.label) patch.label = next.label
+  if (next.amountInr !== baseline.amountInr) patch.amountInr = next.amountInr
+  if (next.category !== baseline.category) patch.category = next.category
+  if (next.perPerson !== !!baseline.perPerson) patch.perPerson = next.perPerson
+  if (next.optional !== !!baseline.optional) patch.optional = next.optional
+  if (next.paidBy !== baseline.paidBy) patch.paidBy = next.paidBy
+  if (next.stopId !== baseline.stopId) patch.stopId = next.stopId
+  return patch
+}
+
 function PayerSelect({ members, value, onChange, id, 'aria-describedby': describedBy, 'aria-invalid': invalid }: {
   members: { userId: ID }[]
   value: string
@@ -696,6 +720,11 @@ function ExpenseEditor({ trip, members, expense, onDone, previewOpen }: {
   previewOpen?: boolean
 }) {
   const [form, setForm] = useState<FormState>(stateFromExpense(expense))
+  // The line as this editor opened it — the baseline the patch is measured
+  // against. A ref, not the prop: the prop can move under us when a
+  // collaborator's edit lands, and measuring against THAT would resend every
+  // field the person never touched (#829).
+  const openedWith = useRef(expense)
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -704,7 +733,18 @@ function ExpenseEditor({ trip, members, expense, onDone, previewOpen }: {
     if (refuseWhileStaged(previewOpen)) return
     const problem = validateForm(form)
     if (problem) { toast(problem, 'err'); return }
-    updateExpense(trip.id, expense.id, patchOf(form))
+    // #829: the store reports what it did. The editor used to announce a save
+    // the store refused — or one it never found a line for — and close on a row
+    // that had not changed. The person was told the edit worked while the old
+    // amount was still on screen. Only an applied write earns the success
+    // sentence and the close. A refusal keeps the editor open, exactly as the
+    // two branches above do, because the typed values are the retry.
+    const outcome = updateExpense(trip.id, expense.id, changedFields(form, openedWith.current))
+    if (outcome === 'no-such-line') {
+      toast('That expense is no longer on this trip — it was not saved.', 'err')
+      return
+    }
+    if (outcome === 'refused') return
     toast('Expense updated')
     onDone()
   }

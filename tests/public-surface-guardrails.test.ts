@@ -109,7 +109,8 @@ describe('the invite and snapshot gates name no cause they cannot know', () => {
   it('offers a retry, because a dropped connection is one of the real causes', () => {
     const app = read('../src/App.tsx')
     // The resolve effect has to actually re-run when the button bumps the tick…
-    expect(app).toMatch(/\}, \[codeOrTripId, retryTick\]\)/)
+    // Round 10 resolves against the decoded label target, which the retry re-reads.
+    expect(app).toMatch(/\}, \[linkTarget, isTripIdLink, retryTick\]\)/)
     // …and the button must drop back to the spinner rather than sit on the failure.
     expect(app).toMatch(/setStatus\('loading'\); setRetryTick\(t => t \+ 1\)/)
   })

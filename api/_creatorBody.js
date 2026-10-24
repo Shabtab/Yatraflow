@@ -1,4 +1,6 @@
 // Pure public-profile rendering. Select fields explicitly, even from wider rows.
+import { escapeHtml } from './_escape.js'
+
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 
 // The one class that scopes the creator card stylesheet. api/c.js writes the
@@ -18,12 +20,6 @@ export const CREATOR_PAGE_STYLE = [
   `.${CREATOR_PAGE_CLASS} *{box-sizing:border-box;overflow-wrap:anywhere}`,
   `.${CREATOR_PAGE_CLASS} a{display:inline-flex;align-items:center;min-width:44px;min-height:44px;max-width:100%;white-space:normal}`,
 ].join('')
-
-function escapeHtml(value) {
-  return value.replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[character])
-}
 
 function text(value) {
   return typeof value === 'string' ? value.trim() : ''

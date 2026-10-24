@@ -221,40 +221,79 @@ describe('schema.sql mirror of join_trip', () => {
 })
 
 describe('joinViaInvite client path', () => {
-  const body = functionBody(STORE, 'export async function joinViaInvite(')
+  // #804 round 7 — the join body moved into joinAfterScope so the identity
+  // re-check can sit after the membership await. The pins read the
+  // function that now does the work, not the entry point that dispatches to it.
+  const body = functionBody(STORE, 'async function joinAfterScope(')
+  const entry = functionBody(STORE, 'export async function joinViaInvite(')
 
   it('joins through the join_trip RPC, sending the invite code', () => {
     expect(body).toMatch(/\.rpc\('join_trip', \{ p_code: inviteCode \}\)/)
   })
 
   it('no longer writes the membership row itself', () => {
-    expect(body).not.toContain(".from('trip_members').insert({ trip_id: tripId, user_id: userId, role")
-    expect(body).not.toMatch(/\.from\('trip_members'\)\.insert/)
+    // Scoped to the join functions. Other paths (create-trip, copy/restore)
+    // still write membership rows, which is their job.
+    const after = functionBody(STORE, 'async function joinAfterScope(')
+    expect(after).not.toContain(".from('trip_members').insert(")
+    expect(after).not.toMatch(/\.from\('trip_members'\)\.insert/)
   })
 
   it('takes the invite code and no role argument', () => {
-    expect(STORE).toMatch(/export async function joinViaInvite\(tripId: ID, userId: ID, inviteCode: string\): Promise<boolean>/)
+    // #804 — the signature is the invite code only. The preview name and the
+    // owner notice are gone, and the role is still server-decided, never a parameter.
+    const entry = functionBody(STORE, 'export async function joinViaInvite(')
+    expect(entry).toMatch(/^export async function joinViaInvite\(\s*tripId: ID,\s*userId: ID,\s*inviteCode: string,\s*guard\?: AttemptGuard,\s*\): Promise<JoinResult>/)
+    expect(STORE).not.toMatch(/joinViaInvite\([^)]*role:\s*TripMember\['role'\]/)
   })
 
   it('fails closed on a null answer or an answer naming another trip', () => {
-    expect(body).toMatch(/if \(!joinedTripId \|\| String\(joinedTripId\)\.toLowerCase\(\) !== tripId\.toLowerCase\(\)\) return false/)
+    // #804 — the function now returns 'joined' | 'joined-unloaded' | 'failed',
+    // so a refusal is the distinct 'failed' state rather than a bare false.
+    expect(body).toMatch(/if \(!joinedTripId \|\| String\(joinedTripId\)\.toLowerCase\(\) !== tripId\.toLowerCase\(\)\) return 'failed'/)
+  })
+
+  it('re-checks identity after the membership await and before the join write', () => {
+    // B1 — the re-check must follow the await it guards. A pre-check before a
+    // later await answers for the account that started.
+    const queryAt = body.indexOf('await membershipCertain(')
+    const checkAt = body.indexOf("if (!isCurrentIdentity(scope)")
+    const rpcAt = body.indexOf("supabase.rpc('join_trip'")
+    expect(queryAt).toBeGreaterThan(-1)
+    expect(checkAt).toBeGreaterThan(queryAt)
+    expect(rpcAt).toBeGreaterThan(checkAt)
   })
 })
 
 describe('viewerIsMemberOf reads only the viewer membership', () => {
-  const body = functionBody(STORE, 'export async function viewerIsMemberOf(')
+  // #804 round 7 — the read moved into membershipCertain, which returns both the
+  // answer and its certainty.
+  const body = functionBody(STORE, 'export async function membershipCertain(')
 
   it('reads trip_members and never the invite code', () => {
     expect(body).toMatch(/from\('trip_members'\)/)
     expect(body).not.toMatch(/invite_code|inviteCode/)
   })
+
+  it('reports whether the answer is certain, so a failed read is not a refusal', () => {
+    expect(body).toMatch(/return \{ member: false, certain: false \}/)
+    expect(body).toMatch(/return \{ member: !!data, certain: true \}/)
+  })
 })
 
 describe('the invite screens never join by trip id', () => {
   it('InviteGate refuses a trip-id link for a non-member and joins by code', () => {
-    expect(APP).toMatch(/if \(isTripIdLink\) \{/)
-    expect(APP).toMatch(/This link no longer adds people/)
-    expect(APP).toMatch(/joinViaInvite\(trip\.id, me\.id, trip\.inviteCode \?\? linkTarget\)/)
+    // #804 — the trip-id branch is now its own identity-guarded effect rather
+    // than an inline `if (isTripIdLink)` inside the join effect. It still never
+    // joins: it checks membership and either opens the trip or says the link is
+    // retired.
+    // Round 10 renamed the local trip binding to `shownTrip`; the guard and the
+    // membership read are the same two statements.
+    expect(APP).toMatch(/if \(!me \|\| !shownTrip \|\| !isTripIdLink\) return/)
+    expect(APP).toMatch(/viewerIsMemberOf\(shownTrip\.id, me\.id\)/)
+    expect(APP).toMatch(/This invite link is retired/)
+    // The join path still passes the code, never the trip id.
+    expect(APP).toMatch(/joinViaInvite\(tripId, userId, inviteCode \?\? ''/)
   })
 
   it('ShareTab never falls back to a trip-id link', () => {

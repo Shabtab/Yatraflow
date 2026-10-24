@@ -4,6 +4,7 @@
 import type { Trip, ItineraryDay, ItineraryStop, TripMember, Expense, FixedCommitment, FlightLeg, LatLngPoint } from '../data/types'
 import { normalizeVehicleProfile } from './vehicleProfile'
 import { allowedAmount } from './expenseAmount'
+import { campaignId, TRIP_CREATION_KINDS } from './growthAttribution'
 
 /** #559 — the jsonb coercion: a real array passes, ANYTHING else (null, an
  *  object, a string, a number) becomes empty. `?? []` only answers null, which
@@ -35,6 +36,9 @@ export interface TripRow {
   tank_l?: number | null;
   rent_per_day_inr?: number | null;
   local_train?: boolean | null;
+  /** Mixed-only driving answer (20261019_trip_drives_part.sql). NULL = nobody has
+   *  answered, which is every trip written before this column existed. */
+  drives_part?: boolean | null;
   /** JSONB: the trip's flights (`FlightLeg[]`), present only after
    *  20261012c_trip_flights.sql. Empty/absent = no flights recorded. */
   flights?: FlightLeg[] | null;
@@ -46,6 +50,9 @@ export interface TripRow {
   /** present only after the share-source migration (20260929_pub_events_share_source.sql) —
    *  how this trip's owner ARRIVED: the shared link's ref, or the in-app surface */
   ref?: string | null;
+  creation_kind?: string | null;
+  source_pub_id?: string | null;
+  campaign_id?: string | null;
   /** present only after the trip-trash migration (20260910_trip_trash.sql) */
   deleted_at?: string | null;
   created_at: number; updated_at: number;
@@ -161,6 +168,10 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
   const tankL = sanitizeTankL(row.tank_l)
   const rentPerDayInr = sanitizeRentPerDayInr(row.rent_per_day_inr)
   const localTrain = typeof row.local_train === 'boolean' ? row.local_train : undefined
+  // Mixed-only, and tri-state on purpose. Only a real boolean is an answer.
+  // Anything else stays undefined, which is the "nobody answered" state the
+  // policy plans as driving. A pre-migration row simply has no value here.
+  const drivesPart = typeof row.drives_part === 'boolean' ? row.drives_part : undefined
   const flights = sanitizeFlights(row.flights)
   // #559 — the jsonb columns are corruptible (direct SQL, a partial write, a
   // restored dump): the server's own RPCs guard them with `jsonb_typeof`,
@@ -205,15 +216,52 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     tankL: tankL ?? undefined,
     rentPerDayInr: rentPerDayInr ?? undefined,
     localTrain,
+    drivesPart,
     // Absent column (pre-migration) stays undefined, so nothing re-plans.
     flights: flights.length ? flights : undefined,
     days, expenses, coverEmoji: row.cover_emoji,
     coverImageUrl: row.cover_image_url ?? undefined, inviteCode: row.invite_code ?? undefined,
     ref: row.ref ?? undefined,
+    creationKind: TRIP_CREATION_KINDS.find(kind => kind === row.creation_kind),
+    sourcePubId: row.creation_kind === 'forked' ? row.source_pub_id ?? undefined : undefined,
+    campaignId: row.creation_kind === 'forked' ? campaignId(row.campaign_id) ?? undefined : undefined,
     visibility: row.visibility, deletedAt: row.deleted_at != null ? new Date(row.deleted_at).getTime() : undefined,
     createdAt: row.created_at, updatedAt: row.updated_at, members,
     writeVersion: Number.isSafeInteger(row.write_version) && row.write_version! >= 0 ? row.write_version : undefined,
   }
+}
+
+// ---- the Mixed driving answer: never lose it silently (2026-10-19) ----
+/** What the traveller is told when the answer cannot be stored. One string, so
+ *  the store's toast and the pure predicate cannot drift apart. */
+export const DRIVES_PART_MISSING_REASON =
+  'We could not save that answer. Nothing changed. Please try again.'
+
+/**
+ * What a writer can actually persist for `drivesPart`.
+ *
+ * The probe tells us whether the column exists, and a pre-migration database
+ * does not have it. A writer that answers the Mixed question against such a
+ * database would have its answer dropped by `tripToRow` and then report
+ * success, which is the worst possible outcome: the traveller says they do not
+ * drive, the save "succeeds", and the trip plans as driving after a reload.
+ * So the refusal happens HERE, where the probe is known, and every writer goes
+ * through it.
+ *
+ * The reason is traveller-facing, so it names no column and no migration. The
+ * maintainer detail belongs in the changelog and the migration handover.
+ *
+ * `value: null` means "nothing to write": either there is no answer, or the
+ * caller did not change one. An unanswered Mixed trip must keep writing NULL,
+ * because writing `false` would be inventing an answer nobody gave.
+ */
+export function drivesPartWriteVerdict(
+  patch: { drivesPart?: boolean },
+  cols?: OptionalColumnsProbe,
+): { ok: true; value: boolean | null } | { ok: false; reason: string } {
+  if (typeof patch.drivesPart !== 'boolean') return { ok: true, value: null }
+  if (cols && !cols.drivesPart) return { ok: false, reason: DRIVES_PART_MISSING_REASON }
+  return { ok: true, value: patch.drivesPart }
 }
 
 export interface OptionalColumnsProbe {
@@ -229,10 +277,13 @@ export interface OptionalColumnsProbe {
   tankL: boolean
   rentPerDayInr: boolean
   localTrain: boolean
+  /** the Mixed driving answer (20261019_trip_drives_part.sql) */
+  drivesPart: boolean
   /** the trip's flights (20261012c_trip_flights.sql) */
   flights: boolean
   /** share attribution (20260929_pub_events_share_source.sql) */
   ref: boolean
+  growth?: boolean
 }
 
 /**
@@ -265,11 +316,26 @@ export function tripToRow(trip: Trip, ownerId: string, cols?: OptionalColumnsPro
   if (cols?.hasVulnerable) row.has_vulnerable = trip.hasVulnerable === true
   if (cols?.driveAfterDinner) row.drive_after_dinner_min = trip.driveAfterDinnerMin ?? null
   if (cols?.vehicleProfile) row.vehicle_profile = trip.vehicleProfile ?? null
+  // #804 — the invite preview is handed to the gate in local state and never
+  // enters the cache, the queue or a snapshot, so no write here can be built
+  // from it. The earlier "omit while marked" guard is gone with the marker.
+  //
+  // This does NOT mean every cached row is complete. Two older paths still are
+  // not: a legacy queue entry captured before this change can carry a partial
+  // snapshot (the `queuedLocalTrips` overlay in store.ts), and fetchPublicTrip
+  // merges the public itinerary RPC, which projects its own column set. Both
+  // predate this change.
   if (cols?.tankL) row.tank_l = sanitizeTankL(trip.tankL)
   if (cols?.rentPerDayInr) row.rent_per_day_inr = sanitizeRentPerDayInr(trip.rentPerDayInr)
   if (cols?.localTrain) row.local_train = typeof trip.localTrain === 'boolean' ? trip.localTrain : null
+if (cols?.drivesPart) row.drives_part = typeof trip.drivesPart === 'boolean' ? trip.drivesPart : null
   if (cols?.flights) row.flights = sanitizeFlights(trip.flights)
   if (cols?.ref) row.ref = trip.ref ?? null
+  if (cols?.growth) {
+    row.creation_kind = TRIP_CREATION_KINDS.find(kind => kind === trip.creationKind) ?? null
+    row.source_pub_id = trip.creationKind === 'forked' ? trip.sourcePubId ?? null : null
+    row.campaign_id = trip.creationKind === 'forked' ? campaignId(trip.campaignId) : null
+  }
   return row
 }
 
@@ -308,7 +374,8 @@ export function tripUpdateRow(
  * True when a Supabase/PostgREST error means "this column does not exist".
  * Anything else (network failure, auth/RLS, etc.) is transient and must NOT be
  * cached as a missing column — see issue #17.
- */export function isMissingColumnError(error: unknown): boolean {
+ */
+export function isMissingColumnError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
   const code = (error as { code?: string }).code
   if (code === 'PGRST204' || code === '42703') return true

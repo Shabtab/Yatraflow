@@ -15,20 +15,27 @@ import type { Trip } from '../src/data/types'
 
 type FakeError = { code?: string; message: string } | null
 
-const { state, toast, queue } = vi.hoisted(() => ({
-  state: {
-    replayTrip: null as any,
-    tripErrors: [] as FakeError[],
-    memberErrors: [] as FakeError[],
-    /** a table whose write REJECTS instead of answering with an error object */
-    throwOn: null as string | null,
-    /** what every UPDATE answers — count models PostgREST's no-match reply */
-    updateAnswer: { error: null as unknown, count: null as number | null },
-    writes: [] as Array<{ table: string; method: string; payload: any }>,
-  },
-  toast: vi.fn(),
-  queue: { map: new Map<string, any>() },
-}))
+const { state, toast, queue, seeded, seedRow } = vi.hoisted(() => {
+  const rows = new Map<string, unknown>()
+  return {
+    state: {
+      replayTrip: null as any,
+      tripErrors: [] as FakeError[],
+      memberErrors: [] as FakeError[],
+      /** a table whose write REJECTS instead of answering with an error object */
+      throwOn: null as string | null,
+      /** what every UPDATE answers — count models PostgREST's no-match reply */
+      updateAnswer: { error: null as unknown, count: null as number | null },
+      writes: [] as Array<{ table: string; method: string; payload: any; filters: Record<string, unknown> }>,
+    },
+    toast: vi.fn(),
+    queue: { map: new Map<string, any>() },
+    /** The rows the retry's verification reads answer with. Empty until a test
+     *  seeds one, which keeps the wrapper's own revision reads in charge. */
+    seeded: rows,
+    seedRow: (table: string, row: unknown) => { rows.set(table, row) },
+  }
+})
 
 vi.mock('../src/components/ui', () => ({ toast }))
 
@@ -65,24 +72,46 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
 
 vi.mock('../src/lib/supabase', async () => {
   const { tripWriteClient } = await import('./helpers/tripWriteClient')
-  function query() {
+  /** The rows this test seeds for the retry's verification reads, keyed by the
+   *  filter the store applies. Empty until a test seeds one, which keeps the
+   *  wrapper's own revision reads in charge everywhere else. */
+  function seededRow(table: string, filters: Map<string, unknown>): unknown {
+    if (!seeded.has(table)) return null
+    const row = seeded.get(table) as Record<string, unknown>
+    return [...filters].every(([key, value]) => row[key] === value) ? row : null
+  }
+  function query(table: string) {
     const qb: any = {}
+    const filters = new Map<string, unknown>()
     qb.select = () => qb
-    qb.eq = () => qb
+    qb.eq = (key: string, value: unknown) => {
+      filters.set(key, value)
+      return qb
+    }
     qb.in = () => qb
     qb.order = () => qb
     qb.limit = () => qb
     qb.then = (res: (v: { data: unknown; error: null }) => unknown) =>
       Promise.resolve({ data: [], error: null }).then(res)
-    qb.maybeSingle = () => ({
-      then: (res: (v: { data: unknown; error: null }) => unknown) =>
-        Promise.resolve({ data: null, error: null }).then(res),
-    })
+    // True only while a seeded row answers this read. The wrapper reads this flag
+    // after it calls `maybeSingle`: it must hand such a row straight to the
+    // caller, and must leave its own revision reads alone the rest of the time.
+    qb.maybeSingle = () => {
+      const row = seededRow(table, filters)
+      qb.maybeSingleHasRow = row != null
+      return {
+        maybeSingleHasRow: qb.maybeSingleHasRow,
+        then: (res: (v: { data: unknown; error: null }) => unknown) =>
+          Promise.resolve({ data: row, error: null }).then(res),
+      }
+    }
+    qb.maybeSingleHasRow = false
     return qb
   }
   function write(table: string, method: string, payload: any) {
     const qb: any = {}
-    qb.eq = () => qb
+    const filters: Record<string, unknown> = {}
+    qb.eq = (key: string, value: unknown) => { filters[key] = value; return qb }
     qb.in = () => qb
     qb.select = () => qb
     // Both handlers: a thenable that only accepts `res` hangs the awaiting
@@ -92,7 +121,7 @@ vi.mock('../src/lib/supabase', async () => {
       res: (v: { data: unknown; error: unknown; count?: number | null }) => unknown,
       rej?: (e: unknown) => unknown,
     ) => {
-      state.writes.push({ table, method, payload })
+      state.writes.push({ table, method, payload, filters: { ...filters } })
       if (state.throwOn === table) return Promise.reject(new Error('fetch failed')).then(res, rej)
       const body: { data: unknown; error: unknown; count?: number | null } = { data: null, error: null }
       if (method === 'update') {
@@ -111,7 +140,7 @@ vi.mock('../src/lib/supabase', async () => {
     isSupabaseConfigured: () => true,
     supabase: tripWriteClient({
       from: (table: string) => {
-        const qb = query()
+        const qb = query(table)
         qb.insert = (p: any) => write(table, 'insert', p)
         qb.update = (p: any) => write(table, 'update', p)
         qb.upsert = (p: any) => write(table, 'upsert', p)
@@ -130,7 +159,7 @@ vi.mock('../src/lib/supabase', async () => {
   }
 })
 
-import { updateTrip, importTripPersisted, retryImportTrip, tripById, getSnapshot, replayQueuedWrites } from '../src/store/store'
+import { updateTrip, importTripPersisted, retryImportTrip, tripById, getSnapshot, replayQueuedWrites, _setTripWriteDebounceMs } from '../src/store/store'
 import { queueWrite, pendingWrites } from '../src/lib/writeQueue'
 
 const IMPORTER = 'importer-551'
@@ -151,6 +180,7 @@ beforeEach(() => {
   state.throwOn = null
   state.updateAnswer = { error: null, count: null }
   state.writes.length = 0
+  seeded.clear()
   toast.mockClear()
   queue.map.clear()
   getSnapshot().sessionUserId = IMPORTER
@@ -211,8 +241,27 @@ describe('#551 — the import retry re-uses the trip instead of minting a twin',
     const { trip } = await importTripPersisted(source(), IMPORTER)
     state.tripErrors.push({ code: '23505', message: 'duplicate key' })
     state.memberErrors.push({ code: '23505', message: 'duplicate key' })
+    const row = state.writes.find(write => write.table === 'trips')!.payload
+    // A real saved row carries the revision column. The retry must recover it,
+    // not leave the trip unversioned.
+    seedRow('trips', { ...row, created_at: trip.createdAt, updated_at: trip.updatedAt, write_version: 7 })
+    seedRow('trip_members', { trip_id: trip.id, user_id: IMPORTER, role: 'owner', joined_at: trip.createdAt })
     expect(await retryImportTrip(trip, IMPORTER)).toBe(true)
     expect(tripById(trip.id)).toBeDefined()
+    expect(tripById(trip.id)?.writeVersion).toBe(7)
+    // The next conditional update uses the recovered revision as its baseline.
+    state.replayTrip = { id: trip.id, owner_id: IMPORTER, write_version: 7 }
+    state.writes.length = 0
+    _setTripWriteDebounceMs(0)
+    try {
+      expect(updateTrip(trip.id, { name: 'Renamed after the retry' })).toBe(true)
+      await vi.waitFor(() => {
+        const update = state.writes.find(write => write.table === 'trips' && write.method === 'update')
+        expect(update?.filters.write_version).toBe(7)
+      })
+    } finally {
+      _setTripWriteDebounceMs(600)
+    }
   })
 
   it('a retry that fails again is rolled back again', async () => {
