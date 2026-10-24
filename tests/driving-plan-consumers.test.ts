@@ -130,7 +130,7 @@ describe('case 3 — driver count, rain and vulnerable crew move banner and halt
       const facts = { ...RELAXED_VULNERABLE, ...variant }
       const plan = deriveDrivingPlan(facts)
       const targets = overnightTargets(corridor(facts, plan))
-      // The Stage D invariant itself: however the facts moved the walk, the
+      // The Stage D invariant itself: the facts move the walk, but the
       // corridor lands its halts on the boundaries THIS plan walked.
       expect(plan.verdict).toBe('ok')
       expect(targets).toHaveLength(plan.dayCount - 1)
