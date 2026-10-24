@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { stepOfError } from '../src/lib/createSteps'
 
-const page = readFileSync('src/pages/CreateTrip.tsx', 'utf8')
+const page = readFileSync('src/pages/CreateTrip.tsx', 'utf8').replace(/\r\n/g, '\n')
 
 // File order is Where, When, How, Who, Budget. The step order is different; see
 // tests/create-flow-where-how.test.ts for why these are read as ranges.
@@ -78,7 +78,7 @@ describe('Budget asks a question and shows both numbers', () => {
     // figures come from the same state, so they cannot disagree.
     const budget = block(BUDGET, REFINE)
     expect(budget).toContain('budgetPerPersonInr.toLocaleString')
-    expect(budget).toMatch(/group &#8377;\{\(f\.budgetPerPersonInr \* f\.travellers\)/)
+    expect(budget).toMatch(/Group &#8377;\{\(f\.budgetPerPersonInr \* f\.travellers\)/)
   })
 
   it('keeps the exact-amount field, because a slider cannot say 13,750', () => {

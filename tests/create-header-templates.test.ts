@@ -30,7 +30,7 @@ describe('Create trip header (P11)', () => {
   })
 
   it('keeps the lede words', () => {
-    expect(src).toContain('lede="Fill the blocks — your ticket assembles itself as you go."')
+    expect(src).toContain('lede="Fill in the form. Your ticket updates as you go."')
   })
 
   it('puts the draft banner on the Surface card skin and keeps its status role', () => {

@@ -63,6 +63,22 @@ export function addCrewEntry(list: CrewEntry[], raw: string, limit: number): Cre
   return dupe ? list : [...list, entry]
 }
 
+/** Separate create fields retain the same normalization and duplicate rules. */
+export function addCrewFields(list: CrewEntry[], fields: { name: string; mobile: string }, limit: number):
+  | { kind: 'added'; crew: CrewEntry[] }
+  | { kind: 'invalid'; field: 'name' | 'mobile'; message: string }
+  | { kind: 'unchanged'; message: string } {
+  const name = fields.name.trim()
+  const mobile = fields.mobile.trim()
+  if (!name && !mobile) return { kind: 'invalid', field: 'name', message: 'Enter a name or mobile number.' }
+  const phone = mobile ? normalizeIndianMobile(mobile) : null
+  if (mobile && !phone) return { kind: 'invalid', field: 'mobile', message: 'Enter a valid Indian mobile number, with 10 digits starting with 6 to 9.' }
+  if (list.length >= Math.max(0, limit)) return { kind: 'unchanged', message: 'The crew list is full. Increase the party size or remove a member.' }
+  const duplicate = list.some(entry => phone ? entry.phone === phone : !entry.phone && entry.name.toLowerCase() === name.toLowerCase())
+  if (duplicate) return { kind: 'unchanged', message: 'This crew member is already on the list.' }
+  return { kind: 'added', crew: [...list, { raw: [name, mobile].filter(Boolean).join(' '), name, phone }] }
+}
+
 /** A wa.me deep link. The number carries the country code; the text is encoded. */
 export function whatsappInviteUrl(phone: string, text: string): string {
   return `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`

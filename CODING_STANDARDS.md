@@ -898,6 +898,8 @@ Settings previews must use validated draft fields. Reuse road measurements only 
 
 ## 2. Conventions (`AGENTS.md` §4)
 
+- **Separate crew fields must stay separate during parsing.** Normalize the mobile field alone. A name can contain digits. A parser that joins both fields can change that name or make the mobile number invalid. Keep the existing structured draft fields and duplicate rules.
+
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05
 split); the index table says which file a change touches. What follows is
 the cross-cutting residue: data model, platform APIs, verification and

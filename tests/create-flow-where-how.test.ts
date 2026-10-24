@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { stepOfError } from '../src/lib/createSteps'
 
-const page = readFileSync('src/pages/CreateTrip.tsx', 'utf8')
+const page = readFileSync('src/pages/CreateTrip.tsx', 'utf8').replace(/\r\n/g, '\n')
 
 /** The source of one `ct-q` block, from its opening comment to the next block's.
  *  Anchored on the numbered comment, which is unique in the file - searching for
@@ -38,11 +38,11 @@ describe('the return leg lives on How', () => {
   it('renders the return switch inside the How block, not the Where block', () => {
     const how = block(HOW, WHO)
     const where = block(WHERE, WHEN)
-    expect(how).toContain('Plot the drive back')
+    expect(how).toContain('Add return stops')
     expect(how).toContain('ct-return-input')
     // The Where screen must not carry it any more: two copies would mean two
     // controls for one value, and the hidden one would still be focusable.
-    expect(where).not.toContain('Plot the drive back')
+    expect(where).not.toContain('Add return stops')
     expect(where).not.toContain('ct-return-input')
   })
 
@@ -51,7 +51,7 @@ describe('the return leg lives on How', () => {
     // The gate is the driving policy, so a train trip gets no reverse-route
     // control rather than a control that cannot do anything. The window has to
     // span the whole mode row, which sits between the two.
-    expect(how).toMatch(/drivingPolicy\.driving && \([\s\S]{0,3000}Plot the drive back/)
+    expect(how).toMatch(/drivingPolicy\.driving && \([\s\S]{0,3000}Add return stops/)
   })
 })
 

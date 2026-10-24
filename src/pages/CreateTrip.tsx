@@ -24,7 +24,7 @@ import { estimateTripStarter, buildOutlineSeedStops, vehicleProfileFor } from '.
 import { transportPolicy } from '../lib/transportPolicy'
 import { sanitizeTankL, sanitizeRentPerDayInr } from '../lib/tripRow'
 import { TRIP_TEMPLATES, applyTemplate, templateFromRange, fmtBand } from '../lib/tripTemplates'
-import { regionFor, regionBand, nationalBand, experienceTier, anchorNote } from '../lib/budgetBenchmarks'
+import { regionFor, regionBand, nationalBand } from '../lib/budgetBenchmarks'
 import { createFunnelOn } from '../lib/featureFlags'
 import { createReadiness, readinessFromDraft, readinessLine } from '../lib/createReadiness'
 import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, maskPhone, type StoredDraft } from '../lib/createDraft'
@@ -38,7 +38,7 @@ import { CreateFlowCalendar } from '../components/CreateFlowCalendar'
 import { CreateFlowTicket } from '../components/CreateFlowTicket'
 import { currentQuery, navigate, onRouteChange } from '../lib/router'
 import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
-import { addCrewEntry, type CrewEntry } from '../lib/crewInvite'
+import { addCrewFields, type CrewEntry } from '../lib/crewInvite'
 import { recordCreateEvent } from '../lib/createEvents'
 import { stashHandoff } from '../lib/createHandoff'
 import { routeIq, routeIqLine, type RoutePoint } from '../lib/routeIq'
@@ -83,14 +83,14 @@ interface DestDraft {
  *  The GLYPH is no longer listed here: it comes from the one MODE_ICONS map in
  *  components/icons, so this file only owns the copy. */
 const MODE_TILE_META: Record<TransportMode, { hint: string }> = {
-  car: { hint: 'your fuel · ≈42 km/h' },
-  rental: { hint: 'self-drive · ₹/day' },
-  motorcycle: { hint: 'your fuel · ≈44 km/h' },
-  train: { hint: '₹1.6/km fare' },
-  bus: { hint: '₹2.2/km fare' },
-  flight: { hint: 'Per-person fares + ground transfers' },
-  taxi: { hint: '₹16/km fare' },
-  mixed: { hint: 'a bit of everything' },
+  car: { hint: 'Your car and fuel' },
+  rental: { hint: 'Fuel and daily rent' },
+  motorcycle: { hint: 'Your bike and fuel' },
+  train: { hint: 'Rail fare estimate' },
+  bus: { hint: 'Bus fare estimate' },
+  flight: { hint: 'Flights and transfers' },
+  taxi: { hint: 'Taxi fare estimate' },
+  mixed: { hint: 'Combine transport modes' },
 }
 
 /** Mode tiles for the transport grid — every mode a trip can BE (#213 Phase 5).
@@ -105,16 +105,16 @@ const MODE_TILES = TRANSPORT_MODES.map(mode => ({ mode, icon: MODE_ICONS[mode], 
  *  preference dial's job, and the two dials are deliberately independent
  *  (see `stayKeyFor` in lib/engine.ts). Never claim more than the algorithm does. */
 const STYLE_COPY: Record<TravelStyle, string> = {
-  relaxed: 'gentle rhythm — stretch halts every ~120 km, meals ~260 km, 60 min/day of detour slack for suggestions.',
-  packed: 'maximum ground — 180 km between stretch halts, meals ~300 km, 30 min/day of detour slack.',
-  balanced: 'the default rhythm — stretches every 150 km, meals ~300 km, 45 min/day of detour slack.',
-  adventure: 'suggestions favour treks, trails and outdoor stops — adventure and nature categories rank up.',
-  luxury: 'the default driving rhythm. The bed\'s price is the Budget preference above — this dial never touches pricing.',
-  budget: 'the default driving rhythm. The bed\'s price is the Budget preference above — this dial never touches pricing.',
-  family: 'built around crew size — 5+ travellers get the gentler 120 km cadence automatically, style aside.',
-  spiritual: 'suggestions favour temple stops and sacred circuits — the temple category ranks up.',
-  'food-focused': 'suggestions favour food — local meals rank up wherever the route goes.',
-  creator: 'suggestions favour landmark sights and museums — the content-worthy stops.',
+  relaxed: 'More frequent driving breaks and more time for suggested detours.',
+  packed: 'Longer stretches between driving breaks and less time for detours.',
+  balanced: 'Regular driving breaks and time for suggested detours.',
+  adventure: 'Suggestions favour treks, trails and outdoor stops.',
+  luxury: 'Uses the standard driving pace. Choose accommodation separately above.',
+  budget: 'Uses the standard driving pace. Choose accommodation separately above.',
+  family: 'Groups of five or more get more frequent driving breaks with any style.',
+  spiritual: 'Suggestions favour temples and sacred sites.',
+  'food-focused': 'Suggestions favour local food stops.',
+  creator: 'Suggestions favour landmarks and museums.',
 }
 
 const EMOJIS = ['🧭', '🏔️', '🏖️', '🛕', '🚗', '🚂', '🌴', '🎒']
@@ -142,9 +142,9 @@ function TicketScenery() {
  *  the numbers move when the plan changes instead of swapping silently.
  *  Declared at module scope on purpose: an inline component would be a new
  *  type every render, so React would remount the odometer and the digit roll
- *  would never run. Falls back to an em dash when there is nothing to price. */
+ *  would never run. Shows a label when there is nothing to price. */
 function Money({ v, animate }: { v: number | null | undefined; animate: boolean }) {
-  if (v == null) return <>—</>
+  if (v == null) return <>Not priced</>
   const text = `₹${v.toLocaleString('en-IN')}`
   return <Odometer value={text} animate={animate} label={text} />
 }
@@ -387,7 +387,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   // and nothing is sent from here. The invite is composed (and marked ready)
   // once the trip exists, so this page never promises a message it cannot send.
   const [crew, setCrew] = useState<CrewEntry[]>([])
-  const [crewInput, setCrewInput] = useState('')
+  const [crewName, setCrewName] = useState('')
+  const [crewMobile, setCrewMobile] = useState('')
+  const [crewFeedback, setCrewFeedback] = useState<{ field?: 'name' | 'mobile'; message: string } | null>(null)
   /** The tucked drawer is a real controlled element so the party chip can open
    *  it and the native summary still closes it (P1's "advanced is tucked, not
    *  hidden" promise - the chip in the flow is the second way in). */
@@ -437,11 +439,18 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   }
 
   function addCrewMember() {
-    const next = addCrewEntry(crew, crewInput, crewLimit)
-    if (next === crew) { setCrewInput(''); return }
+    const result = addCrewFields(crew, { name: crewName, mobile: crewMobile }, crewLimit)
+    if (result.kind !== 'added') {
+      setCrewFeedback({ message: result.message, field: result.kind === 'invalid' ? result.field : undefined })
+      if (result.kind === 'invalid') document.getElementById(result.field === 'mobile' ? 'ct-crew-mobile' : 'ct-crew-name')?.focus()
+      return
+    }
+    const next = result.crew
     haptic(HAPTIC.tick)
     setCrew(next)
-    setCrewInput('')
+    setCrewName('')
+    setCrewMobile('')
+    setCrewFeedback({ message: 'Crew member added. No invitation has been sent.' })
     // #428: a COUNT went in — never a name or number.
     recordCreateEvent('crew_added', { count: next.length }, { userId: me?.id })
   }
@@ -468,7 +477,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     if (draft.crew?.length) {
       setCrew(draft.crew.map(c => ({
         raw: c.name || c.phone || '',
-        name: c.name,
+        name: c.name || c.phone || '',
         phone: c.phone && !c.phone.includes('•') ? c.phone : null,
       })))
     }
@@ -502,9 +511,6 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     () => (region ? regionBand(region, bill.days || undefined) : (bill.days ? nationalBand(bill.days) : null)),
     [region, bill.days],
   )
-  // P2 - money in the user's hands, described by what it buys.
-  const tier = experienceTier(f.budgetPerPersonInr)
-
   // Day Planner (P1, PR #105): the engine kicks in the moment a start and a
   // destination exist — the route demands its own days from the wheel-hour
   // cap, before any date juggling. Blended mode speed until the workspace's
@@ -585,8 +591,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     const start = f.startDate || today
     patchFields({ startDate: start, endDate: isoAddDays(start, days - 1), roundTrip: true })
     toast(days === 1
-      ? 'Day out: one round-trip day — the bill prices meals and parking, no stay'
-      : 'Weekend dash: two days there and back — no stay unless you add one')
+      ? 'Day out: one round-trip day. The bill includes meals, with no overnight stay.'
+      : 'Weekend dash: two days there and back. Check the accommodation estimate below.')
   }
 
   // Auto-fill: the rounded-up rough take lands in the budget field whenever it
@@ -634,7 +640,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     } else {
       setDests(list => list.slice(0, list.length - returnCount))
       setReturnCount(0)
-      toast('Return stops cleared — driving back the same way.')
+      toast('Return stops cleared. The final drive to start option is unchanged.')
     }
   }
 
@@ -693,7 +699,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   /** One message for every way the save can fail: the form cannot tell a
    *  dropped connection from a refusal, so it says what it does know — the trip
    *  is not on the server, and nothing typed here is lost. */
-  const SAVE_FAILED = 'Couldn’t save this trip to the server — your inputs are still here. Try again.'
+  const SAVE_FAILED = 'Couldn’t save this trip to the server. Your inputs are still here. Try again.'
 
   /** The failure notice, rendered beside BOTH submit surfaces: the ticket rail's
    *  CTA and the form's own summary. Its Retry is just a submit — the guarded
@@ -998,7 +1004,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
       <PageHeader
         kicker="Start something"
         headline={{ lead: 'Plan a new', accent: 'trip' }}
-        lede="Fill the blocks — your ticket assembles itself as you go."
+        lede="Fill in the form. Your ticket updates as you go."
       />
 
       {/* ---- Warm start (P1): the front door, full width above the grid ---- */}
@@ -1008,7 +1014,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
         <div className="tpl-warm-head">
           <h2>Start from a real trip</h2>
           <button type="button" className="tpl-blank-link" onClick={clearTemplate}>Start blank</button>
-          <span className="why">or blank - your call</span>
+          <span className="why">Or start with your own route</span>
         </div>
 <div className="tpl-strip">
               {TRIP_TEMPLATES.map(t => (
@@ -1113,7 +1119,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
           <div className="tpl-nameblock" hidden={guided && step !== 'review'}>
             <div className="tpl-warm-head">
               <h2 id="ct-name-h">Name your trip</h2>
-              <span className="why">it becomes yours the moment it has a name</span>
+              <span className="why">Choose a name you can find later</span>
             </div>
             <div className="tpl-name">
               <div className="namebox-in">
@@ -1222,13 +1228,13 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
 
               <div className="ct-presets" role="group" aria-label="Trip shape presets">
                 <button type="button" className="ct-pre" onClick={() => applyDayOutShape(1)}>
-                  A day out<small>one round trip - no stay</small>
+                  A day out<small>One day, no overnight stay</small>
                 </button>
                 <button type="button" className="ct-pre" onClick={() => applyDayOutShape(2)}>
-                  Weekend dash<small>two days, one night</small>
+                  Weekend dash<small>Two days, one night</small>
                 </button>
                 <button type="button" className="ct-pre" onClick={() => focusAddStop()}>
-                  The full route<small>multi-day, stays planned</small>
+                  The full route<small>Several days with overnight stays</small>
                 </button>
               </div>
 
@@ -1301,7 +1307,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     // The local-train switch belongs to the train pill, so the
                     // pill and its switch stay siblings inside one tile.
                     const pill = (
-                      <button key={t.mode} type="button" className={`ct-mode${f.transportMode === t.mode ? ' on' : ''}`}
+                      <button key={t.mode} type="button" data-choice={t.mode} className={`ct-mode${f.transportMode === t.mode ? ' on' : ''}`}
                         aria-pressed={f.transportMode === t.mode}
                         title={t.hint}
                         onClick={() => {
@@ -1310,7 +1316,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                         }}>
                         <t.icon size={13} aria-hidden />
                         <span>{t.mode === 'rental' ? 'Car rental' : cap(t.mode)}</span>
-                        {guided && <small>{t.hint.replace(/ · ≈\d+ km\/h/, '')}</small>}
+                        <small>{t.hint}</small>
                       </button>
                     )
                     if (t.mode !== 'train') return pill
@@ -1360,7 +1366,8 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 </div>
                 {['fuelEconomy', 'fuelPrice', 'tankL', 'rentPerDay'].filter(key => errs[key]).map(key => <p className="err-text" id={`${FIELD_DOM_IDS[key]}-error`} role="status" key={key}>{ERR_LABELS[key]}: {errs[key]}</p>)}
                 {fuelNotice && <p className="hint-text" role="status">{fuelNotice}</p>}
-                <label className="ts-switch gcf-round-trip"><span>Drive back to start</span><input type="checkbox" role="switch" checked={f.roundTrip} onChange={e => patchFields({ roundTrip: e.target.checked })} /><span className="ts-switch-track" aria-hidden /></label>
+                <label className="ts-switch gcf-round-trip"><span>Include drive to start</span><input type="checkbox" role="switch" checked={f.roundTrip} aria-describedby="ct-roundtrip-help" onChange={e => patchFields({ roundTrip: e.target.checked })} /><span className="ts-switch-track" aria-hidden /></label>
+                <p className="hint-text" id="ct-roundtrip-help">Includes the final drive to your starting location. Without return stops, the estimate uses the outward distance for the drive back.</p>
               </section>}
 
               {/* The return leg lives here, not on Where: whether a drive back is
@@ -1373,10 +1380,11 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 <div className="ct-q-field">
                   <label className="ts-switch">
                     <input type="checkbox" role="switch" checked={returnCount > 0}
-                      onChange={e => setReturnOn(e.target.checked)} aria-label="Configure custom return journey stops" />
+                      onChange={e => setReturnOn(e.target.checked)} aria-label="Configure custom return journey stops" aria-describedby="ct-return-help" />
                     <span className="ts-switch-track" aria-hidden="true"></span>
-                    <span className="ts-switch-label">Plot the drive back</span>
+                    <span className="ts-switch-label">Add return stops</span>
                   </label>
+                  <p className="hint-text" id="ct-return-help">Start with the reversed route, then edit the stops. These replace the simple return-distance estimate. The final drive to your starting location is a separate option.</p>
                 </div>
               )}
 
@@ -1428,7 +1436,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
             <span className="ct-n">4</span>
             <div className="ct-q-body">
               <h2>Who's coming?</h2>
-              <p className="ct-hint">{guided ? 'We plan meal stops and rest breaks for the group.' : 'Party shape tunes the engine - meal windows and rest cadence.'}</p>
+              <p className="ct-hint">We plan meal stops and rest breaks for the group.</p>
               <div className="ct-q-field">
                 <span className="ct-lbl">Party size</span>
                 <div className="ct-party">
@@ -1451,9 +1459,9 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   {/* The shortcut opens the driving drawer. With no driving
                       fields to open, both the button and the drawer go, rather
                       than an empty section wearing a new label. */}
-                  {drivingPolicy.showsDrivingControls && (
-                    <button type="button" className="ct-mini" onClick={() => setDrawerOpen(true)}>
-                      {f.driverCount && f.driverCount > 1 ? `${f.driverCount} drivers` : 'Drivers & pace'}{f.hasVulnerable ? ' · kids aboard' : ''}
+                  {drivingPolicy.showsDrivingControls && !guided && (
+                    <button type="button" className="ct-mini" aria-expanded={drawerOpen} aria-controls="ct-driving-details" onClick={() => { setDrawerOpen(true); document.getElementById('ct-driving-details')?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() }) }}>
+                      Driving settings
                     </button>
                   )}
                   <span className="sr-only">{f.travellers} traveller{f.travellers !== 1 ? 's' : ''} on {cap(f.transportMode)}</span>
@@ -1479,17 +1487,26 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   <div className="crew-card-t">
                     <Users size={13} aria-hidden />
                     <b>Bring the crew</b>
-                    <span className="why">optional - the invite is ready when the trip is</span>
+                    <span className="why">Optional. Prepare invitations for later.</span>
                   </div>
                   <div className="crew-invite-row">
-                    <input className="input" value={crewInput} autoComplete="off"
-                      placeholder="Name or mobile, e.g. Ammu 98450 21234"
-                      aria-label="Crew member name or mobile number"
-                      onChange={e => setCrewInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCrewMember() } }} />
+                    <label htmlFor="ct-crew-name">Name
+                      <input id="ct-crew-name" className="input" value={crewName} autoComplete="off" maxLength={100}
+                        placeholder="e.g. Ammu" aria-invalid={crewFeedback?.field === 'name'} aria-describedby="ct-crew-help ct-crew-feedback"
+                        onChange={e => { setCrewName(e.target.value); setCrewFeedback(null) }}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCrewMember() } }} />
+                    </label>
+                    <label htmlFor="ct-crew-mobile">Mobile number
+                      <input id="ct-crew-mobile" className="input" type="tel" inputMode="tel" value={crewMobile} autoComplete="off" maxLength={24}
+                        placeholder="e.g. +91 98450 21234" aria-invalid={crewFeedback?.field === 'mobile'} aria-describedby="ct-crew-help ct-crew-feedback"
+                        onChange={e => { setCrewMobile(e.target.value); setCrewFeedback(null) }}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCrewMember() } }} />
+                    </label>
                     <button type="button" className="btn btn-outline btn-sm" onClick={addCrewMember}
-                      disabled={crew.length >= crewLimit || !crewInput.trim()}>Add crew member</button>
+                      disabled={crew.length >= crewLimit || (!crewName.trim() && !crewMobile.trim())}>Add crew member</button>
                   </div>
+                  <p className="hint-text" id="ct-crew-help">Add a name, an Indian mobile number, or both. No invitation is sent here.</p>
+                  <p className={crewFeedback?.field ? 'err-text' : 'hint-text'} id="ct-crew-feedback" role="status">{crewFeedback?.message}</p>
                   {crew.length > 0 && (
                     <div className="crew-chips">
                       {crew.map((m, i) => (
@@ -1513,11 +1530,11 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   applicable it would be an empty section, so a passenger mode
                   drops it entirely rather than showing one under a new label. */}
               {drivingPolicy.showsDrivingControls && (
-              <details className="adv-drawer" open={guided || drawerOpen}
-                onToggle={e => setDrawerOpen((e.target as HTMLDetailsElement).open)}>
+              <details id="ct-driving-details" className="adv-drawer" open={guided || drawerOpen}
+                onToggle={e => setDrawerOpen(e.currentTarget.open)}>
                 <summary>
-                  <span className="group-lab">Fuel, vehicle &amp; party details</span>
-                  <span className="adv-hint">{f.fuelEconomy || f.fuelPrice || f.tankL || f.rentPerDay || f.driverCount || f.hasVulnerable || f.driveAfterDinnerMin ? 'set' : 'the engine has good defaults'}</span>
+                  <span className="group-lab">{guided ? 'Driving settings' : 'Fuel, vehicle and driving settings'}</span>
+                  <span className="adv-hint">{f.fuelEconomy || f.fuelPrice || f.tankL || f.rentPerDay || f.driverCount || f.hasVulnerable || f.driveAfterDinnerMin ? 'Custom settings' : 'Defaults available'}</span>
                 </summary>
                 <div className="adv-body">
               {fuelMode && !guided && (
@@ -1533,7 +1550,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                       </span>
                     </label>
                     {isImplausibleFuelEconomy(f.transportMode, parseFuelEconomyKmL(f.fuelEconomy)) && (
-                      <p className="hint-text"><InlineIcon icon={TriangleAlert} size={12} gap={3} />Unusual for a {f.transportMode === 'rental' ? 'rented car' : f.transportMode} — double-check the value.</p>
+                      <p className="hint-text"><InlineIcon icon={TriangleAlert} size={12} gap={3} />Unusual for a {f.transportMode === 'rental' ? 'rented car' : f.transportMode}. Check the value.</p>
                     )}
                     {fuelNotice && (
                       <p className="hint-text" role="status"><InlineIcon icon={TriangleAlert} size={12} gap={3} />{fuelNotice}</p>
@@ -1568,15 +1585,14 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                       </label>
                     )}
                     <div className="chip-row">
-                      <span title={f.roundTrip && bill.roadKm != null
-                        ? `Bills the drive back to ${f.startLocation || 'your start'} (≈ ${Math.round(bill.roadKm / 2)} km each way) on the last day. Turn off for a one-way plan.`
-                        : 'On by default for self-drive — it bills the drive back to your start on the last day. Turn off for a one-way plan.'}>
+                      <span title="Includes the final drive to your starting location. Turn off for a one-way plan.">
                         <Chip active={f.roundTrip} aria-pressed={f.roundTrip}
                           onClick={() => { haptic(HAPTIC.toggle); patchFields({ roundTrip: !f.roundTrip }) }}>
-                          Drive back to start
+                          Include drive to start
                         </Chip>
                       </span>
                     </div>
+                    <p className="hint-text">Includes the final drive to your starting location. Without return stops, the estimate uses the outward distance for the drive back.</p>
                   </div>
                 </div>
               )}
@@ -1588,12 +1604,12 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 {/* Control visibility, so this is the CONTROL flag, not the planner's (2026-10-19). */}
                 {drivingPolicy.showsDrivingControls && (
                   <div className="crew-custom" style={{ marginTop: 10 }}>
-                    <Field label="Drivers sharing the wheel" hint="2 drivers rotate — honest days get longer.">
+                    <Field label="Drivers sharing the wheel" hint="More drivers can share longer driving days.">
                       <div className="crew-row" role="group" aria-label="Drivers sharing the wheel">
                         {[1, 2, 3].map(n => (
                           <button key={n} type="button" className={`crew-btn${(f.driverCount ?? 1) === n ? ' on' : ''}`}
                             aria-pressed={(f.driverCount ?? 1) === n}
-                            onClick={() => { haptic(HAPTIC.select); patchFields({ driverCount: n === 1 ? undefined : n }) }}>{n}</button>
+                            onClick={() => { haptic(HAPTIC.select); patchFields({ driverCount: n === 1 ? undefined : n }) }}>{n} {n === 1 ? 'driver' : 'drivers'}</button>
                         ))}
                       </div>
                     </Field>
@@ -1601,13 +1617,13 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     <Field label={guided ? 'After dinner' : 'Pace of the party'}>
                       <div className="crew-row" role="group" aria-label="Party pace">
                         {!guided && <button type="button" className={`crew-btn${!f.hasVulnerable ? ' on' : ''}`} aria-pressed={!f.hasVulnerable}
-                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: undefined }) }}>Everyone adult</button>}
+                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: undefined }) }}>Adults only</button>}
                         {!guided && <button type="button" className={`crew-btn${f.hasVulnerable ? ' on' : ''}`} aria-pressed={f.hasVulnerable}
-                          title="Infants or seniors aboard — shorter days, earlier dinner"
-                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: true }) }}>Infants / seniors</button>}
+                          title="Children or older travellers. Shorter days and earlier dinner."
+                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: true }) }}>Children or older travellers</button>}
                         {/* #122 dhaba case — opt-in post-dinner driving */}
                         <button type="button" className={`crew-btn${f.driveAfterDinnerMin ? ' on' : ''}`} aria-pressed={!!f.driveAfterDinnerMin}
-                          title="Dhaba dinner, then keep going — dinner no longer ends the day"
+                          title="Allow up to two hours of driving after dinner"
                           onClick={() => { haptic(HAPTIC.select); patchFields({ driveAfterDinnerMin: f.driveAfterDinnerMin ? undefined : 120 }) }}>
                           Drive after dinner
                         </button>
@@ -1629,7 +1645,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               {/* A question, like every other step heading. "Budget per head"
                   named the field; this asks what the step wants to know. */}
               <h2>What is your budget?</h2>
-              <span className="why">anchored honestly - the tool earns trust here</span>
+              <span className="why">Per person, for the whole trip</span>
             </div>
             {guided && <p className="ct-hint">Per person, for the whole trip. Change it at any time.</p>}
             <div className="ct-bud-card">
@@ -1641,12 +1657,12 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     onChange={e => { setBudgetTouched(true); patchFields({ budgetPerPersonInr: Number(e.target.value) }) }} />
                   <span className="v">
                     &#8377;{f.budgetPerPersonInr.toLocaleString('en-IN')}
-                    <small>group &#8377;{(f.budgetPerPersonInr * f.travellers).toLocaleString('en-IN')}</small>
+                    <small>Group &#8377;{(f.budgetPerPersonInr * f.travellers).toLocaleString('en-IN')}</small>
                   </span>
                 </div>
                 {/* The exact number still matters - a slider cannot say 13,750. */}
                 <label className="ct-bud-exact">
-                  exact amount
+                  Exact amount
                   <input className="mono" type="number" min={0} step={500} data-create-field="budgetPerPersonInr"
                     ref={el => (fieldRefs.current.budgetPerPersonInr = el)}
                     aria-label="Budget per person, exact amount"
@@ -1657,7 +1673,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 </label>
                 <button type="button" className="ct-mini"
                   onClick={() => { setBudgetTouched(false); if (suggestedBudget != null) patchFields({ budgetPerPersonInr: suggestedBudget }) }}>
-                  use our estimate
+                  Use estimate
                 </button>
               </div>
               {errs.budgetPerPersonInr && <p className="err-text" id="ct-budget-err" role="status" aria-live="polite">{errs.budgetPerPersonInr}</p>}
@@ -1666,54 +1682,54 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               {/* Mockup order: money in the hand first (the translation), then
                   the anchor against reality. Both flag-gated (P2). */}
               {createFunnelOn('budget') && (<p className="hint-text budget-tier">
-                At <b>&#8377;{f.budgetPerPersonInr.toLocaleString('en-IN')}</b> per head: {tier.blurb}.
+                Your target is <b>&#8377;{f.budgetPerPersonInr.toLocaleString('en-IN')}</b> per person. The estimate uses your route, transport and accommodation choices.
               </p>)}
               {createFunnelOn('budget') && band && (
                 <p className="hint-text budget-anchor" role="status">
                   <i className="bench-mark" aria-hidden>&#9650;</i> A typical {band.days}-day {band.label} run costs <b>&#8377;{band.low.toLocaleString('en-IN')}&ndash;{band.high.toLocaleString('en-IN')}</b> per head
-                  {f.budgetPerPersonInr > 0 ? <> - {anchorNote(f.budgetPerPersonInr, band)}</> : null}.
+                  {f.budgetPerPersonInr > 0 ? <>. Your target is {f.budgetPerPersonInr < band.low ? 'below' : f.budgetPerPersonInr > band.high ? 'above' : 'within'} this range</> : null}.
                 </p>
               )}
             </div>
           </div>
 
-          {/* ---- Refine: the bed & style. Both change the PRICE, not the route,
-               so they belong on the Budget screen rather than Review. ---- */}
+          {/* ---- Refine: accommodation sets the stay estimate. Travel style
+               sets pace and suggestion preferences independently. ---- */}
           <div className="ct-refine" hidden={guided && step !== 'budget'}>
             <span className="ct-lbl">Refine the trip</span>
 
             <div className="ct-rrow">
-              <span className="ct-lbl">The bed</span>
-              <span className="ct-tier" role="group" aria-label="Bed tier">
+              <span className="ct-lbl">Accommodation</span>
+              <span className="ct-tier" role="group" aria-label="Accommodation tier">
                 {(['budget', 'comfort', 'luxury'] as const).map(st => (
-                  <button key={st} type="button" className={f.stayStyle === st ? 'on' : ''}
+                  <button key={st} type="button" data-choice={st} className={f.stayStyle === st ? 'on' : ''}
                     aria-pressed={f.stayStyle === st}
                     onClick={() => { haptic(HAPTIC.select); patchFields({ stayStyle: st }) }}>{cap(st)}</button>
                 ))}
               </span>
-              <span className="ct-party-sub">prices the bed - the journey never changes with it</span>
+              <span className="ct-party-sub">Sets the accommodation estimate. Your route stays the same.</span>
             </div>
 
-            <details className={guided ? 'gcf-budget-details' : undefined} open={guided ? undefined : true}>
+            <details className={guided ? 'gcf-budget-details' : undefined} open>
               <summary hidden={!guided}>Travel style</summary>
-              <span className="ct-lbl">Travel style &middot; pick one</span>
+              <span className="ct-lbl">{guided ? 'Choose one' : 'Travel style. Choose one'}</span>
               <div className="ct-styles" role="group" aria-label="Travel style" style={{ marginTop: 6 }}>
                 {TRAVEL_STYLES.map(st => (
-                  <button key={st} type="button" className={`ct-style${f.travelStyle === st ? ' on' : ''}`}
+                  <button key={st} type="button" data-choice={st} className={`ct-style${f.travelStyle === st ? ' on' : ''}`}
                     aria-pressed={f.travelStyle === st}
                     onClick={() => { haptic(HAPTIC.select); patchFields({ travelStyle: st }) }}>{cap(st)}</button>
                 ))}
               </div>
-              <p className="hint-text style-copy" role="status"><b>{cap(f.travelStyle)}</b> - {STYLE_COPY[f.travelStyle]}</p>
+              <p className="hint-text style-copy" role="status"><b>{cap(f.travelStyle)}.</b> {STYLE_COPY[f.travelStyle]}</p>
             </details>
           </div>
 
           {/* ---- cover + pinned: the optional layer ---- */}
-          {guided && step === 'review' && <button type="button" className="btn btn-outline gcf-details-toggle" onClick={() => setDetailsOpen(value => !value)} aria-expanded={detailsOpen}>Add details <span className="muted">optional</span></button>}
+          {guided && step === 'review' && <button type="button" className="btn btn-outline gcf-details-toggle" onClick={() => setDetailsOpen(value => !value)} aria-expanded={detailsOpen}>Add details <span className="muted">Optional</span></button>}
           <div className="ct-optional" hidden={guided && (step !== 'review' || !detailsOpen)}>
             <div className="ct-opt-head">
               <span className="ct-lbl">Trip cover</span>
-              <span className="ct-party-sub">optional</span>
+              <span className="ct-party-sub">Optional</span>
             </div>
             <Field label="Trip emoji">
               <div className="chip-row" style={{ marginTop: 6 }}>
@@ -1738,7 +1754,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                       const q = last || f.startLocation.trim() || f.name.trim()
                       const u = q ? await fetchTripThumbUrl(q) : null
                       patchFields({ coverImageUrl: u ?? '' })
-                      if (!u) toast("Couldn’t find a photo for that destination — paste an image URL instead.", 'err')
+                      if (!u) toast("Couldn’t find a photo for that destination. Paste an image URL instead.", 'err')
                     } finally { setBusyCover(false) }
                   }}>
                   {busyCover ? 'Finding photo…' : f.coverImageUrl ? 'Refresh destination photo' : 'Use destination photo'}
@@ -1755,7 +1771,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
 
           <div className="ct-opt-head" style={{ marginTop: 16 }}>
               <span className="ct-lbl">Pinned plans</span>
-              <span className="ct-party-sub">optional - trains, weddings, anything with a time</span>
+              <span className="ct-party-sub">Optional. Trains, weddings or other plans with a fixed time.</span>
             </div>
             {createFunnelOn('iq') && radar.length > 0 && (
               <div className="ct-radar" role="status">
@@ -1774,7 +1790,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     <span className="warn-icon"><Pin size={13} aria-hidden /></span>
                     <div style={{ flex: 1 }}>
                       <div className="warn-title">{x.title}</div>
-                      <div className="warn-fix">Day {x.dayIndex + 1} at {formatHM(x.time, timeFormat)}{x.destName ? ` — at ${x.destName}` : ''}</div>
+                      <div className="warn-fix">Day {x.dayIndex + 1} at {formatHM(x.time, timeFormat)}{x.destName ? `, at ${x.destName}` : ''}</div>
                     </div>
                     <button type="button" className="icon-btn" aria-label={`Remove ${x.title}`} onClick={() => setCommitments(l => l.filter((_, j) => j !== i))}><X size={13} aria-hidden /></button>
                   </div>
@@ -1850,7 +1866,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <div className="tk-title">{ticketTitle}</div>
               <p className="tk-route" title={ticketRoute}>
                 {ticketRoute}
-                {returnCount > 0 && <span className="tk-return-chip">↔ custom return</span>}
+                {returnCount > 0 && <span className="tk-return-chip">↔ Custom return</span>}
               </p>
               <div className="tk-rows">
                 <div className="tk-row"><span className="ic"><Calendar size={13} aria-hidden /></span><b>{dateLabel}</b></div>
@@ -1867,13 +1883,13 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 each shows its math, nothing hides behind Print. Printing stays
                 as the paper moment below. */}
             <div className="tk-stub tk-bill">
-              <div className="bill-row"><span>Transport</span><b className="mono">{bill.transportCost != null ? <Money v={bill.transportCost} animate={!reduced} /> : '\u2014'}</b></div>
-              <p className="bill-formula">{bill.transportFormula || `add a geocoded stop to price the ${costNoun}`}</p>
+              <div className="bill-row"><span>Transport</span><b className="mono">{bill.transportCost != null ? <Money v={bill.transportCost} animate={!reduced} /> : 'Not priced'}</b></div>
+              <p className="bill-formula">{bill.transportFormula || `Add a mapped stop to estimate the ${costNoun}.`}</p>
               <div className="bill-row"><span>Stay</span><b className="mono"><Money v={bill.stayCost} animate={!reduced} /></b></div>
               <p className="bill-formula">{bill.stayFormula}</p>
               <div className="bill-row"><span>Food</span><b className="mono"><Money v={bill.mealCost} animate={!reduced} /></b></div>
               <p className="bill-formula">{bill.mealFormula}</p>
-              <div className="bill-row bill-dim"><span>Entries &amp; tolls</span><b>excluded</b></div>
+              <div className="bill-row bill-dim"><span>Entries &amp; tolls</span><b>Excluded</b></div>
               {bill.perHead != null && (
                 <>
                   <div className="bill-row bill-total"><span>Total</span><b className="mono">{'\u20B9 '}<Money v={Math.round(bill.perHead * f.travellers)} animate={!reduced} /></b></div>
@@ -1925,14 +1941,14 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                         <p className="bill-brand">YATRAFLOW &ndash; ROUGH BILL</p>
                         <div className="bill-row"><span>Road (est.)</span><b className="mono">{bill.roadKm != null ? `\u2248 ${bill.roadKm} km` : '-'}</b></div>
                         <div className="bill-row"><span>Transport</span><b className="mono"><Money v={bill.transportCost} animate={!reduced} /></b></div>
-<p className="bill-formula">{bill.transportFormula || `add a geocoded stop to price the ${costNoun}`}</p>
+<p className="bill-formula">{bill.transportFormula || `Add a mapped stop to estimate the ${costNoun}.`}</p>
                         <div className="bill-row"><span>Stay</span><b className="mono"><Money v={bill.stayCost} animate={!reduced} /></b></div>
                         <p className="bill-formula">{bill.stayFormula}</p>
                         <div className="bill-row"><span>Food</span><b className="mono"><Money v={bill.mealCost} animate={!reduced} /></b></div>
                         <p className="bill-formula">{bill.mealFormula}</p>
                         <div className="bill-row bill-total"><span>Total</span><b className="mono">{'\u20B9 '}<Money v={bill.perHead != null ? Math.round(bill.perHead * f.travellers) : null} animate={!reduced} /></b></div>
                         <div className="bill-perhead"><span className="mono">{'\u20B9 '}<Money v={bill.perHead ?? 0} animate={!reduced} /></span><span className="per">/ head</span></div>
-                        <p className="bill-note">rough take - refined once your route resolves in the workspace &middot; excludes tolls, parking &amp; entry fees</p>
+                        <p className="bill-note">An estimate that updates when the route is measured. Excludes tolls, parking and entry fees.</p>
                       </div>
                     </div>
                   </div>

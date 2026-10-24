@@ -12119,3 +12119,97 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
   .gcf .ct-panel > :is(.ct-q, .ct-budget, .ct-review):not([hidden]) { animation: none; }
 }
 
+/* Create choices: a stable grid, immediate press and a short selection settle. */
+.container.trip-starter { --choice-tint: var(--cat-accommodation); }
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn) {
+  position: relative;
+  min-width: 0;
+  min-height: 52px;
+  padding: 12px 28px 12px 12px;
+  border: 1px solid color-mix(in srgb, var(--text) 30%, var(--card));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--choice-tint) 6%, var(--card));
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  text-transform: none;
+  transition: transform var(--motion-fast) var(--ease-out), background-color var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out);
+}
+.trip-starter [data-choice='car'], .trip-starter [data-choice='balanced'] { --choice-tint: var(--cat-accommodation); }
+.trip-starter [data-choice='rental'], .trip-starter [data-choice='luxury'] { --choice-tint: var(--yf-purple); }
+.trip-starter [data-choice='motorcycle'], .trip-starter [data-choice='adventure'] { --choice-tint: var(--cat-activities); }
+.trip-starter [data-choice='train'], .trip-starter [data-choice='relaxed'] { --choice-tint: var(--yf-teal-600); }
+.trip-starter [data-choice='bus'], .trip-starter [data-choice='budget'] { --choice-tint: var(--cat-local-travel); }
+.trip-starter [data-choice='flight'], .trip-starter [data-choice='creator'] { --choice-tint: var(--cat-transport); }
+.trip-starter [data-choice='taxi'], .trip-starter [data-choice='family'], .trip-starter [data-choice='comfort'] { --choice-tint: var(--cat-emergency-buffer); }
+.trip-starter [data-choice='mixed'], .trip-starter [data-choice='spiritual'] { --choice-tint: var(--cat-entry-fees); }
+.trip-starter [data-choice='packed'] { --choice-tint: var(--yf-amber); }
+.trip-starter [data-choice='food-focused'] { --choice-tint: var(--cat-food); }
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn).on {
+  border-color: var(--text);
+  background: color-mix(in srgb, var(--choice-tint) 17%, var(--card));
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text);
+  animation: create-choice-settle var(--motion-med) var(--ease-out);
+}
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn)::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 12px;
+  width: 6px;
+  height: 10px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  opacity: 0;
+  transform: translateY(3px) rotate(45deg);
+  transition: opacity var(--motion-fast) var(--ease-out), transform var(--motion-med) var(--ease-out);
+}
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn).on::after { opacity: 1; transform: translateY(0) rotate(45deg); }
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn):active { transform: translateY(2px); }
+.trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn, .ct-mini):focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+@media (hover: hover) {
+  .trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn):hover { border-color: var(--text); background: color-mix(in srgb, var(--choice-tint) 12%, var(--card)); }
+}
+.trip-starter .ct-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.trip-starter .ct-mode { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-content: start; align-items: center; gap: 5px 6px; width: 100%; min-height: 92px; }
+.trip-starter .ct-mode > svg { display: block; width: 16px; height: 16px; }
+.trip-starter .ct-mode small { display: block; grid-column: 1 / -1; color: color-mix(in srgb, var(--text) 92%, var(--choice-tint)); font-size: 12px; font-weight: 400; line-height: 1.4; }
+.trip-starter .mode-tile { min-width: 0; }
+.trip-starter .ct-tier, .trip-starter .crew-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.trip-starter .ct-tier button, .trip-starter .crew-row .crew-btn { flex: 1; width: auto; min-height: 52px; padding: 12px 26px 12px 10px; border: 1px solid color-mix(in srgb, var(--text) 30%, var(--card)); border-radius: 8px; background: color-mix(in srgb, var(--choice-tint) 6%, var(--card)); }
+.trip-starter .ct-tier button.on, .trip-starter .crew-row .crew-btn.on { border-color: var(--text); background: color-mix(in srgb, var(--choice-tint) 17%, var(--card)); color: var(--text); }
+.trip-starter .crew-custom { max-width: none; width: 100%; }
+.trip-starter .crew-custom .crew-row .crew-btn { flex-basis: 90px; }
+.trip-starter .transport-answer-pair { gap: 8px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.trip-starter .transport-answer-pair::before { display: none; }
+.trip-starter .transport-answer-pair .crew-btn { min-height: 52px; border-radius: 8px; padding: 12px 26px 12px 10px; }
+.trip-starter .transport-answer-pair .crew-btn.on { background: color-mix(in srgb, var(--choice-tint) 17%, var(--card)); color: var(--text); }
+.trip-starter .ct-styles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.trip-starter .ct-mini { min-height: 44px; border-radius: 8px; transition: transform var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out); }
+.trip-starter .ct-mini:active { transform: translateY(2px); }
+.trip-starter .crew-invite-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: 12px; }
+.trip-starter .crew-invite-row label { display: grid; gap: 6px; color: var(--text); font-size: 13px; font-weight: 600; }
+.trip-starter .crew-invite-row .input { width: 100%; min-width: 0; }
+.trip-starter .crew-invite-row button { grid-column: 1 / -1; justify-self: start; min-height: 44px; border-radius: 8px; }
+.trip-starter .crew-invite-row button:disabled { background: var(--card); color: var(--text-2); opacity: 1; cursor: not-allowed; }
+.trip-starter #ct-crew-feedback:empty { display: none; }
+.trip-starter .ct-bud-exact, .trip-starter .ct-party-sub { text-transform: none; }
+.trip-starter .ct-bud-exact input { min-height: 44px; }
+.trip-starter input::placeholder { color: var(--text-2); opacity: 1; }
+@keyframes create-choice-settle { from { transform: translateY(2px); } to { transform: translateY(0); } }
+@media (max-width: 600px) {
+  .trip-starter .ct-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trip-starter .ct-styles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trip-starter:not(.gcf) :is(.ct-modes, .ct-styles) { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); }
+  .trip-starter .crew-invite-row { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn).on { animation: none; }
+  .trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn, .ct-mini),
+  .trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn)::after { animation: none; transition: none; transform: none; }
+  .trip-starter :is(.ct-mode, .ct-style, .ct-tier button, .crew-btn, .ct-mini):active { transform: none; }
+}
+
