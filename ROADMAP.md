@@ -227,22 +227,24 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 ## Suggestions repair sequence (#832)
 
 The [full issue specification](https://github.com/hasnaina955/Yatraflow/issues/832) owns the contracts and all five checks per stage.
-Preserve its seven-stage order and existing issue ownership. Do not replace its unpublished server changes from assumptions.
+Preserve its seven-stage order and existing issue ownership. Stage A shipped in v0.79.0 and must not be rebuilt.
 
 | Stage | Scope | Dependency | Current state |
 |---|---|---|---|
-| A | Contribution ownership, acknowledged writes, notification policies; F1, F2, F13 | First | Client merged through #835 at f0368c41. Server commit 51a97911 and its migrations remain unavailable for review. |
-| B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Planned. Preserve imported trips and unambiguous legacy references. |
-| C | Atomic acceptance, resolution, lifecycle, and honest UI results; F2, F7, F11, F13 | A and B | Planned. Preserve drafts and release busy state on every refusal. |
-| D | One authoritative driving plan; F3 | Before E and final F | Implemented locally. Independent source review passed at 58f77324. Publication needs user approval. |
-| E | Day-scoped candidates, slot identity, placement, and shortlist outcomes; F5, F6, F8, F12, F15 | B, C, and D | Planned. Preserve existing option IDs and legacy poll reads. |
-| F | Request ownership, semantic cache freshness, and discovery context; F16, F17, F18 | D and E for final integration | The isolated search-race work belongs to #834. Do not duplicate it. |
-| G | Schedule-based companion advice and explicit uncertainty; F9, F10 | B, D, and authoritative schedules | Planned. Companion activation remains the separate #236 decision. |
+| A | Contribution ownership, acknowledged writes, notification policies; F1, F2, F13 | First | Shipped through #835 and #836 in v0.79.0. The author reports both migrations applied and nineteen live assertions passed. |
+| B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Planned under #839. The merged command contract is available. Preserve imported trips and unambiguous legacy references. |
+| C | Atomic acceptance, resolution, lifecycle, and honest UI results; F2, F7, F11, F13 | A and B | Planned under #838. Preserve drafts and release busy state on every refusal. |
+| D | One authoritative driving plan; F3 | Before E and final F | Implemented locally under #840. Source review and the previous local gate passed. Current upstream integration remains unverified. |
+| E | Day-scoped candidates, slot identity, placement, and shortlist outcomes; F5, F6, F8, F12, F15 | B, C, and D | Planned under #841. Preserve existing option IDs and legacy poll reads. |
+| F | Request ownership, semantic cache freshness, and discovery context; F16, F17, F18 | D and E for final integration | F16 merged through #834. Remaining discovery and cache work belongs to #842. Do not duplicate the search guard. |
+| G | Schedule-based companion advice and explicit uncertainty; F9, F10 | B, D, and authoritative schedules | Planned under #843. Companion activation remains the separate #236 decision. |
 
-The current fixed inspection base is f0368c41671a843a6f5eb276f58365ef808b1435.
-The existing collaboration command and repair suites pass 43 tests at this base.
-These are mocked transport tests. They do not prove the unpublished SQL or live two-account behavior.
-Stage D does not need the unpublished Stage A server. Its client repair can proceed independently.
+The current fixed inspection base is ce66f6ac699c3f8eb63a81bf3f235744237cf4ed.
+Upstream main and test match at this revision. CI verification and browser motion checks passed on both branches.
+The coordinator inspected CI logs. The coordinator did not repeat the author's hosted database assertions.
+The local Stage D candidate remains cc12117e. Its gate, twenty-one probes, and seventy-three browser checks passed.
+Those browser checks use synthetic providers and local state. Hosted integration and final readiness and Undo reruns remain pending.
+Reconcile the local candidate with current upstream before resuming repairs. Check concurrent #844 changes to TripCreated during integration.
 Keep publication and live SQL separately approved.
 
 ### Approved Stage D contract
