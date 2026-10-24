@@ -11,8 +11,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# contents: write is only used by the tag run, to attach the APK to its release.
+# Every branch run reads the tree and uploads a workflow artifact.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   apk:
@@ -20,15 +22,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
       # Capacitor 8 targets compileSdk 36 / AGP 8.9+, which needs JDK 21.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -81,18 +83,19 @@ jobs:
 
       - name: Version the artifact
         # Tag builds name themselves (YatraFlow-v0.7.0); branch builds fall
-        # back to the gradle versionName plus the short SHA so consecutive
-        # main pushes are still distinguishable.
+        # back to the package version plus the short SHA so consecutive main
+        # pushes are still distinguishable. package.json is the source the
+        # gradle file reads its versionCode/versionName from.
         run: |
-          if [ -n "${GITHUB_REF_NAME#v}" ] && [[ "$GITHUB_REF_NAME" == v* ]]; then
+          if [[ "$GITHUB_REF_NAME" == v* ]]; then
             echo "apkname=YatraFlow-${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
           else
-            V=$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' android/app/build.gradle | head -1)
+            V=$(node -p "require('./package.json').version")
             echo "apkname=YatraFlow-v${V}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           fi
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.apkname }}
           # The file carries its own versioned name from build.gradle, so the
@@ -100,3 +103,18 @@ jobs:
           path: android/app/build/outputs/apk/debug/YatraFlow-*.apk
           retention-days: 14
 
+      # A tag run previously stopped at the workflow artifact, which expires
+      # after 14 days and never appears on the release page: v0.79.0 and
+      # v0.79.1 shipped with no APK. Attach the same file to the release, and
+      # wait briefly for a release that is created just after the tag.
+      - name: Attach APK to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then break; fi
+            echo "release $GITHUB_REF_NAME not there yet (attempt $attempt), waiting"
+            sleep 10
+          done
+          gh release upload "$GITHUB_REF_NAME" android/app/build/outputs/apk/debug/YatraFlow-*.apk --clobber

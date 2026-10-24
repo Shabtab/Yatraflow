@@ -374,7 +374,7 @@ the same job:
 | push to `redesign/**` | yes | **no** |
 | PR into `main` | yes | **no** |
 | PR into `test` | yes | **no** |
-| `v*` tag | — | yes (publishes the artifact) |
+| `v*` tag | — | yes (builds the APK and attaches it to the release) |
 
 The APK workflow triggers on `push` to `main`, `feat/capacitor-android` and `v*`
 tags — **not on pull requests**. So a PR into `main` costs one `ci.yml` run plus
