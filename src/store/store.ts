@@ -502,10 +502,21 @@ export function rowToPrivateUser(row: unknown): PrivateUser {
 
 /**
  * The merge rule, in one place, because it is the whole boundary on the client
- * side (#800): a PRIVATE entry for an id replaces the public one, and a PUBLIC
- * entry never replaces a private one. Without the second half, a public refresh
- * would erase the signed-in user's own email — and without the first, a
- * self-read would leave the stale public card in place.
+ * side (#800).
+ *
+ * Two halves, and an independent probe found the second one missing:
+ *
+ *  1. A PUBLIC entry never DISCARDS a private one. Without this, a public refresh
+ *     would erase the signed-in user's own email.
+ *  2. A public entry's REVIEWED FIELDS still LAND on the private one. Without
+ *     this, the merge kept the email but froze the public shape: a remote rename
+ *     never reached the screen and a remote disablement left
+ *     `creatorAvailable: true` on the account it had just switched off.
+ *
+ * So the private entry survives, and the public fields are merged INTO it. The
+ * private fields — email, createdAt, homeCity, languages, travelStyles,
+ * isDisabled — are untouched by anything that arrives on the public channel,
+ * because a public card does not carry them.
  *
  * The map build is deliberately private-preferring, because the natural input
  * shape carries an id twice: the public catalogue holds a card for the signed-in
@@ -517,17 +528,39 @@ export function mergeUsers(current: CachedUser[], incoming: CachedUser[]): Cache
   const byId = new Map<string, CachedUser>()
   for (const u of [...current, ...incoming]) {
     const held = byId.get(u.id)
-    // A public entry never displaces a private one, in either direction.
-    if (held?.kind === 'private' && u.kind === 'public') continue
+    if (held?.kind === 'private' && u.kind === 'public') {
+      // Keep the private row, take the public row's reviewed fields.
+      byId.set(u.id, { ...held, profile: { ...held.profile, ...u.profile } })
+      continue
+    }
     byId.set(u.id, u)
   }
   return [...byId.values()]
 }
 
-/** Drop every private entry, keeping only the public cards (#800). Used before
- *  anything is written to the offline snapshot. */
+/**
+ * Project the reviewed public identity of every cached entry (#800). A private
+ * entry is NOT dropped: it still has a public identity — a name, an avatar, a
+ * creator marker — and the offline directory needs it. What is dropped is the
+ * private DATA, by taking only the public shape.
+ *
+ * An independent probe found the previous version filtering private entries out
+ * entirely, which deleted the signed-in user (and every admin-held account) from
+ * the offline public directory.
+ */
 export function publicOnlyUsers(users: CachedUser[]): PublicUser[] {
-  return users.filter((u): u is PublicUser => u.kind === 'public')
+  return users.map(u => ({
+    id: u.id,
+    kind: 'public',
+    profile: {
+      name: u.profile.name,
+      avatarUrl: u.profile.avatarUrl,
+      isCreator: u.profile.isCreator,
+      creatorBio: u.profile.creatorBio,
+      socialLinks: u.profile.socialLinks,
+      creatorAvailable: u.profile.creatorAvailable,
+    },
+  }))
 }
 
 /**
@@ -560,6 +593,17 @@ export function sanitizeSnapshotUsers(rows: unknown[]): PublicUser[] {
     const profile = (r.profile && typeof r.profile === 'object' ? r.profile : {}) as Record<string, unknown>
     const name = typeof profile.name === 'string' ? profile.name : typeof r.name === 'string' ? r.name : null
     if (name === null) continue
+    // Availability is DERIVED, never trusted from the snapshot. An old snapshot
+    // carries `isDisabled: true` and no `creatorAvailable`, and reading the absent
+    // flag as `!== false` restored a disabled creator as publicly available — the
+    // exact suppression this change exists to enforce. So: an explicit false, or a
+    // true administrative flag, both mean unavailable; anything else means
+    // available. The administrative flag itself is NOT carried forward.
+    const disabled = profile.isDisabled === true
+    const available = profile.creatorAvailable === false ? false : !disabled
+    // The nested object is REBUILT from the reviewed keys. A return of the stored
+    // object kept whatever keys the snapshot held — an independent probe put a
+    // private canary in there and it survived.
     out.push({
       id: r.id,
       kind: 'public',
@@ -568,13 +612,28 @@ export function sanitizeSnapshotUsers(rows: unknown[]): PublicUser[] {
         avatarUrl: typeof profile.avatarUrl === 'string' ? profile.avatarUrl : undefined,
         isCreator: profile.isCreator === true,
         creatorBio: typeof profile.creatorBio === 'string' ? profile.creatorBio : undefined,
-        socialLinks: (profile.socialLinks && typeof profile.socialLinks === 'object'
-          ? profile.socialLinks : undefined) as PublicUserProfile['socialLinks'],
-        creatorAvailable: profile.creatorAvailable !== false,
+        socialLinks: reviewedSocialLinks(profile.socialLinks),
+        creatorAvailable: available,
       },
     })
   }
   return out
+}
+
+/** The reviewed nested social-links allowlist, rebuilt from an untrusted value.
+ *  Only `youtube` and `instagram` survive, and only as non-empty strings. This is
+ *  the client-side twin of `public.safe_social_links`, and it exists because a
+ *  snapshot is untrusted input: whatever the database rebuilt, a device may still
+ *  hold an older object with extra keys. */
+export function reviewedSocialLinks(value: unknown): PublicUserProfile['socialLinks'] {
+  if (!value || typeof value !== 'object') return undefined
+  const src = value as Record<string, unknown>
+  const out: NonNullable<PublicUserProfile['socialLinks']> = {}
+  for (const key of ['youtube', 'instagram'] as const) {
+    const v = src[key]
+    if (typeof v === 'string' && v.trim() !== '') out[key] = v
+  }
+  return Object.keys(out).length ? out : undefined
 }
 
 // ---------------- Auth ----------------

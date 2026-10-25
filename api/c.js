@@ -165,6 +165,14 @@ export default async function handler(req, res) {
   // answers — while an unknown id is a real 404-with-a-card further down.
   if (profileReadFailed) return res.status(503).end()
   if (!profile) return res.status(404).end()
+  // #800: a disabled account keeps its public identity card — its name and avatar
+  // stay readable for crews it already belongs to — but it is NOT publicly
+  // available as a creator. The card's `creator_available` flag is the derived
+  // signal, so this route answers 404 for a disabled account rather than serving
+  // a cacheable public creator page that names them. This is not a creator-badge
+  // check: a former creator with live publications must stay listable when
+  // enabled, and this reads availability, not the badge.
+  if (profile.creator_available === false) return res.status(404).end()
 
   try {
     publications = await readPublications(url, key, id)

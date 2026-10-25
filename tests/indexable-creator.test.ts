@@ -46,8 +46,8 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-function respond(rows: unknown = [publication]) {
-  fetchMock.mockResolvedValueOnce(response([profile]))
+function respond(rows: unknown = [publication], card: unknown = profile) {
+  fetchMock.mockResolvedValueOnce(response([card]))
   fetchMock.mockResolvedValueOnce(response(rows))
 }
 
@@ -152,6 +152,27 @@ describe('readable creator page', () => {
     expect(result.body).toContain('could not be loaded')
     expect(result.body).not.toContain('1000 published itineraries')
     expect(result.headers['cache-control']).toBe('no-store')
+  })
+
+  it('refuses a disabled creator rather than serving a cacheable public page', async () => {
+    // #800: a disabled account keeps its public identity card for crews it already
+    // belongs to, so the RPC still returns a row — with `creator_available:false`.
+    // This route must not turn that into a public creator page that names them.
+    respond([publication], { ...profile, name: 'Disabled synthetic creator', creator_available: false })
+    const result = await run()
+    expect(result.statusCode).toBe(404)
+    expect(result.body).not.toContain('Disabled synthetic creator')
+    expect(result.body).not.toContain(profile.creator_bio)
+    expect(result.headers['cache-control']).toBe('no-store')
+  })
+
+  it('still serves a former creator whose badge is gone but who is enabled', async () => {
+    // The suppression reads availability, not the creator badge: a former creator
+    // with live publications must stay listable once re-enabled.
+    respond([publication], { ...profile, is_creator: false, creator_available: true })
+    const result = await run()
+    expect(result.statusCode).toBe(200)
+    expect(result.body).toContain('<h1>Asha Menon</h1>')
   })
 
   it('keeps nameless profiles noindex with no canonical or public body', async () => {
