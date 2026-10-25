@@ -90,8 +90,7 @@ describe('adminDeleteUser store + UI wiring', () => {
     for (const slice of ['trips:', 'published:', 'suggestions:', 'decisions:', 'activity:', 'notifications:']) {
       expect(body).toContain(slice)
     }
-    expect(body).toContain('installCatalogMutation(users => users.filter(u => u.id !== userId))')
-    expect(body).toContain('installCatalogMutation(() => prevUsers)')
+    expect(body).toContain('removeCatalogEntry(userId)')
     expect(body).toContain('trips: prevTrips, published: prevPubs,')
   })
 

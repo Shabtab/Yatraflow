@@ -67,7 +67,8 @@ vi.mock('../src/lib/supabase', () => {
       insert: () => builder,
       delete: () => builder,
       limit: () => builder,
-      maybeSingle: () => builder,
+      maybeSingle: () => { builder.singleUsed = true; return builder },
+      single: () => { builder.singleUsed = true; return builder },
       // Chainable + thenable, but the response is withheld until this account's
       // gate is released — that is what makes the race reproducible.
       then: (
@@ -75,7 +76,12 @@ vi.mock('../src/lib/supabase', () => {
         reject?: (reason: unknown) => unknown,
       ) => gate.then(() => {
         if (rejection !== undefined) throw rejection
-        return { data: error ? null : rows, error }
+        // A `.maybeSingle()` / `.single()` read asks for ONE row, and the code it
+        // feeds maps that row directly. Answering with the whole array made
+        // `rowToPrivateUser` read `id` off an array and produce `undefined`, so
+        // the account was never found and every private verdict read as ok.
+        const single = builder.singleUsed === true ? (rows[0] ?? null) : rows
+        return { data: error ? null : single, error }
       }).then(res, reject),
     }
     return builder
@@ -472,7 +478,6 @@ describe('decision and activity hydration', () => {
   })
 
   it.each([
-    { table: 'profiles', admin: false },
     { table: 'decisions', admin: false },
     { table: 'decisions', admin: true },
   ])('clears both slices when a new account query rejects at $table', async ({ table, admin }) => {
@@ -501,6 +506,37 @@ describe('decision and activity hydration', () => {
     expect(store.getSnapshot().activity).toEqual([])
     expect(store.getSnapshot().sliceReads.decisions).toBe('failed')
     expect(store.getSnapshot().sliceReads.activity).toBe('failed')
+  })
+
+  it('clears the private rows when a new account query rejects at profiles', async () => {
+    const store = await freshStore()
+    state.tables = {
+      ...rowsFor('tripA', 'userA'),
+      profiles: [profileRow('userA')],
+      suggestions: [suggestionRow('suggestionA', 'tripA', 'userA')],
+      notifications: [notificationRow('notificationA', 'tripA', 'userA')],
+    }
+    state.activeUser = 'userA'
+    state.sessionUser = 'userA'
+    store.init()
+    state.resolveSession!()
+    await flush()
+    expect(store.currentUser(store.getSnapshot())?.id).toBe('userA')
+
+    state.tables = rowsFor('tripB', 'userB')
+    state.rejects = { profiles: new Error('profiles query rejected') }
+    state.activeUser = 'userB'
+    state.sessionUser = 'userB'
+    state.authHandler!('SIGNED_IN', { user: { id: 'userB' } })
+    await flush()
+
+    // `profiles` is the PRIVATE table now, so its rejection is the self read's
+    // own failure — it names its own slice and leaves the run standing, rather
+    // than aborting every trip-scoped slice with it.
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
+    // The previous account's private row does not survive the switch.
+    expect(store.getSnapshot().users).toEqual([])
+    expect(store.currentUser(store.getSnapshot())).toBeNull()
   })
 })
 
@@ -531,7 +567,9 @@ describe('profile, suggestion, and notification hydration', () => {
     expect(store.getSnapshot().suggestions.map(row => row.id)).toEqual(['suggestionA'])
     expect(store.getSnapshot().notifications.map(row => row.id)).toEqual(['notificationA'])
     expect(store.currentUser(store.getSnapshot())?.id).toBe('userA')
-    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+    // `profiles` is the PRIVATE table now, so its failure is the self read's own
+    // verdict. The public catalogue comes from the RPC and succeeded.
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
     expect(store.getSnapshot().sliceReads.suggestions).toBe('failed')
     expect(store.getSnapshot().sliceReads.notifications).toBe('failed')
 
@@ -581,7 +619,8 @@ describe('profile, suggestion, and notification hydration', () => {
     expect(store.getSnapshot().users).toEqual([])
     expect(store.getSnapshot().suggestions).toEqual([])
     expect(store.getSnapshot().notifications).toEqual([])
-    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+    // The `profiles` rejection is the new account's own private read failing.
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
     expect(store.getSnapshot().sliceReads.suggestions).toBe('failed')
     expect(store.getSnapshot().sliceReads.notifications).toBe('failed')
   })
@@ -597,16 +636,19 @@ describe('profile, suggestion, and notification hydration', () => {
     await flush()
 
     expect(store.getSnapshot().sessionUserId).toBe('userA')
-    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
     expect(store.currentUser(store.getSnapshot())).toBeNull()
-    expect(state.channelNames).toEqual([])
+    // A failed private read is a RECOVERABLE slice failure, not an aborted run —
+    // that is the whole point of giving it its own verdict. The session is real,
+    // so the channel connects and the authoritative disabled check still runs.
+    expect(state.channelNames).toEqual(['yatraflow-live'])
 
     state.rejects = {}
     state.tables = { ...state.tables, profiles: [profileRow('userA')] }
     await refresh(store)
 
     expect(store.currentUser(store.getSnapshot())?.id).toBe('userA')
-    expect(store.getSnapshot().sliceReads.profiles).toBe('ok')
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('ok')
     expect(state.channelNames.length).toBeGreaterThan(0)
   })
 
@@ -624,7 +666,7 @@ describe('profile, suggestion, and notification hydration', () => {
     await flush()
 
     expect(store.getSnapshot().sessionUserId).toBe('userA')
-    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
     expect(store.currentUser(store.getSnapshot())).toBeNull()
 
     state.rejects = {}
@@ -632,7 +674,7 @@ describe('profile, suggestion, and notification hydration', () => {
     await refresh(store)
 
     expect(store.currentUser(store.getSnapshot())?.id).toBe('userA')
-    expect(store.getSnapshot().sliceReads.profiles).toBe('ok')
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('ok')
   })
 
   it('does not retag a prior owner when a switched-account hydrate rejects', async () => {
@@ -649,18 +691,25 @@ describe('profile, suggestion, and notification hydration', () => {
     state.resolveSession!()
     await flush()
 
+    // The new account has no trips of its own, and its private read is refused.
+    state.tables = rowsFor('tripB', 'userB')
+    state.errors = {
+      suggestions: new Error('suggestions unavailable'),
+      notifications: new Error('notifications unavailable'),
+    }
     state.rejects = { profiles: new Error('profiles query rejected') }
     state.activeUser = 'userB'
     state.sessionUser = 'userB'
     state.authHandler!('SIGNED_IN', { user: { id: 'userB' } })
     await flush()
 
+    // The prior owner's rows are gone, and none of them is retagged as userB's.
     expect(store.getSnapshot().sessionUserId).toBe('userB')
     expect(store.currentUser(store.getSnapshot())).toBeNull()
     expect(store.getSnapshot().users).toEqual([])
     expect(store.getSnapshot().suggestions).toEqual([])
     expect(store.getSnapshot().notifications).toEqual([])
-    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
     expect(store.getSnapshot().sliceReads.suggestions).toBe('failed')
     expect(store.getSnapshot().sliceReads.notifications).toBe('failed')
   })

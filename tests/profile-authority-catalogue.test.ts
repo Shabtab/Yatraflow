@@ -1,22 +1,25 @@
-// ============ #800 AUTHORITY-IMPLEMENT-04 — the authority-aware catalogue ============
+// ============ #800 — the authority-aware profile catalogue ============
 //
-// One pure constructor decides the final contents of `cache.users`; one installer
-// writes them. These tests drive the REAL init, auth and subscribe paths through
-// the store, because the failures this replaces were all cross-cutting:
+// `buildCatalog` decides the final contents of `cache.users` from the read
+// outcomes, the authority those reads were taken under, and the catalogue they
+// replace. `installCatalog` is the only writer, and it refuses a ticket whose
+// identity, authority revision or generation no longer matches the live state.
 //
-//   R8/F4a  a same-ID admin loss plus a failed read used to KEEP every
-//           other-account private row, because the array was kept whole.
-//   R8/F4b  a fresh self-read failure used to DISCARD a successful admin batch's
-//           other-account rows, because the filter ran after the success.
-//   F2      an admin who lost and regained authority while a read was in flight.
-//   F3      a sign-out this module started, whose expected SIGNED_OUT successor
-//           must not drop the disabled explanation — and whose OBSOLETE
-//           completion must not clear the next account's admin flag.
-//   F1      a stale private row must not hide a failed read's notice and retry.
+// These tests drive the REAL init, auth-event and subscribe handlers, because
+// every failure this closes was cross-cutting:
 //
-// Every assertion below is a real behaviour assertion on the store or the App
-// helpers. Where a mechanism is proved load-bearing, the RED proof is recorded in
-// `.agent-evidence/800/authority-implementation-04-red.md`.
+//   R1  a run superseded while its request was in flight must not publish the
+//       departing account's private rows, and must not have its captured ticket
+//       refreshed to authorise a late answer.
+//   R2  safe events and the reconnect must actually refresh the private rows the
+//       current authority covers, and account-level work must run with no trips.
+//   R3  a failed private read that KEEPS its row must still reach the notice and
+//       its Try again, and self success must stand on its own verdict.
+//   R4  fresh public fields must overlay eligible private fallbacks.
+//   R5  a refused optimistic edit must restore its own fields and leave an
+//       unrelated accepted change alone.
+//   R6  a disabled sign-out owns exactly one expected auth successor.
+//   R7  one reviewed social-link serializer serves every public projection.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { state, toast } = vi.hoisted(() => ({
@@ -241,18 +244,19 @@ describe('the catalogue installs under the authority that is current', () => {
     let release!: () => void
     const readsBefore = state.tableReads.filter(t => t === 'profiles').length
     state.deferred.__holdProfiles = () => new Promise<void>(r => { release = r })
-    const resumed = store.resumeSync()
+    store.resumeSync()
     await flush(); await flush()
-    // The self read has settled AND the bulk read is held: this run has issued
-    // one more self read and one more bulk read than phase 1 did.
+    // The self read has settled AND the bulk read is held.
     expect(state.tableReads.filter(t => t === 'profiles').length).toBe(readsBefore + 2)
-    store._setAdminForTest(false)
+    // A real auth event for the same id with no role: the store observes the loss,
+    // moves the authority revision, and reprojects the catalogue immediately.
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
     release()
-    await resumed
     await flush(); await flush()
 
-    // The authority revision moved when the loss was observed, so the stamp on
-    // the catalogue it replaced no longer authorises u-2's private row.
+    // The held read's install is rejected — its authority revision and its admin
+    // flag both moved — and the reprojection has already taken u-2's private row
+    // away.
     expect(privateIds(store)).toEqual(['u-1'])
     expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.kind).toBe('public')
     // The caller's own row is still private: its self read succeeded.
@@ -307,22 +311,20 @@ describe('the catalogue installs under the authority that is current', () => {
     await flush(); await flush()
     expect(privateIds(store).sort()).toEqual(['u-1', 'u-2'])
 
-    // Loss while the bulk read is in flight.
+    // Loss while the bulk read is in flight, emitted as a real auth event.
     let release!: () => void
     const readsBefore = state.tableReads.filter(t => t === 'profiles').length
     state.deferred.__holdProfiles = () => new Promise<void>(r => { release = r })
-    const lost = store.resumeSync()
+    store.resumeSync()
     await flush(); await flush()
     expect(state.tableReads.filter(t => t === 'profiles').length).toBe(readsBefore + 2)
-    store._setAdminForTest(false)
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
     release()
-    await lost
     await flush(); await flush()
     expect(privateIds(store)).toEqual(['u-1'])
 
     // Regain: the next run asks for the bulk again and it succeeds.
-    store._setAdminForTest(true)
-    await store.resumeSync()
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-1', app_metadata: { role: 'masteradmin' } } })
     await flush(); await flush()
     expect(privateIds(store).sort()).toEqual(['u-1', 'u-2'])
     expect(store.getSnapshot().sliceReads['admin profiles']).toBe('ok')
@@ -393,11 +395,14 @@ describe('the public paths never widen or erase the boundary', () => {
     await flush(); await flush()
     expect(store.currentUser()?.kind).toBe('private')
 
+    // The source trigger updates `profiles` as well as `profile_cards`, so the
+    // private row the event's refresh reads back carries the new name too.
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, name: 'Asha Nair' } }
     store._applyRealtimeEventForTest('profile_cards', {
       eventType: 'UPDATE', table: 'profile_cards', schema: 'public',
       new: { ...OWNER_CARD, name: 'Asha Nair' }, old: {},
     } as never)
-    await flush()
+    await flush(); await flush()
     const me = store.currentUser()
     expect(me?.kind).toBe('private')
     expect(me?.email).toBe('a@example.invalid')
@@ -523,6 +528,92 @@ describe('the disabled sign-out belongs to the account that asked', () => {
     expect(store._isAdminForTest()).toBe(true)
     expect(store.getSnapshot().sessionUserId).toBe('u-2')
   })
+
+  it('an intervening login then a sign-out is not the expected successor', async () => {
+    const store = await freshStore()
+    state.sessionUser = 'u-1'
+    state.disabled = false
+    state.profileRows = {}
+    store.init()
+    await flush()
+
+    let release!: () => void
+    state.signOutGate = new Promise<void>(r => { release = r })
+    state.disabled = true
+    const pending = store.enforceDisabledCheck()
+    await flush()
+    expect(state.signOuts).toEqual(['u-1'])
+
+    // B signs in — which retires A's owned sign-out permanently — and then B
+    // signs out, leaving an empty session that looks exactly like A's expected
+    // successor.
+    state.sessionUser = 'u-2'
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-2' } })
+    state.sessionUser = null
+    state.authHandler!('SIGNED_OUT', null)
+    expect(store.getSnapshot().sessionUserId).toBeNull()
+
+    release()
+    expect(await pending).toBe(false)
+    expect(toast).not.toHaveBeenCalledWith(
+      'This account has been disabled. Contact support if you think this is a mistake.', 'err',
+    )
+  })
+
+  it('a same-ID replacement retires the owned sign-out', async () => {
+    const store = await freshStore()
+    state.sessionUser = 'u-1'
+    state.disabled = false
+    state.profileRows = {}
+    store.init()
+    await flush()
+
+    let release!: () => void
+    state.signOutGate = new Promise<void>(r => { release = r })
+    state.disabled = true
+    const pending = store.enforceDisabledCheck()
+    await flush()
+    expect(state.signOuts).toEqual(['u-1'])
+
+    // The same account signs back in — a new session, same id — and then signs
+    // out again. Neither successor belongs to the held operation.
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    state.authHandler!('SIGNED_OUT', null)
+    release()
+    expect(await pending).toBe(false)
+    expect(toast).not.toHaveBeenCalledWith(
+      'This account has been disabled. Contact support if you think this is a mistake.', 'err',
+    )
+  })
+
+  it('overlapping disabled checks share one operation and one message', async () => {
+    const store = await freshStore()
+    state.sessionUser = 'u-1'
+    state.disabled = false
+    state.profileRows = {}
+    store.init()
+    await flush(); await flush()
+
+    let release!: () => void
+    state.signOutGate = new Promise<void>(r => { release = r })
+    state.disabled = true
+    const first = store.enforceDisabledCheck()
+    const second = store.enforceDisabledCheck()
+    await flush()
+    // One sign-out, not two: the second caller joined the operation in flight.
+    expect(state.signOuts).toEqual(['u-1'])
+    release()
+    expect(await first).toBe(true)
+    expect(await second).toBe(true)
+    expect(state.signOuts).toEqual(['u-1'])
+    // And the explanation is shown exactly once — the account switch's own
+    // partial-load report is a different message about a different read.
+    const disabledCalls = toast.mock.calls.filter(c => c[0] === 'This account has been disabled. Contact support if you think this is a mistake.')
+    expect(disabledCalls).toHaveLength(1)
+    expect(toast).toHaveBeenCalledWith(
+      'This account has been disabled. Contact support if you think this is a mistake.', 'err',
+    )
+  })
 })
 
 // ============ F1 — the visible retry ============
@@ -556,6 +647,27 @@ describe('a stale private row does not hide the failure', () => {
     const { profileLookupState } = await import('../src/App')
     expect(profileLookupState('u-1', !!store.currentUser(), store.getSnapshot().sliceReads)).toBe('failed')
   })
+
+  it('the signed-in route gate takes the page for a retained row', async () => {
+    const { profileLookupBlocksRoute } = await import('../src/App')
+    // The gate is consulted for a signed-in account WITH a private row, not only
+    // for one without. A helper reachable only inside `!me` could never see this.
+    expect(profileLookupBlocksRoute('userA', true, 'failed', true, false)).toBe(true)
+    expect(profileLookupBlocksRoute('userA', true, 'ready', true, false)).toBe(false)
+    expect(profileLookupBlocksRoute('userA', true, 'reading', true, false)).toBe(false)
+    // Guest-accessible segments stay reachable on a failure.
+    expect(profileLookupBlocksRoute('userA', true, 'failed', false, false)).toBe(true)
+  })
+
+  it('self success stands on its own verdict when only the public catalogue fails', async () => {
+    const { profileLookupState } = await import('../src/App')
+    // A successful private read with a row is a ready account, whatever the
+    // public catalogue did. A consumer that OR-ed the public failure in would
+    // hide a working import action behind a profile failure.
+    expect(profileLookupState('userA', true, { 'self profile': 'ok', profiles: 'failed' })).toBe('ready')
+    // A failed private read is failed even when the public catalogue succeeded.
+    expect(profileLookupState('userA', true, { 'self profile': 'failed', profiles: 'ok' })).toBe('failed')
+  })
 })
 
 // ============ the writers all enter the one gate ============
@@ -578,14 +690,15 @@ describe('every catalogue writer installs through the gate', () => {
 
     // An accepted write lands on the private row.
     state.profileErrors = {}
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, name: 'Asha Nair' } }
     const ok = await store.updateProfile({ name: 'Asha Nair' })
     expect(ok).toEqual({ ok: true })
     expect(store.currentUser()?.profile.name).toBe('Asha Nair')
 
     // …and the install RE-STAMPED the catalogue, which is what a later public
-    // refresh reads. A write that patched `cache.users` directly would leave the
-    // stamp describing the row as it was before the edit, so the next install
-    // would treat the account's own private row as unauthorised and drop it.
+    // refresh reads. The fresh public card carries the new name, so the private
+    // row keeps it rather than falling back to the old one.
+    state.cards = [{ ...OWNER_CARD, name: 'Asha Nair' }, OTHER_CARD]
     await store.rereadPublicSlices()
     await flush(); await flush()
     expect(store.currentUser()?.kind).toBe('private')
@@ -667,21 +780,24 @@ describe('every catalogue writer installs through the gate', () => {
     const pending = store.adminSetDisabled('u-2', true)
     await flush()
 
-    // …and a live event renames that same account. The authority is unchanged, so
-    // the catalogue the gate produces is perfectly valid — which is exactly why
-    // the rollback cannot rely on the gate to protect it.
+    // …and a live event renames that same account. The source trigger updates the
+    // private row too, so the admin bulk read the event's refresh issues answers
+    // with the new name.
+    state.allProfileRows = [OWNER_PRIVATE, { ...OTHER_PRIVATE, name: 'Bilal Ahmed' }]
     store._applyRealtimeEventForTest('profile_cards', {
       eventType: 'UPDATE', table: 'profile_cards', schema: 'public',
       new: { ...OTHER_CARD, name: 'Bilal Ahmed' }, old: {},
     } as never)
-    await flush()
+    await flush(); await flush()
     expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.profile.name).toBe('Bilal Ahmed')
 
-    // The RPC is then refused. The rollback must see that another write landed
-    // and drop itself, rather than restoring the row it was handed.
+    // The RPC is then refused. The rollback restores the field this edit owned —
+    // and only that field — so the newer rename survives.
     release()
     expect(await pending).toBe(false)
-    expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.profile.name).toBe('Bilal Ahmed')
+    const u2 = store.getSnapshot().users.find(u => u.id === 'u-2') as { kind: string; profile: { name: string; isDisabled?: boolean } }
+    expect(u2.profile.name).toBe('Bilal Ahmed')
+    expect(u2.profile.isDisabled).toBe(false)
     expect(privateIds(store).sort()).toEqual(['u-1', 'u-2'])
   })
 
@@ -706,5 +822,278 @@ describe('every catalogue writer installs through the gate', () => {
     expect(await pending).toBe(false)
     expect(privateIds(store).sort()).toEqual(['u-1', 'u-2'])
     expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.kind).toBe('private')
+  })
+})
+
+// ============ R2 — safe events and reconnect refresh the private rows ============
+describe('a private change reaches the screen through a real trigger', () => {
+  it('an admin sees another account\'s changed private flag after a safe event', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', true)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, { ...OTHER_PRIVATE, is_disabled: false }]
+    store.init()
+    await flush(); await flush()
+    expect((store.getSnapshot().users.find(u => u.id === 'u-2') as { profile: { isDisabled?: boolean } }).profile.isDisabled)
+      .toBe(false)
+
+    // The account is disabled server-side. The event carries only public fields,
+    // so without a private refresh the console would keep showing it enabled.
+    state.allProfileRows = [OWNER_PRIVATE, { ...OTHER_PRIVATE, is_disabled: true }]
+    store._applyRealtimeEventForTest('profile_cards', {
+      eventType: 'UPDATE', table: 'profile_cards', schema: 'public',
+      new: { ...OTHER_CARD, creator_available: false }, old: {},
+    } as never)
+    await flush(); await flush(); await flush()
+
+    const u2 = store.getSnapshot().users.find(u => u.id === 'u-2') as { kind: string; profile: { isDisabled?: boolean } }
+    expect(u2.kind).toBe('private')
+    expect(u2.profile.isDisabled).toBe(true)
+  })
+
+  it('a non-admin other-user event stays public-only and issues no private read', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    store.init()
+    await flush(); await flush()
+    const readsBefore = state.tableReads.filter(t => t === 'profiles').length
+
+    store._applyRealtimeEventForTest('profile_cards', {
+      eventType: 'UPDATE', table: 'profile_cards', schema: 'public',
+      new: { ...OTHER_CARD, name: 'Bilal Ahmed' }, old: {},
+    } as never)
+    await flush(); await flush(); await flush()
+
+    // No private read was issued for another account's row, and u-2 stays a
+    // public card.
+    expect(state.tableReads.filter(t => t === 'profiles').length).toBe(readsBefore)
+    expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.kind).toBe('public')
+    expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.profile.name).toBe('Bilal Ahmed')
+  })
+
+  it('a reconnect with no trips still asks about the caller and the private rows', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    store.init()
+    await flush(); await flush()
+    expect(store.getSnapshot().trips).toHaveLength(0)
+    state.rpcCalls = []
+    const readsBefore = state.tableReads.filter(t => t === 'profiles').length
+
+    state.disabled = true
+    expect(state.subscribeHandler).not.toBeNull()
+    state.subscribeHandler!('SUBSCRIBED')
+    state.subscribeHandler!('SUBSCRIBED')
+    await flush(); await flush(); await flush()
+
+    // The account-level work runs OUTSIDE the trip-count gate.
+    expect(state.rpcCalls.some(c => c.fn === 'is_disabled')).toBe(true)
+    expect(state.signOuts).toEqual(['u-1'])
+    expect(toast).toHaveBeenCalledWith(
+      'This account has been disabled. Contact support if you think this is a mistake.', 'err',
+    )
+    expect(state.tableReads.filter(t => t === 'profiles').length).toBeGreaterThan(readsBefore)
+  })
+
+  it('a burst of safe events issues one private read, not one per event', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', true)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
+    store.init()
+    await flush(); await flush()
+    const readsBefore = state.tableReads.filter(t => t === 'profiles').length
+
+    // The source trigger updates the private row as well as the card, so the bulk
+    // read the refresh issues answers with the newest name.
+    state.allProfileRows = [OWNER_PRIVATE, { ...OTHER_PRIVATE, name: 'D' }]
+    for (const name of ['A', 'B', 'C', 'D']) {
+      store._applyRealtimeEventForTest('profile_cards', {
+        eventType: 'UPDATE', table: 'profile_cards', schema: 'public',
+        new: { ...OTHER_CARD, name }, old: {},
+      } as never)
+    }
+    await flush(); await flush(); await flush()
+
+    // Four events share the read already running, plus at most one trailing pass
+    // for whatever landed while it ran — never one read per event.
+    const reads = state.tableReads.filter(t => t === 'profiles').length - readsBefore
+    expect(reads).toBeGreaterThan(0)
+    expect(reads).toBeLessThanOrEqual(2)
+    // The installed value is the last one the burst carried.
+    expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.profile.name).toBe('D')
+    expect(privateIds(store).sort()).toEqual(['u-1', 'u-2'])
+  })
+
+  it('a resume asks the server when the retained self row came from a failed read', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    store.init()
+    await flush(); await flush()
+    expect(store.currentUser()?.kind).toBe('private')
+
+    // The next run's self read fails, so the row is retained but its verdict says
+    // the account's status is unproven.
+    state.profileErrors = { 'u-1': { message: 'row unavailable' } }
+    await store.resumeSync()
+    await flush(); await flush()
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
+
+    // The cached row still says enabled, and it is exactly the stale state a
+    // resume exists to catch — so the check goes to the server rather than
+    // trusting it.
+    state.rpcCalls = []
+    state.disabled = true
+    expect(await store.enforceDisabledCheck()).toBe(true)
+    expect(state.rpcCalls.some(c => c.fn === 'is_disabled')).toBe(true)
+    expect(state.signOuts).toEqual(['u-1'])
+  })
+})
+
+// ============ R4 — fresh public fields overlay eligible private fallbacks ============
+describe('a public refresh overlays fresh fields onto a retained private row', () => {
+  it('a remote rename, avatar and availability change reach the private row', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', true)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
+    store.init()
+    await flush(); await flush()
+
+    // The public retry reads fresh cards with a new name, avatar and
+    // availability, while the private slices are not re-read.
+    state.cards = [
+      { ...OWNER_CARD, name: 'Asha Nair', avatar_url: 'https://cdn/a2.png', creator_available: false },
+      { ...OTHER_CARD, name: 'Bilal Ahmed', creator_available: false },
+    ]
+    await store.rereadPublicSlices()
+    await flush(); await flush()
+
+    const me = store.currentUser() as unknown as { kind: string; email: string; profile: Record<string, unknown> }
+    // The private fields survive…
+    expect(me.kind).toBe('private')
+    expect(me.email).toBe('a@example.invalid')
+    // …and the fresh public ones landed on top.
+    expect(me.profile.name).toBe('Asha Nair')
+    expect(me.profile.avatarUrl).toBe('https://cdn/a2.png')
+    expect(me.profile.creatorAvailable).toBe(false)
+    const u2 = store.getSnapshot().users.find(u => u.id === 'u-2') as { kind: string; profile: Record<string, unknown> }
+    expect(u2.kind).toBe('private')
+    expect(u2.profile.name).toBe('Bilal Ahmed')
+    expect(u2.profile.creatorAvailable).toBe(false)
+  })
+
+  it('a failed private hydration keeps the fresh public fields over the fallback', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', true)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
+    store.init()
+    await flush(); await flush()
+
+    // Both private reads fail — the table itself is unreadable — so both private
+    // rows are fallbacks, while the public catalogue succeeded with fresh fields.
+    state.tableErrors = { profiles: { message: 'table unavailable' } }
+    state.cards = [{ ...OWNER_CARD, name: 'Asha Nair' }, { ...OTHER_CARD, name: 'Bilal Ahmed' }]
+    await store.resumeSync()
+    await flush(); await flush()
+
+    const me = store.currentUser() as unknown as { kind: string; email: string; profile: { name: string } }
+    expect(me.kind).toBe('private')
+    expect(me.email).toBe('a@example.invalid')
+    expect(me.profile.name).toBe('Asha Nair')
+    const u2 = store.getSnapshot().users.find(u => u.id === 'u-2') as { kind: string; profile: { name: string } }
+    expect(u2.kind).toBe('private')
+    expect(u2.profile.name).toBe('Bilal Ahmed')
+    // Both carry the failed verdict, so the notice and its retry are reachable.
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
+    expect(store.getSnapshot().sliceReads['admin profiles']).toBe('failed')
+  })
+})
+
+// ============ R7 — one reviewed social-link serializer ============
+describe('a hostile nested social key never survives a public projection', () => {
+  const HOSTILE = {
+    id: 'u-1', kind: 'private' as const, email: 'a@example.invalid', createdAt: 1,
+    profile: {
+      name: 'Asha', languages: ['en'], travelStyles: [], isCreator: true,
+      socialLinks: { youtube: 'https://y/@a', email: 'a@example.invalid' } as unknown as { youtube?: string },
+    },
+  }
+
+  it('a live-card delta overlays the reviewed links onto a retained private row', async () => {
+    const { buildCatalog } = await import('../src/store/profileCatalog')
+    const fresh = {
+      id: 'u-1', kind: 'public' as const,
+      profile: { name: 'Asha Nair', isCreator: true, creatorAvailable: true, socialLinks: { youtube: 'https://y/@a2' } },
+    }
+    const result = buildCatalog(
+      { userId: 'u-1', identityEpoch: 0, authorityEpoch: 0, admin: false },
+      {
+        public: { users: [fresh], failed: false, complete: false },
+        self: { status: 'not-requested' },
+        admin: { status: 'not-requested' },
+      },
+      { ownerUserId: 'u-1', authorityEpoch: 0, selfAuthorized: true, users: [HOSTILE] },
+    )
+    const me = result.users.find(u => u.id === 'u-1') as unknown as { kind: string; profile: Record<string, unknown> }
+    // The private row is retained — the private fields survive…
+    expect(me.kind).toBe('private')
+    expect(me.profile.languages).toEqual(['en'])
+    // …and the card's reviewed fields, including the rebuilt nested object, land
+    // on top. The canary is gone.
+    expect(me.profile.name).toBe('Asha Nair')
+    expect(me.profile.socialLinks).toEqual({ youtube: 'https://y/@a2' })
+  })
+
+  it('the authority gate downgrade drops the nested canary', async () => {
+    const { buildCatalog } = await import('../src/store/profileCatalog')
+    // An admin batch installs the hostile row, then the caller loses admin
+    // authority and the gate downgrades it.
+    const result = buildCatalog(
+      { userId: 'u-9', identityEpoch: 0, authorityEpoch: 1, admin: false },
+      {
+        public: { users: [], failed: false, complete: true },
+        self: { status: 'not-requested' },
+        admin: { status: 'ok', value: [HOSTILE] },
+      },
+      { ownerUserId: null, authorityEpoch: null, selfAuthorized: false, users: [] },
+    )
+    const public1 = result.users.find(u => u.id === 'u-1')
+    expect(public1?.kind).toBe('public')
+    const links = (public1 as unknown as { profile: { socialLinks?: Record<string, unknown> } }).profile.socialLinks
+    expect(Object.keys(links ?? {})).toEqual(['youtube'])
+  })
+
+  it('the store projection and the offline snapshot agree with it', async () => {
+    const store = await freshStore()
+    // The store's own projection of the hostile row is the reviewed allowlist.
+    expect(store.publicOnlyUsers([HOSTILE])[0].profile.socialLinks).toEqual({ youtube: 'https://y/@a' })
+
+    // And a real authority loss projects the same way. The public read fails, so
+    // u-2's entry can only come from projecting the retained private row.
+    const hostileOther = {
+      ...OTHER_PRIVATE,
+      social_links: { youtube: 'https://y/@b', email: 'b@example.invalid' },
+    }
+    signIn(store, 'u-1', true)
+    state.cards = [OWNER_CARD]
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, hostileOther]
+    store.init()
+    await flush(); await flush()
+    expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.kind).toBe('private')
+
+    state.rpcError = true
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    await flush(); await flush()
+    const u2 = store.getSnapshot().users.find(u => u.id === 'u-2') as unknown as { kind: string; profile: { socialLinks?: Record<string, unknown> } }
+    expect(u2.kind).toBe('public')
+    expect(Object.keys(u2.profile.socialLinks ?? {})).toEqual(['youtube'])
+    expect(store.publicOnlyUsers(store.getSnapshot().users).find(u => u.id === 'u-2')?.profile.socialLinks)
+      .toEqual({ youtube: 'https://y/@b' })
   })
 })

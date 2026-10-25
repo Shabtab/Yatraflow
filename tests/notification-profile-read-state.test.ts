@@ -3,7 +3,17 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { routeParts } from '../src/lib/pageTitle'
-import {
+
+const { resumeSync } = vi.hoisted(() => ({ resumeSync: vi.fn(async () => {}) }))
+
+// The retry's contract is that it reaches the store's authorized re-hydration.
+// Everything else about the store is the real module.
+vi.mock('../src/store/store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/store/store')>()),
+  resumeSync,
+}))
+
+const {
   NotificationReadNotice,
   NotificationPanelContent,
   ProfileLookupNotice,
@@ -12,7 +22,7 @@ import {
   profileLookupState,
   profileLookupBlocksRoute,
   retryProfileLookup,
-} from '../src/App'
+} = await import('../src/App')
 import type { Notification } from '../src/data/types'
 
 const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
@@ -143,17 +153,22 @@ describe('notification read state', () => {
     expect(empty).toContain('You’re all caught up')
   })
 
-  it('renders a profile failure instead of a signed-out screen and retries the current URL', () => {
+  it('renders a profile failure and its Try again re-issues the authorized read', async () => {
     const failed = renderToStaticMarkup(createElement(ProfileLookupNotice, { state: 'failed' }))
     const reload = vi.fn()
     vi.stubGlobal('window', { location: { reload } })
+    resumeSync.mockClear()
 
-    retryProfileLookup()
+    await retryProfileLookup()
 
     expect(failed).toContain('role="alert"')
     expect(failed).toContain('Your profile could not load.')
     expect(failed).toContain('Try again')
-    expect(reload).toHaveBeenCalledOnce()
+    // The retry reaches the authorized re-hydration under the same generation,
+    // rather than reloading the whole app and re-reading the public catalogue
+    // that already succeeded.
+    expect(resumeSync).toHaveBeenCalledOnce()
+    expect(reload).not.toHaveBeenCalled()
   })
 
   it('lets a failed profile lookup take the bare route, and keeps the landing while the lookup reads', () => {

@@ -73,17 +73,12 @@ export type ProfileLookupState = 'anonymous' | 'reading' | 'failed' | 'missing' 
 
 /** Whether the profile lookup is still outstanding for this render.
  *
- *  `state` is passed as well as `hasProfile` because a STALE private row does not
- *  settle it. Root's executable probe at 2c31f6bd recorded exactly that
- *  (`owner-edge-ui-2c31f6bd.json`, "Stale private profile does not hide failure
- *  and retry"): a row left over from an earlier successful read made
- *  `hasProfile` true, the lookup read as settled, and the failure notice with its
- *  working retry never rendered. The read's own verdict outranks whatever the
- *  cache happens to still hold. */
+ *  `state` is required, not defaulted: a caller that omits it would silently
+ *  treat a failed read as settled, which is the defect this replaces. */
 export function needsProfileLookup(
   sessionUserId: string | null,
   hasProfile: boolean,
-  state: ProfileLookupState = 'ready',
+  state: ProfileLookupState,
 ): boolean {
   return !!sessionUserId && (!hasProfile || state === 'failed')
 }
@@ -95,30 +90,33 @@ export function profileLookupState(
 ): ProfileLookupState {
   if (!sessionUserId) return 'anonymous'
   // The signed-in account is the PRIVATE read (`self profile`), not the public
-  // catalogue. #800 F1: a public catalogue that succeeded while the private read
-  // failed was read as "completed without an account", so the notice offered a
-  // missing-profile message and no working retry. The private verdict wins when
-  // it exists; the public one is only the fallback for a read that never asked.
+  // catalogue. A public catalogue that succeeded while the private read failed
+  // used to read as "completed without an account", so the notice offered a
+  // missing-profile message and no working retry.
   //
-  // A failure is checked BEFORE `hasProfile`, and that is the second half of the
-  // same fix. A private row still in the cache from an earlier successful read
-  // used to make the lookup read as settled, so the failure notice with its
-  // working retry never rendered — root's executable probe at 2c31f6bd recorded
-  // exactly that (owner-edge-ui-2c31f6bd.json, "Stale private profile does not
-  // hide failure and retry"). A read that failed means the account's status is
-  // unproven, whatever the cache happens to still hold.
+  // Self success stands on its OWN verdict. A public-only failure must not
+  // override a private read that succeeded: the account's data is usable, and a
+  // consumer that follows the public verdict would hide a working import action
+  // behind a profile failure.
+  //
+  // A failure is checked BEFORE `hasProfile`, because a private row still in the
+  // cache from an earlier successful read must not settle a lookup whose latest
+  // read failed. A read that failed means the account's status is unproven,
+  // whatever the cache happens to still hold.
   const selfRead = sliceState(sliceReads, 'self profile')
-  const profileRead = sliceState(sliceReads, 'profiles')
-  if (selfRead === 'failed' || profileRead === 'failed') return 'failed'
-  if (hasProfile) return 'ready'
-  // A slice that was never asked cannot be waited on: `sliceState` reports an
-  // unknown key as 'reading', and an account whose run died before the private
-  // read, or whose verdict map predates it, would spin on the loading notice
-  // forever instead of settling as missing.
+  if (selfRead === 'failed') return 'failed'
+  if (selfRead === 'ready' && hasProfile) return 'ready'
   if (selfRead === 'reading' && 'self profile' in sliceReads) return 'reading'
+  const profileRead = sliceState(sliceReads, 'profiles')
+  if (profileRead === 'failed') return 'failed'
+  if (hasProfile) return 'ready'
   if (profileRead === 'reading') return 'reading'
   return 'missing'
 }
+
+/** Route segments that answer for a signed-out visitor. They stay reachable when
+ *  the signed-in account's private read fails. */
+const GUEST_ROUTE_SEGMENTS = new Set(['pub', 'creator', 'explore'])
 
 /** Whether the profile lookup takes the page from the route. A failed lookup takes it on the
  *  bare route too, so its Try again is never hidden behind the landing. A reading lookup does
@@ -156,11 +154,13 @@ export function notificationPanelModel(
  *  scroll position and any in-progress draft, and — worst — it re-reads the
  *  PUBLIC catalogue too, which is the read that already succeeded. `resumeSync`
  *  re-issues the same authorized reads under the same generation, so the retry
- *  actually reaches the read that failed. */
-export function retryProfileLookup(): void {
-  void import('./store/store')
+ *  actually reaches the read that failed.
+ *
+ *  The promise is returned so a caller can await the retry it triggered. */
+export function retryProfileLookup(): Promise<void> {
+  return import('./store/store')
     .then(store => store.resumeSync())
-    .catch(() => window.location.reload())
+    .catch(() => { window.location.reload() })
 }
 
 export function ProfileLookupNotice({ state }: { state: ProfileLookupState }) {
@@ -556,6 +556,14 @@ export default function App() {
     else if (parts[0] === 'auth' && !sessionUserId) page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
     else if (profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) page = <ProfileLookupPage state={profileState} />
     else page = <LandingPage onNavigate={navigate} />
+  } else if (!GUEST_ROUTE_SEGMENTS.has(parts[0] ?? '')
+    && profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) {
+    // A failed private read KEEPS the account's row — it is not silently
+    // downgraded to a public card — so `me` is non-null and this branch runs. The
+    // notice and its Try again must still be reachable here; a gate consulted only
+    // inside the `!me` branch above could never see this case. Guest-accessible
+    // segments stay reachable, exactly as they do for an account with no row.
+    page = <ProfileLookupPage state={profileState} />
   } else {
     switch (parts[0]) {
       case undefined:
