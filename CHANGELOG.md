@@ -16,6 +16,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **A storm now caps only the day it falls on.** The clock planned every day's budget from day 0's rain cap. A storm on day 0 then dampened every later dry day. Storms on later days under-grew the count. The last full day then over-covered and clamped its halt, leaving a 60 km stub day. Each day now caps on its own forecast. The count grows to the smallest number of later days whose own budgets cover the remainder. (#855)
+
 ## [0.79.2] - 2026-10-24
 
 **This patch fixes the Android release pipeline.** A tag run now attaches its APK, and the installed build names the same version as the tag.
