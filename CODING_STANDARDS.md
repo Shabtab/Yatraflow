@@ -1228,6 +1228,8 @@ process.
 Read this section **before** writing any script that edits a source file.
 The editor primitives are the default; a script is the exception.
 
+- **Use absolute paths with PowerShell .NET file APIs.** `Set-Location` does not change the process directory used by `System.IO.File`. A relative write can edit another clone. Resolve the path against the owned clone. Check that path before each write. Use editor primitives for `CHANGELOG.md`.
+
 - **A scripted replace needs an anchor that is unique.** `.NET String.Replace`
   replaces every occurrence, and `-replace` has no "first only" mode. A
   `useEffect` was once inserted after the anchor `}, [isLoaded, map, data,
