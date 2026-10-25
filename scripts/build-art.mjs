@@ -14,17 +14,29 @@
 // Exit code 1 when a master is missing, a file exceeds its cap, or the total
 // exceeds the budget. Never writes to the masters directory.
 //
-// The masters folder holds the pilot masters flat and the batch-1 masters in a
-// `batch1/` subfolder, so one root serves every id. MASTER_FILES names the path
-// under that root. The art workspace's own layout is the reference:
+// The masters folder holds the pilot masters flat and the batch masters in a
+// `batch1/` or `batch2/` subfolder, so one root serves every id. MASTER_FILES
+// names the path under that root. The art workspace's own layout is the
+// reference:
 //
 //   E:\YatraFlow\yatraflow-art-codex\masters\            pilot masters (flat)
 //   E:\YatraFlow\yatraflow-art-codex\masters\batch1\     batch-1 masters
+//   E:\YatraFlow\yatraflow-art-codex\masters\batch2\     batch-2 masters
 //
-// Both of these commands read the same root:
+// A batch-2 master that was generated outside that workspace is not copied into
+// it. Instead, stage a root of the same shape under E:\T3 and point --masters at
+// it. Every file in the staging root is a byte-identical copy, so a rebuild from
+// either root gives the same derivatives:
+//
+//   <staging>\             the six pilot masters, flat
+//   <staging>\batch1\      the fifteen batch-1 masters
+//   <staging>\batch2\      the batch-2 masters
+//
+// All three of these commands read the same root:
 //
 //   npm run art:build -- --masters E:\YatraFlow\yatraflow-art-codex\masters --check
 //   npm run art:build -- --masters E:\YatraFlow\yatraflow-art-codex\masters --list-masters
+//   npm run art:build -- --masters E:\T3\evidence\art-batch2-generation-20261025\staging --list-masters
 
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
@@ -76,6 +88,11 @@ const MASTER_FILES = {
   'es-no-published': 'batch1/es-no-published-v1.png',
   'es-offline': 'batch1/es-offline-v1.png',
   'es-error': 'batch1/es-error-v1.png',
+  // Batch 2. The generic scene is the only approved batch-2 master. Its file
+  // lives under a `batch2/` folder so the masters root stays a single --masters
+  // argument. That root may be the art workspace or an external staging folder
+  // built from it; either way this table names only a path relative to the root.
+  'generic-1': 'batch2/generic-1-v1.png',
 }
 
 const RATIO_VALUE = { '3:2': 3 / 2, '1:1': 1 }

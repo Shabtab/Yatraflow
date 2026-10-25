@@ -70,10 +70,13 @@ describe('artIdFor', () => {
     }
   })
 
-  it('returns null for a region with no generated image', () => {
-    // "generic" is the only region with no scene of its own. A trip there takes
-    // the road or city fallback; a place tile keeps the generic motif.
-    expect(artIdFor('generic', 'any-seed')).toBeNull()
+  it('returns the generic scene for a region whose only scene is the generic one', () => {
+    // Batch 2 gave "generic" a scene of its own. It is one id, so every seed
+    // picks it, and a place tile can now paint an honest scene instead of
+    // keeping its motif.
+    for (const seed of ['any-seed', 'Palolem', 'Rishikesh', '']) {
+      expect(artIdFor('generic', seed)).toBe('generic-1')
+    }
   })
 
   it('picks a seeded scene in each region that now has two', () => {
@@ -125,14 +128,24 @@ describe('coverFor', () => {
     expect(coverFor({ region: 'kashmir', seed: 'trip-1', placeCount: 3 })).toEqual({ kind: 'generated', id: 'himalaya-1' })
   })
 
-  it('uses road art for a region without images and two or more places', () => {
-    // "generic" has no scene of its own; every named region now has one, so the
-    // fallback is reached only through a region with an empty list.
-    expect(coverFor({ region: 'generic', seed: 'trip-1', placeCount: 2 })).toEqual({ kind: 'generated', id: 'road-1' })
+  it('uses the generic scene for a destination no region matches, whatever the place count', () => {
+    // Batch 2 gave "generic" a scene, so an unmatched destination no longer
+    // borrows the road or city family. Both place counts reach the same id:
+    // the generic scene does not depend on how many places the trip has.
+    expect(coverFor({ region: 'generic', seed: 'trip-1', placeCount: 2 })).toEqual({ kind: 'generated', id: 'generic-1' })
+    expect(coverFor({ region: 'generic', seed: 'trip-1', placeCount: 1 })).toEqual({ kind: 'generated', id: 'generic-1' })
   })
 
-  it('uses city art for a region without images and one place', () => {
-    expect(coverFor({ region: 'generic', seed: 'trip-1', placeCount: 1 })).toEqual({ kind: 'generated', id: 'city-1' })
+  it('still reaches the road and city family when a region list is empty', () => {
+    // No shipped region is empty any more, so the fallback step is proved
+    // against a manifest that empties one. The order matters: the region step
+    // is tried first, and only then the family for the place count.
+    const noRegionScene: ArtManifest = {
+      ...ART_MANIFEST,
+      regions: { ...ART_MANIFEST.regions, generic: [] },
+    }
+    expect(coverFor({ region: 'generic', seed: 'trip-1', placeCount: 2 }, noRegionScene)).toEqual({ kind: 'generated', id: 'road-1' })
+    expect(coverFor({ region: 'generic', seed: 'trip-1', placeCount: 1 }, noRegionScene)).toEqual({ kind: 'generated', id: 'city-1' })
   })
 
   it('returns null when no image exists at any step, which means the SVG floor', () => {
@@ -176,15 +189,16 @@ describe('vignetteArtFor', () => {
 })
 
 describe('honest region matching for place tiles', () => {
-  it('keeps the generic motif for a place no region names, and never borrows another region', () => {
-    // A tile shows only its own region's scene. "Rishikesh" matches no keyword,
-    // so regionFor gives "generic" and artIdFor gives null: the tile keeps its
-    // inline SVG. It must not fall through to the Himalaya scene, which would
-    // claim the place is in Kashmir.
+  it('gives a place no region names the generic scene, and never another region scene', () => {
+    // A tile shows its own region's scene, or the generic scene, and nothing
+    // else. "Rishikesh" matches no keyword, so regionFor gives "generic" and the
+    // tile paints generic-1. It must not fall through to the Himalaya scene,
+    // which would claim the place is in Kashmir. The generic scene is
+    // geographically neutral by design, so it identifies no region.
     for (const place of ['Rishikesh', 'Hampi', 'Ziro Valley']) {
       const region = regionFor({ destinations: [place] })
       expect(region, place).toBe('generic')
-      expect(artIdFor(region, place), place).toBeNull()
+      expect(artIdFor(region, place), place).toBe('generic-1')
     }
   })
 
@@ -193,17 +207,18 @@ describe('honest region matching for place tiles', () => {
     expect(artIdFor(regionFor({ destinations: ['Munnar'] }), 'Munnar')).toBe('kerala-1')
   })
 
-  it('gives a place in a newly filled region that region scene, not the fallback', () => {
+  it('gives a place in a newly filled region that region scene, not the generic one', () => {
     expect(regionFor({ destinations: ['Shillong'] })).toBe('meghalaya')
     expect(['meghalaya-1', 'meghalaya-2']).toContain(artIdFor('meghalaya', 'Shillong'))
     expect(regionFor({ destinations: ['Madikeri'] })).toBe('coorg')
     expect(['coorg-1', 'coorg-2']).toContain(artIdFor('coorg', 'Madikeri'))
     expect(regionFor({ destinations: ['Panjim, Goa'] })).toBe('goa')
     expect(['goa-1', 'goa-2']).toContain(artIdFor('goa', 'Panjim, Goa'))
-    // A town the keyword list does not name still keeps the generic motif: the
-    // new scenes must not widen what counts as a region match.
+    // A town the keyword list does not name is still "generic", and it now
+    // paints the generic scene. The new scenes must not widen what counts as a
+    // region match: Palolem stays generic rather than becoming Goa.
     expect(regionFor({ destinations: ['Palolem'] })).toBe('generic')
-    expect(artIdFor('generic', 'Palolem')).toBeNull()
+    expect(artIdFor('generic', 'Palolem')).toBe('generic-1')
   })
 })
 
@@ -228,6 +243,16 @@ describe('focalYFor', () => {
     expect(focalYFor('himalaya-1', '3:1')).toBe(60)
     expect(focalYFor('goa-2', '3:1')).toBe(60)
   })
+
+  it('gives generic-1 the family focal point, with no per-asset exception', () => {
+    // The generic scene is a wide landscape like every other scene, so it takes
+    // the shared values. A per-asset exception here would need its own reason.
+    expect(ART_MANIFEST.ids['generic-1'].ratio).toBe('3:2')
+    expect(ART_MANIFEST.ids['generic-1'].focalY).toEqual(ART_MANIFEST.ids['road-1'].focalY)
+    for (const ratio of ['default', '21:9', '3:1', '3.5:1']) {
+      expect(focalYFor('generic-1', ratio), ratio).toBe(focalYFor('road-1', ratio))
+    }
+  })
 })
 
 describe('srcsetFor', () => {
@@ -251,12 +276,14 @@ describe('srcsetFor', () => {
 })
 
 describe('manifest shape', () => {
-  it('has a list for every region, empty only where no image exists', () => {
+  it('has a non-empty list for every region, including the generic one', () => {
     for (const region of REGIONS) {
       expect(Array.isArray(ART_MANIFEST.regions[region])).toBe(true)
+      // No region is empty any more. An unmatched destination reaches the
+      // generic scene rather than falling through to the road or city family.
+      expect(ART_MANIFEST.regions[region].length, region).toBeGreaterThan(0)
     }
-    // "generic" is deliberately empty: no scene may claim an unmatched place.
-    expect(ART_MANIFEST.regions.generic).toEqual([])
+    expect(ART_MANIFEST.regions.generic).toEqual(['generic-1'])
   })
 
   it('gives each region its own scenes and keeps the fallback families separate', () => {

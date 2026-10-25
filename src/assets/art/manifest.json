@@ -7,7 +7,7 @@
     "coorg": ["coorg-1", "coorg-2"],
     "meghalaya": ["meghalaya-1", "meghalaya-2"],
     "kashmir": ["himalaya-1", "himalaya-2"],
-    "generic": []
+    "generic": ["generic-1"]
   },
   "fallbacks": {
     "road": ["road-1", "road-2"],
@@ -102,6 +102,12 @@
       "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
     },
     "road-2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "generic-1": {
       "widths": [320, 640, 960],
       "webp": 640,
       "ratio": "3:2",

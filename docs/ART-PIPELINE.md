@@ -21,7 +21,7 @@ with a backup.
 
 ## The current set
 
-Twenty-one images are committed: fourteen landscape scenes and seven square state vignettes.
+Twenty-two images are committed: fifteen landscape scenes and seven square state vignettes.
 Each one is a byte-identical copy of an accepted derivative. The id carries no review round,
 so a replaced master keeps its id.
 
@@ -41,6 +41,7 @@ so a replaced master keeps its id.
 | `city-1` | City fallback, one place | 320, 640, 960 | 640 |
 | `road-1` | Road fallback, two or more places | 320, 640, 960 | 640 |
 | `road-2` | Road fallback, second scene | 320, 640, 960 | 640 |
+| `generic-1` | Generic region, a destination no keyword matches | 320, 640, 960 | 640 |
 | `es-first-trip` | First-trip empty state (square) | 280, 560 | 560 |
 | `es-no-saved` | Explore saved-empty state (square) | 280, 560 | 560 |
 | `es-no-results` | Explore filter-empty state (square) | 280, 560 | 560 |
@@ -49,9 +50,10 @@ so a replaced master keeps its id.
 | `es-offline` | Offline state (square), declared and unused | 280, 560 | 560 |
 | `es-error` | Page read failed (square) | 280, 560 | 560 |
 
-The region lists in `manifest.json` map the trip regions to these ids. Only `generic` has an
-empty list, on purpose: a place name no region matches keeps the generic motif rather than
-borrowing another region's scene.
+The region lists in `manifest.json` map the trip regions to these ids. Every region has at
+least one scene. `generic` holds `generic-1`, a geographically neutral scene: a place name no
+keyword matches shows it rather than borrowing another region's scene, so the tile still shows
+a finished illustration and still identifies no region.
 
 `es-offline` is declared and committed but wired to nothing. No page has a supported offline
 branch that could show it: `OfflineBanner` already owns the connection message in the shell, and
@@ -75,7 +77,7 @@ because its peaks sit high in the frame. That is a manifest value, not a code br
 | Whole folder | 6 MiB |
 
 The limits are in `manifest.json` under `budget`. The build and the tests read the same values.
-The current total is 1097866 bytes (1072.1 KiB) for 77 files.
+The current total is 1151135 bytes (1124.2 KiB) for 81 files.
 
 ## Encoder settings
 
@@ -100,11 +102,32 @@ and are no longer in the manifest. It prints a byte table and exits with code 1 
 total is over its cap, or when a master is missing.
 
 `MASTER_FILES` in `scripts/build-art.mjs` names each id's master relative to the folder you pass.
-The pilot masters sit flat and the batch-1 masters sit in `batch1/`, so one root serves both:
+The pilot masters sit flat and the batch masters sit in `batch1/` or `batch2/`, so one root
+serves every id:
 
 ```powershell
 npm run art:build -- --masters E:\YatraFlow\yatraflow-art-codex\masters --check
 ```
+
+A batch-2 master is not copied into the art workspace. Stage a folder of the same shape under
+`E:\T3` instead, with byte-identical copies, and point `--masters` at it:
+
+```
+<staging>\            the six pilot masters, flat
+<staging>\batch1\     the fifteen batch-1 masters
+<staging>\batch2\     the batch-2 masters
+```
+
+The table names only paths relative to that root, so no machine path enters the build. A rebuild
+from either root gives the same derivatives:
+
+```powershell
+npm run art:build -- --masters E:\T3\evidence\art-batch2-generation-20261025\staging --list-masters
+```
+
+The art workspace root resolves 21 of 22 ids. `--list-masters` against it reports
+`generic-1` missing, which is correct: that master was never copied into the workspace. Use the
+staging root for a full resolve, and expect the workspace root to fail the `generic-1` row.
 
 To confirm every id still resolves to a master of the right ratio, without encoding anything:
 
@@ -132,7 +155,7 @@ On 2026-10-11 the build reproduced all 23 committed files byte for byte from the
 ## Add or replace an image
 
 1. Put the master PNG in the masters folder. Use a 3:2 landscape master for a scene, or a 1:1 square master for a vignette.
-2. Add the master file name to `MASTER_FILES` in `scripts/build-art.mjs`. The name is relative to the masters folder. A batch file reads `batch1/goa-1-v1.png`.
+2. Add the master file name to `MASTER_FILES` in `scripts/build-art.mjs`. The name is relative to the masters folder. A batch file reads `batch1/goa-1-v1.png` or `batch2/generic-1-v1.png`.
 3. Add or update the id in `src/assets/art/manifest.json`. Set its widths, its WebP width, its ratio and its focal points.
 4. Add the id to the region or fallback list it belongs to.
 5. Run `--list-masters` to confirm the master resolves and its ratio matches the manifest.

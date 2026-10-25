@@ -3,10 +3,11 @@
 // that place. The panel is not drawn when no place has a plan yet.
 //
 // A tile shows the scene of the region its place name maps to, and nothing else.
-// A name no region matches keeps the generic motif: artIdFor returns null for
-// "generic", so no fallback scene is substituted. A Himalaya scene on a tile
-// called "Rishikesh" would be a false claim about the place, which is worse than
-// no scene at all.
+// A name no region matches maps to "generic", whose scene is geographically
+// neutral: the tile shows a finished illustration that identifies no region. It
+// must never borrow a named region's scene. A Himalaya scene on a tile called
+// "Rishikesh" would be a false claim about the place, which is worse than no
+// scene at all. The inline motif stays as the loading and error floor.
 import { useId } from 'react'
 import type { PlaceTile } from '../../lib/explorePage'
 import { artIdFor } from '../../lib/regionArt'

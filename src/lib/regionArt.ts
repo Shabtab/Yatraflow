@@ -7,6 +7,10 @@
 // Fallback chain for coverFor(): user cover, then the generated region image,
 // then the generated road or city image, then null. A null result means the
 // caller paints its inline SVG motif.
+//
+// Every region has at least one scene, including "generic", which holds the
+// geographically neutral scene an unmatched destination shows. The road and
+// city families are reached only when a region list is empty.
 
 import manifestJson from '../assets/art/manifest.json'
 
