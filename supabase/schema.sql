@@ -826,7 +826,9 @@ alter publication supabase_realtime add table public.decisions;
 alter publication supabase_realtime add table public.activity;
 alter publication supabase_realtime add table public.notifications;
 alter publication supabase_realtime add table public.published_itineraries;
-alter publication supabase_realtime add table public.profile_cards;  -- public identity live-updates; the private table is NOT published (#800)
+-- `public.profile_cards` is added to the publication in the #800 section at the
+-- end of this file, AFTER the table is created. Publishing it here — ahead of its
+-- own definition — raises 42P01 when these statements run in source order.
 alter publication supabase_realtime add table public.admin_audit;  -- masteradmin console Audit tab reads live
 
 -- ============================================================
@@ -1781,9 +1783,16 @@ on conflict (id) do nothing;
 -- The ONE public read path. Typed as `setof public.profile_cards`, so the return
 -- shape IS the allowlist and a caller cannot ask for a column that is not in it.
 -- Security definer so an anonymous caller reads a public card with no grant on
--- the private table. A null argument means "every card" — the catalogue is public
--- by design, because clients hold SELECT on the projection for Realtime — and a
--- named list narrows it. Both shapes return the same columns.
+-- the private table; `auth.uid()` decides WHO may read, never WHAT is read.
+--
+-- The disabled check comes first, and it is not optional: a security-definer
+-- function bypasses the table's RLS, so the RESTRICTIVE deny-disabled policy does
+-- not protect this function. Without the guard a disabled account reads the whole
+-- directory. It answers an empty set rather than raising.
+--
+-- A null argument means "every card" — the catalogue is public by design, because
+-- clients hold SELECT on the projection for Realtime — and a named list narrows
+-- it. Both shapes return the same columns.
 create or replace function public.get_public_profile_cards(p_ids uuid[] default null)
 returns setof public.profile_cards
 language plpgsql
@@ -1792,6 +1801,9 @@ set search_path = public
 stable
 as $$
 begin
+  if coalesce(public.is_disabled(), false) then
+    return;
+  end if;
   if p_ids is null then
     return query
       select c.id, c.name, c.avatar_url, c.is_creator, c.creator_bio, c.social_links, c.creator_available
@@ -1809,15 +1821,39 @@ grant execute on function public.get_public_profile_cards(uuid[]) to anon, authe
 revoke all on function public.safe_social_links(jsonb) from public, anon, authenticated;
 revoke all on function public.sync_profile_card() from public, anon, authenticated;
 
--- The projection is the only public surface. Clients must not write it: the
--- trigger above is its single writer, and a client write would desync the two
--- tables. SELECT is granted to anon and authenticated because Realtime
--- authorizes `postgres_changes` against the subscriber's privileges on the
--- published table — safe by construction, because the table holds nothing but
--- the reviewed public fields.
+-- The projection's own ACL. Two independent defects were found here.
+--
+-- (a) The table had RLS DISABLED, so a SELECT grant was an unfiltered read for
+--     every grantee and the RESTRICTIVE deny-disabled policy did not reach it.
+--     RLS goes on, with a permissive public read plus the RESTRICTIVE denial.
+-- (b) The revoke named only INSERT, UPDATE and DELETE. A deployment may run
+--     `alter default privileges ... grant all on tables to anon, authenticated`
+--     — Supabase does — which grants TRUNCATE, REFERENCES and TRIGGER too, and an
+--     authenticated caller could then truncate the whole public directory. So the
+--     revoke is `all`, and SELECT is re-granted after it.
 revoke all on public.profile_cards from public;
-revoke insert, update, delete on public.profile_cards from anon, authenticated;
+revoke all on public.profile_cards from anon, authenticated;
 grant select on public.profile_cards to anon, authenticated;
+
+alter table public.profile_cards enable row level security;
+
+-- The public read: everyone, including `anon`. Without a permissive policy RLS
+-- would answer zero rows to everyone, which is not the intent.
+drop policy if exists "profile_cards read" on public.profile_cards;
+create policy "profile_cards read" on public.profile_cards
+  for select using (true);
+
+-- The RESTRICTIVE denial, which is the one that takes access AWAY. Scoped to
+-- `authenticated` on purpose: `anon` has no session and no disabled account, and
+-- the anonymous public read must keep working.
+drop policy if exists "deny disabled" on public.profile_cards;
+create policy "deny disabled" on public.profile_cards
+  as restrictive for all to authenticated using (not public.is_disabled());
+
+-- The publication statement for this table lives here, after its definition.
+-- Putting it with the other publications near the top of the file raised 42P01,
+-- because it ran before the table existed.
+alter publication supabase_realtime add table public.profile_cards;  -- public identity live-updates; the private table is NOT published (#800)
 
 -- The anonymous role loses direct SELECT on the private table. `authenticated`
 -- keeps it, because RLS now restricts its rows to self and admin.

@@ -30,6 +30,13 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
   const retry = () => { void rereadPublicSlices() }
 
   const creator = userById(creatorId)
+  // #800: retained crew identity and public creator availability are different
+  // things. A disabled account keeps its card — name and avatar for crews it
+  // already belongs to — but its public creator route must not render. The check
+  // is the derived `creatorAvailable` signal, not the creator badge, so a former
+  // creator with live publications stays listable once re-enabled. Without this,
+  // the page rendered for any identity that merely existed.
+  const creatorUnavailable = creator !== undefined && !creator.profile.creatorAvailable
   // #585 — this is the creator's PUBLIC catalog, so #350's vocabulary applies:
   // a plan that came down leaves the page. The creator's own hub keeps the row
   // on purpose (its sales history and funnel live there) — the two surfaces
@@ -43,8 +50,10 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
   const totalViews = pubs.reduce((s, p) => s + p.views, 0)
   const totalForks = pubs.reduce((s, p) => s + p.copies, 0)
 
-  if (!creator) {
+  if (!creator || creatorUnavailable) {
     // A broken read is not an absent creator. The distinction is the whole bug.
+    // A disabled creator is not an absent creator either, and gets the same
+    // not-found copy rather than a page that names them.
     if (profileRead !== 'ready') {
       const copy = emptyCopyFor(profileRead, 'this creator', retry)
       return (

@@ -13,12 +13,16 @@
 --      `public.profiles`, so a public read and a public event share one
 --      allowlist and neither can drift;
 --   2. a typed security-definer RPC that reads the projection — the one public
---      read path, with a fixed search path and explicit role grants;
+--      read path, with a fixed search path, an explicit disabled-caller check
+--      and explicit role grants;
 --   3. `public.profiles` becomes private: self SELECT plus the existing admin
 --      paths, with the anonymous grant revoked;
---   4. Realtime moves from `profiles` to `profile_cards`, so a live profile
+--   4. the projection carries RLS with the same RESTRICTIVE deny-disabled policy
+--      the private tables carry, and an `all` revoke so a default-privileges
+--      deployment cannot hand a client TRUNCATE;
+--   5. Realtime moves from `profiles` to `profile_cards`, so a live profile
 --      event carries the safe columns and never a private one;
---   5. `admin_audit` gains the RESTRICTIVE disabled-account denial it was
+--   6. `admin_audit` gains the RESTRICTIVE disabled-account denial it was
 --      missing, closing a disabled admin's read of deleted-user emails.
 --
 -- Re-run safety: every statement is idempotent (`create table if not exists`,
@@ -30,7 +34,7 @@ begin;
 
 -- ---------------------------------------------------------------- 1. the signal
 -- A definer helper that rebuilds `social_links` from ONLY the reviewed string
--- keys. Returning the stored JSONB object directly would publish whatever keys a
+-- keys. A direct return of the stored JSONB object would publish whatever keys a
 -- future writer put in it, so the allowlist is enforced here, at the boundary,
 -- rather than trusted from the column.
 create or replace function public.safe_social_links(p_links jsonb)
@@ -57,7 +61,7 @@ $$;
 -- `creator_available` is the reviewed derived signal that separates retained crew
 -- identity from public creator availability: it is `not is_disabled`, and it is
 -- what the public surfaces filter on, so `is_disabled` itself never leaves the
--- private table. It deliberately does NOT require `is_creator`, because a plan
+-- private table. It deliberately does NOT need `is_creator`, because a plan
 -- published by an account that later dropped the creator badge must not vanish
 -- from Explore.
 create table if not exists public.profile_cards (
@@ -120,13 +124,20 @@ on conflict (id) do nothing;
 -- The ONE public read path. Typed as `setof public.profile_cards`, so the return
 -- shape IS the allowlist and a caller cannot ask for a column that is not in it.
 -- Security definer so an anonymous caller can read a public card without any
--- grant on the private table; `auth.uid()` is not consulted, so the same function
--- serves signed-out and signed-in callers.
+-- grant on the private table; `auth.uid()` is not consulted for WHO is read, only
+-- for WHETHER this caller may read at all.
 --
 -- A null argument means "every card", which is what the app's public hydration
 -- needs — the catalogue is public by design, because clients hold SELECT on the
 -- projection for Realtime. A named list narrows it. Both shapes return the same
 -- columns, so no read path returns more than another.
+--
+-- The disabled check comes FIRST, and it is not optional. A security-definer
+-- function bypasses the table's RLS, so the RESTRICTIVE deny-disabled policy that
+-- protects `profiles` does NOT protect this function: without this guard a
+-- disabled account calls the RPC and reads the whole directory. It answers an
+-- empty set rather than raising, because a disabled caller is not an error — it
+-- is a caller who must see nothing.
 create or replace function public.get_public_profile_cards(p_ids uuid[] default null)
 returns setof public.profile_cards
 language plpgsql
@@ -135,6 +146,9 @@ set search_path = public
 stable
 as $$
 begin
+  if coalesce(public.is_disabled(), false) then
+    return;
+  end if;
   if p_ids is null then
     return query
       select c.id, c.name, c.avatar_url, c.is_creator, c.creator_bio, c.social_links, c.creator_available
@@ -154,7 +168,7 @@ revoke all on function public.safe_social_links(jsonb) from public, anon, authen
 revoke all on function public.sync_profile_card() from public, anon, authenticated;
 
 -- ------------------------------------------------- 5. the private table closes
--- Replace the permissive read. Adding a second permissive policy cannot override
+-- Replace the permissive read. A second permissive policy cannot override
 -- `using (true)` — permissive policies combine with OR — so the old one is dropped
 -- and replaced, not supplemented. The replacement is guarded the same way, so a
 -- re-run does not fail on a policy that is already there.
@@ -176,15 +190,55 @@ $$;
 -- it, because RLS now restricts its rows to self and admin.
 revoke select on public.profiles from anon;
 
--- The projection is the only public surface. Clients must not write it: the
--- trigger on `profiles` is its single writer, so a client write would desync the
--- two tables. SELECT is granted to `anon` and `authenticated` because Realtime
--- authorizes `postgres_changes` against the subscriber's privileges on the
--- published table — and that grant is safe by construction, because the table
--- holds nothing but the reviewed public fields.
+-- ------------------------------------------------- 5b. the projection's own ACL
+-- Two things were wrong here, and both were found by an independent probe.
+--
+-- (a) The table had RLS DISABLED. A table with RLS off and a SELECT grant is
+--     readable by every grantee with no row filtering at all, so the RESTRICTIVE
+--     deny-disabled policy that protects `profiles` did not protect this table:
+--     a disabled authenticated caller read the whole directory straight from it.
+--     RLS goes on, with a permissive public read plus the same RESTRICTIVE
+--     deny-disabled policy the other tables carry.
+--
+-- (b) The revoke named only INSERT, UPDATE and DELETE. A deployment may run
+--     `alter default privileges ... grant all on tables to anon, authenticated`
+--     — Supabase does — which grants TRUNCATE, REFERENCES and TRIGGER too. An
+--     authenticated caller could then TRUNCATE the public directory and erase
+--     every identity. So the revoke is `all`, and SELECT is re-granted after it.
 revoke all on public.profile_cards from public;
-revoke insert, update, delete on public.profile_cards from anon, authenticated;
+revoke all on public.profile_cards from anon, authenticated;
 grant select on public.profile_cards to anon, authenticated;
+
+alter table public.profile_cards enable row level security;
+
+-- The public read: everyone, including `anon`. Without a permissive policy RLS
+-- would answer zero rows to everyone, which is not the intent.
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profile_cards' and policyname = 'profile_cards read'
+  ) then
+    create policy "profile_cards read" on public.profile_cards
+      for select using (true);
+  end if;
+end;
+$$;
+
+-- The RESTRICTIVE denial, which is the one that takes access AWAY. It is scoped
+-- to `authenticated` on purpose: `anon` has no session and no disabled account,
+-- and the anonymous public read must keep working.
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profile_cards' and policyname = 'deny disabled'
+  ) then
+    create policy "deny disabled" on public.profile_cards
+      as restrictive for all to authenticated using (not public.is_disabled());
+  end if;
+end;
+$$;
 
 -- --------------------------------------------------------- 6. Realtime moves
 -- Publishing the whole `profiles` row sent every column — email included — to

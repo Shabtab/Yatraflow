@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { state, toast } = vi.hoisted(() => ({
   state: {
-    /** Every `from(...)` read the store attempts, so a test can assert a path
+    /** Every `from(...)` read the store tries, so a test can assert a path
      *  never touches the private table. */
     tableReads: [] as string[],
     /** Every RPC the store calls, with its arguments. */
@@ -166,6 +166,45 @@ describe('the merge rule', () => {
     expect(natural.find(u => u.id === 'u-1')?.kind).toBe('private')
     expect(natural.find(u => u.id === 'u-2')?.kind).toBe('public')
   })
+
+  // ---- the independent probe's findings, as failing-first regressions ----
+  it('a public rename lands on a privately cached identity without erasing its email', async () => {
+    const { mergeUsers, rowToPublicUser, rowToPrivateUser } = await freshStore()
+    const priv = rowToPrivateUser(OWNER_PRIVATE)
+    const merged = mergeUsers([priv], [rowToPublicUser({ ...OWNER_CARD, name: 'Renamed' })])[0]
+
+    expect(merged.kind).toBe('private')
+    expect(merged.email).toBe('a@example.invalid')  // the private field survives
+    expect(merged.profile.name).toBe('Renamed')     // and the public one lands
+  })
+
+  it('a remote disablement reaches a privately cached identity', async () => {
+    const { mergeUsers, rowToPublicUser, rowToPrivateUser } = await freshStore()
+    const merged = mergeUsers([rowToPrivateUser(OWNER_PRIVATE)], [rowToPublicUser({ ...OWNER_CARD, creator_available: false })])[0]
+    expect(merged.profile.creatorAvailable).toBe(false)
+  })
+
+  it('a remote avatar change reaches a privately cached identity', async () => {
+    const { mergeUsers, rowToPublicUser, rowToPrivateUser } = await freshStore()
+    const merged = mergeUsers([rowToPrivateUser(OWNER_PRIVATE)], [rowToPublicUser({ ...OWNER_CARD, avatar_url: 'https://cdn/new.png' })])[0]
+    expect(merged.profile.avatarUrl).toBe('https://cdn/new.png')
+    expect(merged.email).toBe('a@example.invalid')
+  })
+
+  it('an admin-held private row keeps its own private fields and takes public updates', async () => {
+    const { mergeUsers, rowToPublicUser, rowToPrivateUser } = await freshStore()
+    // An admin hydrates private rows for OTHER accounts, so the same rule must hold
+    // for a row the signed-in user does not own.
+    const other = rowToPrivateUser({
+      ...OWNER_PRIVATE, id: 'u-9', email: 'other@example.invalid',
+      home_city: 'PRIVATE-CITY', languages: ['hi'], travel_styles: ['fast'], is_disabled: false, created_at: 9,
+    })
+    const merged = mergeUsers([other], [rowToPublicUser({ ...OTHER_CARD, id: 'u-9', name: 'Bilal Ahmed' })])[0]
+    expect(merged.kind).toBe('private')
+    expect(merged.profile.name).toBe('Bilal Ahmed')
+    expect(merged.profile.homeCity).toBe('PRIVATE-CITY')
+    expect(merged.email).toBe('other@example.invalid')
+  })
 })
 
 describe('the public read path', () => {
@@ -241,6 +280,47 @@ describe('the realtime dispatch', () => {
     expect(store.currentUser()?.kind).toBe('private')
     expect(store.currentUser()?.email).toBe('a@example.invalid')
   })
+
+  it('a remote rename of the SIGNED-IN user reaches the screen and keeps the account', async () => {
+    // The independent probe's finding, at the real dispatch seam: the channel
+    // subscribes to every `profile_cards` event, and the public-to-public rename
+    // always worked. What failed was a rename arriving while the cache held the
+    // PRIVATE variant — the old merge ignored it, so the screen kept the old name.
+    const store = await freshStore()
+    const { rowToPrivateUser, _applyRealtimeEventForTest } = store
+    store.getSnapshot().sessionUserId = 'u-1'
+    store.getSnapshot().users = [rowToPrivateUser(OWNER_PRIVATE)]
+
+    _applyRealtimeEventForTest('profile_cards', {
+      eventType: 'UPDATE', schema: 'public', table: 'profile_cards',
+      commit_timestamp: new Date().toISOString(),
+      old: { id: 'u-1' },
+      new: { id: 'u-1', name: 'Asha Nair', avatar_url: 'https://cdn/new.png', is_creator: true, creator_bio: 'Kerala', social_links: { instagram: 'https://i/a' }, creator_available: true },
+    } as never)
+
+    const me = store.currentUser()
+    expect(me?.kind).toBe('private')
+    expect(me?.email).toBe('a@example.invalid')      // the account survives
+    expect(me?.profile.name).toBe('Asha Nair')       // and the rename lands
+    expect(me?.profile.avatarUrl).toBe('https://cdn/new.png')
+  })
+
+  it('a remote disablement of the SIGNED-IN user reaches the screen', async () => {
+    const store = await freshStore()
+    const { rowToPrivateUser, _applyRealtimeEventForTest } = store
+    store.getSnapshot().sessionUserId = 'u-1'
+    store.getSnapshot().users = [rowToPrivateUser(OWNER_PRIVATE)]
+
+    _applyRealtimeEventForTest('profile_cards', {
+      eventType: 'UPDATE', schema: 'public', table: 'profile_cards',
+      commit_timestamp: new Date().toISOString(),
+      old: { id: 'u-1' },
+      new: { id: 'u-1', name: 'Asha', avatar_url: null, is_creator: true, creator_bio: null, social_links: null, creator_available: false },
+    } as never)
+
+    expect(store.currentUser()?.profile.creatorAvailable).toBe(false)
+    expect(store.currentUser()?.email).toBe('a@example.invalid')
+  })
 })
 
 describe('the offline snapshot', () => {
@@ -264,9 +344,85 @@ describe('the offline snapshot', () => {
       expect(u.profile).not.toHaveProperty('travelStyles')
       expect(u.profile).not.toHaveProperty('isDisabled')
     }
-    // The write side drops private rows before they are ever serialised.
+    // The write side projects every identity, dropping only the private data.
     const mixed = [rowToPrivateUser(OWNER_PRIVATE), { id: 'u-2', kind: 'public', profile: { name: 'Bilal', isCreator: false, creatorAvailable: true } }]
-    expect(publicOnlyUsers(mixed as never).map(u => u.id)).toEqual(['u-2'])
+    const written = publicOnlyUsers(mixed as never)
+    expect(written.map(u => u.id)).toEqual(['u-1', 'u-2'])
+    expect(JSON.stringify(written).includes('a@example.invalid')).toBe(false)
+    expect(JSON.stringify(written).includes('Kochi')).toBe(false)
+  })
+
+  it('the write side projects a private identity instead of deleting it', async () => {
+    // An independent probe found the write side filtering private entries out
+    // entirely, which removed the signed-in user (and every admin-held account)
+    // from the offline public directory. The identity must survive; only the
+    // private DATA is dropped.
+    const { publicOnlyUsers, rowToPrivateUser } = await freshStore()
+    const users = publicOnlyUsers([rowToPrivateUser(OWNER_PRIVATE)])
+
+    expect(users).toHaveLength(1)
+    expect(users[0].id).toBe('u-1')
+    expect(users[0].kind).toBe('public')
+    expect(users[0].profile.name).toBe('Asha')
+    expect(users[0].profile.isCreator).toBe(true)
+    // And nothing private came with it.
+    expect(users[0]).not.toHaveProperty('email')
+    expect(users[0]).not.toHaveProperty('createdAt')
+    expect(users[0].profile).not.toHaveProperty('homeCity')
+    expect(users[0].profile).not.toHaveProperty('languages')
+    expect(users[0].profile).not.toHaveProperty('travelStyles')
+    expect(users[0].profile).not.toHaveProperty('isDisabled')
+  })
+
+  it('a legacy disabled snapshot cannot restore creator availability', async () => {
+    const { sanitizeSnapshotUsers, rowToPrivateUser } = await freshStore()
+    const priv = rowToPrivateUser(OWNER_PRIVATE)
+    // An old snapshot: the administrative flag is present and the derived signal
+    // is absent. A read of the absent signal as `!== false` used to restore a
+    // disabled creator as publicly available.
+    const users = sanitizeSnapshotUsers([{ ...priv, profile: { ...priv.profile, isDisabled: true, creatorAvailable: undefined } }])
+    expect(users[0].profile.creatorAvailable).toBe(false)
+    expect(users[0].profile).not.toHaveProperty('isDisabled')
+  })
+
+  it('a legacy snapshot social-links object is rebuilt from the reviewed keys', async () => {
+    const { sanitizeSnapshotUsers, rowToPrivateUser, reviewedSocialLinks } = await freshStore()
+    const priv = rowToPrivateUser(OWNER_PRIVATE)
+    const canary = { instagram: 'https://instagram.com/synthetic', email: 'PRIVATE-NESTED-CANARY' }
+    const users = sanitizeSnapshotUsers([{ ...priv, profile: { ...priv.profile, socialLinks: canary } }])
+    expect(JSON.stringify(users).includes('PRIVATE-NESTED-CANARY')).toBe(false)
+    expect(users[0].profile.socialLinks).toEqual({ instagram: 'https://instagram.com/synthetic' })
+    // The same rebuild runs on any untrusted value, including non-objects.
+    expect(reviewedSocialLinks(null)).toBeUndefined()
+    expect(reviewedSocialLinks('nope')).toBeUndefined()
+    expect(reviewedSocialLinks({ youtube: '  ', instagram: 7 })).toBeUndefined()
+    expect(reviewedSocialLinks({ youtube: 'https://y/@a', other: 'x' })).toEqual({ youtube: 'https://y/@a' })
+  })
+
+  it('an offline boot restores the public directory and then the signed-in private row', async () => {
+    // The lifecycle, not just the mapper: a cold boot reads the snapshot, and the
+    // hydrate that follows must put the private row back without the public read
+    // erasing it.
+    const store = await freshStore()
+    const { rowToPrivateUser, rowToPublicUser, sanitizeSnapshotUsers, mergeUsers } = store
+    const legacy = sanitizeSnapshotUsers([{
+      id: 'u-1', email: 'a@example.invalid', createdAt: 1,
+      profile: { name: 'Asha', isCreator: true, isDisabled: false, homeCity: 'Kochi', languages: ['en'], travelStyles: ['balanced'], socialLinks: { instagram: 'https://i/a', email: 'CANARY' } },
+    }])
+    store.getSnapshot().users = legacy
+    expect(store.getSnapshot().users).toHaveLength(1)
+    expect(JSON.stringify(store.getSnapshot().users).includes('CANARY')).toBe(false)
+
+    // The hydrate's public read then lands, and the self row on top of it.
+    store.getSnapshot().sessionUserId = 'u-1'
+    store.getSnapshot().users = mergeUsers(legacy, [rowToPrivateUser(OWNER_PRIVATE)])
+    const me = store.currentUser()
+    expect(me?.kind).toBe('private')
+    expect(me?.email).toBe('a@example.invalid')
+    expect(me?.profile.homeCity).toBe('Kochi')
+    // The private row's own social links, which the snapshot's rebuilt allowlist
+    // already narrowed to the reviewed keys.
+    expect(me?.profile.socialLinks).toEqual({ youtube: 'https://y/@a', instagram: 'https://i/a' })
   })
 })
 
