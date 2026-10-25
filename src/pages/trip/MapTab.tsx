@@ -279,6 +279,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   const identity = useMemo<PlaceIdentity>(() => ({
     names: tripPresenceIds.names, keys: tripPresenceIds.keys, places: tripPresenceIds.places,
     added: addedIds, dismissed: dismissedIds,
+    // The predicate decides an open preview through `staged`; kept ids remain
+    // in `added` as bookkeeping only - they must not outrank the plan (#839).
+    staged: stagedIdsRef.current,
   }), [tripPresenceIds, addedIds, dismissedIds])
 
   // OSRM road geometry of the whole route — feeds Google Search-Along-Route

@@ -36,10 +36,17 @@ export interface PlaceIdentity {
   keys: PlaceKey[]
   /** Named, placed records for proximity checks. */
   places: PlaceRecord[]
-  /** Hit ids added in THIS session - staged in a preview or committed. */
+  /** Hit ids added in THIS session (MapTab bookkeeping). They never outrank
+   *  the plan: an open preview must decide through `staged` (#839). */
   added: Set<string>
   /** Hit ids dismissed in this session. */
   dismissed: Set<string>
+  /** Hit ids staged into an OPEN preview, with the name each will land under.
+   *  While the preview holds, a staged id decides - the plan cannot see a stop
+   *  that has not landed yet (#345). Once it closes, the plan alone answers, so
+   *  a kept id can never hide a place whose stop was later deleted or rejected
+   *  (#839). */
+  staged?: ReadonlyMap<string, string>
 }
 
 export interface PlaceLike {
@@ -53,6 +60,10 @@ export interface PlaceLike {
   source?: PlaceProvider
   lat?: number
   lng?: number
+  /** Provider hits carry the long forms (providers/hits.ts) where planned
+   *  stops carry the short ones; both name one position. */
+  latitude?: number
+  longitude?: number
 }
 
 /**
@@ -80,10 +91,16 @@ export function placeKeyMatches(a: PlaceKey, b: PlaceKey): boolean {
   return !a.provider || !b.provider || a.provider === b.provider
 }
 
-function usableCoords(a: { lat?: number; lng?: number }): a is { lat: number; lng: number } {
-  return typeof a.lat === 'number' && typeof a.lng === 'number'
-    && Number.isFinite(a.lat) && Number.isFinite(a.lng)
-    && !(a.lat === 0 && a.lng === 0)
+/** Usable coordinates from either field pair: planned stops carry `lat`/`lng`,
+ *  provider hits carry `latitude`/`longitude` (providers/hits.ts). The (0,0)
+ *  placeholder is never usable. Null when an axis is missing or not finite. */
+function usableCoords(p: { lat?: number; lng?: number; latitude?: number; longitude?: number }): { lat: number; lng: number } | null {
+  const lat = p.lat ?? p.latitude
+  const lng = p.lng ?? p.longitude
+  if (typeof lat !== 'number' || typeof lng !== 'number') return null
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  if (lat === 0 && lng === 0) return null
+  return { lat, lng }
 }
 
 /** What the committed plan already contains - the stable half of the identity,
@@ -103,7 +120,8 @@ export function tripPresence(trip: Pick<Trip, 'days'>): Pick<PlaceIdentity, 'nam
       for (const key of placeKeysOf(like)) {
         if (!keys.some(k => k.kind === key.kind && k.value === key.value && k.provider === key.provider)) keys.push(key)
       }
-      if (name && usableCoords(s)) places.push({ name, lat: s.lat, lng: s.lng, keys: placeKeysOf(like) })
+      const coords = usableCoords(s)
+      if (name && coords) places.push({ name, lat: coords.lat, lng: coords.lng, keys: placeKeysOf(like) })
     }
   }
   return { names, keys, places }
@@ -114,9 +132,15 @@ export function placeIdentity(
   trip: Pick<Trip, 'days'>,
   addedIds?: ReadonlySet<string>,
   dismissedIds?: ReadonlySet<string>,
+  stagedIds?: ReadonlyMap<string, string>,
 ): PlaceIdentity {
   const { names, keys, places } = tripPresence(trip)
-  return { names, keys, places, added: new Set(addedIds ?? []), dismissed: new Set(dismissedIds ?? []) }
+  return {
+    names, keys, places,
+    added: new Set(addedIds ?? []),
+    dismissed: new Set(dismissedIds ?? []),
+    staged: stagedIds ? new Map(stagedIds) : new Map(),
+  }
 }
 
 /**
@@ -136,9 +160,12 @@ export function discardedStagedIds(
 }
 
 /**
- * THE predicate. Session state first (cheap and decisive), then the provider
- * key, then proximity, then the name fallback - one identity, so a rail, a
- * slot, an arc and a pin can never disagree about the same place again.
+ * THE predicate. An open preview's staged id first (the plan cannot see a stop
+ * that has not landed), then this session's dismissals, then the provider key,
+ * then proximity, then the name fallback - one identity, so a rail, a slot, an
+ * arc and a pin can never disagree about the same place again. A session id
+ * that merely survived a Keep never outranks the plan: a deleted or rejected
+ * stop must turn its place addable again (#839).
  */
 export function isAlreadyAdded(
   hit: PlaceLike | null | undefined,
@@ -146,8 +173,8 @@ export function isAlreadyAdded(
 ): boolean {
   if (!hit || !identity) return false
   const id = hit.id != null ? String(hit.id) : ''
+  if (id && identity.staged?.has(id)) return true
   if (id && identity.dismissed.has(id)) return true
-  if (id && identity.added.has(id)) return true
   const hitKeys = placeKeysOf(hit)
   if (hitKeys.some(hk => identity.keys.some(k => placeKeyMatches(hk, k)))) return true
   const name = normalizePlaceName(hit.name)
@@ -161,8 +188,9 @@ export function isAlreadyAdded(
       && !hitKeys.some(hk => p.keys.some(k => placeKeyMatches(hk, k)))
     const candidates = sameName.filter(p => !conflicts(p))
     if (candidates.length === 0) return false
-    if (!usableCoords(hit)) return true
-    return candidates.some(p => placeDistanceKm({ lat: hit.lat, lng: hit.lng }, p) <= 0.5)
+    const hitCoords = usableCoords(hit)
+    if (!hitCoords) return true
+    return candidates.some(p => placeDistanceKm(hitCoords, p) <= 0.5)
   }
   return identity.names.has(name)
 }
@@ -217,10 +245,10 @@ export function isSameEntity(a: VisitPlaceLike, b: VisitPlaceLike): boolean {
   const nameB = normalizePlaceName(entityOfVisit(b).name)
   if (!nameA || nameA !== nameB) return false
 
-  const ca = entityOfVisit(a)
-  const cb = entityOfVisit(b)
-  if (!usableCoords(ca) || !usableCoords(cb)) return true
-  return placeDistanceKm({ lat: ca.lat, lng: ca.lng }, { lat: cb.lat, lng: cb.lng }) <= 0.5
+  const coordsA = usableCoords(entityOfVisit(a))
+  const coordsB = usableCoords(entityOfVisit(b))
+  if (!coordsA || !coordsB) return true
+  return placeDistanceKm(coordsA, coordsB) <= 0.5
 }
 
 /** Is this suggestion the same visit as a stop already on a day?

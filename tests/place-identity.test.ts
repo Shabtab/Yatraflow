@@ -75,8 +75,10 @@ describe('isAlreadyAdded', () => {
     // Without the key it is (correctly) treated as a different name.
     expect(isAlreadyAdded(hit({ name: 'Hotel Taj, Mumbai' }), id)).toBe(false)
   })
-  it('blocks a dismissed hit and a staged one', () => {
-    const id = placeIdentity(tripOf([]), new Set(['h1']), new Set(['h2']))
+  it('blocks a dismissed hit and one staged in an open preview', () => {
+    // The staged id decides while the preview holds; a kept id alone would not
+    // (#839), and a dismissal holds for the session.
+    const id = placeIdentity(tripOf([]), new Set(['h1']), new Set(['h2']), new Map([['h1', 'something']]))
     expect(isAlreadyAdded(hit({ id: 'h1', name: 'Something' }), id)).toBe(true)
     expect(isAlreadyAdded(hit({ id: 'h2', name: 'Something else' }), id)).toBe(true)
     expect(isAlreadyAdded(hit({ id: 'h3', name: 'Fresh place' }), id)).toBe(false)
@@ -114,6 +116,46 @@ describe('a discarded preview leaves no ghost', () => {
   })
 })
 
+describe('provider hits carry latitude/longitude (#839 case 1)', () => {
+  // The real caller shape: a PlaceHit names its position latitude/longitude
+  // (providers/hits.ts). The old reader saw no lat/lng, fell back to the name,
+  // and fused two faraway Sharma Dhabas into one place.
+  const planned = () => placeIdentity(tripOf([stop({ title: 'Sharma Dhaba', lat: 15, lng: 73 })]))
+  it('a same-named hit far away is NOT already added', () => {
+    expect(isAlreadyAdded({ id: 'h1', name: 'Sharma Dhaba', latitude: 28, longitude: 77 }, planned())).toBe(false)
+  })
+  it('a same-named hit nearby still matches', () => {
+    expect(isAlreadyAdded({ id: 'h2', name: 'Sharma Dhaba', latitude: 15.0001, longitude: 73.0001 }, planned())).toBe(true)
+  })
+  it('a (0,0) placeholder hit keeps the name fallback', () => {
+    expect(isAlreadyAdded({ id: 'h3', name: 'Sharma Dhaba', latitude: 0, longitude: 0 }, planned())).toBe(true)
+  })
+  it('flat coordinates win when a caller carries both pairs', () => {
+    expect(isAlreadyAdded({ id: 'h4', name: 'Sharma Dhaba', lat: 15, lng: 73, latitude: 28, longitude: 77 }, planned())).toBe(true)
+  })
+})
+
+describe('a kept id must not outrank the plan (#839 case 2)', () => {
+  const kept = { id: 'h1', name: 'Sharma Dhaba', latitude: 28, longitude: 77 }
+  const tripWithStop = (status?: string) =>
+    tripOf([stop({ title: 'Sharma Dhaba', lat: 28, lng: 77, ...(status ? { status } : {}) })])
+  it('the staged id decides while the preview holds the write', () => {
+    const id = placeIdentity(tripOf([]), new Set(['h1']), new Set(), new Map([['h1', 'sharma dhaba']]))
+    expect(isAlreadyAdded(kept, id)).toBe(true)
+  })
+  it('answers true while the kept stop is on the plan', () => {
+    expect(isAlreadyAdded(kept, placeIdentity(tripWithStop(), new Set(['h1'])))).toBe(true)
+  })
+  it('re-addable after the kept stop is deleted', () => {
+    // Keep left the id behind, the preview closed, the stop was deleted: the
+    // plan no longer holds the place, and the surviving id must not hide it.
+    expect(isAlreadyAdded(kept, placeIdentity(tripOf([]), new Set(['h1'])))).toBe(false)
+  })
+  it('re-addable after the kept stop is rejected', () => {
+    expect(isAlreadyAdded(kept, placeIdentity(tripWithStop('rejected'), new Set(['h1'])))).toBe(false)
+  })
+})
+
 describe('place keys and visit entities', () => {
   it('a known provider conflict separates equal keys even when names match', () => {
     const google = { name: 'Fort', placeId: 'p1', source: 'google' as const }
@@ -132,6 +174,8 @@ describe('place keys and visit entities', () => {
     const far = { name: 'Sharma Dhaba', lat: 15.01, lng: 73.01 }
     expect(isSameEntity({ name: 'Sharma Dhaba', lat: 15, lng: 73 }, near)).toBe(true)
     expect(isSameEntity({ name: 'Sharma Dhaba', lat: 15, lng: 73 }, far)).toBe(false)
+    // The long field pair (provider hits) reads the same way.
+    expect(isSameEntity({ name: 'Sharma Dhaba', latitude: 15, longitude: 73 }, { title: 'sharma dhaba', lat: 15.0001, lng: 73.0001 })).toBe(true)
     expect(placeDistanceKm({ lat: 15, lng: 73 }, far)).toBeGreaterThan(0.5)
   })
   it('falls back to the name only when a legacy record has no coordinates', () => {

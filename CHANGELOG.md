@@ -19,6 +19,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Fixed
 
 - **Suggestions keep their picked place and intended day.** Editing location text clears its old pin. A deleted day needs an explicit choice from the current days. Same-day repeats need confirmation. Visits on different days remain allowed. Rejected visits do not block another addition. Place identity survives saves, reloads, imports and recovery. Keyless city picks retain their provider. Accepted and declined ideas stop influencing crew preferences. Failed saves keep drafts and metadata. Guarded contribution recovery preserves legacy rows and picked places. Failed recovery offers a retry bound to the original account and deletion. (#839)
+- **A same-named place far away no longer reads as already added. A kept suggestion returns after its stop is deleted or rejected.** Provider hits carry their position as `latitude` and `longitude`. The identity check read the stop's field names, so a hit fell back to the name alone. Two same-named places far apart then looked like one. A session id that Keep retained also outranked the plan. A delete or a reject removed the place, but the id still hid it until a reload. The check now reads either coordinate pair. An open preview decides through a staged list, and the plan answers for every kept id. (#839)
 
 ## [0.79.2] - 2026-10-24
 
