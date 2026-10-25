@@ -171,10 +171,8 @@ function receiptKeepsPromisedMetadata(command: CollabCommand, outcome: CollabOut
     // The row must carry a readable identity that still names the same provider
     // keys. A different (or absent) key is a different entity, not this pick.
     if (!stored) return false
-    for (const key of ['placeId', 'eLoc'] as const) {
-      const wanted = wantedPlace[key]
-      if (wanted && stored[key] !== wanted) return false
-    }
+    if (wantedPlace.placeId && stored.placeId !== wantedPlace.placeId) return false
+    if (wantedPlace.eLoc && stored.eLoc !== wantedPlace.eLoc) return false
     if (wantedPlace.source && stored.source !== wantedPlace.source) return false
   }
   return true
