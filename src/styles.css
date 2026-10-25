@@ -12229,3 +12229,10 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
    Probe the computed `border-radius` of an answer button in a browser after any
    change here, the way `CODING_STANDARDS.md` 6d(4) says. */
 
+
+/* #839 stage B - the retarget / add-another-visit follow-ups appear beside a
+   suggestion row's own buttons. They use the shared popover-in keyframe and the
+   motion tokens only; the reduced-motion opt-out is mandatory, matching
+   .tl-mode-copy above. */
+.gin-followup { animation: popover-in var(--motion-fast) var(--ease-glide); }
+@media (prefers-reduced-motion: reduce) { .gin-followup { animation: none; } }

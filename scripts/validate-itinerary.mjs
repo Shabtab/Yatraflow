@@ -22,10 +22,10 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
 
-const SPEC_VERSION = '2.0'
+const SPEC_VERSION = '3.0'
 
 // ---- the rule set, shared with src/lib/itinerarySpec.ts (pinned by tests)
-const FORMAT_VERSION = 2
+const FORMAT_VERSION = 3
 const RULE_IDS = [
   'TRIP_SHAPE', 'FORMAT_VERSION', 'DAYS_SPAN', 'DAY_INDEX', 'ORDER_IN_DAY',
   'STOP_IDS_UNIQUE', 'NUMERIC_REQUIRED', 'COORDS_VALID', 'COORDS_NOT_PLACEHOLDER',
@@ -35,7 +35,7 @@ const RULE_IDS = [
 
 // ---- key allowlists, mirrored from src/lib/itinerarySpec.ts
 const TRIP_KEYS = new Set(['id', 'name', 'startLocation', 'startLocationCoords', 'destinations', 'destinationCoords', 'startDate', 'endDate', 'travellers', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin', 'transportMode', 'drivesPart', 'fuelEconomyKmL', 'fuelPricePerL', 'roundTrip', 'vehicleProfile', 'tankL', 'rentPerDayInr', 'localTrain', 'flights', 'budgetPerPersonInr', 'travelStyle', 'stayStyle', 'fixedCommitments', 'days', 'expenses', 'coverEmoji', 'coverImageUrl', 'visibility', 'createdAt', 'updatedAt'])
-const STOP_KEYS = new Set(['id', 'title', 'category', 'locationName', 'placeId', 'lat', 'lng', 'description', 'visitMinutes', 'openTime', 'closeTime', 'entryFeeInrPerPerson', 'transportCostInrTotal', 'priority', 'notes', 'sourceUrl', 'status', 'orderInDay', 'weatherSensitive', 'auto'])
+const STOP_KEYS = new Set(['id', 'title', 'category', 'locationName', 'placeId', 'lat', 'lng', 'description', 'visitMinutes', 'openTime', 'closeTime', 'entryFeeInrPerPerson', 'transportCostInrTotal', 'priority', 'notes', 'sourceUrl', 'status', 'orderInDay', 'weatherSensitive', 'auto', 'eLoc', 'placeSource', 'exposure'])
 
 // ---- enums mirrored from src/data/types.ts (keep in sync — pinned by tests/golden-itineraries.test.ts)
 const TRANSPORT_MODES = ['car', 'rental', 'motorcycle', 'train', 'bus', 'flight', 'taxi', 'mixed']
@@ -43,6 +43,12 @@ const TRAVEL_STYLES = ['relaxed', 'balanced', 'packed', 'adventure', 'luxury', '
 const STOP_CATEGORIES = ['sightseeing', 'food', 'nature', 'beach', 'temple', 'adventure', 'shopping', 'museum', 'travel', 'hotel', 'rest', 'event', 'transport-hub']
 const STOP_STATUSES = ['suggested', 'confirmed', 'rejected', 'maybe', 'needs-booking']
 const PRIORITIES = ['must-do', 'nice-to-have', 'optional']
+// Mirrors PlaceProvider in src/data/types.ts. `open-meteo` is the free stack's
+// city geocoder, so a stop picked from it is a legitimate persisted provenance —
+// the same list the app's importer accepts (PLACE_PROVIDERS in
+// src/lib/placeDraft.ts). tests/geocoder-cli-provenance.test.ts pins the two
+// together and runs this CLI against a real geocoder stop.
+const PLACE_SOURCES = ['google', 'mappls', 'open-meteo', 'wikipedia', 'osm']
 const EXPENSE_CATEGORIES = ['transport', 'accommodation', 'food', 'activities', 'entry-fees', 'tolls-parking', 'local-travel', 'emergency-buffer']
 const COMMITMENT_TYPES = ['hotel-checkin', 'train-departure', 'flight-departure', 'event', 'other']
 const STAY_STYLES = ['budget', 'comfort', 'luxury']
@@ -197,6 +203,8 @@ function validate(parsed) {
       if (!PRIORITIES.includes(s.priority)) err(`${t}.priority: "${s.priority}" not in ${PRIORITIES.join(' · ')}`)
       if (!STOP_STATUSES.includes(s.status)) err(`${t}.status: "${s.status}" not in ${STOP_STATUSES.join(' · ')}`)
       else if (s.status !== 'confirmed') warn(`${t}.status: "${s.status}" — a gallery trip reads unfinished with unconfirmed stops`)
+      if (s.placeSource !== undefined && !PLACE_SOURCES.includes(s.placeSource)) err(`${t}.placeSource: "${s.placeSource}" not in ${PLACE_SOURCES.join(' - ')}`)
+      if (s.exposure !== undefined && s.exposure !== 'unknown') err(`${t}.exposure: "${s.exposure}" is not valid (only unknown in this format)`)
       checkCoords(`${t}`, s.lat, s.lng)
       if (!isFiniteNum(s.visitMinutes) || s.visitMinutes < 0) err(`${t}.visitMinutes: required finite number ≥ 0 (NaN here poisons the day's dwell)`)
       if (isFiniteNum(s.visitMinutes) && (s.visitMinutes < 10 || s.visitMinutes > 240)) warn(`${t}.visitMinutes: ${s.visitMinutes} min outside the sane 10–240 band`)
