@@ -352,14 +352,18 @@ export async function rereadPublicSlices(): Promise<void> {
   // invent a trips verdict either — `sliceReadReport` covers every READ_SLICE,
   // and overwriting with it would mark trips ok/failed on evidence this read
   // never collected. Only the two public slices move; `trips` is preserved.
-  let failed: string[] = [...PUBLIC_READ_SLICES]
+  //
+  // #800 R7: each verdict comes from THAT read's own response. The previous form
+  // seeded the failure list with both slices and only ever removed `profiles`, so
+  // a fully successful retry still reported `suggested itineraries` failed — and
+  // CreatorPage kept its error branch over publications that had loaded.
+  const failed: string[] = []
   try {
     const [publicUsers, pubRes] = await Promise.all([
       readPublicUsers(),
       supabase.from('published_itineraries').select('*'),
     ])
     if (publicUsers.failed) { console.error('[yatraflow] re-read profile cards failed'); failed.push('profiles') }
-    else failed = failed.filter(s => s !== 'profiles')
     if (pubRes.error) { console.error('[yatraflow] re-read published failed', pubRes.error); failed.push('suggested itineraries') }
     // Replace-on-success only, per slice. A retry that fails must not also wipe
     // the rows a previous hydrate managed to load — "still broken" and "now
@@ -369,7 +373,12 @@ export async function rereadPublicSlices(): Promise<void> {
     if (!publicUsers.failed) patch({ users: mergeUsers(cache.users, publicUsers.users) })
     if (!pubRes.error) patch({ published: dedupePublished(mapOrSkip((pubRes.data ?? []), rowToPublished)) })
   } catch (e) {
+    // One throw fails the slices it was serving. Both reads run in one
+    // Promise.all, so neither answered and both are reported — but a throw here
+    // must not leave a stale verdict standing over the rows that are still on
+    // screen.
     console.error('[yatraflow] public slice re-read failed', e)
+    failed.push('profiles', 'suggested itineraries')
   }
   const report = sliceReadReport(failed)
   patch({ sliceReads: { ...cache.sliceReads, profiles: report.profiles, 'suggested itineraries': report['suggested itineraries'] } })
@@ -442,15 +451,49 @@ export function rowToPublicUser(row: unknown): PublicUser {
   }
 }
 
+/** The outcome of a private `public.profiles` read (#800 R8). Three states, kept
+ *  apart because their consumers act differently:
+ *   * `ok`      — a row came back (or the account is legitimately absent);
+ *   * `absent`  — the read succeeded and there is no row: a disabled account,
+ *                 whose RESTRICTIVE policy withholds it from its own owner;
+ *   * `failed`  — the read itself failed: network, RLS refusal, missing table.
+ *  A collapse of `failed` into `absent` used to let a public RPC success report
+ *  the signed-in account as ready while it was simply unreadable. */
+export type PrivateReadOutcome =
+  | { status: 'ok'; user: PrivateUser }
+  | { status: 'absent' }
+  | { status: 'failed'; reason: string }
+
 /** The signed-in account's own private row, read through RLS (`profiles read
- *  self`). Null when there is no session, when the read fails, or when the
- *  account is disabled — the RESTRICTIVE `deny disabled` policy withholds the row
- *  from its own owner too, which is why `enforceDisabledCheck` must not read a
- *  missing row as proof of an enabled account (#800). */
-async function readSelfProfile(userId: ID): Promise<PrivateUser | null> {
-  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-  if (error || !data) return null
-  return rowToPrivateUser(data)
+ *  self`). `absent` when the account is disabled — the RESTRICTIVE
+ *  `deny disabled` policy withholds the row from its own owner too — which is why
+ *  `enforceDisabledCheck` must not read a missing row as proof of an enabled
+ *  account (#800). */
+async function readSelfProfile(userId: ID): Promise<PrivateReadOutcome> {
+  try {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+    if (error) return { status: 'failed', reason: error.message ?? 'read failed' }
+    if (!data) return { status: 'absent' }
+    return { status: 'ok', user: rowToPrivateUser(data) }
+  } catch (e) {
+    return { status: 'failed', reason: e instanceof Error ? e.message : 'read failed' }
+  }
+}
+
+/** An authorised admin's bulk private read (#800 R8). Same three states as
+ *  `readSelfProfile`, because the admin console's user table reads THIS, and a
+ *  public RPC success must never certify it as ready. */
+async function readAdminProfiles(): Promise<
+  | { status: 'ok'; users: PrivateUser[] }
+  | { status: 'failed'; reason: string }
+> {
+  try {
+    const { data, error } = await supabase.from('profiles').select('*')
+    if (error) return { status: 'failed', reason: error.message ?? 'read failed' }
+    return { status: 'ok', users: (Array.isArray(data) ? data : []).map(rowToPrivateUser) }
+  } catch (e) {
+    return { status: 'failed', reason: e instanceof Error ? e.message : 'read failed' }
+  }
 }
 
 /**
@@ -502,27 +545,12 @@ export function rowToPrivateUser(row: unknown): PrivateUser {
 
 /**
  * The merge rule, in one place, because it is the whole boundary on the client
- * side (#800).
- *
- * Two halves, and an independent probe found the second one missing:
- *
- *  1. A PUBLIC entry never DISCARDS a private one. Without this, a public refresh
- *     would erase the signed-in user's own email.
- *  2. A public entry's REVIEWED FIELDS still LAND on the private one. Without
- *     this, the merge kept the email but froze the public shape: a remote rename
- *     never reached the screen and a remote disablement left
- *     `creatorAvailable: true` on the account it had just switched off.
- *
- * So the private entry survives, and the public fields are merged INTO it. The
- * private fields — email, createdAt, homeCity, languages, travelStyles,
- * isDisabled — are untouched by anything that arrives on the public channel,
- * because a public card does not carry them.
- *
- * The map build is deliberately private-preferring, because the natural input
- * shape carries an id twice: the public catalogue holds a card for the signed-in
- * user, and the self read adds their private row beside it. A plain
- * `new Map(rows.map(...))` would let the LAST entry win, which is the public
- * card — and `currentUser()` would then find a name where an account must be.
+ * side (#800). A public entry's reviewed fields land on the entry it meets; the
+ * private fields of a private entry are never written from the public channel,
+ * because a public card does not carry them. An id that arrives twice resolves to
+ * the private entry, which is what the natural hydrate shape produces: the public
+ * catalogue holds a card for the signed-in user, and the self read adds their
+ * private row beside it.
  */
 export function mergeUsers(current: CachedUser[], incoming: CachedUser[]): CachedUser[] {
   const byId = new Map<string, CachedUser>()
@@ -544,9 +572,9 @@ export function mergeUsers(current: CachedUser[], incoming: CachedUser[]): Cache
  * creator marker — and the offline directory needs it. What is dropped is the
  * private DATA, by taking only the public shape.
  *
- * An independent probe found the previous version filtering private entries out
- * entirely, which deleted the signed-in user (and every admin-held account) from
- * the offline public directory.
+ * The nested object is REBUILT, not copied. An authorized private row may hold
+ * arbitrary nested keys, and the client cannot see what the database allowed in,
+ * so a direct copy would put them in the public snapshot.
  */
 export function publicOnlyUsers(users: CachedUser[]): PublicUser[] {
   return users.map(u => ({
@@ -557,7 +585,7 @@ export function publicOnlyUsers(users: CachedUser[]): PublicUser[] {
       avatarUrl: u.profile.avatarUrl,
       isCreator: u.profile.isCreator,
       creatorBio: u.profile.creatorBio,
-      socialLinks: u.profile.socialLinks,
+      socialLinks: reviewedSocialLinks(u.profile.socialLinks),
       creatorAvailable: u.profile.creatorAvailable,
     },
   }))
@@ -737,6 +765,17 @@ export async function logout(): Promise<void> {
  *  session resolves and signs the account straight back out with a message. */
 export async function enforceDisabledCheck(): Promise<boolean> {
   try {
+    // #800 R4: the check awaits a server round-trip, and the answer belongs to
+    // the account that ASKED. Capture the scope and the access generation before
+    // the await, and re-check both before anything happens: a sign-out, an admin
+    // cache mutation and a toast all act on whoever is current, so an answer that
+    // arrives after an account switch — or after the same user signed out and
+    // back in — must be discarded silently. The user id alone is not enough: the
+    // epoch is what distinguishes a re-login from the original session.
+    const scope = identityScope()
+    if (!scope) return false
+    const generation = identityEpoch
+
     // No extra auth round-trip here: hydrate() awaits this inside Promise.all
     // territory, and an unmocked getUser() hangs the mocked tests.
     //
@@ -751,11 +790,12 @@ export async function enforceDisabledCheck(): Promise<boolean> {
     //   * NO private row at all          → unproven, so ask the server directly.
     const me = currentUser()
     if (me) return me.profile.isDisabled === true ? signOutDisabled() : false
-    if (cache.sessionUserId) {
-      // The server answered, so act on the answer rather than returning it.
-      return (await disabledOnServer()) ? signOutDisabled() : false
-    }
-    return false
+    if (cache.sessionUserId !== scope.userId) return false
+    const disabled = await disabledOnServer()
+    // The fence. An obsolete answer stays silent and touches nothing.
+    if (!isCurrentIdentity(scope) || identityEpoch !== generation) return false
+    if (cache.sessionUserId !== scope.userId) return false
+    return disabled ? signOutDisabled() : false
   } catch {
     // A failed check must never lock a legitimate user out: the RESTRICTIVE
     // policies are the real enforcement, this is only the friendly message.
@@ -1066,16 +1106,37 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // result (a wipe that made every later open say "Trip not found").
     let tripsReadFailed = false
     let profilesReadFailed = false
+    // #800 R8: the private reads' own failures, kept apart from the public one.
+    // The admin console's user table follows these, not `profiles`, so a public
+    // RPC success can never certify an admin email table as ready.
+    let adminProfilesFailed = false
     let suggestionsReadFailed = false
     let decisionsReadFailed = false
     let activityReadFailed = false
     let notificationsReadFailed = false
     if (publicUsers.failed) { console.error('[yatraflow] hydrate profile cards failed'); partial.push('profiles'); profilesReadFailed = true }
-    // The self row is the private half. A missing one is NOT proof of an enabled
-    // account: the RESTRICTIVE `deny disabled` policy withholds the row from its
-    // own owner too, so `enforceDisabledCheck` reads the flag from wherever it can
-    // and never treats absence as `false` (#800).
-    const users: CachedUser[] = mergeUsers(publicUsers.users, selfProfile ? [selfProfile] : [])
+    // The self row is the private half, and its own failure is its OWN verdict
+    // (#800 R8). A public RPC success must never certify the signed-in account as
+    // ready: a failed self read keeps the previous private row (so the account is
+    // not silently downgraded to a public card) and names its own slice, so the
+    // settings page can show a failure with a retry that reissues THIS read.
+    let selfRead: PrivateReadOutcome = { status: 'absent' }
+    let selfReadFailed = false
+    if (selfProfile.status === 'failed') {
+      console.error('[yatraflow] hydrate self profile failed', selfProfile.reason)
+      partial.push('self profile')
+      selfReadFailed = true
+      selfRead = { status: 'failed', reason: selfProfile.reason }
+    } else if (selfProfile.status === 'ok') {
+      selfRead = selfProfile
+    }
+    const users: CachedUser[] = mergeUsers(publicUsers.users, selfRead.status === 'ok' ? [selfRead.user] : [])
+    // #800 R8: a private read that failed must not leave the PREVIOUS account's
+    // private row installed under this one. `mergeUsers` starts from the public
+    // cards, so the only way an old private row survives is the cache this run
+    // is patching — drop it when the account changed or the read failed.
+    const dropStalePrivate = selfReadFailed || cache.sessionUserId !== userId
+    const usersToInstall = dropStalePrivate ? users.filter(u => u.kind === 'public' || u.id === userId) : users
     if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true; tripsReadFailed = true }
     const myRows = (myMembershipsRes.data ?? []) as MemberRow[]
     const memberTripIds = myRows.map(m => m.trip_id)
@@ -1088,7 +1149,11 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     scopeKnown = true
     if (admin || myTripIds.length > 0) askedSlices.push(...TRIP_SCOPED_READS)
     if (scopeUnread) askedSlices.push('suggestions', 'decisions', 'activity', 'notifications')
-    if (admin) askedSlices.push('audit')
+    if (admin) askedSlices.push('audit', 'admin profiles')
+    // #800 R8: this run read the signed-in account's own private row, so it
+    // answers for that slice. A page that renders the account can then tell a
+    // failed read from a genuinely absent one, instead of the two collapsing.
+    askedSlices.push('self profile')
 
     // Stage 2 - the user's own trips + their collaboration data (PostgREST
     // rejects `id=in.<empty>`, so with no trips yet we record empty slices
@@ -1109,7 +1174,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       // The mock builder in tests/hydrate-race.test.ts has no order()/limit()
       // chainables, and production PostgREST needs limit() AFTER order() —
       // so audit reads go through a tiny helper that degrades gracefully.
-      const [tripsRes, memRes, sugRes, decRes, actRes, notRes, auditRes, adminProfilesRes] = await Promise.all([
+      const [tripsRes, memRes, sugRes, decRes, actRes, notRes, auditRes, adminProfiles] = await Promise.all([
         supabase.from('trips').select('*'),
         supabase.from('trip_members').select('*'),
         supabase.from('suggestions').select('*'),
@@ -1121,12 +1186,12 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
         // the PRIVATE table directly — the `admin read` policy permits every row
         // for a masteradmin. This is the one place a bulk private read is
         // legitimate, and it is behind `isAdminCached()`, not behind a parameter.
-        supabase.from('profiles').select('*'),
+        readAdminProfiles(),
       ])
       for (const [name, res] of [
         ['trips', tripsRes], ['members', memRes], ['suggestions', sugRes],
         ['decisions', decRes], ['activity', actRes], ['notifications', notRes],
-        ['audit', auditRes], ['admin profiles', adminProfilesRes],
+        ['audit', auditRes],
       ] as const) {
         if (res.error) {
           console.error(`[yatraflow] hydrate ${name} failed`, res.error)
@@ -1140,13 +1205,16 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       // The admin's bulk private read replaces the public cards wholesale: every
       // row it returns is a private row, and the console is the only surface that
       // needs them. A failure keeps the public cards already loaded rather than
-      // emptying the catalogue (#800).
-      if (!adminProfilesRes.error) {
+      // emptying the catalogue (#800) — and it names its own slice, so the
+      // console's user state follows a read that actually happened instead of a
+      // public RPC success certifying data it never saw (#800 R8).
+      if (adminProfiles.status === 'ok') {
         users.length = 0
-        users.push(...mapOrSkip((adminProfilesRes.data ?? []), rowToPrivateUser))
+        users.push(...adminProfiles.users)
       } else {
-        console.error('[yatraflow] hydrate admin profiles failed', adminProfilesRes.error)
+        console.error('[yatraflow] hydrate admin profiles failed', adminProfiles.reason)
         partial.push('admin profiles')
+        adminProfilesFailed = true
       }
       if (tripsRes.error || memRes.error) { tripCountUnknown = true; tripsReadFailed = true }
       trips = (tripsRes.data ?? []) as TripRow[]
@@ -1236,7 +1304,17 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     const sameSessionUser = cache.sessionUserId === userId
     // Failed reads keep rows only when the cache belongs to this account.
     // A new account must not inherit another account's rows through a failed query.
-    const usersRead = profilesReadFailed && sameSessionUser ? undefined : profilesReadFailed ? [] : users
+    //
+    // #800 R8: the private read failure is its own case, and it must never leave
+    // another account's private row installed. Keeping the previous cache is right
+    // only while it holds a private row for THIS account — otherwise the old row
+    // belongs to whoever was signed in before, and a new account would inherit
+    // their email. `usersToInstall` is built from the public cards this run read,
+    // so it is always safe to install; `keepPreviousUsers` is the narrow case
+    // where keeping more is better than replacing.
+    const keepPreviousUsers = (profilesReadFailed || selfReadFailed || adminProfilesFailed) && sameSessionUser
+      && cache.users.some(u => u.id === userId && u.kind === 'private')
+    const usersRead = keepPreviousUsers ? undefined : usersToInstall
     const suggestionsRead = (scopeUnread || suggestionsReadFailed) && sameSessionUser
       ? undefined
       : (scopeUnread || suggestionsReadFailed) ? [] : suggestions
@@ -7030,6 +7108,14 @@ function dispatchRealtimeEvent(table: string, payload: RealtimePostgresChangesPa
  *  catch included, matching the real path exactly. */
 export function _applyRealtimeEventForTest(table: string, payload: RealtimePostgresChangesPayload<Record<string, unknown>>): void {
   dispatchRealtimeEvent(table, payload)
+}
+
+/** Test hook — move the identity generation, as a real auth event does. A test
+ *  that switches the cached user id without this would leave `resumeSync`'s
+ *  `isCurrentIdentity` guard reading the OLD epoch, which is not the state a
+ *  sign-in produces. */
+export function _bumpIdentityEpochForTest(): void {
+  ++identityEpoch
 }
 
 /** Test hook — run the real full-row loader the join and gate paths use, so a

@@ -198,7 +198,7 @@ function UsersTab() {
         <EmptyState icon={<Users size={38} aria-hidden />} title="No users match" body="Clear the search to see everyone." />
       ) : (
         <table className="compare-table" tabIndex={0} aria-label="Users">
-          <thead><tr><th>CachedUser</th><th className="num">Trips</th><th>Flags</th><th>Joined</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Account</th><th className="num">Trips</th><th>Flags</th><th>Joined</th><th>Actions</th></tr></thead>
           <tbody>
             {users.map(u => (privateUser(u) ? (
               <tr key={u.id} style={u.profile.isDisabled ? { opacity: 0.6 } : undefined}>
