@@ -17,7 +17,7 @@ import { sliceState, rowsView, combinedReadState } from '../lib/readState'
 import {
   useDb, useIsAdmin, useAdminAudit, useAdminAuditFailed, useSessionUserId, refreshAdminAuditNow,
   adminSetDisabled, adminSetCreator, adminSetTripVisibility, rereadTrips, rereadPublicSlices,
-  adminRemoveMember, adminUnpublish, adminDeleteTrip, adminDeleteUser, privateUser,
+  adminRemoveMember, adminUnpublish, adminDeleteTrip, adminDeleteUser, privateUser, resumeSync,
 } from '../store/store'
 import {
   computeAdminOverview, computeGrowthSeries, computeFunnel, recentJoins,
@@ -104,8 +104,12 @@ function OverviewTab() {
   ), [db])
   // Every tile below derives from the hydrated cache, so a failed feed makes
   // its figures unknown, not zero. One verdict over the six feeding slices.
+  //
+  // #800 F1: `Users`, `Creators` and `Disabled` count PRIVATE rows, so the
+  // private bulk read (`admin profiles`) feeds them too. A public catalogue that
+  // succeeded while the private read failed must not certify these figures.
   const feedsRead = combinedReadState(
-    ['profiles', 'trips', 'suggested itineraries', 'suggestions', 'decisions', 'activity']
+    ['profiles', 'admin profiles', 'trips', 'suggested itineraries', 'suggestions', 'decisions', 'activity']
       .map(s => sliceState(db.sliceReads, s)),
   )
   const [readRetrying, setReadRetrying] = useState(false)
@@ -174,9 +178,19 @@ function UsersTab() {
     return [...list].sort((a, b) => (privateUser(b) ? b.createdAt : 0) - (privateUser(a) ? a.createdAt : 0))
   }, [db.users, q])
   const ownedCount = (id: string) => db.trips.filter(t => (t.members ?? []).some(m => m.userId === id && m.role === 'owner')).length
-  // The user list is a read like any other: a failed profiles read leaves no
-  // rows, and "no users match" over it would read as an empty console.
-  const usersView = rowsView(sliceState(db.sliceReads, 'profiles'), users.length)
+  // The user list is a read like any other: a failed read leaves no rows, and
+  // "no users match" over it would read as an empty console.
+  //
+  // #800 F1: this table renders PRIVATE rows (email, joined date, flags), and
+  // the private bulk read is `admin profiles`. The old code followed `profiles`
+  // here, so a public catalogue that succeeded while the private read failed
+  // rendered a ready table with only the rows it happened to have. The private
+  // verdict wins when it exists; `profiles` is only the fallback for a read that
+  // never asked for the bulk.
+  const adminProfilesRead = sliceState(db.sliceReads, 'admin profiles')
+  const usersView = rowsView(adminProfilesRead === 'reading' || adminProfilesRead === 'failed'
+    ? adminProfilesRead
+    : sliceState(db.sliceReads, 'profiles'), users.length)
   const [readRetrying, setReadRetrying] = useState(false)
 
   return (
@@ -189,7 +203,11 @@ function UsersTab() {
       {usersView === 'failed' ? (
         <StateBlock kind="failed" size="compact" title="Couldn’t load users." body="Nothing has been lost."
           actions={<button type="button" className="btn btn-outline btn-sm" disabled={readRetrying}
-            onClick={() => { setReadRetrying(true); void rereadTrips().finally(() => setReadRetrying(false)) }}>
+            // #800 F1: the retry must re-issue the read that failed. This table
+            // renders PRIVATE rows, so `rereadTrips` (a public slice) never
+            // reached them; `resumeSync` re-issues the authorized reads under the
+            // same generation, including the private bulk.
+            onClick={() => { setReadRetrying(true); void resumeSync().finally(() => setReadRetrying(false)) }}>
             {readRetrying ? 'Trying…' : 'Try again'}
           </button>} />
       ) : usersView === 'reading' ? (

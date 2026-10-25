@@ -82,6 +82,14 @@ export function profileLookupState(
 ): ProfileLookupState {
   if (hasProfile) return 'ready'
   if (!sessionUserId) return 'anonymous'
+  // The signed-in account is the PRIVATE read (`self profile`), not the public
+  // catalogue. #800 F1: a public catalogue that succeeded while the private read
+  // failed was read as "completed without an account", so the notice offered a
+  // missing-profile message and no working retry. The private verdict wins when
+  // it exists; the public one is only the fallback for a read that never asked.
+  const selfRead = sliceState(sliceReads, 'self profile')
+  if (selfRead === 'failed') return 'failed'
+  if (selfRead === 'reading') return 'reading'
   const profileRead = sliceState(sliceReads, 'profiles')
   if (profileRead === 'failed') return 'failed'
   if (profileRead === 'reading') return 'reading'
@@ -119,8 +127,16 @@ export function notificationPanelModel(
   return { rows, view: rowsView(read, rows.length) }
 }
 
+/** Re-issue the private profile read (#800 F1). A reload re-runs hydrate, but a
+ *  reload is not what the notice promises: it reloads the whole app, loses the
+ *  scroll position and any in-progress draft, and — worst — it re-reads the
+ *  PUBLIC catalogue too, which is the read that already succeeded. `resumeSync`
+ *  re-issues the same authorized reads under the same generation, so the retry
+ *  actually reaches the read that failed. */
 export function retryProfileLookup(): void {
-  window.location.reload()
+  void import('./store/store')
+    .then(store => store.resumeSync())
+    .catch(() => window.location.reload())
 }
 
 export function ProfileLookupNotice({ state }: { state: ProfileLookupState }) {

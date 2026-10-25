@@ -44,7 +44,7 @@ import {
   submitCollabCommand, suggestionRowToEntry, decisionRowToEntry,
   type CollabOutcome, type CollabCommand,
 } from './collabCommand'
-import { adminFromSession, clearAdminCache, isAdminCached } from '../lib/adminSession'
+import { adminFromSession, clearAdminCache, isAdminCached, setAdminForTest } from '../lib/adminSession'
 import type { RealtimeChannel, RealtimePostgresChangesPayload, SupabaseClient } from '@supabase/supabase-js'
 
 // In-memory cache — the synchronous snapshot the UI reads. No localStorage.
@@ -469,9 +469,12 @@ export type PrivateReadOutcome =
  *  `deny disabled` policy withholds the row from its own owner too — which is why
  *  `enforceDisabledCheck` must not read a missing row as proof of an enabled
  *  account (#800). */
-async function readSelfProfile(userId: ID): Promise<PrivateReadOutcome> {
+async function readSelfProfile(userId: ID, scope: IdentityScope): Promise<PrivateReadOutcome> {
+  if (!isCurrentIdentity(scope)) return { status: 'failed', reason: 'identity changed' }
   try {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+    // Fenced again AFTER the await: the answer belongs to the account that asked.
+    if (!isCurrentIdentity(scope)) return { status: 'failed', reason: 'identity changed' }
     if (error) return { status: 'failed', reason: error.message ?? 'read failed' }
     if (!data) return { status: 'absent' }
     return { status: 'ok', user: rowToPrivateUser(data) }
@@ -480,15 +483,19 @@ async function readSelfProfile(userId: ID): Promise<PrivateReadOutcome> {
   }
 }
 
-/** An authorised admin's bulk private read (#800 R8). Same three states as
- *  `readSelfProfile`, because the admin console's user table reads THIS, and a
- *  public RPC success must never certify it as ready. */
-async function readAdminProfiles(): Promise<
+/** An authorised admin's bulk private read (#800 F2, F4). The admin flag is read
+ *  at CALL time, not carried from the read that decided to issue this: an
+ *  authority loss between the decision and the request must not produce a
+ *  private read at all. Same three states as `readSelfProfile`. */
+async function readAdminProfiles(scope: IdentityScope): Promise<
   | { status: 'ok'; users: PrivateUser[] }
   | { status: 'failed'; reason: string }
 > {
+  if (!isAdminCached() || !isCurrentIdentity(scope)) return { status: 'failed', reason: 'not authorised' }
   try {
     const { data, error } = await supabase.from('profiles').select('*')
+    // Fenced again AFTER the await: the answer belongs to the admin who asked.
+    if (!isCurrentIdentity(scope) || !isAdminCached()) return { status: 'failed', reason: 'authority changed' }
     if (error) return { status: 'failed', reason: error.message ?? 'read failed' }
     return { status: 'ok', users: (Array.isArray(data) ? data : []).map(rowToPrivateUser) }
   } catch (e) {
@@ -789,13 +796,13 @@ export async function enforceDisabledCheck(): Promise<boolean> {
     //   * a private row saying enabled   → nothing to do;
     //   * NO private row at all          → unproven, so ask the server directly.
     const me = currentUser()
-    if (me) return me.profile.isDisabled === true ? signOutDisabled() : false
+    if (me) return me.profile.isDisabled === true ? signOutDisabled(scope, generation) : false
     if (cache.sessionUserId !== scope.userId) return false
     const disabled = await disabledOnServer()
     // The fence. An obsolete answer stays silent and touches nothing.
     if (!isCurrentIdentity(scope) || identityEpoch !== generation) return false
     if (cache.sessionUserId !== scope.userId) return false
-    return disabled ? signOutDisabled() : false
+    return disabled ? signOutDisabled(scope, generation) : false
   } catch {
     // A failed check must never lock a legitimate user out: the RESTRICTIVE
     // policies are the real enforcement, this is only the friendly message.
@@ -803,9 +810,20 @@ export async function enforceDisabledCheck(): Promise<boolean> {
   }
 }
 
-/** Sign a disabled account out with the explanation, and report that it happened. */
-async function signOutDisabled(): Promise<boolean> {
+/**
+ * Sign a disabled account out with the explanation, and report that it happened.
+ *
+ * #800 F3: the SDK `signOut` itself awaits, and its completion used to clear the
+ * admin cache and show a message with no fence. Root held the instrumented
+ * signOut for account A, activated B as admin with a fresh generation, then
+ * released A's completion — and B's admin flag flipped to false while B stayed
+ * current. The effects now belong to the account that asked: the scope and
+ * generation are captured before the await and re-checked after it, so an
+ * obsolete completion touches nothing.
+ */
+async function signOutDisabled(scope: IdentityScope, generation: number): Promise<boolean> {
   await supabase.auth.signOut()
+  if (!isCurrentIdentity(scope) || identityEpoch !== generation) return false
   clearAdminCache()
   toast('This account has been disabled. Contact support if you think this is a mistake.', 'err')
   return true
@@ -1076,9 +1094,15 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // reads the private table directly (the `admin read` policy permits every
     // row), and a non-admin reads exactly their OWN row through
     // `readSelfProfile`. One query can no longer serve both halves.
+    //
+    // #800 F2/F3/F4: the scope both private reads are fenced to. Captured once,
+    // before any await, and re-checked after each one: a remote disablement, an
+    // admin-authority loss or an account switch during a read must produce a
+    // recoverable refusal, never another account's private rows.
+    const hydrateScope = identityScope() ?? { userId, epoch: identityEpoch }
     const [publicUsers, selfProfile, pubRes, myMembershipsRes] = await Promise.all([
       readPublicUsers(),
-      readSelfProfile(userId),
+      readSelfProfile(userId, hydrateScope),
       supabase.from('published_itineraries').select('*'),
       supabase.from('trip_members').select('*').eq('user_id', userId),
     ])
@@ -1106,10 +1130,6 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // result (a wipe that made every later open say "Trip not found").
     let tripsReadFailed = false
     let profilesReadFailed = false
-    // #800 R8: the private reads' own failures, kept apart from the public one.
-    // The admin console's user table follows these, not `profiles`, so a public
-    // RPC success can never certify an admin email table as ready.
-    let adminProfilesFailed = false
     let suggestionsReadFailed = false
     let decisionsReadFailed = false
     let activityReadFailed = false
@@ -1122,6 +1142,11 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // settings page can show a failure with a retry that reissues THIS read.
     let selfRead: PrivateReadOutcome = { status: 'absent' }
     let selfReadFailed = false
+    // #800 R8/F2/F4: the private reads' own failures, kept apart from the public
+    // one. The admin console's user table and overview follow these, not
+    // `profiles`, so a public RPC success can never certify an admin email table
+    // as ready — and an authority loss downgrades every other-account private row.
+    let adminProfilesFailed = false
     if (selfProfile.status === 'failed') {
       console.error('[yatraflow] hydrate self profile failed', selfProfile.reason)
       partial.push('self profile')
@@ -1131,12 +1156,17 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       selfRead = selfProfile
     }
     const users: CachedUser[] = mergeUsers(publicUsers.users, selfRead.status === 'ok' ? [selfRead.user] : [])
-    // #800 R8: a private read that failed must not leave the PREVIOUS account's
-    // private row installed under this one. `mergeUsers` starts from the public
-    // cards, so the only way an old private row survives is the cache this run
-    // is patching — drop it when the account changed or the read failed.
-    const dropStalePrivate = selfReadFailed || cache.sessionUserId !== userId
-    const usersToInstall = dropStalePrivate ? users.filter(u => u.kind === 'public' || u.id === userId) : users
+    // #800 F5: the catalogue is REBUILT from the read outcomes, never mutated in
+    // place. `users` is the array the install aliases, so emptying and pushing
+    // into it would re-point what the install already chose. The admin branch
+    // below replaces this wholesale with its own private rows.
+    let installedUsers: CachedUser[] = users
+    // #800 R8/F4: a private read that failed, or an authority loss that
+    // downgraded the read, must not leave the PREVIOUS account's private rows
+    // installed. `mergeUsers` starts from the public cards, so the only way an
+    // old private row survives is the cache this run is patching — drop it when
+    // the account changed, the read failed, or the caller stopped being an admin.
+    const dropStalePrivate = selfReadFailed || adminProfilesFailed || cache.sessionUserId !== userId
     if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true; tripsReadFailed = true }
     const myRows = (myMembershipsRes.data ?? []) as MemberRow[]
     const memberTripIds = myRows.map(m => m.trip_id)
@@ -1185,8 +1215,10 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
         // #800: the admin console lists every account's email, so an admin reads
         // the PRIVATE table directly — the `admin read` policy permits every row
         // for a masteradmin. This is the one place a bulk private read is
-        // legitimate, and it is behind `isAdminCached()`, not behind a parameter.
-        readAdminProfiles(),
+        // legitimate. The admin flag is checked at call time and again after the
+        // await, so an authority loss in between downgrades the read rather than
+        // installing another account's private rows (#800 F2, F4).
+        readAdminProfiles(hydrateScope),
       ])
       for (const [name, res] of [
         ['trips', tripsRes], ['members', memRes], ['suggestions', sugRes],
@@ -1208,11 +1240,16 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       // emptying the catalogue (#800) — and it names its own slice, so the
       // console's user state follows a read that actually happened instead of a
       // public RPC success certifying data it never saw (#800 R8).
-      if (adminProfiles.status === 'ok') {
-        users.length = 0
-        users.push(...adminProfiles.users)
+      //
+      // #800 F5: the catalogue is REBUILT from the read outcomes here, not
+      // mutated in place. `users` is the value a later `usersToInstall` aliases,
+      // so emptying and pushing into it re-pointed the array the install had
+      // already chosen — the admin branch then produced a catalogue that looked
+      // private but held whatever the alias happened to see.
+      if (adminProfiles.status === 'ok' && isCurrentIdentity(hydrateScope) && isAdminCached()) {
+        installedUsers = adminProfiles.users
       } else {
-        console.error('[yatraflow] hydrate admin profiles failed', adminProfiles.reason)
+        if (adminProfiles.status !== 'ok') console.error('[yatraflow] hydrate admin profiles failed', adminProfiles.reason)
         partial.push('admin profiles')
         adminProfilesFailed = true
       }
@@ -1305,13 +1342,17 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // Failed reads keep rows only when the cache belongs to this account.
     // A new account must not inherit another account's rows through a failed query.
     //
-    // #800 R8: the private read failure is its own case, and it must never leave
-    // another account's private row installed. Keeping the previous cache is right
-    // only while it holds a private row for THIS account — otherwise the old row
-    // belongs to whoever was signed in before, and a new account would inherit
-    // their email. `usersToInstall` is built from the public cards this run read,
-    // so it is always safe to install; `keepPreviousUsers` is the narrow case
-    // where keeping more is better than replacing.
+    // #800 R8/F4: the private read failure is its own case, and it must never
+    // leave another account's private row installed. Keeping the previous cache
+    // is right only while it holds a private row for THIS account — otherwise the
+    // old row belongs to whoever was signed in before, and a new account would
+    // inherit their email. `usersToInstall` is built from the public cards this
+    // run read (or the admin bulk, when that read succeeded), so it is always
+    // safe to install; `keepPreviousUsers` is the narrow case where keeping more
+    // is better than replacing.
+    const usersToInstall = dropStalePrivate
+      ? installedUsers.filter(u => u.kind === 'public' || u.id === userId)
+      : installedUsers
     const keepPreviousUsers = (profilesReadFailed || selfReadFailed || adminProfilesFailed) && sameSessionUser
       && cache.users.some(u => u.id === userId && u.kind === 'private')
     const usersRead = keepPreviousUsers ? undefined : usersToInstall
@@ -7116,6 +7157,17 @@ export function _applyRealtimeEventForTest(table: string, payload: RealtimePostg
  *  sign-in produces. */
 export function _bumpIdentityEpochForTest(): void {
   ++identityEpoch
+}
+
+/** Test hooks over the existing adminSession seams, so a lifecycle test can
+ *  prove that a mid-run authority change is visible to the private reads (they
+ *  check the flag at call time, not once per hydrate). */
+export function _setAdminForTest(admin: boolean): void {
+  setAdminForTest(admin)
+}
+
+export function _isAdminForTest(): boolean {
+  return isAdminCached()
 }
 
 /** Test hook — run the real full-row loader the join and gate paths use, so a
