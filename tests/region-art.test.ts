@@ -4,6 +4,7 @@ import {
   type ArtManifest,
   type ArtRegion,
   artIdFor,
+  artEntryFor,
   coverFor,
   fallbackKindFor,
   focalYFor,
@@ -251,6 +252,41 @@ describe('focalYFor', () => {
     expect(ART_MANIFEST.ids['generic-1'].focalY).toEqual(ART_MANIFEST.ids['road-1'].focalY)
     for (const ratio of ['default', '21:9', '3:1', '3.5:1']) {
       expect(focalYFor('generic-1', ratio), ratio).toBe(focalYFor('road-1', ratio))
+    }
+  })
+
+  it('finds no entry for a name it does not declare, including inherited Object names', () => {
+    // `ids` is a plain object, so an unguarded read of ids['constructor'] returns
+    // Object's own constructor: truthy, and with no widths or focalY. The lookup
+    // must answer "no entry" for every name the manifest does not declare, or the
+    // picture would build a srcset from undefined and throw.
+    for (const name of ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'no-such-id']) {
+      expect(artEntryFor(name), name).toBeUndefined()
+      expect(focalYFor(name, '3:1'), name).toBe(50)
+    }
+    expect(artEntryFor('generic-1')?.ratio).toBe('3:2')
+  })
+
+  it('applies the same guard to a caller-supplied manifest', () => {
+    // coverFor and the tests pass their own manifests, so the guard cannot live
+    // only in the default-map path.
+    const custom: ArtManifest = { ...ART_MANIFEST, ids: { only: ART_MANIFEST.ids['generic-1'] } }
+    expect(artEntryFor('only', custom)?.ratio).toBe('3:2')
+    expect(artEntryFor('constructor', custom)).toBeUndefined()
+    expect(focalYFor('constructor', '3:1', custom)).toBe(50)
+  })
+
+  it('resolves every declared id, so no slot loses its picture to the guard', () => {
+    // The guard must reject only names the manifest does not declare. If the map
+    // were built from the wrong source, every slot would silently fall to the
+    // motif — a whole-page visual regression that no other test would catch.
+    const declared = Object.keys(ART_MANIFEST.ids)
+    expect(declared.length).toBe(22)
+    for (const id of declared) {
+      const entry = artEntryFor(id)
+      expect(entry, id).toBeDefined()
+      expect(entry?.widths.length, id).toBeGreaterThan(0)
+      expect(srcsetFor(id, entry?.widths ?? []), id).not.toBe('')
     }
   })
 })

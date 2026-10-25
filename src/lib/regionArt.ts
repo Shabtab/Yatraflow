@@ -44,6 +44,11 @@ export interface ArtManifest {
 
 export const ART_MANIFEST: ArtManifest = manifestJson
 
+// The manifest is the only source of art ids, so this map's key set is exactly
+// the declared ids. A Map also keeps the lookup off the prototype chain, so a
+// name such as "constructor" finds nothing instead of inheriting Object.
+const ENTRIES_BY_ID = new Map(Object.entries(ART_MANIFEST.ids))
+
 /** The user's own cover, or a generated image id, or null for the SVG floor. */
 export type CoverChoice = { kind: 'user'; url: string } | { kind: 'generated'; id: string }
 
@@ -108,9 +113,20 @@ export function vignetteArtFor(name: string, manifest: ArtManifest = ART_MANIFES
   return manifest.vignettes[name] ?? null
 }
 
+/**
+ * The manifest entry for one id, or undefined when the manifest declares none.
+ * Both paths read a map built from the manifest's own keys, so the lookup never
+ * walks the prototype chain: "constructor" or "toString" finds nothing rather
+ * than an Object member with no `widths`, and no object is indexed by a variable.
+ */
+export function artEntryFor(id: string, manifest: ArtManifest = ART_MANIFEST): ArtIdEntry | undefined {
+  const entries = manifest === ART_MANIFEST ? ENTRIES_BY_ID : new Map(Object.entries(manifest.ids))
+  return entries.get(id)
+}
+
 /** Vertical focal point (percent) for an id at a crop ratio. Falls back to 50 for unknown ids. */
 export function focalYFor(id: string, ratio: string, manifest: ArtManifest = ART_MANIFEST): number {
-  const entry = manifest.ids[id]
+  const entry = artEntryFor(id, manifest)
   if (!entry) return 50
   return entry.focalY[ratio] ?? entry.focalY.default
 }
