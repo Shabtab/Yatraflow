@@ -21,7 +21,7 @@ with a backup.
 
 ## The current set
 
-Twenty-one images are committed: fifteen landscape scenes and six square state vignettes.
+Twenty-one images are committed: fourteen landscape scenes and seven square state vignettes.
 Each one is a byte-identical copy of an accepted derivative. The id carries no review round,
 so a replaced master keeps its id.
 
