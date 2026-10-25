@@ -136,11 +136,18 @@ export default async function handler(req, res) {
   let profileReadFailed = false
   let publications = null
   try {
+    // #800: the creator card reads the PUBLIC projection through the typed RPC,
+    // never the private `profiles` table. The old direct table read worked only
+    // while `profiles read` was `using (true)`; with the table closed to self and
+    // admin it would answer 42501 for every anonymous caller, and this endpoint
+    // is anonymous by design. The RPC is the reviewed allowlist, so the card can
+    // no longer be widened by a change to the projection list.
     const profileResponse = await fetch(
-      `${url.replace(/\/+$/, '')}/rest/v1/profiles?id=eq.${encodeURIComponent(id)}` +
-      '&select=name,creator_bio&limit=1',
+      `${url.replace(/\/+$/, '')}/rest/v1/rpc/get_public_profile_cards`,
       {
-        headers: { apikey: key, authorization: `Bearer ${key}` },
+        method: 'POST',
+        headers: { apikey: key, authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ p_ids: [id] }),
         signal: AbortSignal.timeout(4000),
       },
     )

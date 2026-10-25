@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { currentQuery, onRouteChange, replaceRoute } from '../lib/router'
 import { Compass, Heart, Lock, Search, TriangleAlert } from 'lucide-react'
 import { usePublished, useUsers, useTrips, useSessionUserId, useDb, rereadPublicSlices } from '../store/store'
-import type { PublishedItinerary, User } from '../data/types'
+import type { PublishedItinerary, CachedUser } from '../data/types'
 import { computeHealth } from '../lib/engine'
 import { useSavedPubs } from '../lib/savedPubs'
 import { sliceState, emptyCopyFor } from '../lib/readState'
@@ -419,7 +419,7 @@ function ExploreEmpty({ kind, onClear, onNavigate }: {
 function ExploreGrid({ entries, attachList, users, isSaved, needsLogin, onFork, onToggleSave }: {
   entries: PresenceEntry<PublishedItinerary>[]
   attachList: (element: HTMLElement | null) => void
-  users: User[]
+  users: CachedUser[]
   isSaved: (id: string) => boolean
   needsLogin: boolean
   onFork: (id: string) => void
@@ -436,6 +436,6 @@ function ExploreGrid({ entries, attachList, users, isSaved, needsLogin, onFork, 
   )
 }
 
-function userOf(users: User[], id: string): User | undefined {
+function userOf(users: CachedUser[], id: string): CachedUser | undefined {
   return users.find(u => u.id === id)
 }

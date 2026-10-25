@@ -9,7 +9,7 @@
 // toast; the cache is re-hydrated from the server on next load.
 import { useSyncExternalStore } from 'react'
 import type {
-  User, Trip, StopSuggestion, TripDecision, ActivityEntry, Notification,
+  CachedUser, PublicUser, PrivateUser, PublicUserProfile, PrivateUserProfile, Trip, StopSuggestion, TripDecision, ActivityEntry, Notification,
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
   NewDecisionOption, VehicleProfile, Comment, Vote, DecisionOption,
 } from '../data/types'
@@ -49,7 +49,7 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload, SupabaseClient } 
 
 // In-memory cache — the synchronous snapshot the UI reads. No localStorage.
 interface DB {
-  users: User[]               // profiles mirror (for names/avatars in the UI)
+  users: CachedUser[]       // public identity cards, plus the private row for self/admin (#800)
   trips: Trip[]
   /** Soft-deleted trips, fetched on demand from the get_trashed_trips RPC. */
   trashedTrips: Trip[]
@@ -152,7 +152,7 @@ export function usePublished(): PublishedItinerary[] {
   return useSyncExternalStore(subscribe, () => cache.published)
 }
 
-export function useUsers(): User[] {
+export function useUsers(): CachedUser[] {
   return useSyncExternalStore(subscribe, () => cache.users)
 }
 
@@ -354,17 +354,19 @@ export async function rereadPublicSlices(): Promise<void> {
   // never collected. Only the two public slices move; `trips` is preserved.
   let failed: string[] = [...PUBLIC_READ_SLICES]
   try {
-    const [profRes, pubRes] = await Promise.all([
-      supabase.from('profiles').select('*'),
+    const [publicUsers, pubRes] = await Promise.all([
+      readPublicUsers(),
       supabase.from('published_itineraries').select('*'),
     ])
-    failed = []
-    if (profRes.error) { console.error('[yatraflow] re-read profiles failed', profRes.error); failed.push('profiles') }
+    if (publicUsers.failed) { console.error('[yatraflow] re-read profile cards failed'); failed.push('profiles') }
+    else failed = failed.filter(s => s !== 'profiles')
     if (pubRes.error) { console.error('[yatraflow] re-read published failed', pubRes.error); failed.push('suggested itineraries') }
     // Replace-on-success only, per slice. A retry that fails must not also wipe
     // the rows a previous hydrate managed to load — "still broken" and "now
     // empty as well" are different states, and only one of them is a regression.
-    if (!profRes.error) patch({ users: mapOrSkip((profRes.data ?? []), rowToUser) })
+    // The merge keeps a private entry for an id, so a public refresh can never
+    // erase the signed-in user's own account fields (#800).
+    if (!publicUsers.failed) patch({ users: mergeUsers(cache.users, publicUsers.users) })
     if (!pubRes.error) patch({ published: dedupePublished(mapOrSkip((pubRes.data ?? []), rowToPublished)) })
   } catch (e) {
     console.error('[yatraflow] public slice re-read failed', e)
@@ -405,28 +407,184 @@ interface ProfileRow {
   is_disabled?: boolean;
 }
 
+/** A row of `public.profile_cards` — what the public RPC returns. Snake_case,
+ *  because it comes straight from PostgREST. */
+interface ProfileCardRow {
+  id: string; name: string; avatar_url?: string; is_creator: boolean; creator_bio?: string;
+  social_links?: { youtube?: string; instagram?: string }; creator_available: boolean;
+}
+
 /** Shape of a trip_members row as stored in Postgres (snake_case). */
 interface MemberRow {
   trip_id: string; user_id: string; role: TripMember['role']; joined_at: number;
 }
 
-function rowToUser(row: unknown): User {
-  const r = row as ProfileRow
+/**
+ * Map one public card. Carries NO account field: there is no email, no home
+ * city, no languages, no travel styles, no account date and no administrative
+ * flag in the input, so there is none in the output (#800). The old
+ * `rowToUser` manufactured those fields from a whole private row; nothing here
+ * can, because the row it is handed does not have them.
+ */
+export function rowToPublicUser(row: unknown): PublicUser {
+  const r = row as ProfileCardRow
   return {
-    id: r.id, email: r.email, createdAt: r.created_at,
+    id: r.id,
+    kind: 'public',
     profile: {
-      name: r.name, avatarUrl: r.avatar_url, homeCity: r.home_city,
-      languages: r.languages ?? ['en'], travelStyles: (r.travel_styles ?? ['balanced']) as User['profile']['travelStyles'],
-      isCreator: r.is_creator, creatorBio: r.creator_bio, socialLinks: r.social_links,
+      name: r.name,
+      avatarUrl: r.avatar_url,
+      isCreator: r.is_creator === true,
+      creatorBio: r.creator_bio ?? undefined,
+      socialLinks: r.social_links ?? undefined,
+      creatorAvailable: r.creator_available !== false,
+    },
+  }
+}
+
+/** The signed-in account's own private row, read through RLS (`profiles read
+ *  self`). Null when there is no session, when the read fails, or when the
+ *  account is disabled — the RESTRICTIVE `deny disabled` policy withholds the row
+ *  from its own owner too, which is why `enforceDisabledCheck` must not read a
+ *  missing row as proof of an enabled account (#800). */
+async function readSelfProfile(userId: ID): Promise<PrivateUser | null> {
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+  if (error || !data) return null
+  return rowToPrivateUser(data)
+}
+
+/**
+ * The public half of every profile read (#800): the cards the RPC returns. The
+ * private half is `readSelfProfile` (or, for an admin, a direct table read).
+ * They are separate on purpose — one query cannot serve both, because RLS now
+ * restricts the private table to self and admin.
+ *
+ * A failure is a failure and an empty catalogue is an empty catalogue: the two
+ * must never collapse into one, or a broken read renders as "no users" (#383's
+ * rule, applied to this slice). There is deliberately NO fallback to the private
+ * table — a missing function must fail visibly, not quietly widen the boundary.
+ */
+async function readPublicUsers(): Promise<{ users: PublicUser[]; failed: boolean }> {
+  try {
+    const { data, error } = await supabase.rpc('get_public_profile_cards', {})
+    if (error) return { users: [], failed: true }
+    const rows = Array.isArray(data) ? data : []
+    return { users: rows.map(rowToPublicUser), failed: false }
+  } catch {
+    return { users: [], failed: true }
+  }
+}
+
+/** Map one private `public.profiles` row: the signed-in user's own, or one an
+ *  authorised admin may read. This is the only mapper that touches an account
+ *  field. */
+export function rowToPrivateUser(row: unknown): PrivateUser {
+  const r = row as ProfileRow
+  const pub = rowToPublicUser({
+    id: r.id, name: r.name, avatar_url: r.avatar_url, is_creator: r.is_creator,
+    creator_bio: r.creator_bio, social_links: r.social_links,
+    creator_available: r.is_disabled !== true,
+  })
+  return {
+    id: r.id,
+    kind: 'private',
+    email: r.email,
+    createdAt: r.created_at,
+    profile: {
+      ...pub.profile,
+      homeCity: r.home_city ?? undefined,
+      languages: r.languages ?? ['en'],
+      travelStyles: (r.travel_styles ?? ['balanced']) as PrivateUserProfile['travelStyles'],
       isDisabled: r.is_disabled ?? false,
     },
   }
 }
 
+/**
+ * The merge rule, in one place, because it is the whole boundary on the client
+ * side (#800): a PRIVATE entry for an id replaces the public one, and a PUBLIC
+ * entry never replaces a private one. Without the second half, a public refresh
+ * would erase the signed-in user's own email — and without the first, a
+ * self-read would leave the stale public card in place.
+ *
+ * The map build is deliberately private-preferring, because the natural input
+ * shape carries an id twice: the public catalogue holds a card for the signed-in
+ * user, and the self read adds their private row beside it. A plain
+ * `new Map(rows.map(...))` would let the LAST entry win, which is the public
+ * card — and `currentUser()` would then find a name where an account must be.
+ */
+export function mergeUsers(current: CachedUser[], incoming: CachedUser[]): CachedUser[] {
+  const byId = new Map<string, CachedUser>()
+  for (const u of [...current, ...incoming]) {
+    const held = byId.get(u.id)
+    // A public entry never displaces a private one, in either direction.
+    if (held?.kind === 'private' && u.kind === 'public') continue
+    byId.set(u.id, u)
+  }
+  return [...byId.values()]
+}
+
+/** Drop every private entry, keeping only the public cards (#800). Used before
+ *  anything is written to the offline snapshot. */
+export function publicOnlyUsers(users: CachedUser[]): PublicUser[] {
+  return users.filter((u): u is PublicUser => u.kind === 'public')
+}
+
+/**
+ * Narrow a cached identity to its private row (#800). The admin console and the
+ * admin stats are the only two surfaces that legitimately hold private rows for
+ * OTHER accounts, and both go through this one guard — so the day a third surface
+ * wants an email, it has to narrow too, and the compiler says where.
+ */
+export function privateUser(u: CachedUser | null | undefined): u is PrivateUser {
+  return u?.kind === 'private'
+}
+
+/**
+ * Read a `users` slice back from an offline snapshot and keep ONLY what a public
+ * card may hold (#800). A snapshot written before this boundary shipped whole
+ * private rows — email, home city, languages, travel styles and the disabled flag
+ * included — and a cold boot must not put them back into the cache. A thing that
+ * is not a public card is dropped rather than coerced, because coercing is how a
+ * private field would sneak back in.
+ */
+export function sanitizeSnapshotUsers(rows: unknown[]): PublicUser[] {
+  const out: PublicUser[] = []
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    const r = row as Record<string, unknown>
+    if (typeof r.id !== 'string') continue
+    // A pre-#800 snapshot row carried the name inside `profile` and nothing at the
+    // top level; a current card carries it in `profile` too. Read it from wherever
+    // it legitimately is, and drop the row when neither has a usable name.
+    const profile = (r.profile && typeof r.profile === 'object' ? r.profile : {}) as Record<string, unknown>
+    const name = typeof profile.name === 'string' ? profile.name : typeof r.name === 'string' ? r.name : null
+    if (name === null) continue
+    out.push({
+      id: r.id,
+      kind: 'public',
+      profile: {
+        name,
+        avatarUrl: typeof profile.avatarUrl === 'string' ? profile.avatarUrl : undefined,
+        isCreator: profile.isCreator === true,
+        creatorBio: typeof profile.creatorBio === 'string' ? profile.creatorBio : undefined,
+        socialLinks: (profile.socialLinks && typeof profile.socialLinks === 'object'
+          ? profile.socialLinks : undefined) as PublicUserProfile['socialLinks'],
+        creatorAvailable: profile.creatorAvailable !== false,
+      },
+    })
+  }
+  return out
+}
+
 // ---------------- Auth ----------------
 
-export function currentUser(db: DB = getSnapshot()): User | null {
-  return db.users.find(u => u.id === db.sessionUserId) ?? null
+export function currentUser(db: DB = getSnapshot()): PrivateUser | null {
+  const found = db.users.find(u => u.id === db.sessionUserId)
+  // Only a PRIVATE entry is the signed-in account. A public card for the same id
+  // is a name and an avatar, not an account: handing it back would let
+  // `updateProfile` and the profile page read `undefined` as an email.
+  return found?.kind === 'private' ? found : null
 }
 
 /** Email/password sign in via Supabase Auth. */
@@ -521,14 +679,22 @@ export async function logout(): Promise<void> {
 export async function enforceDisabledCheck(): Promise<boolean> {
   try {
     // No extra auth round-trip here: hydrate() awaits this inside Promise.all
-    // territory, and an unmocked getUser() hangs the mocked tests. The
-    // in-hand cache already carries the flag (rowToUser maps is_disabled).
-    const me = cache.sessionUserId ? cache.users.find(u => u.id === cache.sessionUserId) : undefined
-    if (me?.profile.isDisabled === true) {
-      await supabase.auth.signOut()
-      clearAdminCache()
-      toast('This account has been disabled. Contact support if you think this is a mistake.', 'err')
-      return true
+    // territory, and an unmocked getUser() hangs the mocked tests.
+    //
+    // #800: the in-hand cache used to be the only source, and it was read as
+    // `me?.profile.isDisabled === true`. Under the new boundary a disabled
+    // account CANNOT read its own row — the RESTRICTIVE `deny disabled` policy
+    // withholds it from its owner too — so `me` is null and the old test read
+    // "no row" as "not disabled". The check now distinguishes the three cases
+    // and only the first one signs the account out:
+    //   * a private row saying disabled  → sign out with the message;
+    //   * a private row saying enabled   → nothing to do;
+    //   * NO private row at all          → unproven, so ask the server directly.
+    const me = currentUser()
+    if (me) return me.profile.isDisabled === true ? signOutDisabled() : false
+    if (cache.sessionUserId) {
+      // The server answered, so act on the answer rather than returning it.
+      return (await disabledOnServer()) ? signOutDisabled() : false
     }
     return false
   } catch {
@@ -536,6 +702,28 @@ export async function enforceDisabledCheck(): Promise<boolean> {
     // policies are the real enforcement, this is only the friendly message.
     return false
   }
+}
+
+/** Sign a disabled account out with the explanation, and report that it happened. */
+async function signOutDisabled(): Promise<boolean> {
+  await supabase.auth.signOut()
+  clearAdminCache()
+  toast('This account has been disabled. Contact support if you think this is a mistake.', 'err')
+  return true
+}
+
+/**
+ * Ask the server whether the CALLER is disabled, when the cache cannot say.
+ * `is_disabled()` is the existing security-definer helper: it reads
+ * `where p.id = auth.uid()`, so it answers about the caller and nobody else, and
+ * it already holds its execute grant. A disabled account then answers
+ * `true` even though the RESTRICTIVE policy withholds its own row. A missing
+ * helper answers `false` — unproven, never a lockout.
+ */
+async function disabledOnServer(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_disabled')
+  if (error || typeof data !== 'boolean') return false
+  return data
 }
 
 // ---------------- Init / hydration ----------------
@@ -671,15 +859,18 @@ export function init(): void {
         disconnectRealtime()
         detachDnaAccount()
         try {
-          const [profRes, pubRes] = await Promise.all([
-            supabase.from('profiles').select('*'),
+          // #800: the anonymous path reads ONLY the public projection. It has no
+          // session, so there is no private row to read and no self merge to do —
+          // and the private table is not readable by `anon` at all any more.
+          const [publicUsers, pubRes] = await Promise.all([
+            readPublicUsers(),
             supabase.from('published_itineraries').select('*'),
           ])
           if (gen !== hydrateGen || lastAuthUserId !== null) return
           const failed: string[] = []
-          if (profRes.error) failed.push('profiles')
+          if (publicUsers.failed) failed.push('profiles')
           if (pubRes.error) failed.push('suggested itineraries')
-          patch({ users: mapOrSkip(profRes.data ?? [], rowToUser), trips: [], trashedTrips: [],
+          patch({ users: publicUsers.users, trips: [], trashedTrips: [],
             trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [],
             notifications: [], published: dedupePublished(mapOrSkip(pubRes.data ?? [], rowToPublished)),
             adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null,
@@ -700,7 +891,11 @@ export function init(): void {
         if (gen !== hydrateGen || lastAuthUserId !== userId) return
         if (snapshot) {
           patch({ trips: overlayQueuedTrips(snapshot.trips as Trip[], writes, userId),
-            trashedTrips: snapshot.trashedTrips as Trip[], users: snapshot.users as User[],
+            trashedTrips: snapshot.trashedTrips as Trip[],
+            // #800: a snapshot written before the boundary shipped whole private
+            // rows. Sanitise on the way IN, so an old cached email cannot come
+            // back on a cold boot. Only public cards survive.
+            users: sanitizeSnapshotUsers(snapshot.users as unknown[]),
             published: snapshot.published as PublishedItinerary[], suggestions: snapshot.suggestions as StopSuggestion[],
             decisions: snapshot.decisions as TripDecision[], activity: snapshot.activity as ActivityEntry[],
             sessionUserId: userId, cachedAt: snapshot.savedAt, ready: true })
@@ -777,8 +972,14 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // (the whole catalog, ~1000 trips) into "My Trips",drowning the user's own
     // trips and letting a malformed foreign row crash a workspace render (which
     // looked like the trip "disappeared").
-    const [profRes, pubRes, myMembershipsRes] = await Promise.all([
-      supabase.from('profiles').select('*'),
+    // #800: the profile read is now TWO reads, because the private table is
+    // self-plus-admin only. Everyone gets the public projection; an admin also
+    // reads the private table directly (the `admin read` policy permits every
+    // row), and a non-admin reads exactly their OWN row through
+    // `readSelfProfile`. One query can no longer serve both halves.
+    const [publicUsers, selfProfile, pubRes, myMembershipsRes] = await Promise.all([
+      readPublicUsers(),
+      readSelfProfile(userId),
       supabase.from('published_itineraries').select('*'),
       supabase.from('trip_members').select('*').eq('user_id', userId),
     ])
@@ -810,8 +1011,12 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     let decisionsReadFailed = false
     let activityReadFailed = false
     let notificationsReadFailed = false
-    if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error); partial.push('profiles'); profilesReadFailed = true }
-    const profiles = (profRes.data ?? []) as ProfileRow[]
+    if (publicUsers.failed) { console.error('[yatraflow] hydrate profile cards failed'); partial.push('profiles'); profilesReadFailed = true }
+    // The self row is the private half. A missing one is NOT proof of an enabled
+    // account: the RESTRICTIVE `deny disabled` policy withholds the row from its
+    // own owner too, so `enforceDisabledCheck` reads the flag from wherever it can
+    // and never treats absence as `false` (#800).
+    const users: CachedUser[] = mergeUsers(publicUsers.users, selfProfile ? [selfProfile] : [])
     if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true; tripsReadFailed = true }
     const myRows = (myMembershipsRes.data ?? []) as MemberRow[]
     const memberTripIds = myRows.map(m => m.trip_id)
@@ -845,7 +1050,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       // The mock builder in tests/hydrate-race.test.ts has no order()/limit()
       // chainables, and production PostgREST needs limit() AFTER order() —
       // so audit reads go through a tiny helper that degrades gracefully.
-      const [tripsRes, memRes, sugRes, decRes, actRes, notRes, auditRes] = await Promise.all([
+      const [tripsRes, memRes, sugRes, decRes, actRes, notRes, auditRes, adminProfilesRes] = await Promise.all([
         supabase.from('trips').select('*'),
         supabase.from('trip_members').select('*'),
         supabase.from('suggestions').select('*'),
@@ -853,11 +1058,16 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
         supabase.from('activity').select('*'),
         supabase.from('notifications').select('*').eq('user_id', userId),
         fetchAdminAuditRows(),
+        // #800: the admin console lists every account's email, so an admin reads
+        // the PRIVATE table directly — the `admin read` policy permits every row
+        // for a masteradmin. This is the one place a bulk private read is
+        // legitimate, and it is behind `isAdminCached()`, not behind a parameter.
+        supabase.from('profiles').select('*'),
       ])
       for (const [name, res] of [
         ['trips', tripsRes], ['members', memRes], ['suggestions', sugRes],
         ['decisions', decRes], ['activity', actRes], ['notifications', notRes],
-        ['audit', auditRes],
+        ['audit', auditRes], ['admin profiles', adminProfilesRes],
       ] as const) {
         if (res.error) {
           console.error(`[yatraflow] hydrate ${name} failed`, res.error)
@@ -868,6 +1078,17 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       activityReadFailed = !!actRes.error
       suggestionsReadFailed = !!sugRes.error
       notificationsReadFailed = !!notRes.error
+      // The admin's bulk private read replaces the public cards wholesale: every
+      // row it returns is a private row, and the console is the only surface that
+      // needs them. A failure keeps the public cards already loaded rather than
+      // emptying the catalogue (#800).
+      if (!adminProfilesRes.error) {
+        users.length = 0
+        users.push(...mapOrSkip((adminProfilesRes.data ?? []), rowToPrivateUser))
+      } else {
+        console.error('[yatraflow] hydrate admin profiles failed', adminProfilesRes.error)
+        partial.push('admin profiles')
+      }
       if (tripsRes.error || memRes.error) { tripCountUnknown = true; tripsReadFailed = true }
       trips = (tripsRes.data ?? []) as TripRow[]
       members.push(...((memRes.data ?? []) as MemberRow[]))
@@ -910,7 +1131,8 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       notifications = mapOrSkip((notRes.data ?? []), rowToNotification)
     }
 
-    const users = mapOrSkip(profiles, rowToUser)
+    // `users` already carries the public cards plus the private self row (see
+    // stage 1), merged by `mergeUsers` so the private entry wins for that id.
     // With the corrected "trips read hide trashed" policy (Sep 14 2026 fix),
     // tombstoned rows are visible to their owner/editor so the trash UPDATE's
     // added-row check can pass — hydration must therefore keep them out of the
@@ -1046,7 +1268,12 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       void saveSnapshot(userId, {
         trips: cache.trips,
         trashedTrips: cache.trashedTrips,
-        users: cache.users,
+        // #800: only the PUBLIC cards are persisted. The signed-in user's own
+        // private row is deliberately left out — IndexedDB is unencrypted and
+        // outlives the session, and an email in it is a read path the database
+        // repair does not close. The self row is re-read on every hydrate, so
+        // nothing is lost by not storing it.
+        users: publicOnlyUsers(cache.users),
         published: cache.published,
         suggestions: cache.suggestions,
         decisions: cache.decisions,
@@ -1264,11 +1491,15 @@ export const PROFILE_NOT_SAVED = 'Profile not saved. Check your connection and t
  * setMemberRole and removeMember use, so the app never shows a name the server
  * did not keep. The caller's form keeps its draft either way.
  */
-export async function updateProfile(patchFields: Partial<User['profile']>): Promise<{ ok: boolean; error?: string }> {
+export async function updateProfile(patchFields: Partial<PrivateUserProfile>): Promise<{ ok: boolean; error?: string }> {
   const u = currentUser()
   if (!u) return { ok: false, error: PROFILE_NOT_SAVED }
   const idx = cache.users.findIndex(x => x.id === u.id)
-  const before = idx >= 0 ? cache.users[idx] : null
+  // The cache entry for the signed-in account is a PRIVATE row, so the optimistic
+  // edit is applied to that row's shape (#800). `currentUser()` already returned
+  // one, which is why this cast is a narrowing of something already established
+  // rather than a widening.
+  const before = idx >= 0 && privateUser(cache.users[idx]) ? cache.users[idx] : null
   if (before) { cache.users[idx] = { ...before, profile: { ...before.profile, ...patchFields } }; commit() }
   const rollBack = () => {
     const i = cache.users.findIndex(x => x.id === u.id)
@@ -2301,8 +2532,12 @@ function rpcErrorMessage(e: unknown): string {
 export async function adminSetDisabled(userId: ID, disabled: boolean): Promise<boolean> {
   if (!requireAdmin()) return false
   const prev = cache.users
+  // #800: the disabled flag is private metadata, so the optimistic edit applies
+  // only to a PRIVATE row. An admin hydrates private rows for every account (see
+  // hydrate's admin branch), so the row is there; a public card is left alone
+  // rather than having a flag manufactured onto it.
   patch({
-    users: prev.map(u => u.id === userId
+    users: prev.map(u => u.id === userId && privateUser(u)
       ? { ...u, profile: { ...u.profile, isDisabled: disabled } }
       : u),
   })
@@ -2324,8 +2559,11 @@ export async function adminSetDisabled(userId: ID, disabled: boolean): Promise<b
 export async function adminSetCreator(userId: ID, isCreator: boolean): Promise<boolean> {
   if (!requireAdmin()) return false
   const prev = cache.users
+  // #800: `is_creator` IS a public field, but the optimistic edit is still applied
+  // only to a private row — the console's list is private rows, and a public card
+  // is refreshed by its own live event rather than edited here.
   patch({
-    users: prev.map(u => u.id === userId
+    users: prev.map(u => u.id === userId && privateUser(u)
       ? { ...u, profile: { ...u.profile, isCreator } }
       : u),
   })
@@ -4179,7 +4417,10 @@ function persistTripField(id: ID, t: Trip): void {
 
 export function membersOf(trip: Trip): TripMember[] { return trip.members ?? [] }
 
-export function userById(id: ID | undefined): User | undefined {
+/** Any cached identity for an id: a public card, or a private row the caller is
+ *  allowed to hold. The name and avatar are the same shape on both, which is why
+ *  the ~20 call sites that only want those need no change (#800). */
+export function userById(id: ID | undefined): CachedUser | undefined {
   if (!id) return undefined
   return cache.users.find(u => u.id === id)
 }
@@ -6789,7 +7030,7 @@ export function connectRealtime(userId: string): void {
  *  first seven slices go stale on every laptop sleep. */
 const RESYNC_TABLES = [
   'trips', 'trip_members', 'suggestions', 'decisions', 'activity',
-  'notifications', 'profiles', 'published_itineraries', 'admin_audit',
+  'notifications', 'profile_cards', 'published_itineraries', 'admin_audit',
 ] as const
 
 /** Feed a synthetic postgres_changes payload through the SAME dispatch a live
@@ -6882,14 +7123,20 @@ async function resyncTripsAfterReconnect(scope: IdentityScope): Promise<void> {
     }
     for (const row of rows) feedSynthetic('trip_members', 'INSERT', row)
   })
-  await step('profiles', async () => {
-    const { data, error } = await supabase.from('profiles').select('*')
+  await step('profile_cards', async () => {
+    // #800: the reconnect resync reads the PUBLIC projection, never the private
+    // table. A throw here is a failed read, which is the honest outcome — the
+    // alternative (falling back to the private table) is exactly the boundary
+    // this change closes.
+    const { data, error } = await supabase.rpc('get_public_profile_cards', {})
     if (!live()) return
     if (error) throw error
     // Upsert-only, no phantom sweep: there is no scoping that makes a missing
-    // profile row evidence of deletion, and the cost of a stale name for a
-    // deleted account is nil.
-    for (const row of (data ?? []) as Record<string, unknown>[]) feedSynthetic('profiles', 'INSERT', row)
+    // card evidence of deletion, and the cost of a stale name for a deleted
+    // account is nil.
+    for (const row of (Array.isArray(data) ? data : []) as Record<string, unknown>[]) {
+      feedSynthetic('profile_cards', 'INSERT', row)
+    }
   })
   await step('published_itineraries', async () => {
     const { data, error } = await supabase.from('published_itineraries').select('*')
@@ -7134,12 +7381,16 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
     case 'notifications':
       cache.notifications = reduceSlice(cache.notifications, event, row ? rowToNotification(row) : undefined, oldRow?.id)
       break
-    case 'profiles': {
+    case 'profile_cards': {
+      // #800: the live channel publishes the PUBLIC projection, so the payload
+      // carries the safe columns and never a private one. The mapper is the
+      // public one, and the merge keeps a private entry for the same id — a live
+      // name change must not erase the signed-in user's own account fields.
       if (event === 'DELETE') {
         cache.users = cache.users.filter(u => u.id !== id)
         break
       }
-      cache.users = reduceSlice(cache.users, event, rowToUser(row as ProfileRow), oldRow?.id)
+      cache.users = mergeUsers(cache.users, [rowToPublicUser(row)])
       break
     }
     case 'published_itineraries':

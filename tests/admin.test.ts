@@ -8,12 +8,15 @@ import {
   platformRevenue, type PlatformSale,
 } from '../src/lib/adminStats'
 import { buildSalesLedger, platformFeeInr } from '../src/lib/earnings'
-import type { Trip, User } from '../src/data/types'
+import type { Trip, PrivateUser, PrivateUserProfile } from '../src/data/types'
 
-function user(id: string, createdAt: number, extra: Partial<User['profile']> = {}): User {
+// #800: the admin console reads PRIVATE rows (an admin hydrates them directly), so
+// its fixture is a private user — the only shape that carries an email, an account
+// date and the disabled flag the console's figures derive from.
+function user(id: string, createdAt: number, extra: Partial<PrivateUserProfile> = {}): PrivateUser {
   return {
-    id, email: `${id}@x.com`, createdAt,
-    profile: { name: id, languages: ['en'], travelStyles: ['balanced'], isCreator: false, ...extra },
+    id, kind: 'private', email: `${id}@x.com`, createdAt,
+    profile: { name: id, isCreator: false, creatorAvailable: true, ...extra },
   }
 }
 

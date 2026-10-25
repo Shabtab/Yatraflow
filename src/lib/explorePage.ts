@@ -2,7 +2,7 @@
 // Featured pick, route trail, place and creator tallies, card facts and the
 // empty-state choice for the Explore gallery. No React, no clock reads, no
 // store reads. Every figure comes from the publication rows passed in.
-import type { PublishedItinerary, User } from '../data/types'
+import type { PublishedItinerary, CachedUser } from '../data/types'
 import { formatInrShort } from './engine'
 import { FEATURED_MIN_VIEWS, trendingPubs } from './discovery'
 import { livePubs } from './livePubs'
@@ -98,7 +98,7 @@ function mostCommonSpelling(spellings: Map<string, number>): string {
  * the list a click opens. Sorted by that count, then name. Returns the top
  * `limit` tiles.
  */
-export function placeTiles(pubs: PublishedItinerary[], users: User[] = [], limit = 6): PlaceTile[] {
+export function placeTiles(pubs: PublishedItinerary[], users: CachedUser[] = [], limit = 6): PlaceTile[] {
   const tallies = new Map<string, PlaceTally>()
   for (const pub of livePubs(pubs)) {
     const keysInPlan = new Set<string>()
@@ -135,7 +135,7 @@ export function placeTiles(pubs: PublishedItinerary[], users: User[] = [], limit
  * skipped, and so is a disabled account, as in `featuredCreators`. Sorted by
  * forks, then plans, then name, then id. Returns the top `limit` creators.
  */
-export function creatorList(pubs: PublishedItinerary[], users: User[], limit = 5): CreatorTile[] {
+export function creatorList(pubs: PublishedItinerary[], users: CachedUser[], limit = 5): CreatorTile[] {
   const usersById = new Map(users.map(user => [user.id, user] as const))
   const tallies = new Map<string, { plans: number; forks: number }>()
   for (const pub of livePubs(pubs)) {
@@ -147,8 +147,10 @@ export function creatorList(pubs: PublishedItinerary[], users: User[], limit = 5
   const rows: CreatorTile[] = []
   for (const [id, tally] of tallies) {
     const user = usersById.get(id)
-    // A disabled account is not one a visitor should be pointed at.
-    const isListable = user !== undefined && !user.profile.isDisabled
+    // A disabled account is not one a visitor should be pointed at. #800:
+    // `creatorAvailable` is the server-derived signal, so the flag itself stays
+    // on the private table.
+    const isListable = user !== undefined && user.profile.creatorAvailable
     if (!isListable) continue
     rows.push({ id, name: user.profile.name, plans: tally.plans, forks: tally.forks, isCreator: user.profile.isCreator })
   }

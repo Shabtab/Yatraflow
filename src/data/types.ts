@@ -98,25 +98,63 @@ export interface FixedCommitment {
   stopId?: ID
 }
 
-export interface UserProfile {
+/**
+ * What ANY caller may see about an account: exactly the allowlist the
+ * `get_public_profile_cards` RPC returns (#800). It has no email, no home city,
+ * no languages, no travel styles, no account date and no administrative flag,
+ * because none of those is in the reviewed public set.
+ *
+ * `creatorAvailable` is the derived signal that separates a retained crew
+ * identity from public creator availability — it is `not is_disabled` on the
+ * server, so the flag itself never crosses the boundary. It deliberately does
+ * not need `isCreator`: a plan published by an account that later dropped the
+ * creator badge must not vanish from Explore.
+ */
+export interface PublicUserProfile {
   name: string
   avatarUrl?: string        // may be a data URI or remote URL; initials fallback used if absent
-  homeCity?: string
-  languages: string[]       // e.g. ['en', 'hi', 'ml'] — ISO-ish codes, ready for i18n
-  travelStyles: TravelStyle[]
   isCreator: boolean
   creatorBio?: string
   socialLinks?: { youtube?: string; instagram?: string }
+  creatorAvailable: boolean
+}
+
+/**
+ * The account's OWN row, or an authorised admin's view of it. Extends the public
+ * shape so the many call sites that only want a name or an avatar are untouched.
+ * The private fields live here and nowhere else, which is what makes an
+ * accidental public read a compile error rather than a blank line on screen.
+ */
+export interface PrivateUserProfile extends PublicUserProfile {
+  homeCity?: string
+  languages: string[]       // e.g. ['en', 'hi', 'ml'] — ISO-ish codes, ready for i18n
+  travelStyles: TravelStyle[]
   /** masteradmin console: true when the account is disabled (see admin_set_disabled RPC) */
   isDisabled?: boolean
 }
 
-export interface User {
+/** A public identity card. Carries no account field. */
+export interface PublicUser {
   id: ID                    // = Supabase auth.users.id (uuid)
-  email: string
-  profile: UserProfile
-  createdAt: number
+  kind: 'public'
+  profile: PublicUserProfile
 }
+
+/** A private account row: the signed-in user, or one an admin may read. */
+export interface PrivateUser {
+  id: ID
+  kind: 'private'
+  email: string
+  createdAt: number
+  profile: PrivateUserProfile
+}
+
+/**
+ * What the `users` cache holds. The discriminant is load-bearing: `email` exists
+ * only on the private variant, so every reader that wants an account address has
+ * to say why it is allowed to have one (#800).
+ */
+export type CachedUser = PublicUser | PrivateUser
 
 export interface TripMember {
   userId: ID

@@ -549,8 +549,14 @@ create policy "admin write" on public.activity for all to authenticated using (p
 create policy "admin write" on public.published_itineraries for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- ---------- profiles ----------
-create policy "profiles read" on public.profiles
-  for select using (true);  -- names/avatars are visible app-wide (social features)
+-- #800: `profiles read` was `for select using (true)`, which defaults to the
+-- `public` role — so `anon` matched it, and RLS limits rows rather than columns.
+-- Every column of every row, `email` included, was readable by anyone. The
+-- private table is now self-plus-admin, and the public read moves to
+-- `get_public_profile_cards` over `public.profile_cards` further down.
+drop policy if exists "profiles read" on public.profiles;
+create policy "profiles read self" on public.profiles
+  for select to authenticated using (auth.uid() = id);
 
 create policy "profiles update self" on public.profiles
   for update using (auth.uid() = id) with check (auth.uid() = id);
@@ -820,7 +826,7 @@ alter publication supabase_realtime add table public.decisions;
 alter publication supabase_realtime add table public.activity;
 alter publication supabase_realtime add table public.notifications;
 alter publication supabase_realtime add table public.published_itineraries;
-alter publication supabase_realtime add table public.profiles;  -- profile cards live-update (names/avatars are public app-wide)
+alter publication supabase_realtime add table public.profile_cards;  -- public identity live-updates; the private table is NOT published (#800)
 alter publication supabase_realtime add table public.admin_audit;  -- masteradmin console Audit tab reads live
 
 -- ============================================================
@@ -1680,5 +1686,151 @@ end;
 $$;
 revoke all on function public.restore_trip_contributions(text) from public, anon;
 grant execute on function public.restore_trip_contributions(text) to authenticated;
+
+-- ============================================================
+-- #800 — the public/private profile boundary.
+--
+-- `public.profiles` holds the private account fields and is now self-plus-admin
+-- only (see the profiles policies above). This section is the PUBLIC half: a
+-- projection that carries nothing but the reviewed fields, a trigger that keeps
+-- it in step in the same transaction as its profile row, and the one typed RPC
+-- that reads it. A public read and a public Realtime event share one
+-- allowlist, and neither can drift from the other.
+--
+-- The full contract, its reasoning and its re-run safety live in
+-- supabase/migrations/20261025_profile_public_boundary.sql.
+-- ============================================================
+create table if not exists public.profile_cards (
+  id                uuid primary key references public.profiles (id) on delete cascade,
+  name              text not null default 'Traveller',
+  avatar_url        text,
+  is_creator        boolean not null default false,
+  creator_bio       text,
+  social_links      jsonb not null default '{}'::jsonb,
+  -- The reviewed derived signal that separates retained crew identity from
+  -- public creator availability. It is `not is_disabled`, so `is_disabled`
+  -- itself never leaves the private table. It deliberately does NOT need
+  -- `is_creator`: a plan published by an account that later dropped the creator
+  -- badge must not vanish from Explore.
+  creator_available boolean not null default true
+);
+
+-- Rebuilds `social_links` from ONLY the reviewed string keys. A return of the
+-- stored JSONB object would publish whatever keys a future writer put in it.
+create or replace function public.safe_social_links(p_links jsonb)
+returns jsonb
+language sql
+immutable
+security definer
+set search_path = public
+as $$
+  select case
+    when jsonb_typeof(p_links) <> 'object' then '{}'::jsonb
+    else jsonb_strip_nulls(jsonb_build_object(
+      'youtube', case when jsonb_typeof(p_links -> 'youtube') = 'string'
+        then nullif(btrim(p_links ->> 'youtube'), '') end,
+      'instagram', case when jsonb_typeof(p_links -> 'instagram') = 'string'
+        then nullif(btrim(p_links ->> 'instagram'), '') end
+    ))
+  end
+$$;
+
+-- AFTER, so the card is written in the SAME transaction as the profile row that
+-- produced it: a public read can never see a card older than its profile, and a
+-- rolled-back profile edit rolls its card back with it.
+create or replace function public.sync_profile_card()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'DELETE' then
+    delete from public.profile_cards where id = old.id;
+    return old;
+  end if;
+  insert into public.profile_cards
+    (id, name, avatar_url, is_creator, creator_bio, social_links, creator_available)
+  values
+    (new.id, new.name, new.avatar_url, new.is_creator, new.creator_bio,
+     public.safe_social_links(new.social_links), not new.is_disabled)
+  on conflict (id) do update set
+    name = excluded.name,
+    avatar_url = excluded.avatar_url,
+    is_creator = excluded.is_creator,
+    creator_bio = excluded.creator_bio,
+    social_links = excluded.social_links,
+    creator_available = excluded.creator_available;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_sync_card on public.profiles;
+create trigger profiles_sync_card
+  after insert or update or delete on public.profiles
+  for each row execute function public.sync_profile_card();
+
+insert into public.profile_cards
+  (id, name, avatar_url, is_creator, creator_bio, social_links, creator_available)
+select
+  p.id, p.name, p.avatar_url, p.is_creator, p.creator_bio,
+  public.safe_social_links(p.social_links), not p.is_disabled
+from public.profiles p
+on conflict (id) do nothing;
+
+-- The ONE public read path. Typed as `setof public.profile_cards`, so the return
+-- shape IS the allowlist and a caller cannot ask for a column that is not in it.
+-- Security definer so an anonymous caller reads a public card with no grant on
+-- the private table. A null argument means "every card" — the catalogue is public
+-- by design, because clients hold SELECT on the projection for Realtime — and a
+-- named list narrows it. Both shapes return the same columns.
+create or replace function public.get_public_profile_cards(p_ids uuid[] default null)
+returns setof public.profile_cards
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+begin
+  if p_ids is null then
+    return query
+      select c.id, c.name, c.avatar_url, c.is_creator, c.creator_bio, c.social_links, c.creator_available
+      from public.profile_cards c;
+  end if;
+  return query
+    select c.id, c.name, c.avatar_url, c.is_creator, c.creator_bio, c.social_links, c.creator_available
+    from public.profile_cards c
+    where c.id = any(p_ids);
+end;
+$$;
+
+revoke all on function public.get_public_profile_cards(uuid[]) from public;
+grant execute on function public.get_public_profile_cards(uuid[]) to anon, authenticated;
+revoke all on function public.safe_social_links(jsonb) from public, anon, authenticated;
+revoke all on function public.sync_profile_card() from public, anon, authenticated;
+
+-- The projection is the only public surface. Clients must not write it: the
+-- trigger above is its single writer, and a client write would desync the two
+-- tables. SELECT is granted to anon and authenticated because Realtime
+-- authorizes `postgres_changes` against the subscriber's privileges on the
+-- published table — safe by construction, because the table holds nothing but
+-- the reviewed public fields.
+revoke all on public.profile_cards from public;
+revoke insert, update, delete on public.profile_cards from anon, authenticated;
+grant select on public.profile_cards to anon, authenticated;
+
+-- The anonymous role loses direct SELECT on the private table. `authenticated`
+-- keeps it, because RLS now restricts its rows to self and admin.
+revoke select on public.profiles from anon;
+
+-- `admin_audit.detail` carries a deleted user's email, and its read policy
+-- checked only `is_admin()`. A masteradmin whose account was later disabled
+-- keeps a valid JWT until the app signs them out, so a direct request could read
+-- the audit — and the deleted users' addresses — in that window. This is the
+-- RESTRICTIVE denial the other eight tables already had; `admin_audit` was the
+-- one missing it. The audit rows themselves are untouched.
+drop policy if exists "deny disabled" on public.admin_audit;
+create policy "deny disabled" on public.admin_audit
+  as restrictive for all to authenticated using (not public.is_disabled());
 
 commit;

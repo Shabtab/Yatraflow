@@ -13,7 +13,7 @@
 
 import { computeTotals } from './engine'
 import { isRefunded, orderMoneyAt, type Entitlement, type PurchaseOrder } from './payments'
-import type { PublishedItinerary, Trip, User } from '../data/types'
+import type { PublishedItinerary, Trip, CachedUser } from '../data/types'
 
 /** Text from a stored field, or undefined when it is missing or blank. */
 function cleanText(value: unknown): string | undefined {
@@ -190,7 +190,7 @@ export interface PurchaseShelf {
 export function buildPurchaseShelf(
   entitlements: Entitlement[],
   pubs: PublishedItinerary[],
-  users: User[],
+  users: CachedUser[],
   orders: PurchaseOrder[] = [],
 ): PurchaseShelf {
   const pubById = new Map(pubs.map(p => [p.id, p]))

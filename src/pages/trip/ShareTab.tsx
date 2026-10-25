@@ -591,7 +591,11 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
                 <div key={m.userId} className="feed-item shr-member-row">
                   <Avatar user={u} size="lg" />
                   <div className="shr-member-details">
-                    <b>{u?.profile.name ?? 'Traveller'}</b> <span className="muted small">{u?.email}</span>
+                    {/* #800: a crew member's account email is PRIVATE. Being on the
+                        same trip is not self or admin authority, so the address is
+                        gone from this list — the name, the avatar and the role are
+                        what a crew surface may show. */}
+                    <b>{u?.profile.name ?? 'Traveller'}</b>
                     <div className="small muted">Joined {timeAgo(m.joinedAt)}</div>
                   </div>
                   {isOwner && m.role !== 'owner' ? (

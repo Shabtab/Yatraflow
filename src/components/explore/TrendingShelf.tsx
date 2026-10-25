@@ -9,7 +9,7 @@
 // reads the same in the shelf and in the grid.
 import { useId, type CSSProperties } from 'react'
 import { Eye } from 'lucide-react'
-import type { PublishedItinerary, User } from '../../data/types'
+import type { PublishedItinerary, CachedUser } from '../../data/types'
 import { appLink } from '../../lib/appLink'
 import { Avatar } from '../ui'
 import { ExploreCover } from './ExploreCover'
@@ -23,7 +23,7 @@ function viewCount(n: number): string {
 
 export function TrendingShelf({ pubs, users, isSaved, onToggleSave }: {
   pubs: PublishedItinerary[]
-  users: User[]
+  users: CachedUser[]
   isSaved: (id: string) => boolean
   onToggleSave: (id: string) => void
 }) {

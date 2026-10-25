@@ -17,6 +17,9 @@ const { state } = vi.hoisted(() => ({
     tables: {} as Record<string, unknown[]>,
     errors: {} as Record<string, boolean>,
     throwOn: null as string | null,
+    /** #800: the public profile read is an RPC, not a table read, so a thrown
+     *  public read is driven from here. */
+    rpcThrowOn: null as string | null,
     authHandler: null as ((event: string, session: unknown) => void) | null,
     resolveSession: null as (() => void) | null,
     sessionUser: null as string | null,
@@ -42,7 +45,16 @@ vi.mock('../src/lib/supabase', () => {
     isSupabaseConfigured: true,
     supabase: {
       from: (t: string) => makeBuilder(t),
-      rpc: () => Promise.resolve({ data: [], error: null }),
+      rpc: (fn: string) => {
+        const b: Record<string, unknown> = {
+          setHeader: () => b,
+          then: (res: (v: { data: unknown; error: unknown }) => unknown, rej?: (e: unknown) => unknown) => {
+            if (state.rpcThrowOn === fn) return Promise.reject(new Error('network down')).then(res, rej)
+            return Promise.resolve({ data: [], error: null }).then(res, rej)
+          },
+        }
+        return b
+      },
       channel: () => chain,
       removeChannel: () => Promise.resolve(),
       auth: {
@@ -86,6 +98,7 @@ beforeEach(() => {
   state.tables = { profiles: [profileRow], published_itineraries: [pubRow] }
   state.errors = {}
   state.throwOn = null
+  state.rpcThrowOn = null
   state.authHandler = null
   state.resolveSession = null
   state.sessionUser = null
@@ -110,11 +123,15 @@ describe('logged-out Explore gets a catalog verdict', () => {
     expect(sliceState(sliceReads, 'profiles')).toBe('ready')
   })
 
-  it('a thrown read marks both public slices failed', async () => {
-    state.throwOn = 'profiles'
+  it('a thrown read marks the slice it belongs to failed', async () => {
+    // #800: the public profile read is the RPC now, so the throw is driven there.
+    // The publications read still succeeded, and it answers for itself — a
+    // per-slice verdict is the whole point of #383's rule, so one broken read
+    // must not report the other slice failed on evidence it never collected.
+    state.rpcThrowOn = 'get_public_profile_cards'
     const store = await coldLoggedOutLoad()
     const { sliceReads } = store.getSnapshot()
-    expect(sliceState(sliceReads, 'suggested itineraries')).toBe('failed')
+    expect(sliceState(sliceReads, 'suggested itineraries')).toBe('ready')
     expect(sliceState(sliceReads, 'profiles')).toBe('failed')
   })
 

@@ -8,7 +8,7 @@ import { appLink } from '../../lib/appLink'
 import { nextStepRoute } from '../../lib/tripNextStep'
 import { meterLabel, meterPercent, routeLine, travelHoursText } from '../../lib/tripsCard'
 import { cardNextStep, countdownText, planning, rangeText, statusOf } from '../../lib/tripsPage'
-import type { Trip, User } from '../../data/types'
+import type { Trip, CachedUser } from '../../data/types'
 import { Planners } from './Planners'
 import { TripCover } from './TripCover'
 import { TripFacts } from './TripFacts'
@@ -18,7 +18,7 @@ export interface UpNextCardProps {
   today: Date
   budget: ReactNode
   totalTravelMinutes: number
-  users: User[]
+  users: CachedUser[]
   meId: string | null
   onDelete: (trip: Trip) => void
 }

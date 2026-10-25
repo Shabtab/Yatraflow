@@ -1,9 +1,9 @@
 // ============ Seed data ============
 // Realistic Indian demo content. With real Supabase auth, new accounts get the
 // demo trips reseeded into their own Supabase account (see src/lib/seedSupabase.ts).
-// The `User` objects here are only used to pre-fill profile fields for the
+// The `CachedUser` objects here are only used to pre-fill profile fields for the
 // reseeded demo owner; passwords are handled by Supabase Auth, not stored here.
-import type { Trip, PublishedItinerary, StopSuggestion, TripDecision, ActivityEntry, Notification, UserProfile } from './types'
+import type { Trip, PublishedItinerary, StopSuggestion, TripDecision, ActivityEntry, Notification, PrivateUserProfile } from './types'
 import { randomToken } from '../lib/randomId'
 
 /** A client-minted row id. The platform CSPRNG, not `Math.random` (#267's
@@ -16,13 +16,14 @@ export const uid = (prefix: string): string => `${prefix}_${randomToken(6)}`
 // demo-trip owner when a new account is seeded (see src/lib/seedSupabase.ts).
 // Passwords are handled by Supabase Auth and are NOT stored here.
 
-export const demoProfileTemplates: Record<string, UserProfile> = {
+export const demoProfileTemplates: Record<string, PrivateUserProfile> = {
   'demo@yatraflow.in': {
     name: 'Demo Traveller',
     homeCity: 'Kochi, Kerala',
     languages: ['en', 'hi', 'ml'],
     travelStyles: ['balanced', 'food-focused'],
     isCreator: false,
+    creatorAvailable: true,
   },
   'meera@yatraflow.in': {
     name: 'Meera Nair',
@@ -30,6 +31,7 @@ export const demoProfileTemplates: Record<string, UserProfile> = {
     languages: ['en', 'ml', 'ta'],
     travelStyles: ['relaxed', 'food-focused'],
     isCreator: false,
+    creatorAvailable: true,
   },
   'arjun@yatraflow.in': {
     name: 'Arjun Mehta',
@@ -37,6 +39,7 @@ export const demoProfileTemplates: Record<string, UserProfile> = {
     languages: ['en', 'hi', 'mr'],
     travelStyles: ['adventure', 'budget'],
     isCreator: false,
+    creatorAvailable: true,
   },
   'devika@yatraflow.in': {
     name: 'Devika Rathore',
@@ -45,6 +48,7 @@ export const demoProfileTemplates: Record<string, UserProfile> = {
     languages: ['en', 'hi'],
     travelStyles: ['creator', 'luxury', 'spiritual'],
     isCreator: true,
+    creatorAvailable: true,
     creatorBio: 'Heritage storyteller. I plan slow, deep India itineraries — forts, havelis, food lanes and the people in between.',
     socialLinks: { youtube: 'youtube.com/@DevikaRoams', instagram: 'instagram.com/devikaroams' },
   },
