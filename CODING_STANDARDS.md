@@ -935,6 +935,22 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    reports the grid candidate. Persist the layout and reload to measure first
    paint.
 
+6az. **A committed image with no honest condition is worse than no image
+   (learned 2026-10-25, batch-1 art).** The batch built a vignette for an offline
+   state, and the obvious move was to show it on every failed read. That would
+   have told a signed-in viewer they were offline when the request was merely
+   refused, and `OfflineBanner` already owns the connection message in the shell.
+   A page-level read cannot tell the two apart, so `es-offline` ships declared and
+   wired to nothing. The same rule kept the Explore signed-out empty state on its
+   icon: the copy invites a sign-up, which is not the "nothing published" claim
+   the vignette makes. Two habits follow. Wire a vignette only where the
+   component's own condition names that exact state, and record an unused asset
+   in the pipeline doc with the reason, so the next run does not "finish" the job
+   by guessing. A related detail: `StateBlock` renders `art` and `icon` as
+   separate slots, so passing both stacks the icon under the vignette. The icon
+   belongs in the vignette's own `fallback`, where it is the loading and failure
+   floor and nothing else.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 - **Separate crew fields must stay separate during parsing.** Normalize the mobile field alone. A name can contain digits. A parser that joins both fields can change that name or make the mobile number invalid. Keep the existing structured draft fields and duplicate rules.

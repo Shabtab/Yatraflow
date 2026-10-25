@@ -62,7 +62,7 @@ describe('artIdFor', () => {
   })
 
   it('always returns the only id of a region that has one id', () => {
-    const onlyIds: Partial<Record<ArtRegion, string>> = { kerala: 'kerala-1', rajasthan: 'rajasthan-1', kashmir: 'himalaya-1' }
+    const onlyIds: Partial<Record<ArtRegion, string>> = { kerala: 'kerala-1' }
     for (const [region, expectedId] of Object.entries(onlyIds)) {
       for (let index = 0; index < 200; index += 1) {
         expect(artIdFor(region as ArtRegion, `seed-${index}`)).toBe(expectedId)
@@ -71,8 +71,30 @@ describe('artIdFor', () => {
   })
 
   it('returns null for a region with no generated image', () => {
-    for (const region of ['goa', 'coorg', 'meghalaya', 'generic'] as const) {
-      expect(artIdFor(region, 'any-seed')).toBeNull()
+    // "generic" is the only region with no scene of its own. A trip there takes
+    // the road or city fallback; a place tile keeps the generic motif.
+    expect(artIdFor('generic', 'any-seed')).toBeNull()
+  })
+
+  it('picks a seeded scene in each region that now has two', () => {
+    // Batch 1 filled goa, coorg and meghalaya and added a second scene to
+    // rajasthan and kashmir. Every pick must still be a declared id of that
+    // region, and a region with two scenes must reach both across seeds.
+    const paired: Array<[ArtRegion, string, string]> = [
+      ['goa', 'goa-1', 'goa-2'],
+      ['coorg', 'coorg-1', 'coorg-2'],
+      ['meghalaya', 'meghalaya-1', 'meghalaya-2'],
+      ['rajasthan', 'rajasthan-1', 'rajasthan-2'],
+      ['kashmir', 'himalaya-1', 'himalaya-2'],
+    ]
+    for (const [region, first, second] of paired) {
+      const seen = new Set<string>()
+      for (let index = 0; index < 200; index += 1) {
+        const id = artIdFor(region, `seed-${index}`)
+        expect([first, second], `${region} seed-${index}`).toContain(id)
+        if (id) seen.add(id)
+      }
+      expect([...seen].sort(), region).toEqual([first, second])
     }
   })
 })
@@ -104,7 +126,9 @@ describe('coverFor', () => {
   })
 
   it('uses road art for a region without images and two or more places', () => {
-    expect(coverFor({ region: 'goa', seed: 'trip-1', placeCount: 2 })).toEqual({ kind: 'generated', id: 'road-1' })
+    // "generic" has no scene of its own; every named region now has one, so the
+    // fallback is reached only through a region with an empty list.
+    expect(coverFor({ region: 'generic', seed: 'trip-1', placeCount: 2 })).toEqual({ kind: 'generated', id: 'road-1' })
   })
 
   it('uses city art for a region without images and one place', () => {
@@ -124,8 +148,14 @@ describe('coverFor', () => {
 })
 
 describe('vignetteArtFor', () => {
-  it('resolves a declared page state to its square master', () => {
+  it('resolves every declared page state to its square master', () => {
     expect(vignetteArtFor('first-trip')).toBe('es-first-trip')
+    expect(vignetteArtFor('no-saved')).toBe('es-no-saved')
+    expect(vignetteArtFor('no-results')).toBe('es-no-results')
+    expect(vignetteArtFor('no-purchases')).toBe('es-no-purchases')
+    expect(vignetteArtFor('no-published')).toBe('es-no-published')
+    expect(vignetteArtFor('offline')).toBe('es-offline')
+    expect(vignetteArtFor('error')).toBe('es-error')
   })
 
   it('returns null for a state with no image, which keeps the block icon', () => {
@@ -162,6 +192,19 @@ describe('honest region matching for place tiles', () => {
     expect(artIdFor(regionFor({ destinations: ['Srinagar'] }), 'Srinagar')).toBe('himalaya-1')
     expect(artIdFor(regionFor({ destinations: ['Munnar'] }), 'Munnar')).toBe('kerala-1')
   })
+
+  it('gives a place in a newly filled region that region scene, not the fallback', () => {
+    expect(regionFor({ destinations: ['Shillong'] })).toBe('meghalaya')
+    expect(['meghalaya-1', 'meghalaya-2']).toContain(artIdFor('meghalaya', 'Shillong'))
+    expect(regionFor({ destinations: ['Madikeri'] })).toBe('coorg')
+    expect(['coorg-1', 'coorg-2']).toContain(artIdFor('coorg', 'Madikeri'))
+    expect(regionFor({ destinations: ['Panjim, Goa'] })).toBe('goa')
+    expect(['goa-1', 'goa-2']).toContain(artIdFor('goa', 'Panjim, Goa'))
+    // A town the keyword list does not name still keeps the generic motif: the
+    // new scenes must not widen what counts as a region match.
+    expect(regionFor({ destinations: ['Palolem'] })).toBe('generic')
+    expect(artIdFor('generic', 'Palolem')).toBeNull()
+  })
 })
 
 describe('focalYFor', () => {
@@ -174,6 +217,16 @@ describe('focalYFor', () => {
 
   it('returns 50 for an unknown id', () => {
     expect(focalYFor('no-such-id', '3:1')).toBe(50)
+  })
+
+  it('keeps the per-asset 3:1 focal point for himalaya-2 and leaves its neighbours alone', () => {
+    // himalaya-2 puts its peaks high in the frame, so a 3:1 crop centred at 60
+    // cuts them. It carries its own 3:1 value; every other wide scene keeps the
+    // shared one. This is a manifest value, not a code branch.
+    expect(focalYFor('himalaya-2', '3:1')).toBe(40)
+    expect(focalYFor('himalaya-2', '21:9')).toBe(40)
+    expect(focalYFor('himalaya-1', '3:1')).toBe(60)
+    expect(focalYFor('goa-2', '3:1')).toBe(60)
   })
 })
 
@@ -198,11 +251,27 @@ describe('srcsetFor', () => {
 })
 
 describe('manifest shape', () => {
-  it('has a list for every region, empty where no image exists yet', () => {
+  it('has a list for every region, empty only where no image exists', () => {
     for (const region of REGIONS) {
       expect(Array.isArray(ART_MANIFEST.regions[region])).toBe(true)
     }
-    expect(ART_MANIFEST.regions.goa).toEqual([])
+    // "generic" is deliberately empty: no scene may claim an unmatched place.
+    expect(ART_MANIFEST.regions.generic).toEqual([])
+  })
+
+  it('gives each region its own scenes and keeps the fallback families separate', () => {
+    expect(ART_MANIFEST.regions.goa).toEqual(['goa-1', 'goa-2'])
+    expect(ART_MANIFEST.regions.coorg).toEqual(['coorg-1', 'coorg-2'])
+    expect(ART_MANIFEST.regions.meghalaya).toEqual(['meghalaya-1', 'meghalaya-2'])
+    expect(ART_MANIFEST.regions.kashmir).toEqual(['himalaya-1', 'himalaya-2'])
+    expect(ART_MANIFEST.regions.rajasthan).toEqual(['rajasthan-1', 'rajasthan-2'])
+    expect(ART_MANIFEST.fallbacks.road).toEqual(['road-1', 'road-2'])
+    expect(ART_MANIFEST.fallbacks.city).toEqual(['city-1'])
+    // A fallback id must never sit in a region list, or a generic trip would
+    // claim a named region's geography.
+    for (const id of [...ART_MANIFEST.fallbacks.road, ...ART_MANIFEST.fallbacks.city]) {
+      expect(Object.values(ART_MANIFEST.regions).flat()).not.toContain(id)
+    }
   })
 
   it('points every region, fallback and vignette at a declared id', () => {

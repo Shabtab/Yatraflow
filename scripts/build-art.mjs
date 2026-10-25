@@ -8,10 +8,23 @@
 //   npm run art:build -- --masters <dir>            # write src/assets/art/
 //   npm run art:build -- --masters <dir> --out <dir> # write elsewhere (for comparison)
 //   npm run art:build -- --check                    # report and check the committed files only
+//   npm run art:build -- --masters <dir> --list-masters  # resolve every master, encode nothing
 //   add --report <file> to also write the byte report as JSON
 //
 // Exit code 1 when a master is missing, a file exceeds its cap, or the total
 // exceeds the budget. Never writes to the masters directory.
+//
+// The masters folder holds the pilot masters flat and the batch-1 masters in a
+// `batch1/` subfolder, so one root serves every id. MASTER_FILES names the path
+// under that root. The art workspace's own layout is the reference:
+//
+//   E:\YatraFlow\yatraflow-art-codex\masters\            pilot masters (flat)
+//   E:\YatraFlow\yatraflow-art-codex\masters\batch1\     batch-1 masters
+//
+// Both of these commands read the same root:
+//
+//   npm run art:build -- --masters E:\YatraFlow\yatraflow-art-codex\masters --check
+//   npm run art:build -- --masters E:\YatraFlow\yatraflow-art-codex\masters --list-masters
 
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
@@ -31,8 +44,13 @@ const ENCODE = {
   webp: { quality: 60, effort: 6 },
 }
 
-// The master file for each manifest id. The master names carry the review
-// round (for example -v3). Update this table when a master is replaced.
+// The master file for each manifest id, relative to the --masters folder. The
+// master names carry the review round (for example -v3); the manifest id does
+// not. Update this table when a master is replaced.
+//
+// A bare name is a pilot master at the root. A name with a folder is a batch
+// master under it, which is how the batch-1 set stays in `masters/batch1/`
+// instead of being copied flat next to the pilot files.
 const MASTER_FILES = {
   'kerala-1': 'kerala-1-v3.png',
   'himalaya-1': 'himalaya-1-v3.png',
@@ -40,22 +58,42 @@ const MASTER_FILES = {
   'city-1': 'city-1-v3.png',
   'road-1': 'road-1-v2.png',
   'es-first-trip': 'es-first-trip-v3.png',
+  // Batch 1, active set. goa-2-v2 and coorg-2-v2 are the cleanup revisions; the
+  // superseded goa-2-v1 and coorg-2-v1 stay in masters/batch1/archive and are
+  // named by nothing here.
+  'goa-1': 'batch1/goa-1-v1.png',
+  'goa-2': 'batch1/goa-2-v2.png',
+  'coorg-1': 'batch1/coorg-1-v1.png',
+  'coorg-2': 'batch1/coorg-2-v2.png',
+  'meghalaya-1': 'batch1/meghalaya-1-v1.png',
+  'meghalaya-2': 'batch1/meghalaya-2-v1.png',
+  'himalaya-2': 'batch1/himalaya-2-v1.png',
+  'rajasthan-2': 'batch1/rajasthan-2-v1.png',
+  'road-2': 'batch1/road-2-v1.png',
+  'es-no-saved': 'batch1/es-no-saved-v1.png',
+  'es-no-results': 'batch1/es-no-results-v1.png',
+  'es-no-purchases': 'batch1/es-no-purchases-v1.png',
+  'es-no-published': 'batch1/es-no-published-v1.png',
+  'es-offline': 'batch1/es-offline-v1.png',
+  'es-error': 'batch1/es-error-v1.png',
 }
 
 const RATIO_VALUE = { '3:2': 3 / 2, '1:1': 1 }
 const RATIO_TOLERANCE = 0.02
 
 function parseArgs(argv) {
-  const args = { masters: null, out: DEFAULT_OUT, check: false, report: null }
+  const args = { masters: null, out: DEFAULT_OUT, check: false, report: null, listMasters: false }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
     if (flag === '--check') args.check = true
+    else if (flag === '--list-masters') args.listMasters = true
     else if (flag === '--masters') args.masters = argv[++i]
     else if (flag === '--out') args.out = path.resolve(argv[++i])
     else if (flag === '--report') args.report = path.resolve(argv[++i])
     else throw new Error(`Unknown argument: ${flag}`)
   }
-  if (!args.check && !args.masters) throw new Error('Pass --masters <dir> or --check.')
+  if (!args.check && !args.listMasters && !args.masters) throw new Error('Pass --masters <dir>, --check or --list-masters.')
+  if (args.listMasters && !args.masters) throw new Error('--list-masters needs --masters <dir>.')
   return args
 }
 
@@ -146,10 +184,53 @@ function printReport(result) {
   console.log(`total ${result.totalBytes} bytes (${(result.totalBytes / 1024).toFixed(1)} KiB), budget ${result.totalCapBytes} bytes`)
 }
 
+/**
+ * Resolve every manifest id to its master and report what is there, without
+ * encoding anything. This is the cheap proof that the folder layout and
+ * MASTER_FILES still agree: a missing file, an extra id, or a master whose
+ * dimensions contradict the manifest ratio all show up here in a second rather
+ * than after a full re-encode.
+ */
+async function listMasters(manifest, mastersDir) {
+  const rows = []
+  const problems = []
+  for (const [id, entry] of Object.entries(manifest.ids)) {
+    const relative = MASTER_FILES[id]
+    if (!relative) {
+      problems.push(`No MASTER_FILES entry for ${id}.`)
+      continue
+    }
+    const fullPath = path.join(mastersDir, relative)
+    if (!existsSync(fullPath)) {
+      problems.push(`Missing master for ${id}: ${relative}`)
+      continue
+    }
+    const metadata = await sharp(fullPath).metadata()
+    const wantRatio = RATIO_VALUE[entry.ratio]
+    const gotRatio = metadata.width / metadata.height
+    const ratioOk = Math.abs(gotRatio - wantRatio) / wantRatio <= RATIO_TOLERANCE
+    if (!ratioOk) problems.push(`Master ${id} is ${metadata.width}x${metadata.height}, not ${entry.ratio}.`)
+    rows.push({ id, master: relative, width: metadata.width, height: metadata.height, ratio: entry.ratio, ratioOk })
+  }
+  const extra = Object.keys(MASTER_FILES).filter(id => !manifest.ids[id])
+  for (const id of extra) problems.push(`MASTER_FILES names ${id}, which the manifest does not declare.`)
+  console.log('id'.padEnd(18), 'master'.padEnd(30), 'size'.padStart(12), ' ratio')
+  for (const row of rows) {
+    console.log(row.id.padEnd(18), row.master.padEnd(30), `${row.width}x${row.height}`.padStart(12), `  ${row.ratio}${row.ratioOk ? '' : ' MISMATCH'}`)
+  }
+  console.log(`${rows.length} of ${Object.keys(manifest.ids).length} ids resolved under ${mastersDir}`)
+  for (const problem of problems) console.error(`FAIL: ${problem}`)
+  if (problems.length) process.exitCode = 1
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2))
   const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'))
   const errors = []
+  if (args.listMasters) {
+    await listMasters(manifest, path.resolve(args.masters))
+    return
+  }
   if (!args.check) {
     if (path.resolve(args.masters) === path.resolve(args.out)) throw new Error('--out must not be the masters folder.')
     await encodeAll(manifest, path.resolve(args.masters), args.out, errors)

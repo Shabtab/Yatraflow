@@ -326,7 +326,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         ) : (
           <StateBlock
             kind="failed"
-            icon={<Compass size={38} aria-hidden />}
+            art={<StateVignette name="error" fallback={<Compass size={38} aria-hidden />} />}
             title={emptyCopyFor(tripsRead, 'trips', retryTrips).title}
             body={emptyCopyFor(tripsRead, 'trips', retryTrips).body}
             actions={<button className="btn btn-primary" onClick={retryTrips}>Try again</button>}

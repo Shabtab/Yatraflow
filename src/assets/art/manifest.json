@@ -2,19 +2,25 @@
   "version": 1,
   "regions": {
     "kerala": ["kerala-1"],
-    "goa": [],
-    "rajasthan": ["rajasthan-1"],
-    "coorg": [],
-    "meghalaya": [],
-    "kashmir": ["himalaya-1"],
+    "goa": ["goa-1", "goa-2"],
+    "rajasthan": ["rajasthan-1", "rajasthan-2"],
+    "coorg": ["coorg-1", "coorg-2"],
+    "meghalaya": ["meghalaya-1", "meghalaya-2"],
+    "kashmir": ["himalaya-1", "himalaya-2"],
     "generic": []
   },
   "fallbacks": {
-    "road": ["road-1"],
+    "road": ["road-1", "road-2"],
     "city": ["city-1"]
   },
   "vignettes": {
-    "first-trip": "es-first-trip"
+    "first-trip": "es-first-trip",
+    "no-saved": "es-no-saved",
+    "no-results": "es-no-results",
+    "no-purchases": "es-no-purchases",
+    "no-published": "es-no-published",
+    "offline": "es-offline",
+    "error": "es-error"
   },
   "ids": {
     "kerala-1": {
@@ -29,7 +35,55 @@
       "ratio": "3:2",
       "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
     },
+    "himalaya-2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 40, "3.5:1": 45 }
+    },
     "rajasthan-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "rajasthan-2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "goa-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "goa-2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "coorg-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "coorg-2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "meghalaya-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "meghalaya-2": {
       "widths": [320, 640, 960],
       "webp": 640,
       "ratio": "3:2",
@@ -47,7 +101,49 @@
       "ratio": "3:2",
       "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
     },
+    "road-2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
     "es-first-trip": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-no-saved": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-no-results": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-no-purchases": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-no-published": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-offline": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-error": {
       "widths": [280, 560],
       "webp": 560,
       "ratio": "1:1",
