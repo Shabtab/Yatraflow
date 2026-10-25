@@ -38,9 +38,9 @@ so a replaced master keeps its id.
 | `coorg-2` | Coorg region, second scene | 320, 640, 960 | 640 |
 | `meghalaya-1` | Meghalaya region | 320, 640, 960 | 640 |
 | `meghalaya-2` | Meghalaya region, second scene | 320, 640, 960 | 640 |
-| `city-1` | City fallback, one place | 320, 640, 960 | 640 |
-| `road-1` | Road fallback, two or more places | 320, 640, 960 | 640 |
-| `road-2` | Road fallback, second scene | 320, 640, 960 | 640 |
+| `city-1` | City fallback, one place. Declared, unreachable while every region has a scene | 320, 640, 960 | 640 |
+| `road-1` | Road fallback, two or more places. Declared, unreachable while every region has a scene | 320, 640, 960 | 640 |
+| `road-2` | Road fallback, second scene. Declared, unreachable while every region has a scene | 320, 640, 960 | 640 |
 | `generic-1` | Generic region, a destination no keyword matches | 320, 640, 960 | 640 |
 | `es-first-trip` | First-trip empty state (square) | 280, 560 | 560 |
 | `es-no-saved` | Explore saved-empty state (square) | 280, 560 | 560 |
@@ -54,6 +54,12 @@ The region lists in `manifest.json` map the trip regions to these ids. Every reg
 least one scene. `generic` holds `generic-1`, a geographically neutral scene: a place name no
 keyword matches shows it rather than borrowing another region's scene, so the tile still shows
 a finished illustration and still identifies no region.
+
+The road and city families are kept as a declared compatibility fallback. `coverFor` still tries
+them after the region step, and the tests still prove that step against a manifest with one
+region emptied. Nothing selects them today: every region has a scene, so the region step always
+answers first. They stay in the manifest and on disk for a future region list that is emptied,
+and their twelve files are not re-encoded or removed.
 
 `es-offline` is declared and committed but wired to nothing. No page has a supported offline
 branch that could show it: `OfflineBanner` already owns the connection message in the shell, and
@@ -119,15 +125,18 @@ A batch-2 master is not copied into the art workspace. Stage a folder of the sam
 ```
 
 The table names only paths relative to that root, so no machine path enters the build. A rebuild
-from either root gives the same derivatives:
+from the staging root reproduces every derivative. The art workspace root reproduces all but
+`generic-1`, because that master was never copied into it.
 
 ```powershell
 npm run art:build -- --masters E:\T3\evidence\art-batch2-generation-20261025\staging --list-masters
 ```
 
 The art workspace root resolves 21 of 22 ids. `--list-masters` against it reports
-`generic-1` missing, which is correct: that master was never copied into the workspace. Use the
-staging root for a full resolve, and expect the workspace root to fail the `generic-1` row.
+`generic-1` missing, which is correct. Use the staging root for a full resolve, and expect the
+workspace root to fail the `generic-1` row. A build against the workspace root does not delete the
+four `generic-1` files: the stale-file sweep keeps every id the manifest declares, so the files
+survive and the run exits 1.
 
 To confirm every id still resolves to a master of the right ratio, without encoding anything:
 

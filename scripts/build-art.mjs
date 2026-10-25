@@ -25,8 +25,9 @@
 //
 // A batch-2 master that was generated outside that workspace is not copied into
 // it. Instead, stage a root of the same shape under E:\T3 and point --masters at
-// it. Every file in the staging root is a byte-identical copy, so a rebuild from
-// either root gives the same derivatives:
+// it. Every file in the staging root is a byte-identical copy. Only the staging
+// root can rebuild every id; the art workspace root has no batch-2 master and so
+// rebuilds all but generic-1:
 //
 //   <staging>\             the six pilot masters, flat
 //   <staging>\batch1\      the fifteen batch-1 masters
