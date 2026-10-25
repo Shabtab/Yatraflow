@@ -16,6 +16,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+**Google can discover a 96-pixel YatraFlow favicon.** The root page and Ladakh calculator link to the generated Planning Teal icon.
 ### Fixed
 
 - **Suggestions keep their picked place and intended day.** Editing location text clears its old pin. A deleted day needs an explicit choice from the current days. Same-day repeats need confirmation. Visits on different days remain allowed. Rejected visits do not block another addition. Place identity survives saves, reloads, imports and recovery. Keyless city picks retain their provider. Accepted and declined ideas stop influencing crew preferences. Failed saves keep drafts and metadata. Guarded contribution recovery preserves legacy rows and picked places. Failed recovery offers a retry bound to the original account and deletion. (#839)
