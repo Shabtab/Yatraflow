@@ -95,6 +95,15 @@ export function coverFor(input: CoverInput, manifest: ArtManifest = ART_MANIFEST
   return null
 }
 
+/**
+ * The generated id for a named page-level state, or null when the manifest
+ * declares none. State vignettes are square masters and serve only the
+ * `StateBlock` art slot; they are never used for a wide cover.
+ */
+export function vignetteArtFor(name: string, manifest: ArtManifest = ART_MANIFEST): string | null {
+  return manifest.vignettes[name] ?? null
+}
+
 /** Vertical focal point (percent) for an id at a crop ratio. Falls back to 50 for unknown ids. */
 export function focalYFor(id: string, ratio: string, manifest: ArtManifest = ART_MANIFEST): number {
   const entry = manifest.ids[id]

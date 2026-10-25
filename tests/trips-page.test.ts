@@ -430,7 +430,7 @@ describe('heroPostcards', () => {
   })
   it('captions each postcard with the place the trip ends at and picks its art region', () => {
     const cards = heroPostcards({ trips: [goa], today: TODAY, ready: true })
-    expect(cards).toEqual([{ key: 'goa', place: 'Panjim', region: 'goa', coverImageUrl: undefined }])
+    expect(cards).toEqual([{ key: 'goa', place: 'Panjim', region: 'goa', placeCount: 2, coverImageUrl: undefined }])
   })
   it('cuts a caption at its first comma', () => {
     const abroad = heroTrip({ id: 'k', destinations: ['Kolkata, India'], startDate: '2026-10-20', endDate: '2026-10-21' })

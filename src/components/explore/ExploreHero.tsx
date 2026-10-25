@@ -3,8 +3,14 @@
 // catalog counts and a trio of papercut postcards with a handwritten note. The
 // search field lives in the filter bar, under the title of the catalog. The
 // shell is PageHero; the postcards and the note stay here, in the visual slot.
+//
+// Each postcard shows the generated scene for the region it already names, with
+// the motif underneath as the loading and error floor. The postcard set is
+// static, so the seed is the place name: the same postcard keeps the same scene.
 import { ArrowDown } from 'lucide-react'
+import { artIdFor } from '../../lib/regionArt'
 import type { TripRegion } from '../../lib/tripsPage'
+import { RegionArt } from '../RegionArt'
 import { TripArt } from '../trips/TripArt'
 import { PageHero } from '../page/PageHero'
 import { NoteArrow } from '../page/NoteArrow'
@@ -16,6 +22,13 @@ const POSTCARDS: { region: TripRegion; place: string; className: string }[] = [
   { region: 'kerala', place: 'Alappuzha', className: 'ex-pc-2' },
   { region: 'rajasthan', place: 'Udaipur', className: 'ex-pc-3' },
 ]
+
+/**
+ * `.ex-postcard` is 32% of `.ex-hero-visual`, which caps at 480px, less its own
+ * 7px side padding (styles.css:8509, 8514-8515, 8520): 480 * .32 - 14 = 139.6.
+ * The postcards are `display: none` below 960px (8566), so no smaller case exists.
+ */
+const POSTCARD_SIZES = '140px'
 
 export function ExploreHero({ stats, onExplore }: {
   stats: HeroStat[]
@@ -42,7 +55,14 @@ export function ExploreHero({ stats, onExplore }: {
             </svg>
             {POSTCARDS.map(card => (
               <figure className={`ex-postcard ${card.className}`} key={card.place}>
-                <div className="ex-postcard-art"><TripArt region={card.region} /></div>
+                <div className="ex-postcard-art">
+                  <RegionArt
+                    id={artIdFor(card.region, card.place)}
+                    ratio="4:3"
+                    sizes={POSTCARD_SIZES}
+                    fallback={<TripArt region={card.region} />}
+                  />
+                </div>
                 <figcaption>{card.place}<span className="ex-stamp" /></figcaption>
               </figure>
             ))}

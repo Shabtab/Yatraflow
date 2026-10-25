@@ -329,6 +329,8 @@ export interface HeroPostcard {
   /** The caption: the place the trip ends at (see heroPlace). */
   place: string
   region: TripRegion
+  /** Number of distinct stops. It picks road art over city art when the region has no scene. */
+  placeCount: number
   /** The trip's own cover image, when it has one. */
   coverImageUrl?: string
   /** True for the empty "your next trip" postcard. */
@@ -353,7 +355,7 @@ export function heroPostcards({ trips, today, ready }: {
   ready: boolean
 }): HeroPostcard[] {
   if (!ready) return []
-  if (trips.length === 0) return [{ key: 'blank', place: 'Your next trip', region: 'generic', blank: true }]
+  if (trips.length === 0) return [{ key: 'blank', place: 'Your next trip', region: 'generic', placeCount: 0, blank: true }]
   const ranked = trips
     .map((t, order) => ({ t, order, status: statusOf(t, today) }))
     .sort((a, b) => {
@@ -370,7 +372,13 @@ export function heroPostcards({ trips, today, ready }: {
     const key = place.toLowerCase()
     if (!place || seenPlaces.has(key)) continue
     seenPlaces.add(key)
-    cards.push({ key: t.id, place, region: regionFor(t), coverImageUrl: t.coverImageUrl || undefined })
+    cards.push({
+      key: t.id,
+      place,
+      region: regionFor(t),
+      placeCount: t.destinations?.length ?? 0,
+      coverImageUrl: t.coverImageUrl || undefined,
+    })
     if (cards.length === HERO_POSTCARD_LIMIT) break
   }
   return cards

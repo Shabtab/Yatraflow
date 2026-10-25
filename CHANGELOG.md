@@ -16,6 +16,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **Generated region illustrations now appear on the trip and Explore covers.** Five shared cover components show the illustration for the region a trip or a publication names. They are the My trips card cover and its hero postcards. They are also the Explore card cover and its hero postcards, and the Places panel tiles. The first-run "no trips yet" block shows a square scene in place of its compass icon. Each scene loads AVIF at three widths with a WebP fallback. The scene sits over the existing papercut motif. The motif is both the loading floor and the error floor. A blocked file, a corrupt file or a decode failure leaves the motif. It never leaves an empty box or a broken image. A user's own uploaded cover still wins. A scene does not replace it. A place that no region names keeps its generic motif. It never borrows another region's scene. This batch wires the six illustrations that `src/assets/art/manifest.json` already declared. No image is generated and no existing file is re-encoded.
+
 ## [0.79.2] - 2026-10-24
 
 **This patch fixes the Android release pipeline.** A tag run now attaches its APK, and the installed build names the same version as the tag.

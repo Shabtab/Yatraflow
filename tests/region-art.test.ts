@@ -8,8 +8,10 @@ import {
   fallbackKindFor,
   focalYFor,
   hashSeed,
+  vignetteArtFor,
 } from '../src/lib/regionArt'
 import { srcsetFor } from '../src/lib/artUrls'
+import { regionFor } from '../src/lib/tripsPage'
 
 const REGIONS: ArtRegion[] = ['kerala', 'goa', 'rajasthan', 'coorg', 'meghalaya', 'kashmir', 'generic']
 
@@ -118,6 +120,47 @@ describe('coverFor', () => {
     for (const region of REGIONS) {
       expect(coverFor({ region, seed: 'x', placeCount: 2 }, empty)).toBeNull()
     }
+  })
+})
+
+describe('vignetteArtFor', () => {
+  it('resolves a declared page state to its square master', () => {
+    expect(vignetteArtFor('first-trip')).toBe('es-first-trip')
+  })
+
+  it('returns null for a state with no image, which keeps the block icon', () => {
+    expect(vignetteArtFor('no-such-state')).toBeNull()
+  })
+
+  it('never hands a state vignette to a cover, because the masters are square', () => {
+    // A vignette id is not in any region or fallback list, so coverFor cannot
+    // reach one and no 1:1 master is ever cropped to a 16:10 cover.
+    const inCovers = [
+      ...Object.values(ART_MANIFEST.regions).flat(),
+      ...Object.values(ART_MANIFEST.fallbacks).flat(),
+    ]
+    for (const id of Object.values(ART_MANIFEST.vignettes)) {
+      expect(inCovers).not.toContain(id)
+    }
+  })
+})
+
+describe('honest region matching for place tiles', () => {
+  it('keeps the generic motif for a place no region names, and never borrows another region', () => {
+    // A tile shows only its own region's scene. "Rishikesh" matches no keyword,
+    // so regionFor gives "generic" and artIdFor gives null: the tile keeps its
+    // inline SVG. It must not fall through to the Himalaya scene, which would
+    // claim the place is in Kashmir.
+    for (const place of ['Rishikesh', 'Hampi', 'Ziro Valley']) {
+      const region = regionFor({ destinations: [place] })
+      expect(region, place).toBe('generic')
+      expect(artIdFor(region, place), place).toBeNull()
+    }
+  })
+
+  it('still gives a named place its own region scene', () => {
+    expect(artIdFor(regionFor({ destinations: ['Srinagar'] }), 'Srinagar')).toBe('himalaya-1')
+    expect(artIdFor(regionFor({ destinations: ['Munnar'] }), 'Munnar')).toBe('kerala-1')
   })
 })
 

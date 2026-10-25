@@ -918,6 +918,23 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    leans on a coercion. Do not add a coercion at the comparison site. Keep the parse at
    the boundary.
 
+6ay. **A `sizes` value written from the viewport breakpoints is wrong when the
+   layout is a container query (learned 2026-10-25, region-art batch).** The
+   generated-art covers sit in `.mt-grid`, `.ex-grid` and `.ex-places`, and all
+   three switch column count on the width of their own container, not the
+   viewport. A `sizes` ladder copied from `@media` widths can over-claim
+   or under-claim at the same viewport. The Places tile was the worst case: a
+   later two-column rule overrides the three-column media rule, so the tile is
+   33% wider than a three-column reading gives, and the ladder under-fetched at
+   every tablet width. Two rules follow. Read the container rules and their
+   order in the file before you write a ladder, and prove the ladder by
+   measuring `img.currentSrc` against the box at each breakpoint rather than by
+   reasoning about the CSS. A related trap cost a whole probe round: a toggle
+   that changes the box after an image has loaded does not re-run resource
+   selection, so a "list layout" measurement taken after clicking the switch
+   reports the grid candidate. Persist the layout and reload to measure first
+   paint.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 - **Separate crew fields must stay separate during parsing.** Normalize the mobile field alone. A name can contain digits. A parser that joins both fields can change that name or make the mobile number invalid. Keep the existing structured draft fields and duplicate rules.
