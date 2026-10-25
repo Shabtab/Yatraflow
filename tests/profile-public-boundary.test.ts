@@ -20,6 +20,18 @@ const { state, toast } = vi.hoisted(() => ({
     disabled: false,
     /** Set to make `get_public_profile_cards` answer with an error instead. */
     rpcError: false,
+    /** Per-table read outcomes, so one read can fail while another succeeds. */
+    tableErrors: {} as Record<string, { message: string } | null>,
+    /** Per-id `profiles` read outcomes, so a self read can fail alone. */
+    profileErrors: {} as Record<string, { message: string } | null>,
+    /** What a `profiles` row read answers, keyed by the `eq('id', …)` value. */
+    profileRows: {} as Record<string, unknown>,
+    /** Deferred RPC answers, resolved by the test. */
+    deferred: {} as Record<string, () => void>,
+    /** Every `auth.signOut` call, so a test can assert who was signed out. */
+    signOuts: [] as string[],
+    /** The user the session answers with, and the epoch `identityEpoch` holds. */
+    sessionUser: 'u-1' as 'u-1' | 'u-2',
   },
   toast: vi.fn(),
 }))
@@ -28,12 +40,15 @@ vi.mock('../src/components/ui', () => ({ toast }))
 
 vi.mock('../src/lib/supabase', () => {
   const builder = (table: string) => {
+    const filters: Array<[string, unknown]> = []
     const b: Record<string, unknown> = {
       select: (column?: string) => { if (column) b.column = column; return b },
-      eq: () => b,
+      eq: (key: string, value: unknown) => { filters.push([key, value]); return b },
       in: () => b,
       limit: () => b,
-      maybeSingle: () => b,
+      // A single-row read answers the row itself, not the array.
+      maybeSingle: () => { b.singleUsed = true; return b },
+      single: () => { b.singleUsed = true; return b },
       insert: () => b,
       update: () => b,
       upsert: () => b,
@@ -41,7 +56,15 @@ vi.mock('../src/lib/supabase', () => {
       setHeader: () => b,
       then: (res: (v: { data: unknown; error: unknown }) => unknown) => {
         state.tableReads.push(table)
-        return Promise.resolve({ data: [], error: null }).then(res)
+        const id = filters.find(([k]) => k === 'id')?.[1]
+        const failed = state.tableErrors[table] ?? (id !== undefined ? (state.profileErrors[String(id)] ?? null) : null)
+        const row = id !== undefined ? (state.profileRows[String(id)] ?? null) : null
+        // `maybeSingle`/`single` answer the row; a plain select answers an array.
+        const single = b.singleUsed === true
+        return Promise.resolve({
+          data: failed ? null : (single ? row : (row ? [row] : [])),
+          error: failed,
+        }).then(res)
       },
     }
     return b
@@ -53,8 +76,10 @@ vi.mock('../src/lib/supabase', () => {
       channel: () => { const c: Record<string, unknown> = { on: () => c, subscribe: () => ({}) }; return c },
       removeChannel: () => Promise.resolve(),
       auth: {
-        getSession: () => Promise.resolve({ data: { session: null } }),
-        signOut: () => Promise.resolve({ error: null }),
+        getSession: () => Promise.resolve({
+          data: { session: state.sessionUser ? { user: { id: state.sessionUser }, access_token: 'tok' } : null },
+        }),
+        signOut: () => { state.signOuts.push(String(state.sessionUser)); return Promise.resolve({ error: null }) },
         onAuthStateChange: () => ({ data: { subscription: {} } }),
       },
       rpc: (fn: string, args: unknown) => {
@@ -62,12 +87,24 @@ vi.mock('../src/lib/supabase', () => {
         const b: Record<string, unknown> = {
           setHeader: () => b,
           then: (res: (v: { data: unknown; error: unknown }) => unknown) => {
-            const failed = state.rpcError && fn === 'get_public_profile_cards'
+            const failed = (state.rpcError && fn === 'get_public_profile_cards')
+              || (fn === 'is_disabled' && state.disabled === null)
             const data = failed ? null
               : fn === 'get_public_profile_cards' ? state.cards
                 : fn === 'is_disabled' ? state.disabled
                   : null
-            return Promise.resolve({ data, error: failed ? { message: 'PGRST202' } : null }).then(res)
+            const settle = () => Promise.resolve({
+              data, error: failed ? { message: 'PGRST202' } : null,
+            })
+            // A deferred answer parks until the test releases it. The release
+            // callback the test holds is the ORIGINAL one; the new one this call
+            // installs is for the next deferred request, so the two never clash.
+            const parked = state.deferred[fn]
+            if (parked) {
+              state.deferred[fn] = () => {}
+              return parked().then(settle).then(res)
+            }
+            return settle().then(res)
           },
         }
         return b
@@ -100,6 +137,12 @@ beforeEach(() => {
   state.cards = [OWNER_CARD, OTHER_CARD]
   state.disabled = false
   state.rpcError = false
+  state.tableErrors = {}
+  state.profileErrors = {}
+  state.profileRows = {}
+  state.deferred = {}
+  state.signOuts = []
+  state.sessionUser = 'u-1'
   toast.mockClear()
 })
 
@@ -399,6 +442,40 @@ describe('the offline snapshot', () => {
     expect(reviewedSocialLinks({ youtube: 'https://y/@a', other: 'x' })).toEqual({ youtube: 'https://y/@a' })
   })
 
+  it('a future public snapshot strips unreviewed nested keys from a private row', async () => {
+    // R5's second half. The legacy sanitiser was repaired, but `publicOnlyUsers`
+    // still copied `u.profile.socialLinks` directly — and an authorized private
+    // row may hold arbitrary nested keys, so the canary survived into the future
+    // snapshot. This is the write side of the same boundary.
+    const { publicOnlyUsers, rowToPrivateUser } = await freshStore()
+    const hostile = rowToPrivateUser({
+      ...OWNER_PRIVATE,
+      social_links: { youtube: 'https://y/@a', instagram: 'https://i/a', email: 'PRIVATE-FUTURE-CANARY' },
+    })
+
+    const written = publicOnlyUsers([hostile])
+    expect(JSON.stringify(written).includes('PRIVATE-FUTURE-CANARY')).toBe(false)
+    expect(written[0].profile.socialLinks).toEqual({ youtube: 'https://y/@a', instagram: 'https://i/a' })
+  })
+
+  it('an admin-held private catalogue still serialises as public identities', async () => {
+    // An admin hydrate replaces the whole catalogue with private rows. The save
+    // path must still write identities — the R6 defect — and must strip the
+    // nested keys those rows may carry.
+    const { publicOnlyUsers, rowToPrivateUser } = await freshStore()
+    const adminCache = [
+      rowToPrivateUser({ ...OWNER_PRIVATE, social_links: { youtube: 'https://y/@a', email: 'PRIVATE-FUTURE-CANARY' } }),
+      rowToPrivateUser({ ...OWNER_PRIVATE, id: 'u-2', email: 'b@example.invalid', name: 'Bilal', is_creator: false }),
+    ]
+
+    const written = publicOnlyUsers(adminCache)
+    expect(written.map(u => u.id)).toEqual(['u-1', 'u-2'])
+    expect(JSON.stringify(written).includes('PRIVATE-FUTURE-CANARY')).toBe(false)
+    expect(JSON.stringify(written).includes('example.invalid')).toBe(false)
+    // Every entry is a public card with its display fields intact.
+    expect(written.every(u => u.kind === 'public' && typeof u.profile.name === 'string')).toBe(true)
+  })
+
   it('an offline boot restores the public directory and then the signed-in private row', async () => {
     // The lifecycle, not just the mapper: a cold boot reads the snapshot, and the
     // hydrate that follows must put the private row back without the public read
@@ -449,5 +526,217 @@ describe('the disabled-account check', () => {
 
     expect(await store.enforceDisabledCheck()).toBe(false)
     expect(state.rpcCalls.some(c => c.fn === 'is_disabled')).toBe(false)
+  })
+})
+
+// ============ #800 R4 — the delayed disabled check ============
+describe('the delayed disabled-account check', () => {
+  it('an answer that arrives after an account switch signs nobody out', async () => {
+    // The browser reproduction: account A has no private row, its `is_disabled`
+    // call is held, account B becomes current, then A's `true` answer lands.
+    const store = await freshStore()
+    state.sessionUser = 'u-1'
+    state.profileRows = {}
+    state.disabled = true
+    let parkedResolve = () => {}
+    state.deferred.is_disabled = new Promise<void>(r => { parkedResolve = r })
+
+    store.getSnapshot().sessionUserId = 'u-1'
+    const pending = store.enforceDisabledCheck()
+    await flush()
+    expect(state.rpcCalls.some(c => c.fn === 'is_disabled')).toBe(true)
+    expect(state.signOuts).toHaveLength(0)
+
+    // Account B becomes current while A's answer is still in flight.
+    state.sessionUser = 'u-2'
+    store.getSnapshot().sessionUserId = 'u-2'
+    parkedResolve()
+    expect(await pending).toBe(false)
+
+    // Nobody was signed out, and the new account was told nothing.
+    expect(state.signOuts).toHaveLength(0)
+    expect(store.getSnapshot().sessionUserId).toBe('u-2')
+  })
+
+  it('a stable disabled account is still signed out with the message', async () => {
+    const store = await freshStore()
+    state.sessionUser = 'u-1'
+    state.profileRows = {}
+    state.disabled = true
+
+    store.getSnapshot().sessionUserId = 'u-1'
+    expect(await store.enforceDisabledCheck()).toBe(true)
+    expect(state.signOuts).toEqual(['u-1'])
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('disabled'), 'err')
+  })
+
+  it('a stable enabled account is not signed out', async () => {
+    const store = await freshStore()
+    state.sessionUser = 'u-1'
+    state.profileRows = {}
+    state.disabled = false
+
+    store.getSnapshot().sessionUserId = 'u-1'
+    expect(await store.enforceDisabledCheck()).toBe(false)
+    expect(state.signOuts).toHaveLength(0)
+  })
+
+  it('a failed check stays silent and does not sign anybody out', async () => {
+    const store = await freshStore()
+    state.sessionUser = 'u-1'
+    state.profileRows = {}
+    state.disabled = null // the RPC answers an error
+
+    store.getSnapshot().sessionUserId = 'u-1'
+    expect(await store.enforceDisabledCheck()).toBe(false)
+    expect(state.signOuts).toHaveLength(0)
+  })
+})
+
+// ============ #800 R7 — truthful public retry verdicts ============
+describe('the public retry reports each slice from its own response', () => {
+  it('a fully successful retry clears both failure verdicts', async () => {
+    const store = await freshStore()
+    await store.rereadPublicSlices()
+    await flush(); await flush()
+
+    const { sliceReads } = store.getSnapshot()
+    expect(sliceReads.profiles).not.toBe('failed')
+    expect(sliceReads['suggested itineraries']).not.toBe('failed')
+  })
+
+  it('a profiles-only failure leaves publications ready', async () => {
+    const store = await freshStore()
+    state.rpcError = true
+    await store.rereadPublicSlices()
+    await flush(); await flush()
+
+    const { sliceReads } = store.getSnapshot()
+    expect(sliceReads.profiles).toBe('failed')
+    expect(sliceReads['suggested itineraries']).not.toBe('failed')
+  })
+
+  it('a publications-only failure leaves profiles ready', async () => {
+    const store = await freshStore()
+    state.tableErrors = { published_itineraries: { message: 'denied' } }
+    await store.rereadPublicSlices()
+    await flush(); await flush()
+
+    const { sliceReads } = store.getSnapshot()
+    expect(sliceReads['suggested itineraries']).toBe('failed')
+    expect(sliceReads.profiles).not.toBe('failed')
+  })
+
+  it('a failure followed by success recovers both verdicts', async () => {
+    const store = await freshStore()
+    state.tableErrors = { published_itineraries: { message: 'denied' } }
+    await store.rereadPublicSlices()
+    await flush(); await flush()
+    expect(store.getSnapshot().sliceReads['suggested itineraries']).toBe('failed')
+
+    state.tableErrors = {}
+    await store.rereadPublicSlices()
+    await flush(); await flush()
+    expect(store.getSnapshot().sliceReads['suggested itineraries']).not.toBe('failed')
+    expect(store.getSnapshot().sliceReads.profiles).not.toBe('failed')
+  })
+})
+
+// ============ #800 R8 — private reads have their own verdict ============
+describe('the private read has its own verdict and retry', () => {
+  // `resumeSync` is the real authorised re-hydration path (app-resume and the
+  // reconnect retry), so these tests drive it rather than a private helper.
+  async function signedIn(userId: 'u-1' | 'u-2') {
+    const store = await freshStore()
+    state.sessionUser = userId
+    store.getSnapshot().sessionUserId = userId
+    return store
+  }
+
+  it('a failed self read does not let the public read certify the account ready', async () => {
+    const store = await signedIn('u-1')
+    state.profileRows = {}
+    // Only the self read fails: the public RPC still succeeds, which is exactly
+    // the case where a public verdict must not be read as an account verdict.
+    state.profileErrors = { 'u-1': { message: 'network down' } }
+    state.cards = [OWNER_CARD, OTHER_CARD]
+
+    await store.resumeSync()
+    await flush(); await flush(); await flush()
+
+    const { sliceReads, users } = store.getSnapshot()
+    expect(sliceReads.profiles).not.toBe('failed')
+    expect(sliceReads['self profile']).toBe('failed')
+    // The account was not silently downgraded to a public card, and the public
+    // catalogue was not wiped by the private read's failure.
+    expect(store.currentUser()).toBeNull()
+    expect(users.every(u => u.kind === 'public')).toBe(true)
+    expect(users).not.toContainEqual(expect.objectContaining({ kind: 'private' }))
+  })
+
+  it('a successful self read installs the private row', async () => {
+    const store = await signedIn('u-1')
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+
+    await store.resumeSync()
+    await flush(); await flush(); await flush()
+
+    expect(store.getSnapshot().sliceReads['self profile']).not.toBe('failed')
+    expect(store.currentUser()?.email).toBe('a@example.invalid')
+  })
+
+  it('a genuine absent row is a distinct outcome from a failure', async () => {
+    const store = await signedIn('u-1')
+    state.profileRows = {} // legitimately absent, no error
+
+    await store.resumeSync()
+    await flush(); await flush(); await flush()
+
+    expect(store.getSnapshot().sliceReads['self profile']).not.toBe('failed')
+    expect(store.currentUser()).toBeNull()
+  })
+
+  it('a retry after a failed self read actually rereads it', async () => {
+    const store = await signedIn('u-1')
+    state.profileRows = {}
+    state.tableErrors = { profiles: { message: 'network down' } }
+
+    await store.resumeSync()
+    await flush(); await flush(); await flush()
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
+
+    // The read is fixed and the same authorised path runs again.
+    state.tableErrors = {}
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    await store.resumeSync()
+    await flush(); await flush(); await flush()
+
+    expect(store.getSnapshot().sliceReads['self profile']).not.toBe('failed')
+    expect(store.currentUser()?.email).toBe('a@example.invalid')
+  })
+
+  it('a private read failure does not install another account\'s row', async () => {
+    const store = await signedIn('u-1')
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    await store.resumeSync()
+    await flush(); await flush(); await flush()
+    expect(store.currentUser()?.email).toBe('a@example.invalid')
+
+    // Account B signs in: the identity generation moves (as a real auth event
+    // does) and the cache now belongs to B. B's own hydrate runs through the
+    // reconnect path; its private read fails, so A's row must not be left
+    // installed under B's session.
+    store._bumpIdentityEpochForTest()
+    state.sessionUser = 'u-2'
+    store.getSnapshot().sessionUserId = 'u-2'
+    state.profileRows = {}
+    state.profileErrors = { 'u-2': { message: 'network down' } }
+    await store.resumeSync()
+    await flush(); await flush(); await flush()
+
+    expect(store.currentUser()).toBeNull()
+    // No account's private row survives under the new session.
+    expect(store.getSnapshot().users.every(u => u.kind === 'public')).toBe(true)
+    expect(store.getSnapshot().users.every(u => u.email === undefined)).toBe(true)
   })
 })
