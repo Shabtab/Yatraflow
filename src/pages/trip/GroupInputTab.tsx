@@ -13,7 +13,7 @@ import type { FormEvent } from 'react'
 import { Car, ChevronDown, ChevronUp, ClipboardList, Clock, Lightbulb, MapPin, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
 import { PillNav } from '../../components/PillNav'
 import type { StopCategory, StopSuggestion, Trip, TripDecision } from '../../data/types'
-import type { CollabOutcome } from '../../store/collabCommand'
+import type { AcceptanceOutcome, CollabOutcome } from '../../store/collabCommand'
 import { STOP_CATEGORIES } from '../../data/types'
 import {
   useDb, userById, currentUser, addSuggestion, voteSuggestion, addCommentToSuggestion,
@@ -332,26 +332,12 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
   async function accept(opts: { dayId?: string; dayIndex?: number; allowDuplicate?: boolean } = {}) {
     try {
       const outcome = await acceptSuggestionIntoTimeline(trip.id, sg.id, opts)
-      if (outcome.status === 'applied' || outcome.status === 'alreadyApplied') {
-        setRetarget(null); setRetargetDays(null); setDuplicate(null)
-        toast(outcome.status === 'applied' ? 'Added to timeline' : 'This idea is already on the timeline.')
-        return
-      }
-      if (outcome.status === 'needsDay') {
-        setDuplicate(null)
-        setRetargetDays(outcome.availableDays)
-        setRetarget({ dayId: '', reason: 'missing-day' })
-        return
-      }
-      if (outcome.status === 'conflict') {
-        reportCollabOutcome(outcome)
-        return
-      }
-      if (outcome.status === 'needsPlace') {
-        toast('This idea needs a valid place before it can be added.', 'err')
-        return
-      }
-      reportCollabOutcome(outcome)
+      const follow = followUpFromOutcome(outcome)
+      setRetarget(follow?.retarget ?? null)
+      setRetargetDays(follow?.retargetDays ?? null)
+      setDuplicate(follow?.duplicate ?? null)
+      if (follow?.toast) toast(follow.toast, follow.toastTone)
+      if (follow?.report) reportCollabOutcome(follow.report)
     } catch {
       toast('Could not add this idea. Your idea is still open — try again.', 'err')
     } finally {
@@ -468,6 +454,36 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
 export type SuggestionFollowUp =
   | { kind: 'retarget'; dayId: string; reason: 'missing-day' | 'legacy-ambiguous' }
   | { kind: 'duplicate'; dayId: string; dayIndex: number }
+
+/** One accept outcome → the follow-up the row must ask, its toasts, and who
+ *  reports it. The repeat-confirmation contract lives here: a needsDuplicate
+ *  receipt opens the add-another panel for the SERVER-resolved day, and no
+ *  other outcome can ever open it — allowDuplicate is sent only by that
+ *  panel's explicit confirm. */
+export function followUpFromOutcome(outcome: AcceptanceOutcome): {
+  retarget?: { dayId: string; reason: 'missing-day' | 'legacy-ambiguous' }
+  retargetDays?: Array<{ id: string; index: number; title?: string }>
+  duplicate?: { dayId: string; dayIndex: number }
+  toast?: string
+  toastTone?: 'ok' | 'err'
+  report?: CollabOutcome
+} | null {
+  switch (outcome.status) {
+    case 'applied':
+    case 'alreadyApplied':
+      return { toast: outcome.status === 'applied' ? 'Added to timeline' : 'This idea is already on the timeline.' }
+    case 'needsDay':
+      return { retarget: { dayId: '', reason: 'missing-day' }, retargetDays: outcome.availableDays }
+    case 'needsDuplicate':
+      return { duplicate: { dayId: outcome.dayId, dayIndex: outcome.dayIndex } }
+    case 'needsPlace':
+      return { toast: 'This idea needs a valid place before it can be added.', toastTone: 'err' }
+    case 'conflict':
+    case 'forbidden':
+    case 'unavailable':
+      return { report: outcome }
+  }
+}
 
 export function SuggestionFollowUpPanel({ followUp, days, busy, previewOpen, onPickDay, onConfirm, onCancel }: {
   followUp: SuggestionFollowUp

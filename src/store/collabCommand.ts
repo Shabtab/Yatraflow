@@ -63,6 +63,7 @@ export type AcceptanceOutcome =
   | { status: 'applied'; tripRevision: number; stopId: string; suggestion?: StopSuggestion }
   | { status: 'alreadyApplied'; tripRevision: number; stopId?: string; suggestion?: StopSuggestion }
   | { status: 'needsDay'; availableDays: Array<{ id: string; index: number; title?: string }> }
+  | { status: 'needsDuplicate'; tripRevision: number; dayId: string; dayIndex: number }
   | { status: 'needsPlace' }
   | { status: 'conflict'; tripRevision: number }
   | { status: 'forbidden' | 'unavailable'; reason?: string }
@@ -159,6 +160,8 @@ type RawReceipt = {
   notificationIds?: unknown
   notification_ids?: unknown
   reason?: unknown
+  dayId?: unknown
+  dayIndex?: unknown
 }
 
 function revisionOf(r: RawReceipt): number {
@@ -392,6 +395,11 @@ export async function submitCollabTransition(
         return { status: 'needsDay', availableDays }
       }
       case 'needsPlace': return { status: 'needsPlace' }
+      case 'needsDuplicate': {
+        if (typeof receipt.dayId !== 'string' || receipt.dayId.length === 0) return { status: 'unavailable' }
+        if (typeof receipt.dayIndex !== 'number' || !Number.isInteger(receipt.dayIndex)) return { status: 'unavailable' }
+        return { status: 'needsDuplicate', tripRevision, dayId: receipt.dayId, dayIndex: receipt.dayIndex }
+      }
       case 'conflict': return { status: 'conflict', tripRevision }
       case 'forbidden': return { status: 'forbidden' }
       case 'unavailable': return { status: 'unavailable' }

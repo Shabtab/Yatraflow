@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/components/ui', () => ({ toast: vi.fn() }))
 
-import { SuggestionFollowUpPanel, type SuggestionFollowUp } from '../src/pages/trip/GroupInputTab'
+import { SuggestionFollowUpPanel, followUpFromOutcome, type SuggestionFollowUp } from '../src/pages/trip/GroupInputTab'
 
 const days = [
   { id: 'day-a', index: 0, title: 'Arrival' },
@@ -78,6 +78,30 @@ describe('the add-another-visit follow-up', () => {
   it('stays disabled while the row is busy', () => {
     const html = render({ kind: 'duplicate', dayId: 'day-a', dayIndex: 0 }, { busy: true })
     expect(html).toMatch(/<button[^>]*disabled[^>]*>Add another visit/)
+  })
+
+  it('a needsDuplicate receipt opens this panel for the server-resolved day, nothing else does', () => {
+    // The server echoes the day the write actually targeted; the panel asks
+    // about THAT day. Only this outcome kind may open the duplicate panel —
+    // allowDuplicate is never sent without the user's explicit confirm here.
+    const follow = followUpFromOutcome({ status: 'needsDuplicate', tripRevision: 3, dayId: 'day-server', dayIndex: 1 })
+    if (!follow?.duplicate) throw new Error('needsDuplicate must open the add-another panel')
+    const html = render({ kind: 'duplicate', ...follow.duplicate })
+    expect(html).toContain('already on Day 2')
+    expect(html).toMatch(/<button[^>]*>Add another visit/)
+
+    for (const outcome of [
+      { status: 'applied', tripRevision: 3, stopId: 'st-1' },
+      { status: 'alreadyApplied', tripRevision: 3 },
+      { status: 'conflict', tripRevision: 3 },
+      { status: 'unavailable' },
+    ] as const) {
+      expect(followUpFromOutcome(outcome)?.duplicate).toBeUndefined()
+    }
+    const retarget = followUpFromOutcome({ status: 'needsDay', availableDays: [{ id: 'day-b', index: 1 }] })
+    expect(retarget?.retarget).toEqual({ dayId: '', reason: 'missing-day' })
+    expect(retarget?.retargetDays).toEqual([{ id: 'day-b', index: 1 }])
+    expect(retarget?.duplicate).toBeUndefined()
   })
 })
 

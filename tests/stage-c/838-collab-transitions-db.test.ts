@@ -169,6 +169,77 @@ describe('stage-c/838 atomic collaboration transitions', () => {
     expect(await tripState(otherTrip)).toEqual(before)
   })
 
+  it('refuses a same-place same-day accept as needsDuplicate and keeps every artifact unchanged', async () => {
+    const otherTrip = '20000000-0000-4000-8000-000000000011'
+    const otherSuggestion = '30000000-0000-4000-8000-000000000011'
+    const existingStop = { id: 'st-existing', orderInDay: 0, title: 'Museum', category: 'sightseeing', locationName: 'City Museum', lat: 12.9, lng: 77.6, status: 'confirmed' }
+    await seedTrip(otherTrip, [{ id: 'day', index: 0, title: 'Day', stops: [existingStop] }])
+    await db.exec('reset role')
+    await db.query(`insert into public.suggestions(id,trip_id,day_index,day_id,proposed_by,title,category,location_name,lat,lng,status)
+      values($1,$2,0,'day',$3,'Museum','sightseeing','City Museum',12.9,77.6,'open')`, [otherSuggestion, otherTrip, owner])
+    await actor(editorA)
+    const before = await tripState(otherTrip)
+    const beforeEvents = await count('activity')
+
+    const refusal = await call(command(71), { type: 'suggestion.accept', suggestionId: otherSuggestion, expectedRevision: 7 }, otherTrip)
+    expect(refusal).toMatchObject({ status: 'needsDuplicate', dayId: 'day', dayIndex: 0 })
+
+    // A retry under the SAME command id re-executes and refuses again: the
+    // refusal is never cached as alreadyApplied.
+    expect(await call(command(71), { type: 'suggestion.accept', suggestionId: otherSuggestion, expectedRevision: 7 }, otherTrip))
+      .toMatchObject({ status: 'needsDuplicate', dayId: 'day' })
+
+    await db.exec('reset role')
+    const row = await db.query<{ status: string }>('select status from public.suggestions where id=$1', [otherSuggestion])
+    await actor(editorA)
+    expect(row.rows[0].status).toBe('open')
+    expect(await tripState(otherTrip)).toEqual(before)
+    expect(await count('activity')).toBe(beforeEvents)
+  })
+
+  it('lands the repeated visit exactly once when the user explicitly allows the duplicate', async () => {
+    const otherTrip = '20000000-0000-4000-8000-000000000012'
+    const otherSuggestion = '30000000-0000-4000-8000-000000000012'
+    const existingStop = { id: 'st-first', orderInDay: 0, title: 'Museum', category: 'sightseeing', locationName: 'City Museum', lat: 12.9, lng: 77.6, status: 'confirmed' }
+    await seedTrip(otherTrip, [{ id: 'day', index: 0, title: 'Day', stops: [existingStop] }])
+    await db.exec('reset role')
+    await db.query(`insert into public.suggestions(id,trip_id,day_index,day_id,proposed_by,title,category,location_name,lat,lng,status)
+      values($1,$2,0,'day',$3,'Museum','sightseeing','City Museum',12.9,77.6,'open')`, [otherSuggestion, otherTrip, owner])
+    await actor(editorA)
+
+    const applied = await call(command(72), { type: 'suggestion.accept', suggestionId: otherSuggestion, expectedRevision: 7, allowDuplicate: true }, otherTrip)
+    expect(applied).toMatchObject({ status: 'applied', stopId: expect.any(String) })
+    expect(applied.stopId).not.toBe('st-first')
+
+    // The day now carries the original plus exactly one new stop, and a second
+    // confirmed client replaying the SAME command id stays on that one receipt.
+    const saved = await tripState(otherTrip)
+    expect(saved.days[0].stops).toHaveLength(2)
+    expect(await call(command(72), { type: 'suggestion.accept', suggestionId: otherSuggestion, expectedRevision: 7, allowDuplicate: true }, otherTrip))
+      .toMatchObject({ status: 'alreadyApplied', stopId: applied.stopId })
+    expect((await tripState(otherTrip)).days[0].stops).toHaveLength(2)
+  })
+
+  it('still allows the same place on a different day without any confirmation', async () => {
+    const otherTrip = '20000000-0000-4000-8000-000000000013'
+    const otherSuggestion = '30000000-0000-4000-8000-000000000013'
+    const dayAStop = { id: 'st-day-a', orderInDay: 0, title: 'Museum', category: 'sightseeing', locationName: 'City Museum', lat: 12.9, lng: 77.6, status: 'confirmed' }
+    await seedTrip(otherTrip, [
+      { id: 'day-a', index: 0, title: 'First day', stops: [dayAStop] },
+      { id: 'day-b', index: 1, title: 'Second day', stops: [] },
+    ])
+    await db.exec('reset role')
+    await db.query(`insert into public.suggestions(id,trip_id,day_index,day_id,proposed_by,title,category,location_name,lat,lng,status)
+      values($1,$2,1,'day-b',$3,'Museum','sightseeing','City Museum',12.9,77.6,'open')`, [otherSuggestion, otherTrip, owner])
+    await actor(editorA)
+
+    const outcome = await call(command(73), { type: 'suggestion.accept', suggestionId: otherSuggestion, expectedRevision: 7, dayId: 'day-b' }, otherTrip)
+    expect(outcome).toMatchObject({ status: 'applied', stopId: expect.any(String) })
+    const saved = await tripState(otherTrip)
+    expect(saved.days[0].stops).toHaveLength(1)
+    expect(saved.days[1].stops).toHaveLength(1)
+  })
+
   it('returns forbidden for viewers and makes repeated decline a no-op', async () => {
     const otherTrip = '20000000-0000-4000-8000-000000000006'
     const otherSuggestion = '30000000-0000-4000-8000-000000000006'

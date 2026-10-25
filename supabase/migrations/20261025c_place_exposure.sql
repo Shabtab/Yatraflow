@@ -332,6 +332,17 @@ begin
                 and public.collab_same_visit_place(v_row,stop)
               limit 1;
           end if;
+          if v_stop_id is not null then
+            -- The promised repeat-confirmation contract: a same-place same-day
+            -- visit is refused, not absorbed into the existing stop. The day
+            -- identity is echoed from the resolved day, so the client can ask
+            -- "Add another visit?" for the day the write actually targeted.
+            -- Like needsDay, this returns before the receipt insert, so a
+            -- refusal is never replayed as alreadyApplied.
+            return jsonb_build_object('status','needsDuplicate','tripRevision',v_revision,
+              'dayId',coalesce(v_day->>'id',''),
+              'dayIndex',coalesce(nullif(v_day->>'index','')::integer,v_target_day_index));
+          end if;
           if v_stop_id is null then
             v_stop_id:='st_'||gen_random_uuid()::text;
             select jsonb_build_object(
@@ -485,6 +496,9 @@ begin
                 and public.collab_same_visit_place(v_option->'place',stop)
               limit 1;
             if v_stop_id is not null then
+              -- Intentional asymmetry with suggestion.accept: a vote answers
+              -- "the plan already has it" (alreadyApplied), while an accept
+              -- expresses "add this" and must ask before repeating.
               v_placement_status:='alreadyApplied';
             else
               v_stop_id:='st_'||gen_random_uuid()::text;

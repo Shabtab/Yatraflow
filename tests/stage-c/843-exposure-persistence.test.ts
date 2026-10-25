@@ -7,6 +7,7 @@ import { PLACE_EXPOSURES, type ItineraryStop, type PlaceExposure, type Trip } fr
 import { persistedPlace, persistedPlaceFromHit, persistedPlaceFromJson, pickPlaceDraft } from '../../src/lib/placeDraft'
 import { buildTripExport, emptyReport, normalizeTrip } from '../../src/lib/itinerarySpec'
 import { parseTripImport } from '../../src/lib/tripImport'
+import { buildAdviceFacts, answerForIntent } from '../../src/lib/ai'
 import { submitCollabCommand, submitCollabTransition, suggestionRowToEntry } from '../../src/store/collabCommand'
 import { suggestionToRow } from '../../src/lib/restoreRows'
 import { seedData } from '../../src/data/seed'
@@ -197,5 +198,32 @@ describe('stage-c/843 place exposure persistence', () => {
     const parsed = parseTripImport(JSON.stringify(buildTripExport(imported)))
     expect(parsed.trip.days[0].stops[0].exposure).toBeUndefined()
     expect(parsed.trip.days[0].stops[0].placeSource).toBe('google')
+  })
+
+  it('reads a true weather-sensitive flag as outdoor evidence in the rain advice (F-B anchor)', () => {
+    // The r-integration control for this rule anchored on a REJECTED stop,
+    // which buildJourney filters before facts are built — the mutant survived.
+    // This anchor uses an ACTIVE confirmed stop: the true flag must surface as
+    // `outdoor` evidence in the rain answer, and a false or missing flag must
+    // not invent indoor certainty (pinned by the G suite's unknown-side test).
+    const source = structuredClone(seedData.trips[0])
+    const base = source.days[0].stops[0]
+    const stop: ItineraryStop = {
+      ...base,
+      title: 'Weather-sensitive lookout',
+      locationName: 'Weather-sensitive lookout',
+      status: 'confirmed',
+      weatherSensitive: true,
+      exposure: undefined,
+      visitMinutes: 60,
+    }
+    source.days = [source.days[0]]
+    source.days[0].stops = [stop]
+    const fact = buildAdviceFacts(source)[0].stops[0]
+    const reply = answerForIntent(source, 'rain', 'What if it rains?')
+
+    expect(fact.exposure).toBe('outdoor')
+    expect(reply.text).toContain('Weather-sensitive stops flagged: Day 1: Weather-sensitive lookout')
+    expect(reply.text).not.toContain('Exposure is unknown for: Day 1: Weather-sensitive lookout')
   })
 })
