@@ -103,8 +103,11 @@ function isCode(t) {
   if (/^<\/?[A-Za-z]/.test(t) || /^>/.test(t)) return true
   // TypeScript member / signature shapes: `foo(a: string): void`
   if (/^[A-Za-z_$][\w$]*\([^)]*:\s*[A-Za-z]/.test(t)) return true
-  // a bare call: `foo(bar, baz)` or `foo.bar(baz)`
-  if (/^[A-Za-z_$][\w$.]*\([^)]*\)\s*[;.)]?\s*$/.test(t)) return true
+  // A bare call: `foo(bar, baz)` or `foo.bar(baz)`, including one that nests a
+  // callback or a literal inside the parens — `expect(() => load(file))`,
+  // `seen.add(key)`. An English sentence never opens with `word(` and closes
+  // the call at the end of the line.
+  if (/^[A-Za-z_$][\w$]*(?:\.[\w$]+)*\s*\(.*\)\s*;?\s*$/.test(t)) return true
   // ends in a statement terminator after code punctuation
   if (/[;{}]\s*$/.test(t) && /[()[\]=>]/.test(t)) return true
   return false
@@ -121,16 +124,26 @@ function stripListMarker(line) {
   return line.slice(m[0].length).replace(TASK_BOX, '')
 }
 
-function isProse(line) {
+function isProse(line, file) {
   const raw = line.trim()
   if (!raw) return false
   if (raw.startsWith('#')) return false        // heading
   if (raw.startsWith('```')) return false      // fence
+  // A SQL file's prose is its comments. Every other line of a .sql file is a
+  // statement, whose keywords and identifiers can read as English (the DDL that
+  // re-checks a table constraint is one), so only comment lines are checked.
+  if (file.endsWith('.sql') && !/^(?:--|\/\*)/.test(raw)) return false
   // The code rules judge the text after the list marker and the task box.
   const t = stripListMarker(raw)
   if (!t) return false
   if (t.startsWith('|')) return false          // table row, also inside a list item
   if (/^(?:const|let|var|function|import|export|return|if|for)\b/.test(t)) return false
+  // A fat arrow outside a code span is a callback, not a sentence. stripCode
+  // removes the spans first, so prose that quotes `=>` stays checked.
+  if (/=>/.test(t.replace(/`[^`]*`/g, ''))) return false
+  // An object or JSON literal: `{ id: 'slot:lunch', ... },`. No sentence starts
+  // with a brace or a bracket, so this is code.
+  if (/^[{[]\s*['"]?[A-Za-z_$][\w$]*['"]?\s*:/.test(t)) return false
   if (isCode(t)) return false                  // code, not prose
   if (/`[^`]*`/.test(t) && !/[a-z]{4,}/i.test(t.replace(/`[^`]*`/g, ''))) return false
   return true
@@ -274,7 +287,7 @@ function isExcludedPath(file) {
 function checkIfProse(file, lineno, text, kind = 'text') {
   if (kind === 'indented') return
   if (kind === 'fenced' && LIST_MARKER.test(text)) return
-  if (!isProse(text)) return
+  if (!isProse(text, file)) return
   checkedLines += 1
   checkLine(file, lineno, text)
 }

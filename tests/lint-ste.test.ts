@@ -34,6 +34,25 @@ function run(text: string) {
   }
 }
 
+// A SQL file's prose is its comments, and the statement lines are code, so the
+// SQL rules need a real .sql file. Each call writes a throwaway one.
+function runSql(text: string) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'lint-ste-sql-'))
+  fixtureDirs.push(dir)
+  const file = path.join(dir, 'fixture.sql')
+  writeFileSync(file, text)
+  try {
+    const out = execFileSync(process.execPath, [SCRIPT, '--file', file], {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    return { code: 0, out }
+  } catch (err) {
+    const e = err as { status?: number; stderr?: string }
+    return { code: e.status ?? 1, out: e.stderr ?? '' }
+  }
+}
+
 describe('STE100 lint (scripts/lint-ste.mjs)', () => {
   it('passes compliant prose', () => {
     const r = run('Check the value.\nRun the tests.\nYou must not push to main.\n')
@@ -231,6 +250,47 @@ describe('STE100 lint (scripts/lint-ste.mjs)', () => {
     expect(run(gerundBox).code).toBe(1)
     const shouldBox = '- [ ] You should push to main.\n'
     expect(run(shouldBox).code).toBe(1)
+  }, SLOW)
+
+  it('treats the SQL that re-checks a table constraint as code, but still checks a bad comment', () => {
+    // The DDL keyword pair `validate constraint` reads as the prose word the
+    // vocab rule bans. The statement is the one form SQL gives for this job, so
+    // the checker skips the statement, and a comment that carries a real
+    // violation still fails.
+    const ddl = 'alter table public.suggestions validate constraint suggestions_place_identity_shape;\n'
+    const good = runSql('-- Check the constraint by hand first.\n' + ddl)
+    expect(good.code).toBe(0)
+    const bad = runSql('-- You should validate the constraint by hand.\n' + ddl)
+    expect(bad.code).toBe(1)
+    expect(bad.out).toMatch(/must/)
+  }, SLOW)
+
+  it('reads a SQL comment as prose, so a vocab hit in one still fails', () => {
+    const comment = '-- Utilize the helper index before the migration runs.\n'
+    const r = runSql(comment)
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(/Utilize/)
+  }, SLOW)
+
+  it('treats an object literal fixture line as code, not a 24 word sentence', () => {
+    // Verbatim from tests/stage-c/838-collab-transitions-db.test.ts. The word
+    // count rule read the keys and values as one long English sentence.
+    const fixture =
+      "  { id: 'slot:lunch:place-a', label: 'Cafe A', place: { title: 'Cafe A', category: 'food', locationName: 'Cafe A', lat: 12.91, lng: 77.61, visitMinutes: 45, dayId: 'day-missing', dayIndex: 0 } },\n"
+    expect(run(fixture).code).toBe(0)
+  }, SLOW)
+
+  it('treats an assertion with a fat arrow and a script path as code, not prose', () => {
+    // Two spaces, so the line is prose-shaped under the line-kind rules exactly
+    // as it is in tests/stage-c/843-exposure-persistence.test.ts:178 (a lazy
+    // continuation of the line above). The arrow marks a callback, and the
+    // banned vocab word is part of a real script name on disk.
+    const assertion =
+      "  expect(() => execFileSync(process.execPath, ['scripts/validate-itinerary.mjs', file], { encoding: 'utf8' })).not.toThrow()\n"
+    expect(run(assertion).code).toBe(0)
+    // A fat arrow inside a code span is quoted text, so the prose stays checked.
+    const quoted = 'The callback `() => execFileSync(file)` should stay checked here in this sentence.\n'
+    expect(run(quoted).code).toBe(1)
   }, SLOW)
 })
 

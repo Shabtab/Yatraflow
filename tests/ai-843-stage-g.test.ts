@@ -261,7 +261,7 @@ describe('issue 843 Stage G schedule facts', () => {
     const terminalFact = buildAdviceFacts(trip)[0].stops[0]
     const reply = answerForIntent(trip, 'airport', 'Can we reach the airport?')
     if (terminalFact.transferMinutes === null || terminalFact.transferFrom === null) {
-      throw new Error('The fixture should provide a modeled transfer time and origin.')
+      throw new Error('The fixture must provide a modeled transfer time and origin.')
     }
 
     expect(reply.text).toContain('2026-10-26')
@@ -325,7 +325,7 @@ describe('issue 843 Stage G schedule facts', () => {
     const context = buildTripContext(trip)
     const reply = answerForIntent(trip, 'airport', 'Can we reach Cochin airport?')
     if (!terminal || terminal.transferMinutes === null || terminal.arrival === null || terminal.departure === null) {
-      throw new Error('The real-coordinate engine fixture should provide leg and terminal clocks.')
+      throw new Error('The real-coordinate engine fixture must provide leg and terminal clocks.')
     }
 
     const validClock = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/
