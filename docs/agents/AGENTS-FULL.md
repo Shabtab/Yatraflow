@@ -365,6 +365,18 @@ that notices the drift.
     licences and your choice in the PR description. A read-only Scout can do
     the search.
 
+19. **Claim the issue before you start it, and check for an existing claim
+    (user-mandated 2026-10-24).** Read the issue's assignee. Read its last
+    comments. Run `git ls-remote --heads origin | grep <issue-number>`. Post a
+    claim comment before implementation starts. Name the owner, the branch, the
+    base revision and the scope. A claim holds even when its branch is not
+    pushed. Do not edit a file that another lane's claim names. Do not treat a
+    missing remote branch as proof that nobody owns the work. On 2026-10-24 one
+    lane claimed #839 and worked in a local clone. The branch never reached
+    origin, so `ls-remote` showed nothing. Only the claim comment showed the
+    owner. When two lanes own the same files, the later claim waits. Record the
+    outcome in the issue, not in chat.
+
 ### What enforces each rule
 
 A rule nobody checks fails silently. This table pairs each rule above (and the
@@ -391,6 +403,7 @@ a breach, so treat those rows as the ones most easily skipped.
 | §2.16 work only in your own clone | judgment — the global user-level `AGENTS.md` clone table |
 | §2.17 promote per batch; patch for fixes; two-step SQL | judgment — `git rev-list --count origin/main..origin/test` shows the backlog |
 | §2.18 search for prior art before you build | judgment — the PR description lists the projects, licences and choice |
+| §2.19 claim before you start | judgment — the assignee, the claim comment and `git ls-remote --heads origin` are the manual check |
 | §3 gate, CI, migrations | `npm run verify` locally; `ci.yml` on push and PR (`tests/ci-workflow.test.ts` pins the triggers); `npm run check:migrations` + a live PostgREST probe for schema |
 | §4 code conventions and pitfalls | the pin tests named in each rule — `verify` runs them all |
 

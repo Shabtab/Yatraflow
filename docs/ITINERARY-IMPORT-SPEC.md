@@ -1,6 +1,6 @@
 # YatraFlow — Itinerary Import Specification
 
-**Version:** 2.0 (2026-09-18) · **Runtime twin:** `src/lib/itinerarySpec.ts` · **Offline contract:** `scripts/validate-itinerary.mjs` · **Engine-true pin:** `tests/golden-itineraries.test.ts`
+**Version:** 3.0 (2026-10-25) · **Runtime twin:** `src/lib/itinerarySpec.ts` · **Offline contract:** `scripts/validate-itinerary.mjs` · **Engine-true pin:** `tests/golden-itineraries.test.ts`
 
 This is the canonical contract for a JSON itinerary that imports into YatraFlow and
 **breaks absolutely nothing** — engine math, map, budget, timeline, lodging identity,
@@ -27,7 +27,7 @@ explain what changed). What the validator **cannot** see is pinned by the golden
 
 ```jsonc
 {
-  "formatVersion": 2,                       // §8 — the compatibility contract
+  "formatVersion": 3,                       // §8 — the compatibility contract
   "exportedAt": "2026-09-18T…Z",           // written on export; informational
   "app": "yatraflow/0.60.0",               // written on export; diagnosis only
   "trip":   { …Trip… },                    // §3 — the full data model object

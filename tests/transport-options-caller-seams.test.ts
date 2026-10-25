@@ -89,8 +89,10 @@ describe('the guarded write path reaches the real writers', () => {
   it('guards the insert path after the awaited probe', () => {
     // The insert awaits `tripsHaveOptionalColumns()` and then calls
     // tripToRow, which silently omits a missing column. The guard has to sit
-    // between those two lines.
-    expect(src).toMatch(/await tripsHaveOptionalColumns\(\)\s*\n\s*(?:\/\/[^\n]*\n\s*)*const drivesPartVerdict = drivesPartWriteVerdict\(/)
+    // between those two lines. A recovery also re-checks its own guard on the
+    // same line, because the probe is one of the awaited phases a retired
+    // recovery must not walk past (#839).
+    expect(src).toMatch(/await tripsHaveOptionalColumns\(\)\s*\n\s*(?:if \(!guard\(\)\) return false\s*\n\s*)?(?:\/\/[^\n]*\n\s*)*const drivesPartVerdict = drivesPartWriteVerdict\(/)
   })
 
   it('guards the debounced update path too', () => {
