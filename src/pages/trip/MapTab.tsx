@@ -185,6 +185,10 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
   // dismissed suggestion ids — logged as DNA declines, hidden for the session
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
+  // Bumped on every preview close: the staged ref moves to a fresh Map even
+  // when nothing releases, and this tick is what re-reads it into `identity`
+  // (#839 review P2 — an unchanged Set would bail the render out).
+  const [stagedTick, setStagedTick] = useState(0)
   // #345: ids this tab staged into a preview, with the name they will land
   // under. The preview-close effect below reads this to release what a
   // DISCARDED preview staged — the ghost that used to hide a place until
@@ -282,7 +286,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     // The predicate decides an open preview through `staged`; kept ids remain
     // in `added` as bookkeeping only - they must not outrank the plan (#839).
     staged: stagedIdsRef.current,
-  }), [tripPresenceIds, addedIds, dismissedIds])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stagedTick invalidates the memo on every close; the callback reads the ref the tick guards (#839 P2)
+  }), [tripPresenceIds, addedIds, dismissedIds, stagedTick])
 
   // OSRM road geometry of the whole route — feeds Google Search-Along-Route
   // (the report's killer feature); the free stack ignores it. #188: the
@@ -745,6 +750,12 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     const staged = stagedIdsRef.current
     stagedIdsRef.current = new Map()
     const release = new Set(discardedStagedIds(staged, identity.names))
+    // EVERY close must invalidate the identity memo: the ref just moved to a
+    // fresh Map, and a Keep whose name is already in the plan releases nothing,
+    // so setAddedIds alone would bail out on an unchanged Set and leave the
+    // memo attached to the old Map — a staged namesake of a kept place stayed
+    // hidden forever after its preview was discarded (#839 review P2).
+    setStagedTick(t => t + 1)
     if (release.size === 0) return
     setAddedIds(prev => {
       const next = new Set(prev)

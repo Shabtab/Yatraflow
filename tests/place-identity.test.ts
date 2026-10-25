@@ -4,6 +4,7 @@
 // `"Hotel Taj"`, a provider key beats a spelling difference, and a DISCARDED
 // preview releases what it staged instead of leaving a ghost.
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import {
   normalizePlaceName, placeKeysOf, tripPresence, placeIdentity, isAlreadyAdded, discardedStagedIds,
   isSameEntity, sameVisitPlace, placeKeyMatches, placeDistanceKm,
@@ -240,5 +241,46 @@ describe('reproduced resume defects R1-R4 (issue #839)', () => {
     expect(resolvedPlaceFromHit(pick({ latitude: 0 }))).toBeNull()
     // A legitimate provider-free pick inside range still resolves.
     expect(resolvedPlaceFromHit(pick({ latitude: 15.2, longitude: 73.3 }))).toMatchObject({ label: 'Fort', lat: 15.2, lng: 73.3 })
+  })
+})
+
+describe('a discarded namesake of a kept place comes back (#839 review P2)', () => {
+  const namesake = { id: 'h9', name: 'Sharma Dhaba', latitude: 28, longitude: 77 }
+  const keptTrip = () => tripOf([stop({ title: 'Sharma Dhaba', lat: 15, lng: 73 })])
+  it('reads added while the preview holds the staged namesake', () => {
+    // Keep left its own id in addedIds; the distant namesake staged on top.
+    const id = placeIdentity(keptTrip(), new Set(['h1', 'h9']), new Set(), new Map([['h9', 'sharma dhaba']]))
+    expect(isAlreadyAdded(namesake, id)).toBe(true)
+  })
+  it('reads addable once the close hands the identity the fresh staged map', () => {
+    // The close released nothing - the name is in the plan - so addedIds keeps
+    // h9. The identity rebuilt on the fresh map must not keep it hidden: the
+    // staged channel is gone and the plan's own proximity check says the
+    // namesake at (28,77) is not the kept place at (15,73).
+    const id = placeIdentity(keptTrip(), new Set(['h1', 'h9']), new Set(), new Map())
+    expect(isAlreadyAdded(namesake, id)).toBe(false)
+  })
+  it('stays addable when the identity is rebuilt on another render', () => {
+    const id = () => placeIdentity(keptTrip(), new Set(['h1', 'h9']), new Set(), new Map())
+    expect(isAlreadyAdded(namesake, id())).toBe(false)
+    expect(isAlreadyAdded(namesake, id())).toBe(false)
+  })
+})
+
+describe('the release effect publishes every preview close (#839 review P2)', () => {
+  const mapTab = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
+  const effectStart = mapTab.indexOf('A preview that is DISCARDED must not leave a ghost')
+  const effect = mapTab.slice(effectStart, mapTab.indexOf('}, [previewOpen, identity])', effectStart))
+  it('bumps the staged tick before the release early-return', () => {
+    // A close that releases nothing (a Keep whose name is in the plan) must
+    // still publish: setAddedIds alone bails out on an unchanged Set, and the
+    // memo would stay attached to the old staged Map.
+    const bump = effect.indexOf('setStagedTick(t => t + 1)')
+    const bail = effect.indexOf('release.size === 0')
+    expect(bump).toBeGreaterThan(-1)
+    expect(bail).toBeGreaterThan(bump)
+  })
+  it('the identity memo re-reads the staged map on that tick', () => {
+    expect(mapTab).toMatch(/tripPresenceIds, addedIds, dismissedIds, stagedTick\]/)
   })
 })
