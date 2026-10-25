@@ -91,8 +91,12 @@ let checkedLines = 0
 function isCode(t) {
   // a string literal on its own line: a fixture, a snapshot, a key
   if (/^['"`]/.test(t) && !/^>/.test(t)) return true
-  // object / class property: `key: value`, `key:`, `"key": value`
-  if (/^['"]?[A-Za-z_$][\w$]*['"]?\s*:\s*([`'"{[(]|\d|$)/.test(t)) return true
+  // object / class property: `key: value`, `key:`, `"key": value`. The value may
+  // also start with an identifier — a variable, or a type reference chained into
+  // an index or member access (`category: ItineraryStop['category']`), which no
+  // prose sentence is. Residual gap: a glossary-style ".md" definition line
+  // ("word: lowercase text") now skips the vocab rules.
+  if (/^['"]?[A-Za-z_$][\w$]*['"]?\s*:\s*([`'"{[(]|\d|[A-Za-z_$][\w$]*\s*[.[])/.test(t)) return true
   // JSX attribute: `onClick={...}`, `options={[...]`, bare `foo=`
   if (/^[A-Za-z_$][\w$.-]*\s*=\s*\{/.test(t)) return true
   // JSX element / closing tag: `<MapTab ... />`, `</div>`

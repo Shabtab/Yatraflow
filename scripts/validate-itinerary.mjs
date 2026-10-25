@@ -49,6 +49,7 @@ const PRIORITIES = ['must-do', 'nice-to-have', 'optional']
 // src/lib/placeDraft.ts). tests/geocoder-cli-provenance.test.ts pins the two
 // together and runs this CLI against a real geocoder stop.
 const PLACE_SOURCES = ['google', 'mappls', 'open-meteo', 'wikipedia', 'osm']
+const PLACE_EXPOSURES = ['indoor', 'outdoor', 'unknown']
 const EXPENSE_CATEGORIES = ['transport', 'accommodation', 'food', 'activities', 'entry-fees', 'tolls-parking', 'local-travel', 'emergency-buffer']
 const COMMITMENT_TYPES = ['hotel-checkin', 'train-departure', 'flight-departure', 'event', 'other']
 const STAY_STYLES = ['budget', 'comfort', 'luxury']
@@ -204,7 +205,7 @@ function validate(parsed) {
       if (!STOP_STATUSES.includes(s.status)) err(`${t}.status: "${s.status}" not in ${STOP_STATUSES.join(' · ')}`)
       else if (s.status !== 'confirmed') warn(`${t}.status: "${s.status}" — a gallery trip reads unfinished with unconfirmed stops`)
       if (s.placeSource !== undefined && !PLACE_SOURCES.includes(s.placeSource)) err(`${t}.placeSource: "${s.placeSource}" not in ${PLACE_SOURCES.join(' - ')}`)
-      if (s.exposure !== undefined && s.exposure !== 'unknown') err(`${t}.exposure: "${s.exposure}" is not valid (only unknown in this format)`)
+      if (s.exposure !== undefined && !PLACE_EXPOSURES.includes(s.exposure)) err(`${t}.exposure: "${s.exposure}" is not valid (use indoor, outdoor, or unknown)`)
       checkCoords(`${t}`, s.lat, s.lng)
       if (!isFiniteNum(s.visitMinutes) || s.visitMinutes < 0) err(`${t}.visitMinutes: required finite number ≥ 0 (NaN here poisons the day's dwell)`)
       if (isFiniteNum(s.visitMinutes) && (s.visitMinutes < 10 || s.visitMinutes > 240)) warn(`${t}.visitMinutes: ${s.visitMinutes} min outside the sane 10–240 band`)

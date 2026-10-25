@@ -64,8 +64,8 @@ describe('reorderStop guards out-of-range indices (regression #5)', () => {
   })
 })
 
-describe('acceptSuggestionIntoTimeline tolerate missing session (regression #9)', () => {
-  it('does not throw when there is no logged-in user', () => {
+describe('acceptSuggestionIntoTimeline requires a session (regression #9)', () => {
+  it('returns forbidden without changing the suggestion when there is no logged-in user', async () => {
     return import('../src/store/store').then(async (store) => {
       const trip = createTrip('owner-2', {
         name: 'Suggest Test', startLocation: 'Kochi', destinations: ['Munnar'],
@@ -85,9 +85,9 @@ describe('acceptSuggestionIntoTimeline tolerate missing session (regression #9)'
         votes: [], comments: [], status: 'open', createdAt: 1,
       })
       // The guard path must not throw on the unguarded `cache.sessionUserId!`
-      expect(() => acceptSuggestionIntoTimeline(trip.id, 'sug-robust')).not.toThrow()
+      await expect(acceptSuggestionIntoTimeline(trip.id, 'sug-robust')).resolves.toEqual({ status: 'forbidden' })
       const updated = getSnapshot().suggestions.find(s => s.id === 'sug-robust')
-      expect(updated?.status).toBe('accepted')
+      expect(updated?.status).toBe('open')
     })
   })
 })

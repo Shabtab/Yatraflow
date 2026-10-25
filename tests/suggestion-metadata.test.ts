@@ -86,10 +86,16 @@ describe('place drafts', () => {
     // A geocoder provenance round-trips; an unknown one does not.
     expect(persistedPlaceFromJson({ source: 'open-meteo', exposure: 'unknown' }))
       .toEqual({ source: 'open-meteo', exposure: 'unknown' })
-    for (const bad of [null, [], 'x', { exposure: 'outdoor' }, { exposure: 'unknown', extra: 1 },
-      { source: 'weather-api', exposure: 'unknown' }, { exposure: 'unknown', placeId: '' }, { placeId: 'x' }]) {
+    // Exposure widened to the real enum (indoor/outdoor/unknown), so 'indoor'
+    // is valid now; the malformed shape that must still be refused is an
+    // exposure value from no allowlist at all. A lone key still parses (legacy
+    // rows carry exposure only), but an EMPTY key is refused.
+    for (const bad of [null, [], 'x', { exposure: 'inside' }, { exposure: 'unknown', extra: 1 },
+      { source: 'weather-api', exposure: 'unknown' }, { exposure: 'unknown', placeId: '' }]) {
       expect(persistedPlaceFromJson(bad)).toBeUndefined()
     }
+    expect(persistedPlaceFromJson({ exposure: 'outdoor' })).toEqual({ exposure: 'outdoor' })
+    expect(persistedPlaceFromJson({ placeId: 'x' })).toEqual({ placeId: 'x', exposure: 'unknown' })
   })
 })
 
@@ -106,7 +112,7 @@ describe('stored suggestion metadata', () => {
     const malformed = suggestionRowToEntry({
       id: 's2', trip_id: 't1', day_index: 0, proposed_by: 'u1', title: 'X',
       category: 'sightseeing', location_name: 'X', lat: 15, lng: 73,
-      status: 'open', place: { exposure: 'outdoor' },
+      status: 'open', place: { exposure: 'inside' },
     })
     expect(malformed.place).toBeUndefined()
   })
@@ -156,7 +162,7 @@ describe('format version 3', () => {
     const raw = JSON.parse(JSON.stringify(trip)) as Record<string, unknown>
     const day0 = (raw.days as Record<string, unknown>[])[0]
     ;(day0.stops as Record<string, unknown>[])[0] = {
-      ...(day0.stops as Record<string, unknown>[])[0], placeSource: 'weather-api', exposure: 'indoor',
+      ...(day0.stops as Record<string, unknown>[])[0], placeSource: 'weather-api', exposure: 'inside',
     }
     const out = normalizeTrip(raw, report)
     expect(out?.days[0].stops[0].placeSource).toBeUndefined()

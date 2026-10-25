@@ -16,7 +16,13 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **A measured, honest AI companion (flag-gated, not enabled in production).** The companion now reads the same walked clock as the timeline and the map. Arrival, departure, transfer and commitment buffers carry explicit dates. Fractional legs round once before the calendar carries. Missing evidence falls back to "unknown" instead of a guess. A measured road correction flows into the remote prompt. The endpoint answers from the same snapshot as the offline fallback. Remote prompts carry no notes, no coordinates and no member list. Weather-sensitive stops count as outdoor evidence. Missing evidence stays unknown and never claims indoor. (#843)
+
 ### Fixed
+
+- **Group actions now apply as one piece.** One action used to write a stop and its receipt in two saves. A failed save could leave a stop with no receipt. It could also leave a receipt with no stop. Each action now sends one command. Its receipt returns both results, so the plan and its audit trail agree. A deleted or dangling stop now retries cleanly. A failed identity parse stops the command instead of writing a half state. Live SQL for this repair is written but not yet applied to the hosted database. (#838)
 
 - **Suggestions keep their picked place and intended day.** Editing location text clears its old pin. A deleted day needs an explicit choice from the current days. Same-day repeats need confirmation. Visits on different days remain allowed. Rejected visits do not block another addition. Place identity survives saves, reloads, imports and recovery. Keyless city picks retain their provider. Accepted and declined ideas stop influencing crew preferences. Failed saves keep drafts and metadata. Guarded contribution recovery preserves legacy rows and picked places. Failed recovery offers a retry bound to the original account and deletion. (#839)
 - **A same-named place far away no longer reads as already added. A kept suggestion returns after its stop is deleted or rejected.** Provider hits carry their position as `latitude` and `longitude`. The identity check read the stop's field names, so a hit fell back to the name alone. Two same-named places far apart then looked like one. A session id that Keep retained also outranked the plan. A delete or a reject removed the place, but the id still hid it until a reload. The check now reads either coordinate pair. An open preview decides through a staged list, and the plan answers for every kept id. (#839)

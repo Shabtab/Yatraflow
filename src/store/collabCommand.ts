@@ -52,6 +52,28 @@ export type CollabCommand =
   | { type: 'decision.ballot'; decisionId: string; optionId: string | null }
   | { type: 'activity.append'; activityId: string; verb: string; target?: string }
 
+/** Server-owned workflow transitions. These commands share the Stage A
+ *  idempotency ledger, but return placement facts separately from winner state. */
+export type CollabTransitionCommand =
+  | { type: 'suggestion.accept'; suggestionId: string; expectedRevision: number; dayId?: string; dayIndex?: number; allowDuplicate?: boolean }
+  | { type: 'suggestion.decline'; suggestionId: string }
+  | { type: 'decision.resolve'; decisionId: string; optionId: string; expectedRevision: number; dayId?: string; dayIndex?: number }
+
+export type AcceptanceOutcome =
+  | { status: 'applied'; tripRevision: number; stopId: string; suggestion?: StopSuggestion }
+  | { status: 'alreadyApplied'; tripRevision: number; stopId?: string; suggestion?: StopSuggestion }
+  | { status: 'needsDay'; availableDays: Array<{ id: string; index: number; title?: string }> }
+  | { status: 'needsPlace' }
+  | { status: 'conflict'; tripRevision: number }
+  | { status: 'forbidden' | 'unavailable'; reason?: string }
+
+export type DecisionResolutionOutcome =
+  | { status: 'applied' | 'alreadyApplied'; tripRevision: number; winnerId: string; decision?: TripDecision; placement: { status: 'applied' | 'alreadyApplied'; stopId: string } | { status: 'needsDay'; availableDays: Array<{ id: string; index: number; title?: string }> } | { status: 'needsPlace' | 'notRequired' } }
+  | { status: 'conflict'; tripRevision: number }
+  | { status: 'forbidden' | 'unavailable'; reason?: string }
+
+export type CollabTransitionOutcome = AcceptanceOutcome | DecisionResolutionOutcome | CollabOutcome
+
 /** The outcome union every contribution writer returns. The statuses and the
  *  field names are the receipt's, verbatim. `tripRevision` on the first three
  *  statuses is the server's acknowledgment of the revision it observed — it is
@@ -84,6 +106,7 @@ export type CollabOutcome =
  *  store.ts so the receipt and the hydrate/realtime paths share one mapping. */
 type DbSuggestionRow = {
   id: string; trip_id: string; day_index: number; day_id?: string | null; place?: unknown; proposed_by: string
+  accepted_stop_id?: string | null
   title: string; category: StopCategory; location_name: string; lat: number; lng: number
   description?: string | null; visit_minutes?: number
   estimated_entry_fee_inr?: number; estimated_transport_inr?: number
@@ -96,6 +119,7 @@ export function suggestionRowToEntry(row: unknown): StopSuggestion {
   return {
     id: r.id, tripId: r.trip_id, dayIndex: r.day_index,
     ...(typeof r.day_id === 'string' && r.day_id ? { dayId: r.day_id } : {}),
+    ...(typeof r.accepted_stop_id === 'string' && r.accepted_stop_id ? { acceptedStopId: r.accepted_stop_id } : {}),
     ...(place ? { place } : {}),
     proposedBy: r.proposed_by,
     title: r.title, category: r.category, locationName: r.location_name, lat: r.lat, lng: r.lng,
@@ -109,7 +133,7 @@ type DbDecisionRow = {
   id: string; trip_id: string; question: string; context?: string | null
   options?: TripDecision['options']; votes_by_user_id?: Record<string, string>
   comments?: Comment[]; status: TripDecision['status']
-  resolved_option_id?: string | null; raised_by: string; created_at?: number; resolved_at?: number | null
+  resolved_option_id?: string | null; resolved_stop_id?: string | null; raised_by: string; created_at?: number; resolved_at?: number | null
 }
 
 export function decisionRowToEntry(row: unknown): TripDecision {
@@ -119,6 +143,7 @@ export function decisionRowToEntry(row: unknown): TripDecision {
     options: r.options ?? [], votesByUserId: r.votes_by_user_id ?? {}, status: r.status,
     comments: r.comments ?? [],
     resolvedOptionId: r.resolved_option_id ?? undefined, raisedBy: r.raised_by,
+    ...(typeof r.resolved_stop_id === 'string' && r.resolved_stop_id ? { resolvedStopId: r.resolved_stop_id } : {}),
     createdAt: r.created_at ?? 0, resolvedAt: r.resolved_at ?? undefined,
   }
 }
@@ -265,6 +290,114 @@ export async function submitCollabCommand(
       return { status: 'unavailable' }
     }
     return outcome
+  } catch {
+    return { status: 'unavailable' }
+  }
+}
+
+/** Submit a server-owned workflow command. A malformed success response is an
+ *  unavailable outcome; callers must never infer success from an HTTP 200. */
+export function submitCollabTransition(commandId: string, tripId: string,
+  command: Extract<CollabTransitionCommand, { type: 'suggestion.accept' }>): Promise<AcceptanceOutcome>
+export function submitCollabTransition(commandId: string, tripId: string,
+  command: Extract<CollabTransitionCommand, { type: 'suggestion.decline' }>): Promise<CollabOutcome>
+export function submitCollabTransition(commandId: string, tripId: string,
+  command: Extract<CollabTransitionCommand, { type: 'decision.resolve' }>): Promise<DecisionResolutionOutcome>
+export async function submitCollabTransition(
+  commandId: string,
+  tripId: string,
+  command: CollabTransitionCommand,
+): Promise<CollabTransitionOutcome> {
+  if (typeof (supabase as { rpc?: unknown }).rpc !== 'function') return { status: 'unavailable' }
+  try {
+    const { data, error } = await supabase.rpc('submit_collab_command', {
+      p_command_id: commandId,
+      p_trip_id: tripId,
+      p_command: command,
+    })
+    if (error) return rpcErrorToOutcome(error as { code?: unknown })
+    if (!data || typeof data !== 'object') return { status: 'unavailable' }
+    const receipt = data as RawReceipt & {
+      stopId?: unknown
+      winnerId?: unknown
+      placementStatus?: unknown
+      availableDays?: unknown
+    }
+    const tripRevision = revisionOf(receipt)
+    switch (receipt.status) {
+      case 'applied':
+      case 'alreadyApplied':
+        if (command.type === 'suggestion.accept') {
+          if (receipt.status === 'applied') {
+            return typeof receipt.stopId === 'string' && receipt.stopId.length > 0
+              ? { status: 'applied', tripRevision, stopId: receipt.stopId,
+                ...(receipt.suggestion != null ? { suggestion: suggestionRowToEntry(receipt.suggestion) } : {}) }
+              : { status: 'unavailable' }
+          }
+          // A retry of an already-accepted suggestion whose stop was later
+          // removed from the timeline is a legitimate alreadyApplied with no
+          // placement to point at — not a server failure.
+          return typeof receipt.stopId === 'string' && receipt.stopId.length > 0
+            ? { status: 'alreadyApplied', tripRevision, stopId: receipt.stopId,
+              ...(receipt.suggestion != null ? { suggestion: suggestionRowToEntry(receipt.suggestion) } : {}) }
+            : { status: 'alreadyApplied', tripRevision,
+              ...(receipt.suggestion != null ? { suggestion: suggestionRowToEntry(receipt.suggestion) } : {}) }
+        }
+        if (command.type === 'decision.resolve') {
+          if (typeof receipt.winnerId !== 'string' || !receipt.winnerId) return { status: 'unavailable' }
+          const stopId = typeof receipt.stopId === 'string' ? receipt.stopId : ''
+          const placementStatus = receipt.placementStatus
+          const placement = placementStatus === 'applied' || placementStatus === 'alreadyApplied'
+            ? stopId ? { status: placementStatus, stopId } : null
+            : placementStatus === 'needsDay' && Array.isArray(receipt.availableDays)
+              ? { status: 'needsDay' as const, availableDays: receipt.availableDays.flatMap((entry): Array<{ id: string; index: number; title?: string }> => {
+                if (!entry || typeof entry !== 'object') return []
+                const day = entry as { id?: unknown; index?: unknown; title?: unknown }
+                return typeof day.id === 'string' && typeof day.index === 'number' && Number.isInteger(day.index)
+                  ? [{ id: day.id, index: day.index, ...(typeof day.title === 'string' ? { title: day.title } : {}) }]
+                  : []
+              }) }
+              : placementStatus === 'needsPlace' || placementStatus === 'notRequired'
+                ? { status: placementStatus }
+              : null
+          if (placement) {
+            const body = {
+              tripRevision, winnerId: receipt.winnerId,
+              ...(receipt.decision != null ? { decision: decisionRowToEntry(receipt.decision) } : {}), placement,
+            }
+            return receipt.status === 'applied'
+              ? { status: 'applied' as const, ...body }
+              : { status: 'alreadyApplied' as const, ...body }
+          }
+          return { status: 'unavailable' }
+        }
+        const base = {
+          tripRevision,
+          ...(receipt.suggestion != null ? { suggestion: suggestionRowToEntry(receipt.suggestion) } : {}),
+          ...(receipt.decision != null ? { decision: decisionRowToEntry(receipt.decision) } : {}),
+          ...(typeof receipt.activityId === 'string' ? { activityId: receipt.activityId } : {}),
+          ...(idListOf(receipt.notificationIds) ? { notificationIds: idListOf(receipt.notificationIds) } : {}),
+        }
+        return receipt.status === 'applied'
+          ? { status: 'applied' as const, ...base }
+          : { status: 'alreadyApplied' as const, ...base }
+      case 'needsDay': {
+        if (!Array.isArray(receipt.availableDays)) return { status: 'unavailable' }
+        const availableDays = receipt.availableDays.flatMap((entry): Array<{ id: string; index: number; title?: string }> => {
+          if (!entry || typeof entry !== 'object') return []
+          const day = entry as { id?: unknown; index?: unknown; title?: unknown }
+          if (typeof day.id !== 'string' || typeof day.index !== 'number' || !Number.isInteger(day.index)) return []
+          return [{ id: day.id, index: day.index, ...(typeof day.title === 'string' ? { title: day.title } : {}) }]
+        })
+        return { status: 'needsDay', availableDays }
+      }
+      case 'needsPlace': return { status: 'needsPlace' }
+      case 'conflict': return { status: 'conflict', tripRevision }
+      case 'forbidden': return { status: 'forbidden' }
+      case 'unavailable': return { status: 'unavailable' }
+      case 'invalid': return { status: 'unavailable' }
+      default: return { status: 'unavailable' }
+    }
   } catch {
     return { status: 'unavailable' }
   }
