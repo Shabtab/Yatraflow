@@ -15,6 +15,8 @@ import type { StopSuggestion, TripDecision, ActivityEntry, Notification, Publish
 export function suggestionToRow(s: StopSuggestion) {
   return {
     id: s.id, trip_id: s.tripId, day_index: s.dayIndex, proposed_by: s.proposedBy,
+    ...(s.dayId ? { day_id: s.dayId } : {}),
+    ...(s.place ? { place: s.place } : {}),
     title: s.title, category: s.category, location_name: s.locationName,
     lat: s.lat, lng: s.lng, description: s.description ?? null,
     visit_minutes: s.visitMinutes, estimated_entry_fee_inr: s.estimatedEntryFeeInr,

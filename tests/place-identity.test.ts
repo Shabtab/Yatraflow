@@ -4,9 +4,12 @@
 // `"Hotel Taj"`, a provider key beats a spelling difference, and a DISCARDED
 // preview releases what it staged instead of leaving a ghost.
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import {
   normalizePlaceName, placeKeysOf, tripPresence, placeIdentity, isAlreadyAdded, discardedStagedIds,
+  isSameEntity, sameVisitPlace, placeKeyMatches, placeDistanceKm,
 } from '../src/lib/placeIdentity'
+import { resolvedPlaceFromHit } from '../src/lib/placeDraft'
 import type { Trip } from '../src/data/types'
 
 function stop(over: Record<string, unknown>) {
@@ -47,8 +50,8 @@ describe('trip presence', () => {
       stop({ id: 'b', title: 'Basilica', eLoc: 'eloc-9' }),
     ]))
     expect(p.names.has('hotel taj')).toBe(true)
-    expect(p.keys.has('pid-1')).toBe(true)
-    expect(p.keys.has('eloc-9')).toBe(true)
+    expect(p.keys).toContainEqual({ provider: undefined, kind: 'placeId', value: 'pid-1' })
+    expect(p.keys).toContainEqual({ provider: undefined, kind: 'eLoc', value: 'eloc-9' })
   })
   it('a REJECTED stop does not block its own name', () => {
     const t = tripOf([
@@ -73,8 +76,10 @@ describe('isAlreadyAdded', () => {
     // Without the key it is (correctly) treated as a different name.
     expect(isAlreadyAdded(hit({ name: 'Hotel Taj, Mumbai' }), id)).toBe(false)
   })
-  it('blocks a dismissed hit and a staged one', () => {
-    const id = placeIdentity(tripOf([]), new Set(['h1']), new Set(['h2']))
+  it('blocks a dismissed hit and one staged in an open preview', () => {
+    // The staged id decides while the preview holds; a kept id alone would not
+    // (#839), and a dismissal holds for the session.
+    const id = placeIdentity(tripOf([]), new Set(['h1']), new Set(['h2']), new Map([['h1', 'something']]))
     expect(isAlreadyAdded(hit({ id: 'h1', name: 'Something' }), id)).toBe(true)
     expect(isAlreadyAdded(hit({ id: 'h2', name: 'Something else' }), id)).toBe(true)
     expect(isAlreadyAdded(hit({ id: 'h3', name: 'Fresh place' }), id)).toBe(false)
@@ -89,7 +94,7 @@ describe('isAlreadyAdded', () => {
     expect(isAlreadyAdded(hit({ name: 'Fort Aguada', eLoc: 'eloc-9' }), id)).toBe(true)
   })
   it('placeKeysOf skips blanks', () => {
-    expect(placeKeysOf({ placeId: '', eLoc: 'x' })).toEqual(['x'])
+    expect(placeKeysOf({ placeId: '', eLoc: 'x' })).toEqual([{ provider: undefined, kind: 'eLoc', value: 'x' }])
     expect(placeKeysOf({})).toEqual([])
   })
 })
@@ -109,5 +114,173 @@ describe('a discarded preview leaves no ghost', () => {
     for (const id of released) stillAdded.delete(id)
     const id = placeIdentity(tripOf([]), stillAdded)
     expect(isAlreadyAdded(hit({ id: 'h1', name: 'Hotel Taj' }), id)).toBe(false)
+  })
+})
+
+describe('provider hits carry latitude/longitude (#839 case 1)', () => {
+  // The real caller shape: a PlaceHit names its position latitude/longitude
+  // (providers/hits.ts). The old reader saw no lat/lng, fell back to the name,
+  // and fused two faraway Sharma Dhabas into one place.
+  const planned = () => placeIdentity(tripOf([stop({ title: 'Sharma Dhaba', lat: 15, lng: 73 })]))
+  it('a same-named hit far away is NOT already added', () => {
+    expect(isAlreadyAdded({ id: 'h1', name: 'Sharma Dhaba', latitude: 28, longitude: 77 }, planned())).toBe(false)
+  })
+  it('a same-named hit nearby still matches', () => {
+    expect(isAlreadyAdded({ id: 'h2', name: 'Sharma Dhaba', latitude: 15.0001, longitude: 73.0001 }, planned())).toBe(true)
+  })
+  it('a (0,0) placeholder hit keeps the name fallback', () => {
+    expect(isAlreadyAdded({ id: 'h3', name: 'Sharma Dhaba', latitude: 0, longitude: 0 }, planned())).toBe(true)
+  })
+  it('flat coordinates win when a caller carries both pairs', () => {
+    expect(isAlreadyAdded({ id: 'h4', name: 'Sharma Dhaba', lat: 15, lng: 73, latitude: 28, longitude: 77 }, planned())).toBe(true)
+  })
+})
+
+describe('a kept id must not outrank the plan (#839 case 2)', () => {
+  const kept = { id: 'h1', name: 'Sharma Dhaba', latitude: 28, longitude: 77 }
+  const tripWithStop = (status?: string) =>
+    tripOf([stop({ title: 'Sharma Dhaba', lat: 28, lng: 77, ...(status ? { status } : {}) })])
+  it('the staged id decides while the preview holds the write', () => {
+    const id = placeIdentity(tripOf([]), new Set(['h1']), new Set(), new Map([['h1', 'sharma dhaba']]))
+    expect(isAlreadyAdded(kept, id)).toBe(true)
+  })
+  it('answers true while the kept stop is on the plan', () => {
+    expect(isAlreadyAdded(kept, placeIdentity(tripWithStop(), new Set(['h1'])))).toBe(true)
+  })
+  it('re-addable after the kept stop is deleted', () => {
+    // Keep left the id behind, the preview closed, the stop was deleted: the
+    // plan no longer holds the place, and the surviving id must not hide it.
+    expect(isAlreadyAdded(kept, placeIdentity(tripOf([]), new Set(['h1'])))).toBe(false)
+  })
+  it('re-addable after the kept stop is rejected', () => {
+    expect(isAlreadyAdded(kept, placeIdentity(tripWithStop('rejected'), new Set(['h1'])))).toBe(false)
+  })
+})
+
+describe('place keys and visit entities', () => {
+  it('a known provider conflict separates equal keys even when names match', () => {
+    const google = { name: 'Fort', placeId: 'p1', source: 'google' as const }
+    const mappls = { name: 'Fort', placeId: 'p1', source: 'mappls' as const }
+    expect(placeKeyMatches(placeKeysOf(google)[0], placeKeysOf(mappls)[0])).toBe(false)
+    expect(isSameEntity(google, mappls)).toBe(false)
+  })
+  it('an unknown provider key still matches the same value', () => {
+    expect(isSameEntity(
+      { name: 'Fort', placeId: 'p1' },
+      { name: 'Another name', placeId: 'p1', source: 'osm' },
+    )).toBe(true)
+  })
+  it('compares same names by proximity when both carry coordinates', () => {
+    const near = { name: 'Sharma Dhaba', lat: 15.0001, lng: 73.0001 }
+    const far = { name: 'Sharma Dhaba', lat: 15.01, lng: 73.01 }
+    expect(isSameEntity({ name: 'Sharma Dhaba', lat: 15, lng: 73 }, near)).toBe(true)
+    expect(isSameEntity({ name: 'Sharma Dhaba', lat: 15, lng: 73 }, far)).toBe(false)
+    // The long field pair (provider hits) reads the same way.
+    expect(isSameEntity({ name: 'Sharma Dhaba', latitude: 15, longitude: 73 }, { title: 'sharma dhaba', lat: 15.0001, lng: 73.0001 })).toBe(true)
+    expect(placeDistanceKm({ lat: 15, lng: 73 }, far)).toBeGreaterThan(0.5)
+  })
+  it('falls back to the name only when a legacy record has no coordinates', () => {
+    expect(isSameEntity({ name: 'Legacy Stop' }, { title: ' legacy   stop ', lat: 15, lng: 73 })).toBe(true)
+  })
+  it('reads identity stored beside a suggestion, with flat fields winning', () => {
+    const persisted = { placeId: 'nested', source: 'google' as const, exposure: 'unknown' as const }
+    expect(sameVisitPlace(
+      { title: 'Fort', place: persisted },
+      { title: 'Fort', placeId: 'flat', source: 'mappls' },
+    )).toBe(false)
+    expect(sameVisitPlace(
+      { title: 'Fort', place: persisted },
+      { title: 'Different label', placeId: 'nested', source: 'google' },
+    )).toBe(true)
+  })
+  it('does not treat a same-name place far away as already added', () => {
+    const id = placeIdentity(tripOf([stop({ title: 'Sharma Dhaba', lat: 15, lng: 73 })]))
+    expect(isAlreadyAdded(hit({ name: 'Sharma Dhaba', lat: 15.01, lng: 73.01 }), id)).toBe(false)
+    expect(isAlreadyAdded(hit({ name: 'Sharma Dhaba', lat: 15.0001, lng: 73.0001 }), id)).toBe(true)
+    expect(isAlreadyAdded(hit({ name: 'Sharma Dhaba' }), id)).toBe(true)
+  })
+})
+
+describe('reproduced resume defects R1-R4 (issue #839)', () => {
+  const pick = (over: Record<string, unknown>) => ({ id: 1, name: 'Fort', latitude: 15, longitude: 73, kind: 'poi', ...over } as never)
+
+  it('R1: a conflicting known key beats the name fallback on the rail', () => {
+    const id = placeIdentity(tripOf([stop({ title: 'Fort', lat: 15, lng: 73, placeSource: 'google', placeId: 'same-raw', status: 'confirmed' })]))
+    // Same name and coordinates, but the hit is OSM while the planned stop is Google.
+    expect(isAlreadyAdded({ name: 'Fort', lat: 15, lng: 73, source: 'osm', placeId: 'same-raw' }, id)).toBe(false)
+    // The same provider key still matches.
+    expect(isAlreadyAdded({ name: 'Fort', lat: 15, lng: 73, source: 'google', placeId: 'same-raw' }, id)).toBe(true)
+    // A hit with no key keeps the legacy name fallback.
+    expect(isAlreadyAdded({ name: 'Fort', lat: 15, lng: 73 }, id)).toBe(true)
+  })
+
+  it('R2: a suggestion with OSM metadata does not match a Google stop', () => {
+    const stopRow = { title: 'Fort', locationName: 'Fort', lat: 15, lng: 73, placeSource: 'google', placeId: 'same-raw' }
+    expect(isSameEntity(
+      { title: 'Fort', lat: 15, lng: 73, place: { source: 'osm', placeId: 'same-raw', exposure: 'unknown' } },
+      stopRow,
+    )).toBe(false)
+    // The matching provider reads through placeSource.
+    expect(isSameEntity(
+      { title: 'Fort', lat: 15, lng: 73, place: { source: 'google', placeId: 'same-raw', exposure: 'unknown' } },
+      stopRow,
+    )).toBe(true)
+  })
+
+  it('R3: a shared raw id does not outrank a provider conflict', () => {
+    expect(isSameEntity(
+      { id: 1, name: 'A', source: 'google', placeId: 'g1' },
+      { id: 1, name: 'B', source: 'osm', placeId: 'o1' },
+    )).toBe(false)
+  })
+
+  it('R4: a picked place rejects out-of-range or placeholder coordinates', () => {
+    expect(resolvedPlaceFromHit(pick({ latitude: 100 }))).toBeNull()
+    expect(resolvedPlaceFromHit(pick({ longitude: 200 }))).toBeNull()
+    expect(resolvedPlaceFromHit(pick({ latitude: Infinity }))).toBeNull()
+    expect(resolvedPlaceFromHit(pick({ latitude: 0 }))).toBeNull()
+    // A legitimate provider-free pick inside range still resolves.
+    expect(resolvedPlaceFromHit(pick({ latitude: 15.2, longitude: 73.3 }))).toMatchObject({ label: 'Fort', lat: 15.2, lng: 73.3 })
+  })
+})
+
+describe('a discarded namesake of a kept place comes back (#839 review P2)', () => {
+  const namesake = { id: 'h9', name: 'Sharma Dhaba', latitude: 28, longitude: 77 }
+  const keptTrip = () => tripOf([stop({ title: 'Sharma Dhaba', lat: 15, lng: 73 })])
+  it('reads added while the preview holds the staged namesake', () => {
+    // Keep left its own id in addedIds; the distant namesake staged on top.
+    const id = placeIdentity(keptTrip(), new Set(['h1', 'h9']), new Set(), new Map([['h9', 'sharma dhaba']]))
+    expect(isAlreadyAdded(namesake, id)).toBe(true)
+  })
+  it('reads addable once the close hands the identity the fresh staged map', () => {
+    // The close released nothing - the name is in the plan - so addedIds keeps
+    // h9. The identity rebuilt on the fresh map must not keep it hidden: the
+    // staged channel is gone and the plan's own proximity check says the
+    // namesake at (28,77) is not the kept place at (15,73).
+    const id = placeIdentity(keptTrip(), new Set(['h1', 'h9']), new Set(), new Map())
+    expect(isAlreadyAdded(namesake, id)).toBe(false)
+  })
+  it('stays addable when the identity is rebuilt on another render', () => {
+    const id = () => placeIdentity(keptTrip(), new Set(['h1', 'h9']), new Set(), new Map())
+    expect(isAlreadyAdded(namesake, id())).toBe(false)
+    expect(isAlreadyAdded(namesake, id())).toBe(false)
+  })
+})
+
+describe('the release effect publishes every preview close (#839 review P2)', () => {
+  const mapTab = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
+  const effectStart = mapTab.indexOf('A preview that is DISCARDED must not leave a ghost')
+  const effect = mapTab.slice(effectStart, mapTab.indexOf('}, [previewOpen, identity])', effectStart))
+  it('bumps the staged tick before the release early-return', () => {
+    // A close that releases nothing (a Keep whose name is in the plan) must
+    // still publish: setAddedIds alone bails out on an unchanged Set, and the
+    // memo would stay attached to the old staged Map.
+    const bump = effect.indexOf('setStagedTick(t => t + 1)')
+    const bail = effect.indexOf('release.size === 0')
+    expect(bump).toBeGreaterThan(-1)
+    expect(bail).toBeGreaterThan(bump)
+  })
+  it('the identity memo re-reads the staged map on that tick', () => {
+    expect(mapTab).toMatch(/tripPresenceIds, addedIds, dismissedIds, stagedTick\]/)
   })
 })

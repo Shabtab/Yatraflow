@@ -194,7 +194,7 @@ describe('#551 — importTripPersisted reports the truth and leaves no zombie', 
     expect(persisted).toBe(false)
     expect(tripById(trip.id)).toBeUndefined()
     expect(getSnapshot().trips.some(t => t.id === trip.id)).toBe(false)
-    expect(toast).toHaveBeenCalledWith('Could not save trip.')
+    expect(toast).toHaveBeenCalledWith('Could not save trip.', 'ok')
     expect(toast.mock.calls.some(c => String(c[0]).startsWith('Imported'))).toBe(false)
     // an import is not a copy: the plan keeps its own name
     expect(trip.name).toBe(seedData.trips[0].name)

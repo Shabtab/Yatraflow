@@ -300,7 +300,39 @@ describe('#336 — resolve and accept are one-shot', () => {
     expect(getSnapshot().suggestions.find(x => x.id === sg.id)!.status).toBe('open')
   })
 
-  it('accepting a suggestion whose place is already on the plan does not double it', () => {
+  it('re-asks with the trip’s current days when the chosen day also disappears (#839)', () => {
+    const copy = singleTrip()
+    const sg = raiseSuggestion(copy.id, { dayId: copy.days[0].id, dayIndex: 0 })
+    const gone = copy.days[0].id
+    copy.days = copy.days.filter(d => d.id !== gone)
+
+    // The day it was raised for is gone, so the store asks again — and the days
+    // it offers are the ones the trip has NOW, not a stale list.
+    const first = acceptSuggestionIntoTimeline(copy.id, sg.id)
+    expect(first.status).toBe('retarget')
+    const offered = first.status === 'retarget' ? first.availableDays.map(d => d.id) : []
+    expect(offered).toEqual(copy.days.map(d => d.id))
+    expect(offered).not.toContain(gone)
+
+    // The user chooses a live day, but it disappears before the confirm lands:
+    // the action re-resolves and asks again instead of quietly filing the idea
+    // onto some other day.
+    const chosen = copy.days[copy.days.length - 1].id
+    copy.days = copy.days.filter(d => d.id !== chosen)
+    const second = acceptSuggestionIntoTimeline(copy.id, sg.id, { dayId: chosen })
+    expect(second.status).toBe('retarget')
+    if (second.status === 'retarget') expect(second.availableDays.map(d => d.id)).not.toContain(chosen)
+    expect(getSnapshot().suggestions.find(x => x.id === sg.id)!.status).toBe('open')
+    expect(tripById(copy.id)!.days.flatMap(d => d.stops).filter(s => s.title === 'Suggestion Cafe')).toHaveLength(0)
+
+    // Choosing a day that IS there lands it.
+    const target = copy.days[0].id
+    const third = acceptSuggestionIntoTimeline(copy.id, sg.id, { dayId: target })
+    expect(third.status).toBe('applied')
+    expect(tripById(copy.id)!.days.find(d => d.id === target)!.stops.some(s => s.title === 'Suggestion Cafe')).toBe(true)
+  })
+
+  it('a same-place same-day visit waits for explicit Add another', () => {
     const copy = singleTrip()
     getSnapshot().sessionUserId = ownerId
     addStop(copy.id, 0, {
@@ -309,8 +341,22 @@ describe('#336 — resolve and accept are one-shot', () => {
       entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'nice-to-have', status: 'confirmed',
     })
     const sg = raiseSuggestion(copy.id)
-    acceptSuggestionIntoTimeline(copy.id, sg.id)
+    expect(acceptSuggestionIntoTimeline(copy.id, sg.id).status).toBe('visitConflict')
     expect(tripById(copy.id)!.days[0].stops.filter(s => s.title === 'Suggestion Cafe')).toHaveLength(1)
+    expect(getSnapshot().suggestions.find(x => x.id === sg.id)!.status).toBe('open')
+  })
+
+  it('Add another records the repeated visit once', () => {
+    const copy = singleTrip()
+    getSnapshot().sessionUserId = ownerId
+    addStop(copy.id, 0, {
+      title: 'Suggestion Cafe', category: 'food', locationName: 'Somewhere',
+      lat: 10.1, lng: 76.7, visitMinutes: 30,
+      entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'nice-to-have', status: 'confirmed',
+    })
+    const sg = raiseSuggestion(copy.id)
+    expect(acceptSuggestionIntoTimeline(copy.id, sg.id, { allowDuplicate: true }).status).toBe('applied')
+    expect(tripById(copy.id)!.days[0].stops.filter(s => s.title === 'Suggestion Cafe')).toHaveLength(2)
     expect(getSnapshot().suggestions.find(x => x.id === sg.id)!.status).toBe('accepted')
   })
 })

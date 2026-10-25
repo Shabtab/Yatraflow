@@ -156,7 +156,7 @@ describe('fork persist — honest result + zombie rollback', () => {
     const source: Trip = { ...structuredClone(base), inviteCode: 'SPITIVALLE-GQMT' }
     const { trip: copy, persisted } = await duplicateTripPersisted(source, 'forker-3')
     expect(persisted).toBe(false)
-    expect(toast).toHaveBeenCalledWith('Could not save trip.')
+    expect(toast).toHaveBeenCalledWith('Could not save trip.', 'ok')
     // No zombie: the copy must not sit in the cache looking saved.
     expect(tripById(copy.id)).toBeUndefined()
   })

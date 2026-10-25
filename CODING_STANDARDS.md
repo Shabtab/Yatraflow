@@ -918,7 +918,7 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    leans on a coercion. Do not add a coercion at the comparison site. Keep the parse at
    the boundary.
 
-6ay. **A `sizes` value written from the viewport breakpoints is wrong when the
+6ba. **A `sizes` value written from the viewport breakpoints is wrong when the
    layout is a container query (learned 2026-10-25, region-art batch).** The
    generated-art covers sit in `.mt-grid`, `.ex-grid` and `.ex-places`, and all
    three switch column count on the width of their own container, not the
@@ -935,7 +935,7 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    reports the grid candidate. Persist the layout and reload to measure first
    paint.
 
-6az. **A committed image with no honest condition is worse than no image
+6bb. **A committed image with no honest condition is worse than no image
    (learned 2026-10-25, batch-1 art).** The batch built a vignette for an offline
    state, and the obvious move was to show it on every failed read. That would
    have told a signed-in viewer they were offline when the request was merely
@@ -950,6 +950,44 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    separate slots, so passing both stacks the icon under the vignette. The icon
    belongs in the vignette's own `fallback`, where it is the loading and failure
    floor and nothing else.
+
+6ay. **A SQL CHECK passes on TRUE or NULL, so a nullable shape check without an
+   existence gate admits malformed rows (learned 2026-10-25, #839).** `check (col
+   is null or (col->>'k' = 'v'))` passes a bad row when `k` is absent, because
+   `col->>'k'` is NULL and the predicate is NULL. Gate every optional key with
+   `col ? 'k'`, and force the unknown-key test with a CASE, so only TRUE passes.
+   Prove it with a disposable local PostgreSQL insert that expects a 23514
+   rejection for the malformed row.
+   When you restore a JSON archive, normalize JSON null to SQL NULL for nullable fields.
+   Test the actual archive producer with mixed legacy and new rows.
+   A fixture with missing keys does not test an explicit JSON null field.
+
+6az. **A provider's identity is not its data domain — read what the value MEANS in
+   this context, not whose name it carries (learned 2026-10-25, #839 geocoder
+   repair).** `searchOpenMeteo` calls `geocoding-api.open-meteo.com` and returns
+   real cities with real coordinates, so a pick from it is a PLACE. The Stage B
+   allowlist read the hostname instead of the value and refused every one of those
+   hits — the keyless default geocoder returned results nothing could pick. One
+   vendor legitimately serves two domains here: the same hostname family also runs
+   the forecast calls in `src/lib/weather.ts`, which are weather reads and must
+   keep their own treatment. So "open-meteo means weather" is true of one surface
+   and false of the other, and the discriminator is the call site, not the string.
+   Three mechanics: (1) one union is the source of truth — `PlaceProvider` in
+   `src/data/types.ts` — and every allowlist (the runtime guard, the import
+   validator, the dependency-free CLI validator, the SQL CHECK, the RPC
+   validation, the schema mirror) is derived from it rather than re-typed, so a
+   provider is added in one place. The CLI is the mirror most easily forgotten,
+   because it lives outside `src/`; `tests/geocoder-cli-provenance.test.ts` now
+   parses its list and spawns it, so a missed mirror fails there; (2) a
+   special case that downgrades a value to "unknown provider" is a second,
+   quieter allowlist — `persistedPlaceFromHit` and `placeKeysOf` each had one, and
+   each silently discarded a real provenance on the way to the database, which is
+   worse than refusing because the data still looked saved; (3) the boundary that
+   matters is still enforced — unknown provider strings, non-finite and
+   out-of-range coordinates, zero coordinates and blank names are all refused by
+   the same guards as before. A wider allowlist is a behaviour change, so prove the
+   pick through the real seam (facade + provider + draft, fixture HTTP) and prove the
+   rejections still reject, in the same run.
 
 ## 2. Conventions (`AGENTS.md` §4)
 

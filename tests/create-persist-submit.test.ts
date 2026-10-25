@@ -28,6 +28,9 @@ const { state, toast } = vi.hoisted(() => ({
     memberErrors: [] as FakeError[],
     /** a table whose write REJECTS instead of answering with an error object */
     throwOn: null as string | null,
+    /** Columns the capability probe must answer as missing. The probe reads one
+     *  column per `select`, so the refusal paths below can be driven for real. */
+    missingColumns: new Set<string>(),
     writes: [] as Array<{ table: string; method: string; payload: any }>,
     savedTrip: null as any,
     savedOwner: null as any,
@@ -42,13 +45,20 @@ vi.mock('../src/lib/supabase', () => {
   function query(table: string) {
     const qb: any = {}
     const filters = new Map<string, unknown>()
-    qb.select = () => qb
+    qb.select = (column?: string) => { if (column) qb.column = column; return qb }
     qb.eq = (key: string, value: unknown) => { filters.set(key, value); return qb }
     qb.in = () => qb
     qb.order = () => qb
     qb.limit = () => qb
+    // The capability probe reads one column at a time, so a `select` naming a
+    // column the fixture says is missing answers Postgres' unknown-column error —
+    // the shape `isMissingColumnError` reads, which is what makes the Mixed
+    // refusal reachable.
     qb.then = (res: (v: { data: unknown; error: null }) => unknown) =>
-      Promise.resolve({ data: [], error: null }).then(res)
+      Promise.resolve({
+        data: [],
+        error: state.missingColumns.has(qb.column ?? '') ? { code: '42703', message: 'column does not exist' } : null,
+      }).then(res)
     qb.maybeSingle = () => ({
       then: (res: (v: { data: unknown; error: null }) => unknown) =>
         Promise.resolve({ data: (() => {
@@ -103,6 +113,7 @@ vi.mock('../src/lib/supabase', () => {
 
 import { createTripPersisted, retryCreateTrip, tripById, getSnapshot } from '../src/store/store'
 import type { NewTripInput } from '../src/store/store'
+import { DRIVES_PART_MISSING_REASON } from '../src/lib/tripRow'
 
 const OWNER = 'creator-374'
 
@@ -128,6 +139,7 @@ beforeEach(() => {
   state.writes.length = 0
   state.savedTrip = null
   state.savedOwner = null
+  state.missingColumns = new Set()
   toast.mockClear()
 })
 
@@ -143,7 +155,10 @@ describe('#374 — a failed create leaves nothing behind', () => {
     // …and the built trip still comes back, so the form can retry the SAME id.
     expect(trip.id).toBeTruthy()
     expect(trip.members?.[0]?.userId).toBe(OWNER)
-    expect(toast).toHaveBeenCalledWith('Could not save trip.')
+    // The severity is pinned too: this refusal is a plain notice, and the
+    // drives-part refusal beside it is an error. Collapsing the two would make a
+    // refused save look like a confirmation.
+    expect(toast).toHaveBeenCalledWith('Could not save trip.', 'ok')
   })
 
   it('a member-row failure counts as a failed create too', async () => {
@@ -164,6 +179,25 @@ describe('#374 — a failed create leaves nothing behind', () => {
     const { trip, persisted } = await createTripPersisted(OWNER, input({ name: 'Throws' }))
     expect(persisted).toBe(false)
     expect(tripById(trip.id)).toBeUndefined()
+  })
+
+  it('a missing drives-part column refuses as an ERROR, not a plain notice', async () => {
+    // The traveller said they drive, the database has no column for it, and
+    // `tripToRow` would silently drop the answer while the save "succeeded".
+    // The refusal is the one honest outcome, and it must arrive with the error
+    // severity it always had — a success-styled notice for a refused save reads
+    // as confirmation.
+    //
+    // A fresh module instance, because the capability probe caches its answer
+    // for the session and the tests above already asked it.
+    vi.resetModules()
+    const store = await import('../src/store/store')
+    state.missingColumns = new Set(['drives_part'])
+    const { persisted } = await store.createTripPersisted(OWNER, input({ drivesPart: true } as NewTripInput))
+
+    expect(persisted).toBe(false)
+    expect(toast).toHaveBeenCalledWith(DRIVES_PART_MISSING_REASON, 'err')
+    expect(tripsWrites()).toHaveLength(0)
   })
 
   it('a successful create is in the cache and reports persisted', async () => {

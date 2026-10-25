@@ -197,10 +197,13 @@ let pushToastFn: ((msg: string, kind?: 'ok' | 'err', action?: { label: string; r
  *  honest — the old `Date.now() + Math.random()` blend was the last weak
  *  generator in the app that had nothing to do with secrecy (#267's family). */
 let toastSeq = 0
-export function toast(msg: string, kind: 'ok' | 'err' = 'ok') {
+/** Simple toast system. `action` renders one button beside the message and holds
+ *  the toast open for the longer dwell — it is how a failure offers the thing
+ *  that fixes it, instead of describing a step the user has no control for. */
+export function toast(msg: string, kind: 'ok' | 'err' = 'ok', action?: { label: string; run: () => void }) {
   // Haptic echo of the outcome: successes buzz short, errors buzz hard.
   haptic(kind === 'err' ? 'warn' : 'success')
-  pushToastFn?.(msg, kind)
+  pushToastFn?.(msg, kind, action)
 }
 /** Toast with an Undo button - for destructive actions that can be reversed. */
 export function undoToast(msg: string, undo: () => void) {

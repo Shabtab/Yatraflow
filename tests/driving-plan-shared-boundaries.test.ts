@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { anchorsForCrew, assignSegmentHits, deriveDrivingPlan, drivingPlanFingerprint, effectiveDrivingDays, planRideSegments } from '../src/lib/ridePlan'
+import { anchorsForCrew, assignSegmentHits, deriveDrivingPlan, drivingPlanFingerprint, effectiveDrivingDays, planRideSegments, type DrivingPlanDay } from '../src/lib/ridePlan'
 import { planInputsHash } from '../src/hooks/useSuggestionCache'
 
 describe('issue 832 F3 shared driving-plan boundaries', () => {
@@ -37,9 +37,12 @@ describe('issue 832 F3 shared driving-plan boundaries', () => {
     const facts = { totalKm: 1400, driveMinutes: 1200, transportMode: 'car', dayRainPct: [90, 10, 10] }
     const plan = deriveDrivingPlan(facts)
     expect(plan.split?.nightHalts).toEqual([700])
-    expect(plan.outbound.map(day => Math.round(day.endKm))).toEqual([385, 723, 1062, 1400])
+    // #855: the storm caps day 0 only. The dry days after it walk their own
+    // budgets (≈507 km each, inside the 700 km rhythm), so the trip needs
+    // three days — the old count grew on day 0's cap and dampened them.
+    expect(plan.outbound.map(day => Math.round(day.endKm))).toEqual([385, 893, 1400])
     const corridor = planRideSegments({ ...facts, dayBoundaries: plan.outbound })
-    expect(corridor.filter(segment => segment.purpose === 'overnight').map(segment => Math.round(segment.targetKm))).toEqual([385, 723, 1062])
+    expect(corridor.filter(segment => segment.purpose === 'overnight').map(segment => Math.round(segment.targetKm))).toEqual([385, 893])
   })
 
   it('keeps a short late start as an explicit hop', () => {
@@ -177,5 +180,21 @@ describe('issue 832 F3 shared driving-plan boundaries', () => {
     expect(plan.outbound.every(day => Number.isFinite(day.startKm) && Number.isFinite(day.endKm))).toBe(true)
     const segments = planRideSegments({ ...facts, dayBoundaries: plan.outbound })
     expect(segments.filter(segment => segment.dayEnd)).toHaveLength(plan.outbound.length - 1)
+  })
+})
+
+describe('#846 a shared overnight inside the destination exclusion still reaches the corridor', () => {
+  it('keeps the dayEnd target at the boundary 30 km inside the 60 km zone', () => {
+    // Cadence stops end at `totalKm - ENDNO_KM` (940 here). A shared overnight
+    // the clock walked is authoritative inside that zone. This boundary sits
+    // 30 km inside it. A `km < cap` filter on the corridor's overnights would
+    // drop it and strand the night halt.
+    const totalKm = 1000
+    const boundary: DrivingPlanDay = {
+      leg: 'outbound', dayIndex: 1, startKm: 520, endKm: totalKm - 30,
+      nightHaltKm: totalKm - 30, nightHaltEtaMin: null, startMin: 8 * 60 + 30,
+    }
+    const corridor = planRideSegments({ totalKm, driveMinutes: 1200, transportMode: 'car', dayBoundaries: [boundary] })
+    expect(corridor.filter(segment => segment.dayEnd).map(segment => segment.targetKm)).toEqual([totalKm - 30])
   })
 })

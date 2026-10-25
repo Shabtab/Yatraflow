@@ -30,7 +30,7 @@ function expectCompleteLeg(days: readonly DrivingPlanDay[], totalKm: number) {
 }
 
 describe('driving plan clock repairs', () => {
-  it('keeps the clock overnight at 1340 km after a late start and rain', () => {
+  it('walks storm-capped days after a late start, with no halt inside the destination exclusion', () => {
     const facts = {
       ...fourDayFacts,
       driveMinutes: 1200,
@@ -39,8 +39,19 @@ describe('driving plan clock repairs', () => {
     }
     const plan = deriveDrivingPlan(facts)
     expect(plan.verdict).toBe('ok')
+    // #855: the count grows on the later days' OWN storm caps, not on dry
+    // day 0's cap. The old count under-grew here, so the last full day
+    // over-covered and clamped its halt to 1340, leaving a 60 km stub day.
+    // The honest walk is a late-shortened day 0 plus five storm-capped days.
+    expect(plan.outbound.map(day => Math.round(day.endKm))).toEqual([187, 429, 672, 915, 1157, 1400])
     const nightHalts = plan.outbound.flatMap(day => day.nightHaltKm === null ? [] : [day.nightHaltKm])
-    expect(nightHalts).toContain(1340)
+    // Every storm day stays inside its own cap, and no overnight lands inside
+    // the destination exclusion (the last 60 km before the trip's end).
+    for (let index = 1; index < plan.outbound.length; index++) {
+      expect(plan.outbound[index].endKm - plan.outbound[index].startKm).toBeLessThanOrEqual(290)
+      expect(plan.outbound[index].nightHaltKm ?? 0).toBeLessThan(1340)
+    }
+    expect(nightHalts).toHaveLength(5)
     const segments = planRideSegments({ ...facts, dayBoundaries: plan.outbound })
     expect(segments.filter(segment => segment.dayEnd).map(segment => segment.targetKm)).toEqual(nightHalts)
     expect(segments.filter(segment => !segment.dayEnd).every(segment => segment.targetKm < 1340)).toBe(true)

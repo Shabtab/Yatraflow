@@ -34,10 +34,12 @@ import { ownSuggestedCover, unclaimedCovers, coverCandidates, coverlessPublicati
 import { fetchFirstAvailableThumb } from '../lib/tripThumb'
 import { publishValidation, PUBLISH_FIELD_ORDER, PublishRejected } from '../lib/publishRules'
 import { makeInviteCode, normalizeInviteCode } from '../lib/inviteCode'
-import { suggestionToRow, decisionToRow, activityToRow, notificationToRow, publishedToRow } from '../lib/restoreRows'
+import { publishedToRow } from '../lib/restoreRows'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
 import { MISSING_BACKEND_MESSAGE, describeAuthFailure } from '../lib/authErrors'
-import { hasStopNamed, nextOrderInDay, renumberDay } from '../lib/stopOrder'
+import { nextOrderInDay, renumberDay } from '../lib/stopOrder'
+import { resolveDayRef } from '../lib/dayRef'
+import { sameVisitPlace } from '../lib/placeIdentity'
 import {
   submitCollabCommand, suggestionRowToEntry, decisionRowToEntry,
   type CollabOutcome, type CollabCommand,
@@ -1901,55 +1903,74 @@ function publishedHaveUnpublishedAt(): Promise<boolean> {
   return unpublishedAtProbe
 }
 
-// Same capability-probe idea for decisions.comments (20260920_decision_comments.sql):
-// databases created before that migration reject writes that mention the column,
-// so a comment would vanish on the next hydration until it is applied.
-let decisionCommentsProbe: Promise<boolean> | null = null
-let decisionCommentsWarned = false
-function decisionsHaveComments(): Promise<boolean> {
-  if (!isSupabaseConfigured) return Promise.resolve(false)
-  if (!decisionCommentsProbe) {
-    decisionCommentsProbe = (async () => {
-      try {
-        const { error } = await supabase.from('decisions').select('comments').limit(1)
-        if (!error) return true
-        if (isMissingColumnError(error)) {
-          if (!decisionCommentsWarned) {
-            console.warn('[yatraflow] decisions.comments missing — run supabase/migrations/20260920_decision_comments.sql; decision comments stay session-only until then.')
-            decisionCommentsWarned = true
-          }
-          return false
-        }
-      } catch { /* thrown transport error — treat like any transient failure */ }
-      decisionCommentsProbe = null // transient — re-check on the next call
-      return true
-    })()
-  }
-  return decisionCommentsProbe
+// Capability probes cache their answer for the session, which is right for a
+// synchronous write path and wrong for a retry: a database repaired between the
+// first try and the second (a migration installed, a column added) would keep
+// answering "missing" from the cache and refuse forever. An explicit retry is
+// the user saying "try again now", so the negative answers are dropped and the
+// next probe re-asks the server.
+function refreshNegativeCapabilityProbes(): void {
+  refreshedAtProbe = null
 }
 
 const tripCreates = new Map<string, Promise<boolean>>()
 
-async function persistTrip(trip: Trip, ownerId: ID, opts: { retry?: boolean } = {}): Promise<boolean> {
+/** Everything a recovery must carry into primary persistence, in ONE object so a
+ *  caller cannot supply half of it: a guard without a token would let a retired
+ *  try keep writing, and a token without a guard would pin the wrong account. */
+export interface RecoveryWriteGuard {
+  /** True while this recovery still owns the trip. Checked before and after every
+   *  awaited phase, so a retired try performs no later write or cache mutation. */
+  live: AttemptGuard
+  /** The bearer captured for the recovery's account. */
+  token: string
+}
+
+/** Pin a request to the captured account. Ordinary callers pass no token and get
+ *  the client's own session, exactly as before. */
+function pinBearer<T extends { setHeader(name: string, value: string): T }>(query: T, token?: string): T {
+  return token ? query.setHeader('Authorization', `Bearer ${token}`) : query
+}
+
+async function persistTrip(trip: Trip, ownerId: ID, opts: { retry?: boolean; recovery?: RecoveryWriteGuard } = {}): Promise<boolean> {
   const operation = persistTripRows(trip, ownerId, opts)
   tripCreates.set(trip.id, operation)
   try { return await operation } finally { if (tripCreates.get(trip.id) === operation) tripCreates.delete(trip.id) }
 }
 
-async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean }): Promise<boolean> {
+async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean; recovery?: RecoveryWriteGuard }): Promise<boolean> {
+  const recovery = opts.recovery
   const epoch = identityEpoch
   const sessionId = cache.sessionUserId
+  // A retired recovery must perform no later write or cache mutation, so this
+  // gate runs before and after every awaited phase below. Ordinary callers pass
+  // no guard and keep their existing behaviour unchanged.
+  const guard = (): boolean => !recovery || recovery.live()
+  // A recovery reports its own failure through the guarded toast that carries the
+  // retry action, so the generic create message must not fire underneath it. The
+  // severity is the caller's and must not change with it: the drives-part refusal
+  // was always an error, the create failures were plain, and both stay as they
+  // were for ordinary callers.
+  const refuse = (reason: string, kind: 'ok' | 'err' = 'ok'): false => {
+    if (!recovery) toast(reason, kind)
+    return false
+  }
+  if (!guard()) return false
   // Claim the echo window before the await — see persistTripFieldNow.
   markLocalWrite('trips', trip.id)
   const cols = await tripsHaveOptionalColumns()
+  if (!guard()) return false
   // Guard AFTER the awaited probe, at the writer, not at the caller (2026-10-19).
   // Every `tripToRow` below silently omits a column the probe says is missing,
   // so an explicit Mixed answer would be dropped here and the save would still
   // report success. This is the seam where that has to stop.
   const drivesPartVerdict = drivesPartWriteVerdict(trip, cols)
-  if (!drivesPartVerdict.ok) { toast(drivesPartVerdict.reason, 'err'); return false }
-  const { data: inserted, error } = await supabase.from('trips').insert(tripToRow(trip, ownerId, cols))
-    .select('id, write_version')
+  if (!drivesPartVerdict.ok) return refuse(drivesPartVerdict.reason, 'err')
+  const { data: inserted, error } = await pinBearer(
+    supabase.from('trips').insert(tripToRow(trip, ownerId, cols)).select('id, write_version'),
+    recovery?.token,
+  )
+  if (!guard()) return false
   const row = Array.isArray(inserted) && inserted.length === 1 ? inserted[0] : null
   if (!error && row?.id === trip.id && validWriteVersion(row.write_version)
     && epoch === identityEpoch && cache.sessionUserId === sessionId) {
@@ -1962,6 +1983,10 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean 
         trip: { ...held.trip as Trip, writeVersion: row.write_version } }
       queuedLocalTrips.set(trip.id, rebased)
       await requeueIfCurrent(rebased)
+      // Re-basing the queued copy awaits, so the guard runs again here: a
+      // recovery retired while this awaited must not reach the membership writes
+      // below. This closes the last unguarded await in the stated contract.
+      if (!guard()) return false
     }
   }
   // A RETRY can meet the row its own first attempt wrote (#374): the insert
@@ -1972,32 +1997,44 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean 
   // policy is `is_editor`, which reads the member row that the same first
   // attempt may not have written yet, so it is refused.)
   const duplicateMyOwnRow = (e: unknown) => (e as { code?: string } | null)?.code === '23505'
-  if (error && !(opts.retry && duplicateMyOwnRow(error))) { toast('Could not save trip.'); return false }
+  if (error && !(opts.retry && duplicateMyOwnRow(error))) return refuse('Could not save trip.')
   if (error) {
+    if (!guard()) return false
     // A conflict proves only that some row exists. Verify this owner's row before accepting a retry.
-    const { data: saved, error: readError } = await supabase.from('trips').select('*')
-      .eq('id', trip.id).eq('owner_id', ownerId).maybeSingle()
+    const { data: saved, error: readError } = await pinBearer(
+      supabase.from('trips').select('*').eq('id', trip.id).eq('owner_id', ownerId).maybeSingle(),
+      recovery?.token,
+    )
+    if (!guard()) return false
     if (readError || !saved) return false
     if (trip.creationKind === 'forked' && saved.creation_kind != null
       && (saved.creation_kind !== 'forked' || saved.source_pub_id !== trip.sourcePubId)) return false
     Object.assign(trip, rowToTrip(saved as TripRow, trip.members ?? []))
     commit()
   }
-  const { error: mErr } = await supabase.from('trip_members').insert(
-    (trip.members ?? []).map(m => ({ trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
+  const { error: mErr } = await pinBearer(
+    supabase.from('trip_members').insert(
+      (trip.members ?? []).map(m => ({ trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
+    ),
+    recovery?.token,
   )
+  if (!guard()) return false
   // A member row is what makes the trip visible to its owner after a reload —
   // without it the trips row is an invisible orphan, so a failure here counts
   // as "not persisted" even though the trips row landed. Same tolerance on a
   // retry: the membership we are inserting may already be there.
   if (mErr && !(opts.retry && duplicateMyOwnRow(mErr))) {
     console.error('member insert failed', mErr)
-    toast('Could not save trip.')
-    return false
+    return refuse('Could not save trip.')
   }
   if (mErr) {
-    const { data: owner, error: readError } = await supabase.from('trip_members')
-      .select('user_id, role, joined_at').eq('trip_id', trip.id).eq('user_id', ownerId).maybeSingle()
+    if (!guard()) return false
+    const { data: owner, error: readError } = await pinBearer(
+      supabase.from('trip_members').select('user_id, role, joined_at')
+        .eq('trip_id', trip.id).eq('user_id', ownerId).maybeSingle(),
+      recovery?.token,
+    )
+    if (!guard()) return false
     if (readError || !owner || owner.role !== 'owner') return false
     trip.members = [{ userId: owner.user_id, role: 'owner', joinedAt: owner.joined_at }]
     commit()
@@ -2494,6 +2531,15 @@ interface TripSnapshot {
   activity: ActivityEntry[]
   notifications: Notification[]
   published: PublishedItinerary[]
+  /** The account that asked for the delete, captured ONCE. A retry re-reads this
+   *  instead of asking who is signed in now, so a later account can never
+   *  inherit someone else's recovery (#839). */
+  scope: IdentityScope
+  /** The trip's access generation at delete time. Every later invalidation — a
+   *  second delete, a lost grant, a sign-out — moves it, and a recovery still
+   *  holding the old value refuses rather than writing children for a trip the
+   *  user has since deleted again. */
+  accessEpoch: number
 }
 
 /** The last undoable deletion. The undo toast is the only consumer, so one slot
@@ -2509,7 +2555,7 @@ export function tripOwner(trip: Trip): ID | null {
     ?? null
 }
 
-function snapshotTrip(trip: Trip, index: number): TripSnapshot {
+function snapshotTrip(trip: Trip, index: number, scope: IdentityScope, accessEpoch: number): TripSnapshot {
   return {
     trip,
     index,
@@ -2519,6 +2565,8 @@ function snapshotTrip(trip: Trip, index: number): TripSnapshot {
     activity: cache.activity.filter(a => a.tripId === trip.id),
     notifications: cache.notifications.filter(n => n.tripId === trip.id),
     published: cache.published.filter(p => p.tripId === trip.id),
+    scope,
+    accessEpoch,
   }
 }
 
@@ -2539,8 +2587,12 @@ export function deleteTrip(id: ID): void {
     return
   }
   const removed = cache.trips[idx]
-  invalidateTripWork(id, scope.userId)
-  lastDeletedTrip = snapshotTrip(removed, idx)
+  // Returns the NEW generation, and that is the value the snapshot records: the
+  // delete above is itself an invalidation, so the recovery it enables is bound
+  // to the generation this delete created. A second delete moves it again and
+  // the first recovery refuses.
+  const accessEpoch = invalidateTripWork(id, scope.userId)
+  lastDeletedTrip = snapshotTrip(removed, idx, scope, accessEpoch)
   cache.trips = cache.trips.filter(t => t.id !== id)
   commit()
   markLocalWrite('trips', id)
@@ -2554,72 +2606,185 @@ export function deleteTrip(id: ID): void {
   })
 }
 
-/** Re-insert a trip at its old position — powers Undo on trip deletion. */
+/** Is this snapshot still the one the user may recover? Three independent
+ *  refusals, because each alone is enough to make a write wrong: the account
+ *  changed, the trip's access generation moved, or a NEWER deletion took the
+ *  payload slot. Every recovery path runs through this one gate. */
+function recoveryIsCurrent(snap: TripSnapshot): boolean {
+  return isCurrentIdentity(snap.scope)
+    && (tripAccessEpochs.get(snap.trip.id) ?? 0) === snap.accessEpoch
+    && lastDeletedTrip === snap
+}
+
+/** Re-insert a trip at its old position — powers Undo on trip deletion, and the
+ *  retry action its failure toast offers. */
 export function restoreTrip(trip: Trip, index: number): void {
-  if (cache.trips.some(t => t.id === trip.id)) return
-  tripAccessEpochs.set(trip.id, (tripAccessEpochs.get(trip.id) ?? 0) + 1)
   const snap = lastDeletedTrip?.trip.id === trip.id ? lastDeletedTrip : null
-  lastDeletedTrip = null
-  const at = Math.min(index, cache.trips.length)
-  cache.trips = [...cache.trips.slice(0, at), trip, ...cache.trips.slice(at)]
-  commit()
-  void restoreTripData(trip, snap)
+  if (!snap) return
+  // The stale check lives here, not inside the writes, because the toast's retry
+  // action lands on this function — one gate covers the first try and every
+  // repeat. A click that arrives after an account switch, a second delete, or a
+  // newer snapshot does nothing at all.
+  if (!recoveryIsCurrent(snap)) return
+  // A failed recovery leaves the trip in the cache (its own row insert is what
+  // succeeded), so the trip is already back while the children are not. That is
+  // the retry case: re-run the writes instead of returning here, which is what
+  // used to make "Run Undo again" a no-op with the payload stranded.
+  const retry = cache.trips.some(t => t.id === trip.id)
+  // A repeat is the user saying "try again now", so the session's negative
+  // capability answers are dropped before the writes run: a server repaired
+  // since the first try must be able to recover without a page reload.
+  if (retry) refreshNegativeCapabilityProbes()
+  if (!retry) {
+    const at = Math.min(index, cache.trips.length)
+    cache.trips = [...cache.trips.slice(0, at), trip, ...cache.trips.slice(at)]
+    commit()
+  }
+  void restoreTripData(snap, retry)
 }
 
-async function restoreRows(table: string, rows: unknown[], upsert = false): Promise<string | null> {
-  if (!rows.length) return null
-  const { error } = await (upsert ? supabase.from(table).upsert(rows) : supabase.from(table).insert(rows))
-  return error ? (error.message ?? 'write failed') : null
+/** The archive function's own answer set (supabase/migrations/
+ *  20261024_suggestion_place_identity.sql). Narrowed from the SDK's untyped
+ *  `data` by membership, the same way `isPlaceProvider` narrows a provider: the
+ *  value is verified before the type is asserted, so a server that answers with
+ *  something else reads as null and lands in the recoverable branch. */
+const ARCHIVE_STATUSES = ['applied', 'alreadyApplied', 'forbidden', 'unavailable', 'invalid'] as const
+type ArchiveStatus = typeof ARCHIVE_STATUSES[number]
+function archiveRestoreStatus(data: unknown): ArchiveStatus | null {
+  if (!data || typeof data !== 'object') return null
+  const status = (data as { status?: unknown }).status
+  return typeof status === 'string' && (ARCHIVE_STATUSES as readonly string[]).includes(status)
+    ? (status as ArchiveStatus)
+    : null
 }
 
-async function restoreTripData(trip: Trip, snap: TripSnapshot | null): Promise<void> {
+/** The failure toast's action. It re-enters the same guarded function the first
+ *  try used, so the account switch, the access generation and the newer-snapshot
+ *  refusals all apply to the button as well. */
+function retryRecovery(snap: TripSnapshot): void {
+  if (recoveryIsCurrent(snap)) {
+    restoreTrip(snap.trip, snap.index)
+    return
+  }
+  // The account is still signed in but a newer deletion took the payload, so
+  // this recovery is genuinely spent. Say so once; an account switch stays
+  // silent, because the outcome belongs to whoever asked, not to whoever is
+  // looking at the screen now.
+  if (isCurrentIdentity(snap.scope)) toast('That recovery is no longer available.')
+}
+
+async function restoreTripData(snap: TripSnapshot, retry: boolean): Promise<void> {
+  const { trip, scope, accessEpoch } = snap
+  /** The one gate every phase runs through, checked before and after every
+   *  await: the account, the trip's access generation and the payload must all
+   *  still be the ones this try started with. */
+  const live = (): boolean => isCurrentIdentity(scope)
+    && (tripAccessEpochs.get(trip.id) ?? 0) === accessEpoch
+    && lastDeletedTrip === snap
+  if (!live()) return
   markLocalWrite('trips', trip.id)
   // persistTrip writes this value straight into trips.owner_id. Passing
   // members[0].userId here used to transfer ownership to an arbitrary
   // collaborator every time a shared trip was deleted and undone.
-  const ownerId = snap?.ownerId ?? tripOwner(trip)
-  if (ownerId) await persistTrip(trip, ownerId)
-  if (!snap) return
-
-  // Order matters: every child policy gates on is_editor(trip_id), a membership
-  // subquery, so these writes are rejected unless the trip row and its member
-  // rows are already in place — which the await above is what guarantees.
-  // Per-table on purpose: losing the activity feed must not also cost the user
-  // their public link. Rows keep their original ids, and every child realtime
-  // handler is an idempotent upsert keyed on id, so the echo cannot double-add.
-  // decisions.comments may not exist yet on a pre-migration database — the probe
-  // gate keeps the column out of the INSERT rather than failing the whole row.
-  const withDecisionComments = await decisionsHaveComments()
-  // Same idea for refreshed_at (#368): an undo that drops the column's value
-  // strips the revived publication's sitemap `<lastmod>` and sinks it in
-  // Explore's freshness sort. A bare `.map(publishedToRow)` would pass the
-  // array INDEX as the flag — the lambda is load-bearing.
-  const withRefreshedAt = await publishedHaveRefreshedAt()
-  const results = await Promise.all([
-    restoreRows('suggestions', snap.suggestions.map(suggestionToRow)),
-    restoreRows('decisions', snap.decisions.map(d => decisionToRow(d, withDecisionComments))),
-    restoreRows('activity', snap.activity.map(activityToRow)),
-    restoreRows('notifications', snap.notifications.map(notificationToRow)),
-    restoreRows('published_itineraries', snap.published.map(p => publishedToRow(p, withRefreshedAt)), true),
-  ])
-
-  const failed = [
-    ['suggestions', results[0]],
-    ['decisions', results[1]],
-    ['activity', results[2]],
-    ['notifications', results[3]],
-    ['published link', results[4]],
-  ].filter(([, msg]) => msg) as [string, string][]
-
-  if (!failed.length) return
-  console.error('[yatraflow] undo could not restore:', failed.map(([t, m]) => `${t} (${m})`).join(', '))
-  // The public link is the one loss the user would notice and could not explain,
-  // so it is the one worth saying out loud. published_itineraries RLS is gated
-  // on creator_id, meaning a collaborator undoing their own delete genuinely
-  // cannot re-publish the owner's itinerary.
-  if (failed.some(([t]) => t === 'published link')) {
-    toast('Trip restored, but its public link could not be restored - republish it from the trip.')
+  const ownerId = snap.ownerId ?? tripOwner(trip)
+  // Pin the bearer to the captured account. Token acquisition itself awaits, and
+  // an account switch during that await used to let the next account's token
+  // ride along on this recovery.
+  const token = await tripWriteToken(scope, live)
+  if (!token || !live()) return
+  // Primary persistence: the trip row and its members. The recovery's own guard
+  // and bearer travel into every awaited phase inside it, because a second
+  // deletion or a lost grant during those awaits used to let a retired try keep
+  // writing. A failure here — an error OR a throw — keeps the snapshot and is
+  // reported through the same guarded feedback as a child failure, so the user
+  // always has the button rather than a stranded optimistic trip.
+  let primaryFailed = false
+  if (ownerId) {
+    try {
+      primaryFailed = !(await persistTrip(trip, ownerId, { retry, recovery: { live, token } }))
+    } catch (e) {
+      console.error('[yatraflow] undo could not restore the trip row', e)
+      primaryFailed = true
+    }
+    // A retired recovery is not a failure to report: its writes either landed or
+    // not, and neither outcome belongs to whoever is signed in now. Stay silent
+    // and keep the payload for that account's own retry.
+    if (primaryFailed && !live()) return
   }
+  if (primaryFailed) {
+    toast('The trip could not be put back.', 'err', { label: 'Try again', run: () => retryRecovery(snap) })
+    return
+  }
+  if (!live()) return
+
+  // Stage A removed the direct insert policies on the contribution tables, so a
+  // client-side re-insert is refused by the database and proves nothing. The
+  // guarded archive function is the one seam that can put those rows back: it
+  // runs as the definer, checks the caller against the owner the delete
+  // archived, and is idempotent by row id.
+  //
+  // It is consulted on EVERY recovery, never skipped for an empty local cache.
+  // The local arrays can be empty while the server holds rows this device never
+  // saw — a contribution made after the snapshot was taken, or one that arrived
+  // while the device was away — and local emptiness is not proof of an empty
+  // archive. An archive with nothing in it answers `applied` with zero rows,
+  // which is success, so there is nothing to skip. `alreadyApplied` is success
+  // too: the rows are back and re-running would add nothing.
+  let sharedFailed: string | null = null
+  {
+    const { data, error } = await supabase.rpc('restore_trip_contributions', { p_trip_id: trip.id })
+      .setHeader('Authorization', `Bearer ${token}`)
+    if (!live()) return
+    const status = archiveRestoreStatus(data)
+    if (error) sharedFailed = 'the trip’s shared data could not be restored'
+    else if (status === 'applied' || status === 'alreadyApplied') sharedFailed = null
+    // `forbidden` covers no archive, an expired one, and a caller who is not the
+    // archived owner — none of which a retry can change, and all of which are
+    // the honest answer.
+    else if (status === 'forbidden') sharedFailed = 'the trip’s shared data is no longer available to restore'
+    else sharedFailed = 'the trip’s shared data could not be restored'
+  }
+
+  // The publication is not part of the archive and its own write policy survived
+  // Stage A, so it is restored directly — gated on creator_id, which is why a
+  // collaborator undoing their own delete genuinely cannot re-publish the
+  // owner's itinerary, and why that loss is the one worth naming.
+  let linkFailed: string | null = null
+  if (snap.published.length) {
+    // An undo that drops refreshed_at strips the revived publication's sitemap
+    // <lastmod> and sinks it in Explore's freshness sort.
+    const withRefreshedAt = await publishedHaveRefreshedAt()
+    if (!live()) return
+    const { error } = await supabase.from('published_itineraries')
+      .upsert(snap.published.map(p => publishedToRow(p, withRefreshedAt)), { onConflict: 'id' })
+      .setHeader('Authorization', `Bearer ${token}`)
+    if (!live()) return
+    if (error) linkFailed = 'the public link could not be restored'
+  }
+
+  if (!sharedFailed && !linkFailed) {
+    // Every row landed, so THIS recovery is spent — release the payload only
+    // while it is still the one this try was handed. A deletion made after this
+    // recovery started has its own snapshot, and clearing that one would drop a
+    // recoverable payload the user has not finished with.
+    if (lastDeletedTrip === snap) lastDeletedTrip = null
+    return
+  }
+  // The account that asked for the recovery signed out or switched mid-flight:
+  // the writes above either landed or not, and neither outcome belongs to
+  // whoever is signed in now. The payload is NOT spent, so it stays for that
+  // account's own retry, and nothing is toasted — a message here would attribute
+  // this account's failure to the next one.
+  if (!live()) return
+  console.error('[yatraflow] undo could not restore:', [sharedFailed, linkFailed].filter(Boolean).join(', '))
+  // Plain product copy: what happened, and one button that does the thing. No
+  // issue numbers and no migration instructions — the user cannot act on either.
+  const message = sharedFailed && linkFailed
+    ? 'The trip is back, but its shared data and its public link could not be restored.'
+    : sharedFailed
+      ? 'The trip is back, but its shared data could not be restored.'
+      : 'The trip is back, but its public link could not be restored. Republish it from the trip.'
+  toast(message, 'err', { label: 'Try again', run: () => retryRecovery(snap) })
 }
 
 // ---------------- Trash + 30-day purge (soft-delete) ----------------
@@ -5370,7 +5535,10 @@ export function addSuggestion(
   // fingerprint is the id-free payload — the suggestion carries no
   // client-minted ids.
   const suggestion = {
-    dayIndex: s.dayIndex, title: s.title, category: s.category, locationName: s.locationName,
+    dayIndex: s.dayIndex,
+    ...(s.dayId ? { dayId: s.dayId } : {}),
+    ...(s.place ? { place: s.place } : {}),
+    title: s.title, category: s.category, locationName: s.locationName,
     lat: s.lat, lng: s.lng, description: s.description, visitMinutes: s.visitMinutes,
     estimatedEntryFeeInr: s.estimatedEntryFeeInr, estimatedTransportInr: s.estimatedTransportInr,
   }
@@ -5575,35 +5743,54 @@ export function addCommentToDecision(tripId: ID, decisionId: ID, text: string): 
   })
 }
 
-/** Accept a suggestion: adds it to the timeline and closes the suggestion. */
-export function acceptSuggestionIntoTimeline(tripId: ID, suggestionId: ID): void {
+export type AcceptanceOutcome =
+  | { status: 'applied'; dayId: ID; dayIndex: number; stopId?: ID }
+  | { status: 'alreadyApplied'; dayId: ID; dayIndex: number; stopId?: ID }
+  | { status: 'retarget'; reason: 'missing-day' | 'legacy-ambiguous'; availableDays: Array<{ id: ID; index: number; title?: string }> }
+  | { status: 'visitConflict'; dayId: ID; dayIndex: number }
+  | { status: 'invalid' | 'forbidden' | 'unavailable'; reason?: string }
+
+/** Land one idea on a day. The day is a CHOICE, never a guess: a deleted target
+ *  asks the caller to pick again instead of falling back to its old index, and
+ *  a visit already on that day needs an explicit "add another" confirmation. */
+export function acceptSuggestionIntoTimeline(
+  tripId: ID,
+  suggestionId: ID,
+  opts: { dayId?: ID; dayIndex?: number; allowDuplicate?: boolean } = {},
+): AcceptanceOutcome {
   const sg = cache.suggestions.find(x => x.id === suggestionId)
   const trip = tripById(tripId)
-  if (!sg || !trip) return
-  // Idempotence (#336): an accepted/declined suggestion is DONE. A double-tap
-  // used to run this twice and mint a twin stop — addStop mints a fresh uid
-  // per call — so the guard lands before the write, mirroring voteOnDecision.
-  // A row with NO status is not spent (older hydrated rows predate the column
-  // being always present), so only a real terminal value refuses.
-  if (sg.status && sg.status !== 'open') return
-  // Dedupe by title, the same test the Map's picker applies: if the plan
-  // already holds this place, accept the suggestion (its row is spent) but do
-  // not double the stop.
-  if (hasStopNamed(trip, sg.title)) {
-    cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? { ...x, status: 'accepted' as const } : x)
-    commit()
-    fire('suggestions', supabase.from('suggestions').update({ status: 'accepted' }).eq('id', suggestionId))
-    toast(`“${sg.title}” is already on your timeline.`)
-    return
+  if (!sg || !trip || sg.tripId !== tripId) return { status: 'invalid', reason: 'unknown suggestion' }
+  if (sg.status === 'accepted') {
+    const day = trip.days.find(d => d.id === sg.dayId) ?? trip.days.find(d => d.index === sg.dayIndex)
+    return { status: 'alreadyApplied', dayId: day?.id ?? '', dayIndex: day?.index ?? sg.dayIndex }
   }
-  // The suggested day must exist: a stale dayIndex used to crash addStop's
-  // non-null day assertion mid-click. Say so instead of failing silently.
-  if (!trip.days.some(d => d.index === sg.dayIndex)) {
-    toast(`“${sg.title}” was suggested for Day ${sg.dayIndex + 1}, which is not on this trip — add it from the Map tab.`, 'err')
-    return
+  if (sg.status && sg.status !== 'open') return { status: 'invalid', reason: 'suggestion is not open' }
+
+  const resolution = resolveDayRef(trip.days, {
+    dayId: opts.dayId ?? sg.dayId,
+    dayIndex: opts.dayIndex ?? sg.dayIndex,
+  })
+  if (resolution.status === 'missing') {
+    return {
+      status: 'retarget',
+      reason: resolution.reason,
+      availableDays: trip.days.map(d => ({ id: d.id, index: d.index, ...(d.title ? { title: d.title } : {}) })),
+    }
   }
-  addStop(tripId, sg.dayIndex, {
+  const day = resolution.day
+  const conflict = day.stops.find(s => s.status !== 'rejected' && sameVisitPlace(sg, s))
+  if (conflict && !opts.allowDuplicate) {
+    return { status: 'visitConflict', dayId: day.id, dayIndex: day.index }
+  }
+
+  const place = sg.place
+  const stop = addStop(tripId, day.index, {
     title: sg.title, category: sg.category, locationName: sg.locationName, lat: sg.lat, lng: sg.lng,
+    ...(place?.placeId ? { placeId: place.placeId } : {}),
+    ...(place?.eLoc ? { eLoc: place.eLoc } : {}),
+    ...(place?.source ? { placeSource: place.source } : {}),
+    ...(place ? { exposure: place.exposure } : {}),
     description: sg.description, visitMinutes: sg.visitMinutes,
     entryFeeInrPerPerson: sg.estimatedEntryFeeInr, transportCostInrTotal: sg.estimatedTransportInr,
     priority: 'nice-to-have', status: 'confirmed',
@@ -5612,8 +5799,8 @@ export function acceptSuggestionIntoTimeline(tripId: ID, suggestionId: ID): void
   void addActivity(tripId, 'accepted suggestion into timeline', sg.title)
   commit()
   fire('suggestions', supabase.from('suggestions').update({ status: 'accepted' }).eq('id', suggestionId))
+  return { status: 'applied', dayId: day.id, dayIndex: day.index, stopId: stop.id }
 }
-
 export function declineSuggestion(tripId: ID, suggestionId: ID): Promise<CollabOutcome> {
   const scope = identityScope()
   if (!scope) return Promise.resolve({ status: 'forbidden' })
@@ -5821,22 +6008,21 @@ export function resolveDecision(decisionId: ID, optionId: ID): Promise<CollabOut
   // the suggestion rows it beats drop out via the same name check.
   if (winning?.place && trip) {
     const placeDay = winning.place.dayIndex
-    // The destination day is matched by INDEX and never clamped (#336). The old
-    // `min(max(0, dayIndex), days.length - 1)` quietly re-attributed a vote to
-    // the LAST day when the day it was raised for had been deleted (and to Day
-    // 1 whenever the position was unknown), which is a plan nobody voted on.
-    const target = typeof placeDay === 'number' && Number.isFinite(placeDay)
-      ? trip.days.find(dd => dd.index === placeDay)
-      : undefined
-    if (!target) {
+    // The destination is a stable day when the vote carried one. A legacy
+    // index resolves only while exactly one day matches it. Never clamp, and
+    // never invent Day 1 (#336).
+    const resolution = resolveDayRef(trip.days, { dayId: winning.place.dayId, dayIndex: placeDay })
+    if (resolution.status === 'missing') {
       toast(placeDay == null
         ? `“${winning.place.title}” won the vote, but its day was never set — add it from the Map tab.`
-        : `“${winning.place.title}” won the vote, but Day ${placeDay + 1} is no longer on this trip — add it from the Map tab.`, 'err')
-    } else if (hasStopNamed(trip, winning.place.title)) {
-      // The plan already holds this place (someone added it by hand, or another
-      // poll landed it): resolving must not double it.
-      toast(`“${winning.place.title}” won the vote — it is already on your timeline.`)
+        : `“${winning.place.title}” won the vote, but its day is no longer on this trip — add it from the Map tab.`, 'err')
+    } else if (resolution.day.stops.some(s => s.status !== 'rejected' && sameVisitPlace(winning.place!, s))) {
+      // The chosen day already holds this visit (someone added it by hand, or
+      // another poll landed it there): resolving must not double it.
+      toast(`“${winning.place.title}” won the vote — it is already on Day ${resolution.day.index + 1}.`)
     } else {
+      const target = resolution.day
+      const identity = winning.place.place
       // A slot poll's option id carries the part it was raised for
       // (slot:<key>:<placeId>), so the landed stop says which part it fills -
       // the day plan reads that part as filled the moment the vote resolves (P4).
@@ -5847,6 +6033,10 @@ export function resolveDecision(decisionId: ID, optionId: ID): Promise<CollabOut
         locationName: winning.place.locationName,
         lat: winning.place.lat,
         lng: winning.place.lng,
+        ...(identity?.placeId ? { placeId: identity.placeId } : {}),
+        ...(identity?.eLoc ? { eLoc: identity.eLoc } : {}),
+        ...(identity?.source ? { placeSource: identity.source } : {}),
+        ...(identity ? { exposure: identity.exposure } : {}),
         description: winning.place.description,
         visitMinutes: winning.place.visitMinutes,
         ...(winning.place.openTime ? { openTime: winning.place.openTime } : {}),

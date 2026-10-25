@@ -1,7 +1,7 @@
 // ============ Trip snapshot encode/decode symmetry ============
 // Pure logic (node env): guards the URL-share format from issue #21.
 import { describe, it, expect } from 'vitest'
-import { deflateRawSync } from 'node:zlib'
+import { deflateRawSync, inflateRawSync } from 'node:zlib'
 import { encodeTripSnapshot, decodeTripSnapshot } from '../src/lib/snapshot'
 import { seedData } from '../src/data/seed'
 
@@ -38,6 +38,20 @@ describe('trip snapshot encode/decode symmetry (issue #21)', () => {
     expect(back).not.toHaveProperty('inviteCode')
     expect(back).not.toHaveProperty('members')
     expect(back.name).toBe(trip.name)
+  })
+
+  it('refuses a link made by a newer build instead of half-decoding it', async () => {
+    const future = { ...structuredClone(seedData.trips[0]), formatVersion: 4 }
+    const payload = 'yf1_' + Buffer.concat([Buffer.from([1]), deflateRawSync(JSON.stringify(future))]).toString('base64url')
+    await expect(decodeTripSnapshot(payload)).rejects.toThrow('newer YatraFlow')
+  })
+
+  it('holds the current version at 3', async () => {
+    const payload = await encodeTripSnapshot(structuredClone(seedData.trips[0]))
+    const raw = Buffer.from(payload.slice(4).replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+    expect(raw[0]).toBe(1)
+    const json = JSON.parse(new TextDecoder().decode(inflateRawSync(raw.subarray(1))))
+    expect(json.formatVersion).toBe(3)
   })
 
   it('drops an invite code and member list that a link from an older build still carries', async () => {

@@ -29,7 +29,7 @@ import { dirname, join, resolve, relative, isAbsolute } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { geocodeMany } from './geocode-places.mjs'
 
-const FORMAT_VERSION = 2
+const FORMAT_VERSION = 3
 const MODES = ['car', 'rental', 'motorcycle', 'train', 'bus', 'flight', 'taxi', 'mixed']
 const STYLES = ['relaxed', 'balanced', 'packed', 'adventure', 'luxury', 'budget', 'family', 'spiritual', 'food-focused', 'creator']
 const TIERS = ['budget', 'comfort', 'luxury']

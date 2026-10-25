@@ -13,7 +13,8 @@
 // payload answers `conflict` — so a command ID is minted once per logical
 // action and kept for the retry.
 
-import type { Comment, StopCategory, StopSuggestion, TripDecision, Vote } from '../data/types'
+import type { Comment, PersistedPlaceIdentity, StopCategory, StopSuggestion, TripDecision, Vote } from '../data/types'
+import { persistedPlaceFromJson } from '../lib/placeDraft'
 import { supabase } from '../lib/supabase'
 
 /** What the caller hands the RPC. Field names follow the contract exactly. */
@@ -23,6 +24,8 @@ export type CollabCommand =
       suggestionId: string
       suggestion: {
         dayIndex: number
+        dayId?: string
+        place?: PersistedPlaceIdentity
         title: string
         category: string
         locationName: string
@@ -80,7 +83,7 @@ export type CollabOutcome =
  *  (snake_case columns — the same shape hydration maps). Moved here from
  *  store.ts so the receipt and the hydrate/realtime paths share one mapping. */
 type DbSuggestionRow = {
-  id: string; trip_id: string; day_index: number; proposed_by: string
+  id: string; trip_id: string; day_index: number; day_id?: string | null; place?: unknown; proposed_by: string
   title: string; category: StopCategory; location_name: string; lat: number; lng: number
   description?: string | null; visit_minutes?: number
   estimated_entry_fee_inr?: number; estimated_transport_inr?: number
@@ -89,8 +92,12 @@ type DbSuggestionRow = {
 
 export function suggestionRowToEntry(row: unknown): StopSuggestion {
   const r = row as DbSuggestionRow
+  const place = persistedPlaceFromJson(r.place)
   return {
-    id: r.id, tripId: r.trip_id, dayIndex: r.day_index, proposedBy: r.proposed_by,
+    id: r.id, tripId: r.trip_id, dayIndex: r.day_index,
+    ...(typeof r.day_id === 'string' && r.day_id ? { dayId: r.day_id } : {}),
+    ...(place ? { place } : {}),
+    proposedBy: r.proposed_by,
     title: r.title, category: r.category, locationName: r.location_name, lat: r.lat, lng: r.lng,
     description: r.description ?? undefined, visitMinutes: r.visit_minutes ?? 0,
     estimatedEntryFeeInr: r.estimated_entry_fee_inr ?? 0, estimatedTransportInr: r.estimated_transport_inr ?? 0,
@@ -138,6 +145,37 @@ function idListOf(v: unknown): string[] | undefined {
   if (!Array.isArray(v)) return undefined
   const ids = v.filter((x): x is string => typeof x === 'string')
   return ids.length === v.length ? ids : undefined
+}
+
+/** Does this receipt keep what the command promised?
+ *
+ *  A `suggestion.create` that carried stable-day or place identity is only
+ *  APPLIED when the stored row comes back carrying it. An older
+ *  `submit_collab_command` refuses unfamiliar keys outright (`invalid`), so a
+ *  receipt that answers `applied` while the promised fields are absent is a
+ *  server that dropped them — accepting it would report a save the user did not
+ *  get, with the picked place gone and nothing said. Anything other than a
+ *  success status has nothing to prove. */
+function receiptKeepsPromisedMetadata(command: CollabCommand, outcome: CollabOutcome): boolean {
+  if (command.type !== 'suggestion.create') return true
+  if (outcome.status !== 'applied' && outcome.status !== 'alreadyApplied') return true
+  const promised = command.suggestion
+  const wantedDayId = typeof promised.dayId === 'string' ? promised.dayId.trim() : ''
+  const wantedPlace = promised.place
+  if (!wantedDayId && !wantedPlace) return true
+  const row = outcome.suggestion
+  if (!row) return false
+  if (wantedDayId && (typeof row.dayId !== 'string' || row.dayId.trim() !== wantedDayId)) return false
+  if (wantedPlace) {
+    const stored = row.place
+    // The row must carry a readable identity that still names the same provider
+    // keys. A different (or absent) key is a different entity, not this pick.
+    if (!stored) return false
+    if (wantedPlace.placeId && stored.placeId !== wantedPlace.placeId) return false
+    if (wantedPlace.eLoc && stored.eLoc !== wantedPlace.eLoc) return false
+    if (wantedPlace.source && stored.source !== wantedPlace.source) return false
+  }
+  return true
 }
 
 function receiptToOutcome(data: unknown): CollabOutcome {
@@ -217,7 +255,16 @@ export async function submitCollabCommand(
       p_command: command,
     })
     if (error) return rpcErrorToOutcome(error as { code?: unknown })
-    return receiptToOutcome(data)
+    const outcome = receiptToOutcome(data)
+    if (!receiptKeepsPromisedMetadata(command, outcome)) {
+      // A recoverable refusal, NOT a success: the row may exist, but without the
+      // identity the user gave, so nothing is confirmed. `unavailable` keeps the
+      // caller's envelope pending, so its next call retries the SAME command id
+      // and payload — the metadata is never stripped to make the retry look like
+      // it worked.
+      return { status: 'unavailable' }
+    }
+    return outcome
   } catch {
     return { status: 'unavailable' }
   }
