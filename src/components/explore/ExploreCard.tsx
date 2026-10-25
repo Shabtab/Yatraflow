@@ -4,7 +4,7 @@
 // controls sit above that link.
 import type { CSSProperties } from 'react'
 import { GitFork, Sparkles } from 'lucide-react'
-import type { PublishedItinerary, User } from '../../data/types'
+import type { PublishedItinerary, CachedUser } from '../../data/types'
 import { appLink } from '../../lib/appLink'
 import type { PresenceAttrs } from '../../lib/usePresenceList'
 import { cap } from '../../lib/labels'
@@ -15,7 +15,7 @@ import { ExploreSaveHeart } from './ExploreSaveHeart'
 
 export function ExploreCard({ pub, creator, saved, needsLogin, enterIndex, presence, onFork, onToggleSave }: {
   pub: PublishedItinerary
-  creator?: User
+  creator?: CachedUser
   saved: boolean
   /** Signed out, Fork goes to the login page, so the button says so. */
   needsLogin: boolean

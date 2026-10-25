@@ -9,7 +9,7 @@ import { cap } from '../../lib/labels'
 import { nextStepRoute } from '../../lib/tripNextStep'
 import { routeLine, travelHoursText } from '../../lib/tripsCard'
 import { cardNextStep, rangeText, statusOf } from '../../lib/tripsPage'
-import type { Trip, User } from '../../data/types'
+import type { Trip, CachedUser } from '../../data/types'
 import type { PresenceAttrs } from '../../lib/usePresenceList'
 import { Planners } from './Planners'
 import { TripCover } from './TripCover'
@@ -21,7 +21,7 @@ export interface TripCardProps {
   /** The per-person budget text. The page owns it, so the estimate marker stays in one place. */
   budget: ReactNode
   totalTravelMinutes: number
-  users: User[]
+  users: CachedUser[]
   meId: string | null
   /** Position in the grid. It sets the entrance delay. */
   enterIndex: number

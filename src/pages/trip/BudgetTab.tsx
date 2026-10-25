@@ -11,7 +11,7 @@ import {
   RotateCcw, Ticket, TrainFront, Trash2, Utensils,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { Trip, Expense, ExpenseCategory, ID, User } from '../../data/types'
+import type { Trip, Expense, ExpenseCategory, ID, CachedUser } from '../../data/types'
 import { EXPENSE_CATEGORIES } from '../../data/types'
 import {
   addExpense, deleteExpense, restoreExpense, updateExpense,
@@ -268,7 +268,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
     ? ` Your ${trip.travellers} travellers share it across ${members.length} account${members.length === 1 ? '' : 's'}.`
     : ''
   const transfers = settleBalances(balances)
-  const nameOf = (u: User | undefined) => u?.profile.name ?? 'Traveller'
+  const nameOf = (u: CachedUser | undefined) => u?.profile.name ?? 'Traveller'
 
   return (
     <div>

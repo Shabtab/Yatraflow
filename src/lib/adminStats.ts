@@ -4,12 +4,13 @@
 // a fresh app with zero users/trips renders 0s, never NaN.
 
 import type {
-  ActivityEntry, PublishedItinerary, Trip, TripDecision, TripMember, User,
+  ActivityEntry, PublishedItinerary, Trip, TripDecision, TripMember, CachedUser,
 } from '../data/types'
 import {
   buildSalesLedger, revenueByPublication, revenuePeriods,
   type ActualSales, type PublicationRevenue, type RevenuePeriod,
 } from './earnings'
+import { privateUser } from '../store/store'
 
 /** Week-bucket key (Monday 00:00 UTC) for growth series. */
 export function weekBucket(at: number): number {
@@ -40,13 +41,17 @@ export interface AdminOverview {
 }
 
 export function computeAdminOverview(
-  users: User[], trips: Trip[], suggestions: { status: string }[],
+  users: CachedUser[], trips: Trip[], suggestions: { status: string }[],
   decisions: TripDecision[], published: PublishedItinerary[], activity: ActivityEntry[],
   now = Date.now(),
 ): AdminOverview {
   const totalUsers = users.length
-  const disabledUsers = users.filter(u => u.profile.isDisabled).length
-  const creators = users.filter(u => u.profile.isCreator).length
+  // #800: the disabled flag and the account date live only on a PRIVATE row, so
+  // both of these count through the narrowing guard. A public card is not counted
+  // as an enabled account — it is simply not an account row.
+  const privateRows = users.filter(privateUser)
+  const disabledUsers = privateRows.filter(u => u.profile.isDisabled === true).length
+  const creators = privateRows.filter(u => u.profile.isCreator).length
   const totalTrips = trips.length
   const publicTrips = trips.filter(t => t.visibility === 'public').length
   const totalMembers = trips.reduce((s, t) => s + (t.members?.length ?? 0), 0)
@@ -70,10 +75,13 @@ export function computeAdminOverview(
 
 export interface GrowthPoint { week: number; signups: number; trips: number }
 
-export function computeGrowthSeries(users: User[], trips: Trip[], weeks = 12, now = Date.now()): GrowthPoint[] {
+export function computeGrowthSeries(users: CachedUser[], trips: Trip[], weeks = 12, now = Date.now()): GrowthPoint[] {
   const start = weekBucket(now) - (weeks - 1) * 7 * 86400000
   const points: GrowthPoint[] = Array.from({ length: weeks }, (_, i) => ({ week: start + i * 7 * 86400000, signups: 0, trips: 0 }))
   for (const u of users) {
+    // #800: the account date is private metadata, so a growth point is only
+    // earned by a private row. A public card contributes nothing here.
+    if (!privateUser(u)) continue
     const i = Math.floor((weekBucket(u.createdAt) - start) / (7 * 86400000))
     if (i >= 0 && i < weeks) points[i].signups += 1
   }
@@ -95,7 +103,7 @@ export interface FunnelStats {
 }
 
 export function computeFunnel(
-  users: User[], trips: Trip[], published: PublishedItinerary[],
+  users: CachedUser[], trips: Trip[], published: PublishedItinerary[],
 ): FunnelStats {
   const ownerIds = new Set<string>()
   for (const t of trips) {

@@ -32,12 +32,12 @@
 //    landed nowhere would strand its own share on the other rows and break
 //    the net-zero sum again. The line still shows in the settle strip, where
 //    it can be marked settled.
-import type { Expense, ID, User } from '../data/types'
+import type { Expense, ID, CachedUser } from '../data/types'
 import { allowedAmount } from './expenseAmount'
 
 export interface BalanceRow {
   id: ID
-  user?: User
+  user?: CachedUser
   /** Total amount this member fronted (tagged lines, perPerson expanded). */
   paid: number
   /** paid − fairShare. Positive = owed money; negative = owes. */
@@ -45,8 +45,8 @@ export interface BalanceRow {
 }
 
 export interface Transfer {
-  from: { id: ID; user?: User }
-  to: { id: ID; user?: User }
+  from: { id: ID; user?: CachedUser }
+  to: { id: ID; user?: CachedUser }
   amount: number
 }
 
@@ -115,7 +115,7 @@ export function computeBalances(
   members: { userId: ID }[],
   expenses: Expense[],
   travellers: number,
-  getUser?: (id: ID) => User | undefined,
+  getUser?: (id: ID) => CachedUser | undefined,
 ): BalanceRow[] {
   const heads = Math.max(1, travellers)
   const open = openTaggedLines(expenses, members.map(m => m.userId))

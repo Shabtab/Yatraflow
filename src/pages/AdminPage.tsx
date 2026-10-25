@@ -17,7 +17,7 @@ import { sliceState, rowsView, combinedReadState } from '../lib/readState'
 import {
   useDb, useIsAdmin, useAdminAudit, useAdminAuditFailed, useSessionUserId, refreshAdminAuditNow,
   adminSetDisabled, adminSetCreator, adminSetTripVisibility, rereadTrips, rereadPublicSlices,
-  adminRemoveMember, adminUnpublish, adminDeleteTrip, adminDeleteUser,
+  adminRemoveMember, adminUnpublish, adminDeleteTrip, adminDeleteUser, privateUser,
 } from '../store/store'
 import {
   computeAdminOverview, computeGrowthSeries, computeFunnel, recentJoins,
@@ -28,7 +28,7 @@ import { SHARE_SOURCE_LABELS } from '../lib/shareUrl'
 import { fetchCreateFunnelEvents } from '../lib/createFunnelRead'
 import { deriveCreateFunnel } from '../lib/createEvents'
 import { formatInr } from '../lib/engine'
-import type { Trip, User } from '../data/types'
+import type { Trip, CachedUser, PrivateUser } from '../data/types'
 import { appLink } from '../lib/appLink'
 
 type AdminTab = 'overview' | 'users' | 'trips' | 'invites' | 'content' | 'analytics' | 'audit'
@@ -146,21 +146,32 @@ function UsersTab() {
   const db = useDb()
   const meId = useSessionUserId()
   const [q, setQ] = useState('')
-  const [confirmDisable, setConfirmDisable] = useState<User | null>(null)
+  const [confirmDisable, setConfirmDisable] = useState<CachedUser | null>(null)
   // Type-to-confirm delete (same pattern as the Trips tab's trip deletion —
   // ConfirmDialog has no child slot, so this is a Modal). `force` is the
   // second explicit opt-in the RPC demands before destroying published
   // Explore listings; it only becomes checkable inside the modal.
-  const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<CachedUser | null>(null)
   const [deleteName, setDeleteName] = useState('')
   const [deleteForce, setDeleteForce] = useState(false)
   const [busy, setBusy] = useState(false)
+  // #800: the delete flow types the target's EMAIL to confirm, which lives only
+  // on a private row. `deleteTarget` is chosen from the console's user table, and
+  // that table only renders private rows (an admin hydrates them directly), so
+  // this narrowed local is the one place the address is read.
+  const deleteTargetEmail = privateUser(deleteTarget) ? deleteTarget.email : ''
   const users = useMemo(() => {
     const needle = q.trim().toLowerCase()
+    // #800: the console's search covers the account email, which lives only on a
+    // PRIVATE row. An admin hydrates those rows directly (see hydrate's admin
+    // branch), so the search runs over the private subset; a public card matches
+    // on name alone and never leaks an address into the needle.
     const list = needle
-      ? db.users.filter(u => `${u.profile.name} ${u.email}`.toLowerCase().includes(needle))
+      ? db.users.filter(u => privateUser(u)
+        ? `${u.profile.name} ${u.email}`.toLowerCase().includes(needle)
+        : u.profile.name.toLowerCase().includes(needle))
       : db.users
-    return [...list].sort((a, b) => b.createdAt - a.createdAt)
+    return [...list].sort((a, b) => (privateUser(b) ? b.createdAt : 0) - (privateUser(a) ? a.createdAt : 0))
   }, [db.users, q])
   const ownedCount = (id: string) => db.trips.filter(t => (t.members ?? []).some(m => m.userId === id && m.role === 'owner')).length
   // The user list is a read like any other: a failed profiles read leaves no
@@ -187,9 +198,9 @@ function UsersTab() {
         <EmptyState icon={<Users size={38} aria-hidden />} title="No users match" body="Clear the search to see everyone." />
       ) : (
         <table className="compare-table" tabIndex={0} aria-label="Users">
-          <thead><tr><th>User</th><th className="num">Trips</th><th>Flags</th><th>Joined</th><th>Actions</th></tr></thead>
+          <thead><tr><th>CachedUser</th><th className="num">Trips</th><th>Flags</th><th>Joined</th><th>Actions</th></tr></thead>
           <tbody>
-            {users.map(u => (
+            {users.map(u => (privateUser(u) ? (
               <tr key={u.id} style={u.profile.isDisabled ? { opacity: 0.6 } : undefined}>
                 <td>
                   <span className="adm-user-identity">
@@ -234,7 +245,7 @@ function UsersTab() {
                   </span>
                 </td>
               </tr>
-            ))}
+            ) : null))}
           </tbody>
         </table>
       )}
@@ -260,7 +271,7 @@ function UsersTab() {
       <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)}
         title={`Delete ${deleteTarget?.profile.name ?? ''} permanently?`}>
         <p className="muted adm-user-delete-warning">
-          This cannot be undone. Deleting <strong>{deleteTarget?.email ?? ''}</strong> removes
+          This cannot be undone. Deleting <strong>{deleteTargetEmail}</strong> removes
           every trip they own (plans, expenses, votes, decisions, activity), their rows in other
           crews' trips, and their notifications. The audit log keeps a snapshot.
         </p>
@@ -288,11 +299,11 @@ function UsersTab() {
           ) : null
         })()}
         <input className="input adm-user-delete-confirm" value={deleteName} onChange={e => setDeleteName(e.target.value)}
-          placeholder={deleteTarget?.email ?? 'Email'} aria-label="Type the user's email to confirm" />
+          placeholder={deleteTargetEmail || 'Email'} aria-label="Type the user's email to confirm" />
         <div className="confirm-actions">
           <button
             className="btn btn-sm btn-danger"
-            disabled={busy || deleteName.trim().toLowerCase() !== (deleteTarget?.email ?? '').trim().toLowerCase() || (deleteTarget?.email.trim() ?? '') === ''}
+            disabled={busy || deleteName.trim().toLowerCase() !== deleteTargetEmail.trim().toLowerCase() || deleteTargetEmail.trim() === ''}
             onClick={() => {
               if (!deleteTarget) return
               const target = deleteTarget
@@ -370,7 +381,7 @@ function TripsTab() {
           {trips.map(t => (
             <tr key={t.id}>
               <td><a {...appLink(`/trip/${t.id}`)}>{t.name}</a><br /><span className="muted small">{t.days.length}d · {t.destinations.join(' → ') || t.startLocation}</span></td>
-              <td className="small">{ownerOf(t)?.profile.name ?? '—'}<br /><span className="muted small">{ownerOf(t)?.email ?? ''}</span></td>
+              <td className="small">{ownerOf(t)?.profile.name ?? '—'}{privateUser(ownerOf(t)) && <><br /><span className="muted small">{(ownerOf(t) as PrivateUser).email}</span></>}</td>
               <td className="num">{t.members?.length ?? 0}</td>
               <td><Chip tone={t.visibility === 'public' ? 'ok' : 'info'}>{t.visibility}</Chip></td>
               <td className="small muted">{new Date(t.updatedAt).toLocaleDateString()}</td>
@@ -427,7 +438,7 @@ function TripsTab() {
 function InvitesTab() {
   const db = useDb()
   const [busy, setBusy] = useState(false)
-  const [confirmKick, setConfirmKick] = useState<{ trip: Trip; user: User } | null>(null)
+  const [confirmKick, setConfirmKick] = useState<{ trip: Trip; user: CachedUser } | null>(null)
   // No invite-link table exists (links are capability URLs: #/invite/:tripId),
   // so member-join velocity IS the invite signal — rank by joins in 30d.
   const rows = useMemo(() => db.trips

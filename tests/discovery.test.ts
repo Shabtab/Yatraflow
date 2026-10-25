@@ -15,7 +15,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import type { PublishedItinerary, User } from '../src/data/types'
+import type { PublishedItinerary, PublicUser, PublicUserProfile } from '../src/data/types'
 import {
   FEATURED_MIN_VIEWS, comparePopularity, communityCounts, featuredCreators, popularity, trendingPubs,
 } from '../src/lib/discovery'
@@ -23,12 +23,15 @@ import type { CreatorTile } from '../src/lib/explorePage'
 import { CreatorsPanel } from '../src/components/explore/CreatorsPanel'
 import { TrendingShelf } from '../src/components/explore/TrendingShelf'
 
-const user = (id: string, name: string, over: Partial<User['profile']> = {}): User => ({
+// #800: a discovery/Explore fixture is a PUBLIC identity card, so it carries the
+// reviewed public fields only. `creatorAvailable` is the derived signal the
+// server computes (`not is_disabled`); the administrative flag itself is private
+// and is not available to this surface, which is the point of the change.
+const user = (id: string, name: string, over: Partial<PublicUserProfile> = {}): PublicUser => ({
   id,
-  email: `${id}@example.test`,
-  createdAt: 0,
+  kind: 'public',
   profile: {
-    name, languages: ['en'], travelStyles: ['relaxed'], isCreator: true, ...over,
+    name, isCreator: true, creatorAvailable: true, ...over,
   },
 })
 
@@ -91,7 +94,7 @@ describe('featuredCreators', () => {
   })
 
   it('skips a disabled account — the rail must not point at one', () => {
-    const users = [user('c1', 'Arun', { isDisabled: true }), user('c2', 'Bea')]
+    const users = [user('c1', 'Arun', { creatorAvailable: false }), user('c2', 'Bea')]
     const pubs = [pub('p1', 'c1', { views: 99 }), pub('p2', 'c2', { views: 99 })]
     expect(featuredCreators(users, pubs).map(r => r.user.id)).toEqual(['c2'])
   })

@@ -13,7 +13,7 @@ import {
   shouldBrowserNotify,
 } from './lib/browserNotifications'
 import type { Notification, Trip } from './data/types'
-import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, useIdentityGeneration, useSliceReads, logout, markAllNotificationsRead, tripById, joinViaInvite, reloadJoinedTrip, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
+import { useDb, currentUser, privateUser, useUsers, useNotifications, useSessionUserId, useIdentityGeneration, useSliceReads, logout, markAllNotificationsRead, tripById, joinViaInvite, reloadJoinedTrip, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { BottomNav } from './components/BottomNav'
 import { OfflineBanner } from './components/OfflineBanner'
@@ -223,7 +223,12 @@ export default function App() {
   const notifications = useNotifications()
   const sliceReads = useSliceReads()
   // Same semantics as currentUser(): the profile whose id matches sessionUserId.
-  const me = useMemo(() => users.find(u => u.id === sessionUserId) ?? null, [users, sessionUserId])
+  // Narrowed to the PRIVATE row, because the account menu below shows the signed-in
+  // user's own email — which exists only there (#800).
+  const me = useMemo(() => {
+    const found = users.find(u => u.id === sessionUserId)
+    return found && privateUser(found) ? found : null
+  }, [users, sessionUserId])
   const profileState = profileLookupState(sessionUserId, !!me, sliceReads)
   const notificationPanel = useMemo(
     () => notificationPanelModel(sliceReads, notifications, sessionUserId),

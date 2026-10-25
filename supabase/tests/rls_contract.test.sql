@@ -258,6 +258,128 @@ begin
   end if;
 end $$;
 
+-- --------------------------------------------------------- 2b. profiles (#800)
+-- The private account table. `profiles read` used to be `for select using (true)`,
+-- which defaults to the `public` role — so `anon` matched it and RLS, which limits
+-- rows rather than columns, published `email` to everyone. These assertions pin
+-- the replacement: self-plus-admin SELECT, no permissive policy at all, and the
+-- public read moved to a projection that carries none of the private columns.
+do $$
+declare
+  col text;
+begin
+  -- No permissive SELECT may exist. A `using (true)` policy with no role
+  -- restriction is the defect itself, so it is refused outright rather than
+  -- only needed to be gone, not just renamed.
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profiles'
+      and cmd = 'SELECT' and permissive = 'PERMISSIVE'
+      and (qual is null or qual like '%true%')
+      and 'public' = any(roles)
+  ) then
+    raise exception 'profiles must not carry a permissive whole-table SELECT policy';
+  end if;
+
+  -- The replacement: authenticated self SELECT on the owner column.
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profiles'
+      and cmd = 'SELECT' and qual like '%auth.uid()% = %id%'
+  ) then
+    raise exception 'profiles SELECT must be self-scoped on id';
+  end if;
+
+  -- The admin read bypass stays, and stays authenticated-only.
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profiles'
+      and cmd = 'SELECT' and qual like '%is_admin%' and 'authenticated' = any(roles)
+  ) then
+    raise exception 'profiles must keep an authenticated admin read';
+  end if;
+
+  -- Self update stays self-scoped, with a matching WITH CHECK.
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profiles'
+      and cmd = 'UPDATE' and qual like '%auth.uid()% = %id%' and with_check like '%auth.uid()% = %id%'
+  ) then
+    raise exception 'profiles UPDATE must stay self-scoped';
+  end if;
+
+  -- The restrictive disabled denial stays, so a disabled account reads nothing.
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profiles'
+      and permissive = 'RESTRICTIVE' and cmd = 'ALL' and qual like '%is_disabled%'
+  ) then
+    raise exception 'profiles must keep the RESTRICTIVE deny-disabled policy';
+  end if;
+
+  -- The public projection exists, is not the private table, and holds none of the
+  -- private columns. The column list is the allowlist, so it is asserted by name.
+  if not exists (
+    select 1 from pg_attribute a
+    join pg_class c on c.oid = a.attrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'profile_cards' and a.attname = 'id' and a.attnum > 0
+  ) then
+    raise exception 'the public profile projection (public.profile_cards) must exist';
+  end if;
+  foreach col in array array['email','home_city','languages','travel_styles','is_disabled','created_at'] loop
+    if exists (
+      select 1 from pg_attribute a
+      join pg_class c on c.oid = a.attrelid
+      join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relname = 'profile_cards' and a.attname = col and a.attnum > 0
+    ) then
+      raise exception 'profile_cards must not carry the private column %', col;
+    end if;
+  end loop;
+
+  -- The projection is kept in step transactionally, and clients cannot write it.
+  if not exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.profiles'::regclass and tgname = 'profiles_sync_card' and not tgisinternal
+  ) then
+    raise exception 'profiles must carry the projection sync trigger';
+  end if;
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profile_cards' and cmd in ('INSERT','UPDATE','DELETE')
+  ) then
+    raise exception 'profile_cards must not be client-writable';
+  end if;
+
+  -- The private table is OFF the realtime publication and the projection is ON,
+  -- so a live profile event carries the safe columns and never a private one.
+  if exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'profiles'
+  ) then
+    raise exception 'profiles must not be a realtime event source';
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'profile_cards'
+  ) then
+    raise exception 'profile_cards must be the realtime event source';
+  end if;
+
+  -- admin_audit holds a deleted user's email, so it needs the same RESTRICTIVE
+  -- denial the other tables have. Without it, a disabled admin with a still-valid
+  -- JWT reads the audit — and the addresses — in the window before the app signs
+  -- them out.
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'admin_audit'
+      and permissive = 'RESTRICTIVE' and cmd = 'ALL' and qual like '%is_disabled%'
+  ) then
+    raise exception 'admin_audit must keep the RESTRICTIVE deny-disabled policy';
+  end if;
+end $$;
+
 -- --------------------------------------------------------- 3. child collab layer
 do $$
 declare

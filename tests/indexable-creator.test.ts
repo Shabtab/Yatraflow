@@ -74,18 +74,27 @@ describe('readable creator page', () => {
     expect(data).not.toHaveProperty('offers')
   })
 
-  it('requests only public fields with the anon key and live-publication filter', async () => {
+  it('reads the creator card through the public RPC with the anon key', async () => {
+    // #800: the card no longer reads `profiles` directly. The private table is
+    // self-plus-admin only, so a direct anon read would answer 42501 for every
+    // creator — the typed public RPC is the only path, and its allowlist is what
+    // keeps this endpoint from widening.
     respond()
     await run()
     const [profileCall, publicationCall] = fetchMock.mock.calls
     const profileUrl = new URL(String(profileCall[0]))
-    expect(profileUrl.searchParams.get('select')).toBe('name,creator_bio')
+    expect(profileUrl.pathname).toBe('/rest/v1/rpc/get_public_profile_cards')
+    expect(profileCall[1]?.method).toBe('POST')
+    expect(JSON.parse(String(profileCall[1]?.body))).toEqual({ p_ids: [ID] })
     const url = new URL(String(publicationCall[0]))
     expect(url.searchParams.get('select')).toBe('id,title,tagline')
     expect(url.searchParams.get('creator_id')).toBe(`eq.${ID}`)
     expect(url.searchParams.get('unpublished_at')).toBe('is.null')
-    for (const [, init] of fetchMock.mock.calls) {
-      expect(init?.headers).toEqual({ apikey: 'anon-test-key', authorization: 'Bearer anon-test-key' })
+    for (const [call, init] of fetchMock.mock.calls) {
+      const isRpc = String(call).includes('/rpc/')
+      expect(init?.headers).toEqual(isRpc
+        ? { apikey: 'anon-test-key', authorization: 'Bearer anon-test-key', 'content-type': 'application/json' }
+        : { apikey: 'anon-test-key', authorization: 'Bearer anon-test-key' })
       expect(init?.signal).toBeInstanceOf(AbortSignal)
     }
   })

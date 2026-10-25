@@ -3,12 +3,12 @@
 // creator's public page. The panel is not drawn when no creator has a plan.
 import { useId } from 'react'
 import { Sparkles } from 'lucide-react'
-import type { User } from '../../data/types'
+import type { CachedUser } from '../../data/types'
 import { appLink } from '../../lib/appLink'
 import type { CreatorTile } from '../../lib/explorePage'
 import { Avatar } from '../ui'
 
-export function CreatorsPanel({ rows, users }: { rows: CreatorTile[]; users: User[] }) {
+export function CreatorsPanel({ rows, users }: { rows: CreatorTile[]; users: CachedUser[] }) {
   const titleId = useId()
   if (rows.length === 0) return null
   return (

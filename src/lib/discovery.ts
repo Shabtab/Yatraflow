@@ -8,7 +8,7 @@
 // only worth featuring when it carries real evidence, because
 // leading with "Why featured: 0 forks · 13 views" advertises
 // emptiness rather than credibility (§6.10).
-import type { PublishedItinerary, User } from '../data/types'
+import type { PublishedItinerary, CachedUser } from '../data/types'
 import { livePubs } from './livePubs'
 
 /** A publication is only worth featuring when it carries real
@@ -41,7 +41,7 @@ export function comparePopularity(
 /** One creator's rank in the discovery rail: who they are, and the
  *  evidence in their live catalog. */
 export interface CreatorRank {
-  user: User
+  user: CachedUser
   /** Live publications by this creator. */
   pubCount: number
   forks: number
@@ -56,7 +56,7 @@ export interface CreatorRank {
  *  rows arrived in — so two renders of the same catalog show the
  *  same rail. */
 export function featuredCreators(
-  users: User[],
+  users: CachedUser[],
   pubs: PublishedItinerary[],
   limit = 4,
 ): CreatorRank[] {
@@ -68,9 +68,11 @@ export function featuredCreators(
   }
   const ranks: CreatorRank[] = []
   for (const user of users) {
-    // Visitors must not follow a disabled creator account.
-    // A non-creator has no public page to open.
-    if (!user.profile.isCreator || user.profile.isDisabled) continue
+    // Visitors must not follow a disabled creator account, and a non-creator has
+    // no public page to open. #800: `creatorAvailable` is the server-derived
+    // signal (`not is_disabled`), so the suppression is enforced without the
+    // administrative flag ever reaching the client.
+    if (!user.profile.isCreator || !user.profile.creatorAvailable) continue
     const list = byCreator.get(user.id)
     if (!list || list.length === 0) continue
     const forks = list.reduce((n, p) => n + p.copies, 0)

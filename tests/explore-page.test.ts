@@ -12,7 +12,7 @@ import {
   trendingShelfPicks,
 } from '../src/lib/explorePage'
 import { formatInrShort } from '../src/lib/engine'
-import type { PublishedItinerary, User } from '../src/data/types'
+import type { PublishedItinerary, PublicUser } from '../src/data/types'
 
 const pub = (over: Partial<PublishedItinerary> & { id: string }): PublishedItinerary => ({
   tripId: `trip-${over.id}`,
@@ -32,17 +32,20 @@ const pub = (over: Partial<PublishedItinerary> & { id: string }): PublishedItine
   ...over,
 })
 
-const user = (id: string, name: string, isCreator = true): User => ({
+// #800: an Explore tile derives from a PUBLIC identity card, so the fixture is
+// one. `creatorAvailable` is the derived signal the server publishes; the
+// administrative flag behind it is private and never reaches this surface.
+const user = (id: string, name: string, isCreator = true): PublicUser => ({
   id,
-  email: `${id}@example.test`,
-  profile: { name, languages: ['en'], travelStyles: [], isCreator },
-  createdAt: 1,
+  kind: 'public',
+  profile: { name, isCreator, creatorAvailable: true },
 })
 
-const disabledUser = (id: string, name: string): User => {
-  const base = user(id, name)
-  return { ...base, profile: { ...base.profile, isDisabled: true } }
-}
+const disabledUser = (id: string, name: string): PublicUser => ({
+  id,
+  kind: 'public',
+  profile: { name, isCreator: true, creatorAvailable: false },
+})
 
 const stopNames = (count: number, prefix = 's') => Array.from({ length: count }, (_, i) => `${prefix}${i}`)
 

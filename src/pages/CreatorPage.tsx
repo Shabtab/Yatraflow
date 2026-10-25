@@ -86,8 +86,12 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
               {creator.profile.name}
               {creator.profile.isCreator && <span className="creator-badge" title="Creator"><Sparkles size={13} aria-hidden /> Creator</span>}
             </h1>
+            {/* #800: home city and languages are PRIVATE (the confirmed decision),
+                so the public creator hero no longer prints them. The public card
+                carries only the name, the avatar, the creator marker, the bio and
+                the reviewed social links. */}
             <p className="creator-hero-meta">
-              {[creator.profile.homeCity, ...creator.profile.languages.map(l => l.toUpperCase())].filter(Boolean).join(' · ') || 'Traveller'}
+              {creator.profile.isCreator ? 'Creator' : 'Traveller'}
             </p>
             {creator.profile.creatorBio && <p className="creator-hero-bio">{creator.profile.creatorBio}</p>}
           </div>

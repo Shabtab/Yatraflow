@@ -4,7 +4,7 @@
 // creator line links to the creator's public page (#/creator/:id).
 import { Calendar, Camera, GitFork, Heart, MapPin, Sparkles, TvMinimalPlay, Wallet } from 'lucide-react'
 import { InlineIcon, MetaIcon } from './icons'
-import type { PublishedItinerary, User } from '../data/types'
+import type { PublishedItinerary, CachedUser } from '../data/types'
 import { formatInr } from '../lib/engine'
 import { cap } from '../lib/labels'
 import { openExternal } from '../lib/native'
@@ -14,7 +14,7 @@ import { appLink } from '../lib/appLink'
 
 export function PubCard({ pub, creator, saved, onFork, onToggleSave, enterIndex, needsLogin }: {
   pub: PublishedItinerary
-  creator?: User
+  creator?: CachedUser
   saved: boolean
   onFork: () => void
   onToggleSave: () => void

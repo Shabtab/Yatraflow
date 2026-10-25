@@ -21,7 +21,7 @@ import { CoverThumb } from './CoverThumb'
 import { formatInr } from '../lib/engine'
 import { unlockRevealStats } from '../lib/purchases'
 import { sharePurchase } from '../lib/purchaseShare'
-import type { PublishedItinerary, Trip, User } from '../data/types'
+import type { PublishedItinerary, Trip, CachedUser } from '../data/types'
 
 export function UnlockReveal({ open, pub, trip, creator, amountPaidInr, entitlementId, onFork, onClose }: {
   open: boolean
@@ -31,7 +31,7 @@ export function UnlockReveal({ open, pub, trip, creator, amountPaidInr, entitlem
    *  emptying the plan behind them, so stats read from it would look right
    *  over empty days. See `unlockRevealStats`. */
   trip: Trip
-  creator?: User
+  creator?: CachedUser
   amountPaidInr?: number
   /** The grant this purchase produced. Absent for a moment while the
    *  entitlement read lands (the purchase callback refreshes it), which only

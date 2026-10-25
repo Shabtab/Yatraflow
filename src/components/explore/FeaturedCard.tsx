@@ -4,7 +4,7 @@
 // Its credibility line says why the plan leads, and only with real evidence.
 import type { ReactNode } from 'react'
 import { Eye, GitFork, Heart, Sparkles, Star } from 'lucide-react'
-import type { PublishedItinerary, User } from '../../data/types'
+import type { PublishedItinerary, CachedUser } from '../../data/types'
 import { appLink } from '../../lib/appLink'
 import { cap } from '../../lib/labels'
 import { Avatar } from '../ui'
@@ -14,7 +14,7 @@ import { RouteTrail } from './RouteTrail'
 
 export function FeaturedCard({ pub, creator, kicker, healthScore, saved, needsLogin, onFork, onToggleSave }: {
   pub: PublishedItinerary
-  creator?: User
+  creator?: CachedUser
   /** The kicker line. The page builds it, because it states the filter case. */
   kicker: ReactNode
   /** Trip health out of 100, when the plan's trip is in this browser. */
