@@ -16,6 +16,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+**Google can discover a 96-pixel YatraFlow favicon.** The root page and Ladakh calculator link to the generated Planning Teal icon.
+
 ## [0.79.2] - 2026-10-24
 
 **This patch fixes the Android release pipeline.** A tag run now attaches its APK, and the installed build names the same version as the tag.
