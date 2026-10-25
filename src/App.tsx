@@ -71,8 +71,21 @@ const lazyRouteFallback = <div className="container page-enter"><StateBlock kind
 
 export type ProfileLookupState = 'anonymous' | 'reading' | 'failed' | 'missing' | 'ready'
 
-export function needsProfileLookup(sessionUserId: string | null, hasProfile: boolean): boolean {
-  return !!sessionUserId && !hasProfile
+/** Whether the profile lookup is still outstanding for this render.
+ *
+ *  `state` is passed as well as `hasProfile` because a STALE private row does not
+ *  settle it. Root's executable probe at 2c31f6bd recorded exactly that
+ *  (`owner-edge-ui-2c31f6bd.json`, "Stale private profile does not hide failure
+ *  and retry"): a row left over from an earlier successful read made
+ *  `hasProfile` true, the lookup read as settled, and the failure notice with its
+ *  working retry never rendered. The read's own verdict outranks whatever the
+ *  cache happens to still hold. */
+export function needsProfileLookup(
+  sessionUserId: string | null,
+  hasProfile: boolean,
+  state: ProfileLookupState = 'ready',
+): boolean {
+  return !!sessionUserId && (!hasProfile || state === 'failed')
 }
 
 export function profileLookupState(
@@ -80,18 +93,29 @@ export function profileLookupState(
   hasProfile: boolean,
   sliceReads: Record<string, 'ok' | 'failed'>,
 ): ProfileLookupState {
-  if (hasProfile) return 'ready'
   if (!sessionUserId) return 'anonymous'
   // The signed-in account is the PRIVATE read (`self profile`), not the public
   // catalogue. #800 F1: a public catalogue that succeeded while the private read
   // failed was read as "completed without an account", so the notice offered a
   // missing-profile message and no working retry. The private verdict wins when
   // it exists; the public one is only the fallback for a read that never asked.
+  //
+  // A failure is checked BEFORE `hasProfile`, and that is the second half of the
+  // same fix. A private row still in the cache from an earlier successful read
+  // used to make the lookup read as settled, so the failure notice with its
+  // working retry never rendered — root's executable probe at 2c31f6bd recorded
+  // exactly that (owner-edge-ui-2c31f6bd.json, "Stale private profile does not
+  // hide failure and retry"). A read that failed means the account's status is
+  // unproven, whatever the cache happens to still hold.
   const selfRead = sliceState(sliceReads, 'self profile')
-  if (selfRead === 'failed') return 'failed'
-  if (selfRead === 'reading') return 'reading'
   const profileRead = sliceState(sliceReads, 'profiles')
-  if (profileRead === 'failed') return 'failed'
+  if (selfRead === 'failed' || profileRead === 'failed') return 'failed'
+  if (hasProfile) return 'ready'
+  // A slice that was never asked cannot be waited on: `sliceState` reports an
+  // unknown key as 'reading', and an account whose run died before the private
+  // read, or whose verdict map predates it, would spin on the loading notice
+  // forever instead of settling as missing.
+  if (selfRead === 'reading' && 'self profile' in sliceReads) return 'reading'
   if (profileRead === 'reading') return 'reading'
   return 'missing'
 }
@@ -106,7 +130,7 @@ export function profileLookupBlocksRoute(
   bareRoute: boolean,
   native: boolean,
 ): boolean {
-  if (!needsProfileLookup(sessionUserId, hasProfile)) return false
+  if (!needsProfileLookup(sessionUserId, hasProfile, state)) return false
   return !bareRoute || native || state === 'failed'
 }
 
@@ -826,7 +850,7 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
   const db = useDb()
   const me = currentUser(db)
   const profileState = profileLookupState(db.sessionUserId, !!me, db.sliceReads)
-  const profileLookupPending = needsProfileLookup(db.sessionUserId, !!me)
+  const profileLookupPending = needsProfileLookup(db.sessionUserId, !!me, profileState)
   const [state, setState] = useState<
     { s: 'loading' } | { s: 'error' } | { s: 'ready'; name: string; days: number; destinations: string }
   >({ s: 'loading' })
@@ -1357,7 +1381,9 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   }
 
   if (!me) {
-    if (needsProfileLookup(db.sessionUserId, !!me)) {
+    // The state rides the gate, so a stale private row cannot settle a lookup
+    // whose latest read failed — the notice and its retry stay reachable.
+    if (needsProfileLookup(db.sessionUserId, !!me, profileState)) {
       return (
         <div className="container yf-page page-enter">
           <StateBlock

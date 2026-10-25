@@ -48,19 +48,20 @@ vi.mock('../src/lib/supabase', () => {
   return { isSupabaseConfigured: false, supabase: { from: (t: string) => makeBuilder(t) } }
 })
 
-import { getSnapshot, updateProfile, PROFILE_NOT_SAVED } from '../src/store/store'
+import { getSnapshot, updateProfile, PROFILE_NOT_SAVED, _installUsersForTest } from '../src/store/store'
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
 const savedName = () => getSnapshot().users.find(u => u.id === 'amelia')?.profile.name
 
 beforeEach(() => {
-  const db = getSnapshot()
-  db.users = [{
-    id: 'amelia', email: 'amelia@example.test', createdAt: 1,
+  // The fixture installs through the store's own gate, so it describes a state
+  // the real store can reach: a private self row under the current authority.
+  getSnapshot().sessionUserId = 'amelia'
+  _installUsersForTest([{
+    id: 'amelia', kind: 'private', email: 'amelia@example.test', createdAt: 1,
     profile: { name: 'Amelia', homeCity: 'Kochi', languages: ['en'], travelStyles: [], isCreator: false },
-  }]
-  db.sessionUserId = 'amelia'
+  }])
   state.updates.length = 0
   state.refuse = null
   state.reject = false
