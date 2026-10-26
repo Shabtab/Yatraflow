@@ -16,6 +16,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Security
+
+- **Six npm advisories are closed. Three remain, all from the @capacitor/cli chain.** The dev tooling now uses vite 8.2.4 and vitest 4.1.12. The lockfile now uses zod 4.6.7, brace-expansion 5.0.12 and source-map-js 1.2.2. No major version changed.
+- **npm audit still flags uuid, xcode and @capacitor/cli.** The only npm fix downgrades @capacitor/cli to 8.4.3. That is a breaking change. The fix is deferred until upstream ships a fixed release.
+
 ## [0.79.2] - 2026-10-24
 
 **This patch fixes the Android release pipeline.** A tag run now attaches its APK, and the installed build names the same version as the tag.
