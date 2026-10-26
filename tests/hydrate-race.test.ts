@@ -10,6 +10,7 @@
 // ordering deliberately: the mocked queries are gated, so a hydrate can be made
 // to resolve *after* a logout or *after* a newer account's hydrate has finished.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { profileSession } from './helpers/profileSession'
 import type { TripRow } from '../src/lib/tripRow'
 
 const { state } = vi.hoisted(() => ({
@@ -60,6 +61,7 @@ vi.mock('../src/lib/supabase', () => {
     const rejection = state.rejects[table]
     const builder: Record<string, unknown> = {
       select: () => builder,
+      setHeader: () => builder,
       eq: () => builder,
       is: () => builder,
       in: () => builder,
@@ -100,16 +102,16 @@ vi.mock('../src/lib/supabase', () => {
               resolve({
                 data: {
                   session: state.sessionUser
-                    ? { user: {
+                    ? profileSession({ user: {
                         id: state.sessionUser,
                         app_metadata: state.adminUser === state.sessionUser ? { role: 'masteradmin' } : {},
-                      } }
+                      } })
                     : null,
                 },
               })
           }),
         onAuthStateChange: (cb: (event: string, session: unknown) => void) => {
-          state.authHandler = cb
+          state.authHandler = (event, session) => cb(event, session && typeof session === 'object' && 'user' in session ? profileSession(session as { user: { id: string } }) : session)
           return { data: { subscription: {} } }
         },
         signOut: () => state.holdSignOut
@@ -122,10 +124,11 @@ vi.mock('../src/lib/supabase', () => {
         const key = `${state.activeUser ?? ''}:${name}`
         const gate = state.rpcGates[key] ?? Promise.resolve()
         const response = state.rpcResponses[key] ?? { data: [], error: null }
-        return gate.then(() => {
+        const result = gate.then(() => {
           if (response.rejection !== undefined) throw response.rejection
           return { data: response.error ? null : response.data, error: response.error }
         })
+        return { setHeader() { return this }, then: result.then.bind(result) }
       },
     },
   }

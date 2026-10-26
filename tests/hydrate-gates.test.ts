@@ -17,6 +17,7 @@
 // resumeSync repeats two of the four. The issue names both ranges, so both
 // functions are scanned and both runs are driven below.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { profileSession } from './helpers/profileSession'
 import { readFileSync } from 'node:fs'
 
 // ------------------------------------------------------------------
@@ -135,7 +136,7 @@ describe('the post-hydrate gates (#759)', () => {
   it('takes the verdict from the awaited fetch, so a failure runs none of them', () => {
     const code = codeLines(hydrate).join('\n')
     expect(code).toContain('const hydrationSucceeded = await hydrateFromSupabase(userId, gen)')
-    expect(code).toContain('activeHydrate = { userId, authorityEpoch, promise }')
+    expect(code).toContain('activeHydrate = { userId, owner, authorityEpoch, promise }')
   })
 })
 
@@ -206,6 +207,7 @@ vi.mock('../src/lib/supabase', () => {
     const chain = () => builder
     Object.assign(builder, {
       select: chain, eq: chain, is: chain, in: chain, limit: chain, order: chain,
+      setHeader: chain,
       maybeSingle: () => { builder.singleUsed = true; return builder },
       single: () => { builder.singleUsed = true; return builder },
       insert: () => { isWrite = true; state.writes += 1; return builder },
@@ -244,14 +246,17 @@ vi.mock('../src/lib/supabase', () => {
       channel: (name: string) => { state.channels.push(name); return channel },
       removeChannel: async () => undefined,
       auth: {
-        getSession: async () => ({ data: { session: state.session } }),
+        getSession: async () => ({ data: { session: state.session ? profileSession(state.session) : null } }),
         onAuthStateChange: (cb: (event: string, session: unknown) => void) => {
-          state.authHandler = cb
+          state.authHandler = (event, session) => cb(event, session && typeof session === 'object' && 'user' in session ? profileSession(session as { user: { id: string } }) : session)
           return { data: { subscription: {} } }
         },
         signOut: async () => { state.signOuts += 1; return { error: null } },
       },
-      rpc: async () => ({ data: [], error: null }),
+      rpc: (name: string) => {
+        const result = Promise.resolve({ data: name === 'is_disabled' ? state.tables.profiles?.some(row => row.is_disabled === true) : [], error: null })
+        return { setHeader() { return this }, then: result.then.bind(result) }
+      },
     },
   }
 })

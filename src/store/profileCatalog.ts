@@ -158,8 +158,7 @@ export function buildCatalog(scope: AccessScope, reads: CatalogReads, previous: 
     // A same-session fallback is allowed, and it carries the failed verdict: the
     // account keeps its row so the settings page can show a failure with a retry
     // instead of silently reading as a public card. It is still AUTHORISED —
-    // `sameSession` already proved the revision is unchanged — so the gate
-    // below must not downgrade it. The admin lease is irrelevant here.
+    // The self row belongs to this session, independently of its admin revision.
     if (priorSelf?.kind === 'private') {
       out.set(priorSelf.id, retainPrivate(priorSelf, freshCard(out, priorSelf.id)))
       selfAuthorized = true

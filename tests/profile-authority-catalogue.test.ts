@@ -23,6 +23,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { rowToPrivateUser, rowToPublicUser } from '../src/store/store'
 
+/** A synthetic JWT whose payload carries `sub` and a stable `session_id`. The
+ *  signature is not verified and confers nothing; it exists so the observation
+ *  seam can correlate a session the way a real token lets it. */
+const makeToken = (sub: string, sessionId: string): string => {
+  const payload = Buffer.from(JSON.stringify({ sub, session_id: sessionId })).toString('base64url')
+  return `eyJhbGciOiJIUzI1NiJ9.${payload}.sig`
+}
+
+/** The session an SDK auth event carries: a resolved user plus the bearer its
+ *  JWT claims. A real SDK always supplies the token; a bare `{ user }` object is
+ *  not a session the observation seam can correlate. */
+const signedSession = (id: string, sessionId: string, admin = false) => ({
+  user: { id, app_metadata: admin ? { role: 'masteradmin' } : {} },
+  access_token: makeToken(id, sessionId),
+})
+
 const { state, toast } = vi.hoisted(() => ({
   state: {
     tableReads: [] as string[],
@@ -50,6 +66,16 @@ const { state, toast } = vi.hoisted(() => ({
      *  thing `adminFromSession` reads — a test that flips the flag mid-flight
      *  still goes through `_setAdminForTest`. */
     sessionAdmin: false,
+    /** The session id the resolved session's JWT claims. A test that replaces the
+     *  session changes this, which is what a real re-login does even for the same
+     *  account id. A real Supabase session_id is a UUID. */
+    sessionId: '11111111-1111-4111-8111-111111111111',
+    /** Whether the resolved session carries an access token at all. The
+     *  missing-credential control clears it. */
+    hasToken: true,
+    holdWrites: false,
+    writes: [] as { payload: Record<string, unknown>; resolve: (accepted: boolean) => void }[],
+    sessionReply: null as Promise<{ data: { session: unknown } }> | null,
     admin: false,
     /** The auth-event handler the SDK would call, so a test can emit SIGNED_OUT
      *  or SIGNED_IN exactly as the real client does. */
@@ -88,12 +114,23 @@ vi.mock('../src/lib/supabase', () => {
       maybeSingle: () => { b.singleUsed = true; return b },
       single: () => { b.singleUsed = true; return b },
       insert: () => b,
-      update: () => b,
+      update: (payload: Record<string, unknown>) => { b.writePayload = payload; return b },
       upsert: () => b,
       delete: () => b,
       setHeader: (name: string, value: string) => { state.pinnedHeaders.push([name, value]); return b },
       then: (res: (v: { data: unknown; error: unknown }) => unknown) => {
         state.tableReads.push(table)
+        if (table === 'profiles' && state.holdWrites && b.writePayload) {
+          const payload = b.writePayload as Record<string, unknown>
+          const id = String(filters.find(([key]) => key === 'id')?.[1])
+          return new Promise<boolean>(resolve => { state.writes.push({ payload, resolve }) }).then(accepted => {
+            const previous = state.profileRows[id]
+            if (accepted && previous && typeof previous === 'object') {
+              state.profileRows[id] = { ...previous, ...Object.fromEntries(Object.entries(payload).filter(([,value]) => value !== undefined)) }
+            }
+            return { data: null, error: accepted ? null : { message: 'refused' } }
+          }).then(res)
+        }
         // Only an `eq('id', …)` filter is a single-row read. `.in('id', …)` (a
         // trip-scoped read) and an unfiltered select both answer the seeded rows
         // for their table, which is what the real client does.
@@ -135,9 +172,13 @@ vi.mock('../src/lib/supabase', () => {
       channel,
       removeChannel: () => Promise.resolve(),
       auth: {
-        getSession: () => Promise.resolve({
-          data: { session: state.sessionUser ? { user: { id: state.sessionUser, app_metadata: state.sessionAdmin ? { role: 'masteradmin' } : {} }, access_token: `synthetic-${state.sessionUser}` } : null },
-        }),
+        getSession: () => {
+          const pending = state.sessionReply
+          state.sessionReply = null
+          return pending ?? Promise.resolve({
+            data: { session: state.sessionUser ? { user: { id: state.sessionUser, app_metadata: state.sessionAdmin ? { role: 'masteradmin' } : {} }, access_token: state.hasToken ? makeToken(state.sessionUser, state.sessionId) : '' } : null },
+          })
+        },
         signOut: () => {
           state.signOuts.push(String(state.sessionUser))
           const gate = state.signOutGate
@@ -233,6 +274,11 @@ beforeEach(() => {
   state.signOuts = []
   state.sessionUser = 'u-1'
   state.sessionAdmin = false
+  state.sessionId = '11111111-1111-4111-8111-111111111111'
+  state.hasToken = true
+  state.holdWrites = false
+  state.writes = []
+  state.sessionReply = null
   state.admin = false
   state.authHandler = null
   state.subscribeHandler = null
@@ -266,7 +312,7 @@ describe('the catalogue installs under the authority that is current', () => {
     expect(state.tableReads.filter(t => t === 'profiles').length).toBe(readsBefore + 2)
     // A real auth event for the same id with no role: the store observes the loss,
     // moves the authority revision, and reprojects the catalogue immediately.
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    state.authHandler!('SIGNED_IN', signedSession('u-1', state.sessionId))
     release()
     await flush(); await flush()
 
@@ -334,13 +380,13 @@ describe('the catalogue installs under the authority that is current', () => {
     store.resumeSync()
     await flush(); await flush()
     expect(state.tableReads.filter(t => t === 'profiles').length).toBe(readsBefore + 2)
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    state.authHandler!('SIGNED_IN', signedSession('u-1', state.sessionId))
     release()
     await flush(); await flush()
     expect(privateIds(store)).toEqual(['u-1'])
 
     // Regain: the next run asks for the bulk again and it succeeds.
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-1', app_metadata: { role: 'masteradmin' } } })
+    state.authHandler!('SIGNED_IN', signedSession('u-1', state.sessionId, true))
     await flush(); await flush()
     expect(privateIds(store).sort()).toEqual(['u-1', 'u-2'])
     expect(store.getSnapshot().sliceReads['admin profiles']).toBe('ok')
@@ -373,7 +419,7 @@ describe('the catalogue installs under the authority that is current', () => {
     // The new account's bulk read sees only its own account. u-1's private row is
     // therefore not a fallback for u-2 and not a leftover from u-1's session.
     state.allProfileRows = [{ ...OTHER_PRIVATE }]
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-2', app_metadata: { role: 'masteradmin' } } })
+    state.authHandler!('SIGNED_IN', signedSession('u-2', '22222222-2222-4222-8222-222222222222', true))
     await flush(); await flush()
     expect(privateIds(store)).toEqual(['u-2'])
     expect(store.getSnapshot().users.some(u => u.id === 'u-1' && u.kind === 'private')).toBe(false)
@@ -468,7 +514,7 @@ describe('the public paths never widen or erase the boundary', () => {
     // The cache says enabled, and it is current — a resume may trust it.
     state.disabled = false
     expect(await store.enforceDisabledCheck()).toBe(false)
-    expect(state.rpcCalls.some(c => c.fn === 'is_disabled')).toBe(false)
+    expect(state.rpcCalls.some(c => c.fn === 'is_disabled')).toBe(true)
 
     // The server disagrees. Only the authoritative check sees it.
     state.disabled = true
@@ -527,7 +573,7 @@ describe('the disabled sign-out belongs to the account that asked', () => {
     // old sign-out is still in flight.
     state.sessionUser = 'u-2'
     state.sessionAdmin = true
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-2', app_metadata: { role: 'masteradmin' } } })
+    state.authHandler!('SIGNED_IN', signedSession('u-2', '22222222-2222-4222-8222-222222222222', true))
     expect(store._isAdminForTest()).toBe(true)
 
     release()
@@ -564,7 +610,7 @@ describe('the disabled sign-out belongs to the account that asked', () => {
     // signs out, leaving an empty session that looks exactly like A's expected
     // successor.
     state.sessionUser = 'u-2'
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-2' } })
+    state.authHandler!('SIGNED_IN', signedSession('u-2', '22222222-2222-4222-8222-222222222222'))
     state.sessionUser = null
     state.authHandler!('SIGNED_OUT', null)
     expect(store.getSnapshot().sessionUserId).toBeNull()
@@ -591,9 +637,10 @@ describe('the disabled sign-out belongs to the account that asked', () => {
     await flush()
     expect(state.signOuts).toEqual(['u-1'])
 
+    state.sessionId = '22222222-2222-4222-8222-222222222222'
     // The same account signs back in — a new session, same id — and then signs
     // out again. Neither successor belongs to the held operation.
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    state.authHandler!('SIGNED_IN', signedSession('u-1', state.sessionId))
     state.authHandler!('SIGNED_OUT', null)
     release()
     expect(await pending).toBe(false)
@@ -767,7 +814,7 @@ describe('every catalogue writer installs through the gate', () => {
     // …and the caller LOSES admin authority while it is — a same-id role change,
     // which is exactly the case an identity check cannot see. The catalogue is
     // reprojected immediately, so u-2 is public again and a NEW array is installed.
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-1', app_metadata: {} } })
+    state.authHandler!('SIGNED_IN', signedSession('u-1', state.sessionId))
     await flush(); await flush()
     expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.kind).toBe('public')
 
@@ -1104,7 +1151,7 @@ describe('a hostile nested social key never survives a public projection', () =>
     expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.kind).toBe('private')
 
     state.rpcError = true
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    state.authHandler!('SIGNED_IN', signedSession('u-1', state.sessionId))
     await flush(); await flush()
     const u2 = store.getSnapshot().users.find(u => u.id === 'u-2') as unknown as { kind: string; profile: { socialLinks?: Record<string, unknown> } }
     expect(u2.kind).toBe('public')
@@ -1139,7 +1186,7 @@ describe('a refused edit restores only its own operation-owned data', () => {
     state.sessionAdmin = true
     state.profileRows = { 'u-1': { ...OWNER_PRIVATE, home_city: 'NewCity' }, 'u-2': { ...OTHER_PRIVATE } }
     state.allProfileRows = [{ ...OWNER_PRIVATE, home_city: 'NewCity' }, { ...OTHER_PRIVATE }]
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-2', app_metadata: { role: 'masteradmin' } } })
+    state.authHandler!('SIGNED_IN', signedSession('u-2', '22222222-2222-4222-8222-222222222222', true))
     await flush(); await flush()
     const held = store.getSnapshot().users.find(u => u.id === 'u-1') as { kind: string; profile: { homeCity?: string } }
     expect(held.kind).toBe('private')
@@ -1184,7 +1231,7 @@ describe('a refused edit restores only its own operation-owned data', () => {
     expect((store.getSnapshot().users.find(u => u.id === 'u-2') as { profile: { isDisabled?: boolean } }).profile.isDisabled).toBe(true)
 
     // The caller loses admin authority while the RPC is in flight.
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    state.authHandler!('SIGNED_IN', signedSession('u-1', state.sessionId))
     await flush()
     expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.kind).toBe('public')
 
@@ -1252,7 +1299,7 @@ describe('a refused delete restores only the row it removed', () => {
     state.sessionAdmin = true
     state.profileRows = { 'u-2': { ...OTHER_PRIVATE } }
     state.allProfileRows = [{ ...OTHER_PRIVATE }]
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-2', app_metadata: { role: 'masteradmin' } } })
+    state.authHandler!('SIGNED_IN', signedSession('u-2', '22222222-2222-4222-8222-222222222222', true))
     await flush(); await flush()
     expect(privateIds(store)).toEqual(['u-2'])
 
@@ -1337,9 +1384,10 @@ describe('a disabled sign-out owns its record on every branch', () => {
     await flush()
     expect(state.signOuts).toEqual(['u-1'])
 
-    // The SAME id signs in again — a new session that moves no identity epoch —
+    state.sessionId = '22222222-2222-4222-8222-222222222222'
+    // The SAME id signs in again — a new session with its own lifetime —
     // and stays active. The old sign-out's expected successor can never arrive.
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    state.authHandler!('SIGNED_IN', signedSession('u-1', state.sessionId))
     expect(store.getSnapshot().sessionUserId).toBe('u-1')
 
     release()
@@ -1365,7 +1413,7 @@ describe('a disabled sign-out owns its record on every branch', () => {
     expect(state.signOuts).toEqual(['u-1'])
 
     // A token refresh carries the same session. It must not retire the record.
-    state.authHandler!('TOKEN_REFRESHED', { user: { id: 'u-1' } })
+    state.authHandler!('TOKEN_REFRESHED', signedSession('u-1', state.sessionId))
     release()
     expect(await pending).toBe(true)
     expect(toast).toHaveBeenCalledWith(
@@ -1451,7 +1499,7 @@ describe('an admin loss keeps the same session\'s self row and drops the others'
 
     // Same id, no role: the authority revision moves, the identity generation
     // does not, and the reprojection runs before any read.
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    state.authHandler!('SIGNED_IN', signedSession('u-1', state.sessionId))
     await flush(); await flush()
     expect(privateIds(store)).toEqual(['u-1'])
     expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.kind).toBe('public')
@@ -1570,7 +1618,7 @@ describe('a private refresh never certifies the public catalogue', () => {
     } as never)
     state.sessionUser = 'u-2'
     state.profileRows = { 'u-2': { ...OTHER_PRIVATE } }
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-2' } })
+    state.authHandler!('SIGNED_IN', signedSession('u-2', '22222222-2222-4222-8222-222222222222'))
     await flush(); await flush(); await flush()
 
     // B's own private read ran, rather than B returning on A's read.
@@ -1617,7 +1665,7 @@ describe('a signed-in offline snapshot boot keeps its safe identities', () => {
 
     // B signs in while the snapshot is still loading.
     state.sessionUser = 'u-2'
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-2' } })
+    state.authHandler!('SIGNED_IN', signedSession('u-2', '22222222-2222-4222-8222-222222222222'))
     await flush(); await flush(); await flush()
 
     // The retired snapshot install was rejected, so A's rows are not in B's cache
@@ -1628,6 +1676,176 @@ describe('a signed-in offline snapshot boot keeps its safe identities', () => {
 })
 
 // ============ REPAIR-06 G — captured credentials ============
+describe('session lifetime and ordered profile edits', () => {
+  async function boot() {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE } }
+    store.init()
+    await flush(); await flush()
+    expect(store.currentUser()?.profile.homeCity).toBe('Kochi')
+    return store
+  }
+
+  it('refuses private queries without captured credentials', async () => {
+    const store = await freshStore()
+    state.hasToken = false
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    store.init()
+    await flush(); await flush()
+    expect(state.tableReads.filter(table => table === 'profiles')).toHaveLength(0)
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
+    expect(store.currentUser()).toBeNull()
+  })
+
+  it.each(['bootstrap', 'resume'])('ignores an older getSession response during %s', async phase => {
+    const store = phase === 'resume' ? await boot() : await freshStore()
+    let release = () => {}
+    state.sessionReply = new Promise(resolve => { release = () => resolve({ data: { session: signedSession('u-1', state.sessionId) } }) })
+    let pending: Promise<void> | undefined
+    if (phase === 'resume') pending = store.resumeSync()
+    else store.init()
+    state.sessionUser = 'u-2'
+    state.sessionAdmin = true
+    state.profileRows = { 'u-2': OTHER_PRIVATE }
+    state.allProfileRows = [OTHER_PRIVATE]
+    state.authHandler!('SIGNED_IN', signedSession('u-2', '22222222-2222-4222-8222-222222222222', true))
+    await flush(); await flush()
+    expect(store.currentUser()?.id).toBe('u-2')
+    release()
+    await pending
+    await flush()
+    expect(store.currentUser()?.id).toBe('u-2')
+    expect(store._isAdminForTest()).toBe(true)
+  })
+
+  it('starts a same-account replacement before the old private response resolves', async () => {
+    const store = await freshStore()
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, home_city: 'OLD_PRIVATE' } }
+    let release = () => {}
+    state.deferred.__holdSelf = () => new Promise<void>(resolve => { release = resolve })
+    store.init()
+    await flush()
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, home_city: 'NEW_PRIVATE' } }
+    state.sessionId = '22222222-2222-4222-8222-222222222222'
+    state.authHandler!('SIGNED_IN', signedSession('u-1', state.sessionId))
+    expect(store.currentUser()).toBeNull()
+    await flush(); await flush()
+    expect(store.currentUser()?.profile.homeCity).toBe('NEW_PRIVATE')
+    release()
+    await flush(); await flush()
+    expect(store.currentUser()?.profile.homeCity).toBe('NEW_PRIVATE')
+  })
+
+  it.each(['SIGNED_IN', 'TOKEN_REFRESHED'])('preserves a pending read on same-session %s', async event => {
+    const store = await freshStore()
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    let release = () => {}
+    state.deferred.__holdSelf = () => new Promise<void>(resolve => { release = resolve })
+    store.init()
+    await flush()
+    const calls = state.tableReads.filter(table => table === 'profiles').length
+    const session = signedSession('u-1', state.sessionId)
+    state.authHandler!(event, { ...session, access_token: session.access_token + 'refreshed' })
+    expect(state.tableReads.filter(table => table === 'profiles')).toHaveLength(calls)
+    release()
+    await flush(); await flush()
+    expect(store.currentUser()?.email).toBe(OWNER_PRIVATE.email)
+  })
+
+  it.each(['same', 'other'])('retires a held disabled-status answer after %s-account replacement', async replacement => {
+    const store = await boot()
+    state.disabled = true
+    let release = () => {}
+    state.deferred.is_disabled = () => new Promise<void>(resolve => { release = resolve })
+    const old = store.recheckDisabledStatus()
+    await flush()
+    state.disabled = false
+    state.sessionUser = replacement === 'same' ? 'u-1' : 'u-2'
+    state.sessionId = '22222222-2222-4222-8222-222222222222'
+    state.profileRows = { [state.sessionUser]: { ...OWNER_PRIVATE, id: state.sessionUser } }
+    const before = state.rpcCalls.filter(call => call.fn === 'is_disabled').length
+    state.authHandler!('SIGNED_IN', signedSession(state.sessionUser, state.sessionId))
+    await flush(); await flush()
+    expect(store.currentUser()?.id).toBe(state.sessionUser)
+    expect(state.rpcCalls.filter(call => call.fn === 'is_disabled').length).toBeGreaterThan(before)
+    expect(state.signOuts).toHaveLength(0)
+    release()
+    expect(await old).toBe(false)
+    expect(state.signOuts).toHaveLength(0)
+  })
+
+  it('preserves newer equal-valued acceptance when an older write fails', async () => {
+    const store = await boot()
+    state.holdWrites = true
+    const old = store.updateProfile({ homeCity: 'AcceptedCity' })
+    const newer = store.updateProfile({ homeCity: 'AcceptedCity' })
+    await flush()
+    state.writes[1].resolve(true)
+    expect(await newer).toEqual({ ok: true })
+    state.writes[0].resolve(false)
+    expect((await old).ok).toBe(false)
+    expect(store.currentUser()?.profile.homeCity).toBe('AcceptedCity')
+    await flush()
+    expect(store.currentUser()?.profile.homeCity).toBe('AcceptedCity')
+  })
+
+  it.each([[0, 1], [1, 0]])('restores the confirmed base when two writes fail in order %j', async (first, second) => {
+    const store = await boot()
+    state.holdWrites = true
+    const writes = [store.updateProfile({ homeCity: 'One' }), store.updateProfile({ homeCity: 'Two' })]
+    await flush()
+    state.writes[first].resolve(false)
+    await writes[first]
+    state.writes[second].resolve(false)
+    await writes[second]
+    expect(store.currentUser()?.profile.homeCity).toBe('Kochi')
+  })
+
+  it('keeps a newer edit when canonical reconciliation answers late', async () => {
+    const store = await boot()
+    state.holdWrites = true
+    const first = store.updateProfile({ homeCity: 'Accepted' })
+    await flush()
+    let release = () => {}
+    state.deferred.__holdSelf = () => new Promise<void>(resolve => { release = resolve })
+    state.writes[0].resolve(true)
+    await first
+    await flush()
+    const second = store.updateProfile({ homeCity: 'Pending' })
+    await flush()
+    release()
+    await flush()
+    expect(store.currentUser()?.profile.homeCity).toBe('Pending')
+    state.writes[1].resolve(false)
+    await second
+    expect(store.currentUser()?.profile.homeCity).toBe('Accepted')
+  })
+
+  it('drains an event arriving during the fourth refresh pass', async () => {
+    const store = await boot()
+    const trigger = () => store._applyRealtimeEventForTest('profile_cards', {
+      eventType: 'UPDATE', table: 'profile_cards', schema: 'public', new: OWNER_CARD, old: {},
+    } as never)
+    let release = () => {}
+    const hold = () => { state.deferred.__holdSelf = () => new Promise<void>(resolve => { release = resolve }) }
+    hold()
+    trigger()
+    await flush()
+    for (let pass = 1; pass <= 4; pass++) {
+      state.profileRows = { 'u-1': { ...OWNER_PRIVATE, home_city: `Version${pass}` } }
+      const finish = release
+      hold()
+      trigger()
+      finish()
+      await flush(); await flush()
+    }
+    release()
+    await flush(); await flush()
+    expect(store.currentUser()?.profile.homeCity).toBe('Version4')
+  })
+})
+
 describe('a private request is bound to the credentials that asked for it', () => {
   it('the self read pins the captured bearer', async () => {
     const store = await freshStore()
@@ -1638,8 +1856,8 @@ describe('a private request is bound to the credentials that asked for it', () =
     await flush(); await flush(); await flush()
 
     const pinned = state.pinnedHeaders.filter(([n]) => n === 'Authorization')
-    expect(pinned).toContainEqual(['Authorization', 'Bearer synthetic-u-1'])
-    expect(pinned.every(([, v]) => v === 'Bearer synthetic-u-1')).toBe(true)
+    expect(pinned).toContainEqual(['Authorization', `Bearer ${makeToken('u-1', '11111111-1111-4111-8111-111111111111')}`])
+    expect(pinned.every(([, v]) => v === `Bearer ${makeToken('u-1', '11111111-1111-4111-8111-111111111111')}`)).toBe(true)
   })
 
   it('the admin bulk read pins the captured bearer', async () => {
@@ -1652,7 +1870,7 @@ describe('a private request is bound to the credentials that asked for it', () =
     await flush(); await flush(); await flush()
 
     const pinned = state.pinnedHeaders.filter(([n]) => n === 'Authorization')
-    expect(pinned).toContainEqual(['Authorization', 'Bearer synthetic-u-1'])
+    expect(pinned).toContainEqual(['Authorization', `Bearer ${makeToken('u-1', '11111111-1111-4111-8111-111111111111')}`])
   })
 
   it('the header stays bound across a deferred session change', async () => {
@@ -1666,17 +1884,24 @@ describe('a private request is bound to the credentials that asked for it', () =
     await flush()
     // The request was already issued with A's bearer.
     expect(state.pinnedHeaders.filter(([n]) => n === 'Authorization'))
-      .toContainEqual(['Authorization', 'Bearer synthetic-u-1'])
+      .toContainEqual(['Authorization', `Bearer ${makeToken('u-1', '11111111-1111-4111-8111-111111111111')}`])
 
-    // B signs in, then A's held read resolves.
+    // B signs in — a different session id for a different account — then A's held
+    // read resolves.
     state.sessionUser = 'u-2'
-    state.authHandler!('SIGNED_IN', { user: { id: 'u-2' } })
+    state.sessionId = '22222222-2222-4222-8222-222222222222'
+    state.authHandler!('SIGNED_IN', signedSession('u-2', '22222222-2222-4222-8222-222222222222'))
     release()
     await flush(); await flush(); await flush()
 
     // A's answer was fenced by its retired ticket, so B's cache holds no A row.
     expect(store.getSnapshot().users.some(u => u.id === 'u-1' && u.kind === 'private')).toBe(false)
-    // And no request was ever issued with B's bearer for A's read.
-    expect(state.pinnedHeaders.filter(([n]) => n === 'Authorization').every(([, v]) => v !== 'Bearer synthetic-u-2')).toBe(true)
+    // A's held request was issued with A's bearer and never re-issued with B's:
+    // its header was captured before B's session existed. B's own reads are
+    // separate requests, which is why they carry B's bearer.
+    expect(state.pinnedHeaders[0]?.[1])
+      .toBe(`Bearer ${makeToken('u-1', '11111111-1111-4111-8111-111111111111')}`)
+    expect(state.pinnedHeaders.filter(([, v]) => v === `Bearer ${makeToken('u-2', '22222222-2222-4222-8222-222222222222')}`).length)
+      .toBeGreaterThan(0)
   })
 })

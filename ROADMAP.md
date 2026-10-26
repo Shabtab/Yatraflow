@@ -75,7 +75,8 @@ The repair must meet these requirements:
 - Add a forward migration and mirror its final contract in `supabase/schema.sql`.
 - Fail safely when database support is missing. Never restore permissive reads as a fallback.
 
-MiniMax owns local implementation. Codex will integrate and verify locally.
+The user approved Codex to finish the preserved local implementation on 2026-10-27.
+Codex owns implementation and local verification. MiniMax's interrupted work stays preserved.
 An independent fixed-candidate security review must pass before completion.
 Disposable SQL tests must reproduce the old leak before they prove the new boundary.
 Tests must cover anonymous users, owners, outsiders, crew, admins, and disabled accounts.

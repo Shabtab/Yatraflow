@@ -10,6 +10,7 @@
 // fixed-source probe. These tests drive the same seams through the store.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { profileSession } from './helpers/profileSession'
 
 const { state, toast } = vi.hoisted(() => ({
   state: {
@@ -30,6 +31,10 @@ const { state, toast } = vi.hoisted(() => ({
     signOuts: [] as string[],
     sessionUser: 'u-1' as 'u-1' | 'u-2',
     admin: false,
+    /** The session id the resolved session's JWT claims. A real Supabase
+     *  session_id is a UUID; a test that replaces the session changes it, which
+     *  is what a real re-login does even for the same account id. */
+    sessionId: '11111111-1111-4111-8111-111111111111',
     /** The auth-event handler the SDK would call, so a test can emit a real
      *  SIGNED_IN / SIGNED_OUT instead of poking the store's test seam. */
     authHandler: null as null | ((event: string, session: unknown) => void),
@@ -37,6 +42,20 @@ const { state, toast } = vi.hoisted(() => ({
   toast: vi.fn(),
 }))
 
+/** A synthetic JWT whose payload carries sub and a stable session_id. The
+ *  signature is not verified and confers nothing; it exists so the observation
+ *  seam can correlate a session the way a real token lets it. */
+const makeToken = (sub: string, sessionId: string): string => {
+  const payload = Buffer.from(JSON.stringify({ sub, session_id: sessionId })).toString('base64url')
+  return 'eyJhbGciOiJIUzI1NiJ9.' + payload + '.sig'
+}
+
+/** The session an SDK auth event carries: a resolved user plus the bearer its JWT
+ *  claims. A real SDK always supplies the token. */
+const signedSession = (id: string, sessionId: string, admin = false) => ({
+  user: { id, app_metadata: admin ? { role: 'masteradmin' } : {} },
+  access_token: makeToken(id, sessionId),
+})
 vi.mock('../src/components/ui', () => ({ toast }))
 
 vi.mock('../src/lib/supabase', () => {
@@ -87,7 +106,7 @@ vi.mock('../src/lib/supabase', () => {
       removeChannel: () => Promise.resolve(),
       auth: {
         getSession: () => Promise.resolve({
-          data: { session: state.sessionUser ? { user: { id: state.sessionUser, app_metadata: state.admin ? { role: 'masteradmin' } : {} }, access_token: 'tok' } : null },
+          data: { session: state.sessionUser ? { user: { id: state.sessionUser, app_metadata: state.admin ? { role: 'masteradmin' } : {} }, access_token: makeToken(state.sessionUser, state.sessionId) } : null },
         }),
         signOut: () => {
           state.signOuts.push(String(state.sessionUser))
@@ -96,7 +115,7 @@ vi.mock('../src/lib/supabase', () => {
           return Promise.resolve({ error: null })
         },
         onAuthStateChange: (cb: (event: string, session: unknown) => void) => {
-          state.authHandler = cb
+          state.authHandler = (event, session) => cb(event, session && typeof session === 'object' && 'user' in session ? profileSession(session as { user: { id: string } }) : session)
           return { data: { subscription: {} } }
         },
       },
@@ -292,6 +311,8 @@ describe('the sign-out completion belongs to its own identity', () => {
   it('an obsolete signOut completion does not clear the next account\'s admin cache', async () => {
     const store = await freshStore()
     state.profileRows = { 'u-1': OWNER_PRIVATE }
+    store.init()
+    await flush(); await flush()
     state.disabled = true
     let releaseSignOut = () => {}
     state.signOutGate = new Promise<void>(r => { releaseSignOut = r })
@@ -303,10 +324,8 @@ describe('the sign-out completion belongs to its own identity', () => {
     expect(state.signOuts).toEqual(['u-1'])
 
     // Account B becomes an admin with a fresh generation, then A's completion runs.
-    store._bumpIdentityEpochForTest()
     state.sessionUser = 'u-2'
-    store.getSnapshot().sessionUserId = 'u-2'
-    store._setAdminForTest(true)
+    state.authHandler!('SIGNED_IN', signedSession('u-2', '22222222-2222-4222-8222-222222222222', true))
     releaseSignOut()
     expect(await pending).toBe(false)
 
@@ -320,6 +339,8 @@ describe('the sign-out completion belongs to its own identity', () => {
   it('a stable disabled account is still signed out with the message', async () => {
     const store = await freshStore()
     state.profileRows = {}
+    store.init()
+    await flush(); await flush()
     state.disabled = true
 
     store.getSnapshot().sessionUserId = 'u-1'
@@ -400,6 +421,7 @@ describe('the final catalogue is built after the read outcomes', () => {
     state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
     store.getSnapshot().sessionUserId = 'u-1'
     store._setAdminForTest(true)
+    state.admin = true
     await store.resumeSync()
     await flush(); await flush(); await flush()
 

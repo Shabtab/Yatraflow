@@ -32,10 +32,21 @@ const { state, toast } = vi.hoisted(() => ({
     signOuts: [] as string[],
     /** The user the session answers with, and the epoch `identityEpoch` holds. */
     sessionUser: 'u-1' as 'u-1' | 'u-2',
+    /** The session id the resolved session's JWT claims. A real Supabase
+     *  session_id is a UUID; a test that replaces the session changes it, which
+     *  is what a real re-login does even for the same account id. */
+    sessionId: '11111111-1111-4111-8111-111111111111',
   },
   toast: vi.fn(),
 }))
 
+/** A synthetic JWT whose payload carries sub and a stable session_id. The
+ *  signature is not verified and confers nothing; it exists so the observation
+ *  seam can correlate a session the way a real token lets it. */
+const makeToken = (sub: string, sessionId: string): string => {
+  const payload = Buffer.from(JSON.stringify({ sub, session_id: sessionId })).toString('base64url')
+  return 'eyJhbGciOiJIUzI1NiJ9.' + payload + '.sig'
+}
 vi.mock('../src/components/ui', () => ({ toast }))
 
 vi.mock('../src/lib/supabase', () => {
@@ -77,7 +88,7 @@ vi.mock('../src/lib/supabase', () => {
       removeChannel: () => Promise.resolve(),
       auth: {
         getSession: () => Promise.resolve({
-          data: { session: state.sessionUser ? { user: { id: state.sessionUser }, access_token: 'tok' } : null },
+          data: { session: state.sessionUser ? { user: { id: state.sessionUser }, access_token: makeToken(state.sessionUser, state.sessionId) } : null },
         }),
         signOut: () => { state.signOuts.push(String(state.sessionUser)); return Promise.resolve({ error: null }) },
         onAuthStateChange: () => ({ data: { subscription: {} } }),
@@ -506,6 +517,8 @@ describe('the offline snapshot', () => {
 describe('the disabled-account check', () => {
   it('a missing private row is not read as an enabled account', async () => {
     const store = await freshStore()
+    store.init()
+    await flush(); await flush()
     // A disabled account cannot read its own row, so there is no private entry.
     store.getSnapshot().sessionUserId = 'u-1'
     store._installUsersForTest([])
@@ -535,6 +548,9 @@ describe('the delayed disabled-account check', () => {
     // The browser reproduction: account A has no private row, its `is_disabled`
     // call is held, account B becomes current, then A's `true` answer lands.
     const store = await freshStore()
+    store.init()
+    await flush(); await flush()
+    state.rpcCalls = []
     state.sessionUser = 'u-1'
     state.profileRows = {}
     state.disabled = true
@@ -560,6 +576,8 @@ describe('the delayed disabled-account check', () => {
 
   it('a stable disabled account is still signed out with the message', async () => {
     const store = await freshStore()
+    store.init()
+    await flush(); await flush()
     state.sessionUser = 'u-1'
     state.profileRows = {}
     state.disabled = true
