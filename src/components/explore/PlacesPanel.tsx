@@ -2,15 +2,19 @@
 // One papercut tile per place that live plans route through. A tile searches
 // that place. The panel is not drawn when no place has a plan yet.
 //
-// A tile shows the scene of the region its place name maps to, and nothing else.
-// A name no region matches maps to "generic", whose scene is geographically
-// neutral: the tile shows a finished illustration that identifies no region. It
-// must never borrow a named region's scene. A Himalaya scene on a tile called
-// "Rishikesh" would be a false claim about the place, which is worse than no
-// scene at all. The inline motif stays as the loading and error floor.
+// A tile shows the scene of the place its own name resolves to. That is either
+// the place's own scene, or the representative scene of the one state the name
+// names, or the neutral generic scene. It must never borrow a named region's
+// scene: a Himalaya scene on a tile called "Rishikesh" would be a false claim
+// about the place, which is worse than no scene at all. The inline motif stays
+// as the loading and error floor.
+//
+// A tile names exactly one place, so a cross-state result is impossible here by
+// construction: one name resolves to one state at most.
 import { useId } from 'react'
 import type { PlaceTile } from '../../lib/explorePage'
-import { artIdFor } from '../../lib/regionArt'
+import { ART_MANIFEST, artIdFor } from '../../lib/regionArt'
+import { placeArtFor, placeFallbacksFrom } from '../../lib/placeArt'
 import { regionFor } from '../../lib/tripsPage'
 import { RegionArt } from '../RegionArt'
 import { TripArt } from '../trips/TripArt'
@@ -41,13 +45,22 @@ export function PlacesPanel({ tiles, onPick }: { tiles: PlaceTile[]; onPick: (na
       <h2 className="ex-panel-title" id={titleId}>Places in the community</h2>
       <ul className="ex-places">
         {tiles.map(tile => {
+          // The tile's own name is the only input, so the scene can only ever be
+          // this place's scene, this place's state scene, or the neutral one.
+          const place = placeArtFor([tile.name], tile.name, placeFallbacksFrom(ART_MANIFEST))
           const region = regionFor({ destinations: [tile.name] })
+          // Only a place or state result names this tile's geography. A generic
+          // result falls through to the region chain, which is where the seven
+          // older regions (Kerala, Goa, ...) are still recognised.
+          const id = place && place.kind !== 'generic'
+            ? place.id
+            : artIdFor(region, tile.name)
           return (
             <li key={tile.name}>
               <button type="button" className="ex-place" onClick={() => onPick(tile.name)}>
                 <span className="ex-place-art">
                   <RegionArt
-                    id={artIdFor(region, tile.name)}
+                    id={id}
                     ratio="1:1"
                     sizes={TILE_SIZES}
                     fallback={<TripArt region={region} />}

@@ -280,8 +280,9 @@ describe('focalYFor', () => {
     // The guard must reject only names the manifest does not declare. If the map
     // were built from the wrong source, every slot would silently fall to the
     // motif — a whole-page visual regression that no other test would catch.
+    // 62 = the 22 inherited scenes plus the 40 India scenes.
     const declared = Object.keys(ART_MANIFEST.ids)
-    expect(declared.length).toBe(22)
+    expect(declared.length).toBe(62)
     for (const id of declared) {
       const entry = artEntryFor(id)
       expect(entry, id).toBeDefined()

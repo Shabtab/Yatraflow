@@ -73,10 +73,14 @@ export function ExploreCover({ pub, sizes = EX_GRID_SIZES }: {
     return <img className="ex-cover-img" src={coverUrl} alt="" loading="lazy" decoding="async" />
   }
   const region = regionFor({ destinations: pub.routeSummary })
+  // The publication's route stops go in as they are, so a stop the India place
+  // layer knows (a jurisdiction or a named destination) can win over the
+  // seven-region collapse.
   const choice = coverFor({
     region,
     seed: pub.id,
     placeCount: pub.routeSummary?.length ?? 0,
+    destinations: pub.routeSummary,
   })
   return (
     <RegionArt

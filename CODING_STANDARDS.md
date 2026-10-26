@@ -823,6 +823,20 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    `C:\WINDOWS\system32\convert` is not an image converter. Use `magick` for ImageMagick, or use
    `sharp` through `scripts/build-art.mjs`. Never run `convert` in a shell on this machine.
 
+6ap-bis. **A crop focal point is measured on pixels, and a place name is matched on whole
+   tokens (learned 2026-10-26, the India art integration).** Two traps, both cheap to avoid.
+   First, a focal offset taken from arithmetic alone can still cut the subject. A 480 px
+   suggestion for `rishikesh-v1` implied `focalX` 68.75%, and the window looked safe on paper,
+   but the rendered square crop clipped the left tower's base. Locate the subject in the master
+   (colour separation works when the subject is the only warm structure in a cool scene),
+   compute the bracket that keeps it, and render the candidate crops before recording a value.
+   Second, a place matcher that splits on `\p{L}` alone shreds Indic scripts: Devanagari writes
+   a syllable as base letters plus combining marks, so `कोच्चि` became `क`,`च`,`च`. Split on
+   runs of non-letters and non-marks, `/[^\p{L}\p{M}]+/u`. Match whole token runs, never
+   substrings, or `Goalpara` becomes Goa. A name both a destination table and a jurisdiction
+   table claim is ambiguous only when they disagree about the jurisdiction; agreeing tables are
+   not a conflict, and the more specific answer wins.
+
 6aq. **You must cut a branch with an explicit start point (learned 2026-10-13, the prune
    record).** `git checkout -b <name>` cuts from HEAD, not from the integration branch. A branch
    made while another lane's branch is checked out becomes a stack. Its PR then lists the parent

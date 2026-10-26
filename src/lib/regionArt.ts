@@ -13,6 +13,7 @@
 // city families are reached only when a region list is empty.
 
 import manifestJson from '../assets/art/manifest.json'
+import { placeArtFor } from './placeArt'
 
 export type ArtRegion = 'kerala' | 'goa' | 'rajasthan' | 'coorg' | 'meghalaya' | 'kashmir' | 'generic'
 
@@ -27,6 +28,12 @@ export interface ArtIdEntry {
   ratio: string
   /** Vertical focal point in percent, per crop ratio. `default` applies when a ratio has no entry. */
   focalY: Record<string, number> & { default: number }
+  /**
+   * Horizontal focal point in percent, per crop ratio. Optional: when it is
+   * absent the slot uses 50%, the centre it has always used. Only a square crop
+   * of a 3:2 master can need it, because that is the only crop that loses width.
+   */
+  focalX?: Record<string, number> & { default: number }
 }
 
 export interface ArtManifest {
@@ -60,6 +67,14 @@ export interface CoverInput {
   seed: string
   /** Number of distinct places on the trip. A trip with 2 or more uses road art, otherwise city art. */
   placeCount: number
+  /**
+   * The trip's own destination strings, before any collapsing. When present,
+   * the India place layer gets the first say after the user cover, because it
+   * knows 36 jurisdictions and 16 named destinations where `region` knows
+   * seven. When absent, or when it only reaches the neutral scene, the region
+   * chain below answers exactly as it always has.
+   */
+  destinations?: readonly string[] | null
 }
 
 /** FNV-1a 32-bit hash of a string. The same input always gives the same number. */
@@ -89,11 +104,25 @@ export function fallbackKindFor(placeCount: number): ArtFallback {
 
 /**
  * Resolve the cover for one card.
- * Order: user cover, region variant, road or city fallback, then null (SVG).
+ *
+ * Order: user cover, the India place layer (only when it identifies a place or
+ * a jurisdiction), region variant, road or city fallback, then null (SVG).
+ *
+ * The place layer answers "generic" for anything it does not recognise. That is
+ * a real scene, but it is the same neutral scene the region chain already
+ * reaches through `regionFor`, and the region chain knows the seven older
+ * regions this module does not. So a generic place result does not short-circuit
+ * the chain: the region step still gets its turn.
  */
 export function coverFor(input: CoverInput, manifest: ArtManifest = ART_MANIFEST): CoverChoice | null {
   const userUrl = input.userCover?.trim()
   if (userUrl) return { kind: 'user', url: userUrl }
+
+  const place = placeArtFor(input.destinations, input.seed, {
+    road: manifest.fallbacks.road,
+    neutral: manifest.regions.generic,
+  })
+  if (place && place.kind !== 'generic') return { kind: 'generated', id: place.id }
 
   const regionId = artIdFor(input.region, input.seed, manifest)
   if (regionId) return { kind: 'generated', id: regionId }
@@ -128,5 +157,26 @@ export function artEntryFor(id: string, manifest: ArtManifest = ART_MANIFEST): A
 export function focalYFor(id: string, ratio: string, manifest: ArtManifest = ART_MANIFEST): number {
   const entry = artEntryFor(id, manifest)
   if (!entry) return 50
-  return entry.focalY[ratio] ?? entry.focalY.default
+  return clampPercent(entry.focalY[ratio] ?? entry.focalY.default)
+}
+
+/**
+ * Horizontal focal point (percent) for an id at a crop ratio.
+ *
+ * 50 for every id that declares no `focalX`. That is what every slot used
+ * before this key existed, so an id without the key crops exactly as it did.
+ * A declared value is clamped to 0-100; a non-finite one is 50. Clamping is not
+ * cosmetic: `object-position` accepts any percentage, so an unclamped 420 would
+ * silently pan a scene off its subject.
+ */
+export function focalXFor(id: string, ratio: string, manifest: ArtManifest = ART_MANIFEST): number {
+  const entry = artEntryFor(id, manifest)
+  const declared = entry?.focalX?.[ratio] ?? entry?.focalX?.default
+  return clampPercent(declared)
+}
+
+/** A focal percentage that is safe to put in `object-position`. */
+function clampPercent(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 50
+  return Math.min(100, Math.max(0, value))
 }

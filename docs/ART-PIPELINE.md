@@ -21,9 +21,14 @@ with a backup.
 
 ## The current set
 
-Twenty-two images are committed: fifteen landscape scenes and seven square state vignettes.
-Each one is a byte-identical copy of an accepted derivative. The id carries no review round,
-so a replaced master keeps its id.
+Sixty-two images are committed: the twenty-two original scenes and forty India scenes.
+Each one is a byte-identical copy of an accepted derivative, except the eight Bihar and
+Odisha files, which are encoded from the accepted comparison revisions. The id carries no
+review round, so a replaced master keeps its id.
+
+### The original twenty-two
+
+Fifteen landscape scenes and seven square state vignettes.
 
 | Id | Used for | Widths | WebP |
 | --- | --- | --- | --- |
@@ -50,6 +55,44 @@ so a replaced master keeps its id.
 | `es-offline` | Offline state (square), declared and unused | 280, 560 | 560 |
 | `es-error` | Page read failed (square) | 280, 560 | 560 |
 
+### The forty India scenes
+
+Thirty-one jurisdiction scenes and nine destination scenes. All are 3:2 at 320, 640 and
+960, with a 640 WebP.
+
+The jurisdiction scenes are `andhra-pradesh-v1`, `arunachal-pradesh-v1`, `assam-v1`,
+`bihar-v1`, `chhattisgarh-v1`, `gujarat-v1`, `haryana-v1`, `jharkhand-v1`, `karnataka-v1`,
+`madhya-pradesh-v1`, `maharashtra-v1`, `manipur-v1`, `mizoram-v1`, `nagaland-v1`,
+`odisha-v1`, `punjab-v1`, `sikkim-v1`, `tamil-nadu-v1`, `telangana-v1`, `tripura-v1`,
+`uttar-pradesh-v1`, `uttarakhand-v1`, `west-bengal-v1`, and these union territories and
+special regions: `andaman-and-nicobar-islands-v1`, `chandigarh-v1`,
+`dadra-and-nagar-haveli-and-daman-and-diu-v1`, `delhi-v1`, `jammu-and-kashmir-v2`,
+`lakshadweep-v1`, `puducherry-v1`, and `himalaya-1` for Ladakh.
+
+The destination scenes are `jaipur-v1`, `udaipur-v1`, `mumbai-v1`, `leh-v1`, `manali-v1`,
+`rishikesh-v1`, `munnar-v1`, `darjeeling-v1` and `shillong-v1`.
+
+Five jurisdictions reuse an existing scene rather than a new one: Kerala (`kerala-1`), Goa
+(`goa-1` and `goa-2`), Rajasthan (`rajasthan-v1`), Meghalaya (`meghalaya-1` and
+`meghalaya-2`) and Himachal Pradesh (`himalaya-2`). Ladakh takes `himalaya-1`, the
+trans-Himalayan lake scene. Jammu and Kashmir takes `jammu-and-kashmir-v2`, so a Kashmir
+valley destination never shows the Ladakh lake.
+
+The `places` table in `manifest.json` is what the art layer reads. It holds 36
+jurisdictions and 16 destinations. `src/lib/placeArt.ts` resolves a destination string
+against those tables; `coverFor` in `src/lib/regionArt.ts` consults it before the region
+chain.
+
+### Review status
+
+Only Bihar and Odisha have an explicit comparison acceptance, and those are the two
+masters from the accepted revision. The other thirty-eight new scenes are local-preview
+candidates. Do not describe them as universally approved: the manifest records ids, not a
+verdict, and the evidence folder holds the only review record.
+
+Karnataka keeps the original `karnataka-v1`. The `karnataka-study-v2` revision was
+rejected and is not shipped.
+
 The region lists in `manifest.json` map the trip regions to these ids. Every region has at
 least one scene. `generic` holds `generic-1`, a geographically neutral scene: a place name no
 keyword matches shows it rather than borrowing another region's scene, so the tile still shows
@@ -57,8 +100,8 @@ a finished illustration and still identifies no region.
 
 The road and city families are kept as a declared compatibility fallback. `coverFor` still tries
 them after the region step, and the tests still prove that step against a manifest with one
-region emptied. Nothing selects them today: every region has a scene, so the region step always
-answers first. They stay in the manifest and on disk for a future region list that is emptied,
+region emptied. The India layer does select `road` for a trip whose positively matched stops
+span two states. They stay in the manifest and on disk for a future region list that is emptied,
 and their twelve files are not re-encoded or removed.
 
 `es-offline` is declared and committed but wired to nothing. No page has a supported offline
@@ -69,6 +112,13 @@ change.
 
 A wide scene's 3:1 crop takes `focalY` 60 by default. `himalaya-2` sets its own 3:1 value of 40
 because its peaks sit high in the frame. That is a manifest value, not a code branch.
+
+`focalX` sits beside `focalY` with a default of 50. One id declares it: `rishikesh-v1` at
+`1:1` uses 70.3125. The master is 1536x1024, so a square crop has 512 px of horizontal
+overflow. The two towers sit at x 526..550 and x 1335..1354; a window of side 1024 keeps
+both for any left offset in 330..526 px. At 70.3125% the window is 360..1384, leaving
+166 px before the first tower and 30 px after the second. An out-of-range, non-finite or
+unknown value clamps to 50.
 
 ## Budget
 
@@ -83,7 +133,8 @@ because its peaks sit high in the frame. That is a manifest value, not a code br
 | Whole folder | 6 MiB |
 
 The limits are in `manifest.json` under `budget`. The build and the tests read the same values.
-The current total is 1151135 bytes (1124.2 KiB) for 81 files.
+The current total is 4682873 bytes (4573.1 KiB) for 241 files. Every file is inside its own
+cap and the folder is inside the 6 MiB cap.
 
 ## Encoder settings
 
@@ -108,8 +159,8 @@ and are no longer in the manifest. It prints a byte table and exits with code 1 
 total is over its cap, or when a master is missing.
 
 `MASTER_FILES` in `scripts/build-art.mjs` names each id's master relative to the folder you pass.
-The pilot masters sit flat and the batch masters sit in `batch1/` or `batch2/`, so one root
-serves every id:
+The pilot masters sit flat, the batch masters sit in `batch1/` or `batch2/`, and the India
+masters sit in `india/`, so one root serves every id:
 
 ```powershell
 npm run art:build -- --masters E:\YatraFlow\yatraflow-art-codex\masters --check
@@ -122,11 +173,18 @@ A batch-2 master is not copied into the art workspace. Stage a folder of the sam
 <staging>\            the six pilot masters, flat
 <staging>\batch1\     the fifteen batch-1 masters
 <staging>\batch2\     the batch-2 masters
+<staging>\india\      the forty India masters
 ```
 
 The table names only paths relative to that root, so no machine path enters the build. A rebuild
 from the staging root reproduces every derivative. The art workspace root reproduces all but
-`generic-1`, because that master was never copied into it.
+`generic-1` and the India masters, because those were never copied into it.
+
+`ENCODER_OVERRIDES` holds a per-file quality and effort override. Twenty-two entries keep
+files that would otherwise exceed their cap: eighteen AVIF files at q48, q46 or q44, and
+four at effort 9 from the D1 compression batch. A full rebuild at the baseline quality
+would silently lose those encodings, so the table is part of the contract and an entry
+that names no manifest file is an error.
 
 ```powershell
 npm run art:build -- --masters E:\T3\evidence\art-batch2-generation-20261025\staging --list-masters

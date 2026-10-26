@@ -19,11 +19,19 @@ export function TripCover({ trip, status, sizes = GRID_SIZES }: {
 }) {
   const hasOwnCover = Boolean(trip.coverImageUrl)
   const region = regionFor(trip)
-  // The user's own cover is handled above by CoverThumb, so the chain here is
-  // the generated region scene, then the road or city scene, then the motif.
+  // The user's own cover is handled above by CoverThumb. The chain here is the
+  // India place scene for the trip's own destinations, then the seven-region
+  // scene, then the road or city family, then the motif. The raw destination
+  // strings go in, not just the collapsed region: a trip to Bhubaneswar can only
+  // reach Odisha's scene if this layer sees the name.
   const choice = hasOwnCover
     ? null
-    : coverFor({ region, seed: trip.id, placeCount: trip.destinations?.length ?? 0 })
+    : coverFor({
+      region,
+      seed: trip.id,
+      placeCount: trip.destinations?.length ?? 0,
+      destinations: trip.destinations,
+    })
   return (
     <div className="mt-cover">
       {hasOwnCover ? (

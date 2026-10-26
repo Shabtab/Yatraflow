@@ -9,7 +9,7 @@
 // Selection stays in lib/regionArt.ts. This component only draws.
 import { useState, type ReactNode } from 'react'
 import { artUrl, srcsetFor } from '../lib/artUrls'
-import { artEntryFor, focalYFor, vignetteArtFor } from '../lib/regionArt'
+import { artEntryFor, focalXFor, focalYFor, vignetteArtFor } from '../lib/regionArt'
 
 /**
  * The generated scene for one slot, with the SVG motif underneath.
@@ -69,7 +69,7 @@ export function RegionArt({ id, ratio, sizes, fallback, eager = false, scrim = t
           aria-hidden="true"
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
-          style={{ objectPosition: `50% ${focalYFor(id, ratio)}%` }}
+          style={{ objectPosition: `${focalXFor(id, ratio)}% ${focalYFor(id, ratio)}%` }}
           onError={() => { setFailedId(id) }}
         />
       </picture>

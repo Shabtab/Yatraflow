@@ -63,7 +63,9 @@ const ENCODE = {
 //
 // A bare name is a pilot master at the root. A name with a folder is a batch
 // master under it, which is how the batch-1 set stays in `masters/batch1/`
-// instead of being copied flat next to the pilot files.
+// instead of being copied flat next to the pilot files. The India set lives in
+// `india/`. Every path here is RELATIVE: no machine path is ever named, so any
+// staging root of the documented shape rebuilds the same bytes.
 const MASTER_FILES = {
   'kerala-1': 'kerala-1-v3.png',
   'himalaya-1': 'himalaya-1-v3.png',
@@ -94,6 +96,99 @@ const MASTER_FILES = {
   // argument. That root may be the art workspace or an external staging folder
   // built from it; either way this table names only a path relative to the root.
   'generic-1': 'batch2/generic-1-v1.png',
+
+  // ---- India jurisdiction set (31 new scenes) ----
+  // The 31 needed-new rows of the coverage plan. Bihar and Odisha map to the
+  // ACCEPTED comparison revisions (bihar-study-v2 / odisha-study-v2), staged
+  // under these file names. The remaining 29 are the plan's active v1 masters.
+  'andhra-pradesh-v1': 'india/andhra-pradesh-v1.png',
+  'arunachal-pradesh-v1': 'india/arunachal-pradesh-v1.png',
+  'assam-v1': 'india/assam-v1.png',
+  'bihar-v1': 'india/bihar-v1.png',
+  'chhattisgarh-v1': 'india/chhattisgarh-v1.png',
+  'gujarat-v1': 'india/gujarat-v1.png',
+  'haryana-v1': 'india/haryana-v1.png',
+  'jharkhand-v1': 'india/jharkhand-v1.png',
+  'karnataka-v1': 'india/karnataka-v1.png',
+  'madhya-pradesh-v1': 'india/madhya-pradesh-v1.png',
+  'maharashtra-v1': 'india/maharashtra-v1.png',
+  'manipur-v1': 'india/manipur-v1.png',
+  'mizoram-v1': 'india/mizoram-v1.png',
+  'nagaland-v1': 'india/nagaland-v1.png',
+  'odisha-v1': 'india/odisha-v1.png',
+  'punjab-v1': 'india/punjab-v1.png',
+  'rajasthan-v1': 'india/rajasthan-v1.png',
+  'sikkim-v1': 'india/sikkim-v1.png',
+  'tamil-nadu-v1': 'india/tamil-nadu-v1.png',
+  'telangana-v1': 'india/telangana-v1.png',
+  'tripura-v1': 'india/tripura-v1.png',
+  'uttar-pradesh-v1': 'india/uttar-pradesh-v1.png',
+  'uttarakhand-v1': 'india/uttarakhand-v1.png',
+  'west-bengal-v1': 'india/west-bengal-v1.png',
+  'andaman-and-nicobar-islands-v1': 'india/andaman-and-nicobar-islands-v1.png',
+  'dadra-and-nagar-haveli-and-daman-and-diu-v1': 'india/dadra-and-nagar-haveli-and-daman-and-diu-v1.png',
+  'delhi-v1': 'india/delhi-v1.png',
+  // The active revision is v2. jammu-and-kashmir-v1 stays on disk as the
+  // superseded revision and is named by nothing here.
+  'jammu-and-kashmir-v2': 'india/jammu-and-kashmir-v2.png',
+  'lakshadweep-v1': 'india/lakshadweep-v1.png',
+  'puducherry-v1': 'india/puducherry-v1.png',
+  'chandigarh-v1': 'india/chandigarh-v1.png',
+
+  // ---- India destination set (9 new scenes) ----
+  'udaipur-v1': 'india/udaipur-v1.png',
+  'munnar-v1': 'india/munnar-v1.png',
+  'darjeeling-v1': 'india/darjeeling-v1.png',
+  'jaipur-v1': 'india/jaipur-v1.png',
+  'mumbai-v1': 'india/mumbai-v1.png',
+  'leh-v1': 'india/leh-v1.png',
+  'manali-v1': 'india/manali-v1.png',
+  'rishikesh-v1': 'india/rishikesh-v1.png',
+  'shillong-v1': 'india/shillong-v1.png',
+}
+
+// Per-file encoder overrides, keyed "<id>-<width>.<format>".
+//
+// The India set was compressed against its caps with a bounded ladder: baseline
+// q50/effort 6 first, then q48, q46, q44 at effort 6, first rung that fits wins.
+// 18 of those 160 files landed on a non-baseline rung. Those exact params are
+// recorded here so a full rebuild reproduces the SELECTED bytes rather than
+// silently re-encoding at q50 and losing the cap overrides.
+//
+// The four D1 compression-batch files (jaipur-v1-960, manali-v1-640,
+// manali-v1-960, rishikesh-v1-960) were recompressed at effort 9 outside the
+// batch ladder; their selected params are recorded the same way.
+const ENCODER_OVERRIDES = {
+  'arunachal-pradesh-v1-960.avif': { quality: 48, effort: 6 },
+  'chhattisgarh-v1-960.avif': { quality: 48, effort: 6 },
+  'haryana-v1-640.avif': { quality: 48, effort: 6 },
+  'haryana-v1-960.avif': { quality: 46, effort: 6 },
+  'jharkhand-v1-960.avif': { quality: 48, effort: 6 },
+  'karnataka-v1-960.avif': { quality: 48, effort: 6 },
+  'madhya-pradesh-v1-960.avif': { quality: 48, effort: 6 },
+  'maharashtra-v1-640.avif': { quality: 48, effort: 6 },
+  'maharashtra-v1-960.avif': { quality: 46, effort: 6 },
+  'mizoram-v1-960.avif': { quality: 48, effort: 6 },
+  'rajasthan-v1-960.avif': { quality: 48, effort: 6 },
+  'sikkim-v1-960.avif': { quality: 46, effort: 6 },
+  'telangana-v1-960.avif': { quality: 48, effort: 6 },
+  'uttarakhand-v1-640.avif': { quality: 48, effort: 6 },
+  'uttarakhand-v1-960.avif': { quality: 44, effort: 6 },
+  'munnar-v1-960.avif': { quality: 48, effort: 6 },
+  'darjeeling-v1-640.avif': { quality: 48, effort: 6 },
+  'darjeeling-v1-960.avif': { quality: 46, effort: 6 },
+  // D1 compression batch: effort 9, outside the ladder.
+  'jaipur-v1-960.avif': { quality: 48, effort: 9 },
+  'manali-v1-640.avif': { quality: 48, effort: 9 },
+  'manali-v1-960.avif': { quality: 44, effort: 9 },
+  'rishikesh-v1-960.avif': { quality: 48, effort: 9 },
+}
+
+/** Encoder settings for one output file: the override if any, else the baseline. */
+function encoderFor(name, format) {
+  const base = ENCODE[format]
+  const override = ENCODER_OVERRIDES[name]
+  return override ? { ...base, effort: override.effort, quality: override.quality } : base
 }
 
 const RATIO_VALUE = { '3:2': 3 / 2, '1:1': 1 }
@@ -151,11 +246,13 @@ async function encodeAll(manifest, mastersDir, outDir, errors) {
       continue
     }
     for (const width of entry.widths) {
-      const buffer = await sharp(masterPath).rotate().toColorspace('srgb').resize({ width }).avif(ENCODE.avif).toBuffer()
-      writeFileSync(path.join(outDir, `${id}-${width}.avif`), buffer)
+      const name = `${id}-${width}.avif`
+      const buffer = await sharp(masterPath).rotate().toColorspace('srgb').resize({ width }).avif(encoderFor(name, 'avif')).toBuffer()
+      writeFileSync(path.join(outDir, name), buffer)
     }
-    const webpBuffer = await sharp(masterPath).rotate().toColorspace('srgb').resize({ width: entry.webp }).webp(ENCODE.webp).toBuffer()
-    writeFileSync(path.join(outDir, `${id}-${entry.webp}.webp`), webpBuffer)
+    const webpName = `${id}-${entry.webp}.webp`
+    const webpBuffer = await sharp(masterPath).rotate().toColorspace('srgb').resize({ width: entry.webp }).webp(encoderFor(webpName, 'webp')).toBuffer()
+    writeFileSync(path.join(outDir, webpName), webpBuffer)
   }
 }
 
@@ -245,6 +342,12 @@ async function main() {
   const args = parseArgs(process.argv.slice(2))
   const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'))
   const errors = []
+  // An override that names no expected file is a typo that would silently do
+  // nothing, so it is an error rather than a no-op.
+  const expectedNames = new Set(expectedFiles(manifest).map(file => file.name))
+  for (const name of Object.keys(ENCODER_OVERRIDES)) {
+    if (!expectedNames.has(name)) errors.push(`ENCODER_OVERRIDES names ${name}, which the manifest does not produce.`)
+  }
   if (args.listMasters) {
     await listMasters(manifest, path.resolve(args.masters))
     return
@@ -253,7 +356,6 @@ async function main() {
     if (path.resolve(args.masters) === path.resolve(args.out)) throw new Error('--out must not be the masters folder.')
     await encodeAll(manifest, path.resolve(args.masters), args.out, errors)
   }
-  const expectedNames = new Set(expectedFiles(manifest).map(file => file.name))
   const removed = args.check ? [] : removeOrphans(args.out, expectedNames)
   if (removed.length) console.log(`Removed stale derivatives: ${removed.join(', ')}`)
   const result = report(manifest, args.out)
