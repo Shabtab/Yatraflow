@@ -22,6 +22,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **The prose checker now reads SQL comments and RAISE messages.** The checker skipped every line of a `.sql` file that did not start with a comment marker. A block comment that ran over several lines hid its body. An inline comment after a statement hid too. A RAISE message, which a user reads, hid as well. The checker now scans a `.sql` file as comments and statements. It follows a block comment and a dollar-quoted body over lines, so a `--` inside either is not a comment. Statements stay code. Only a comment body and a RAISE message are measured. A fresh-bootstrap test now reads the live policy catalog and proves the contract. The contract has no permissive FOR ALL policy on suggestions, decisions or activity. Editor deletes need the author or the trip owner. The audit trail takes no writes. (#832)
 
+**Google can discover a 96-pixel YatraFlow favicon.** The root page and Ladakh calculator link to the generated Planning Teal icon.
 ### Fixed
 
 - **SQL comments stay under the prose rules.** The checker now reads block comments beside statements and keeps nested comment bodies in scope. A later line comment cannot hide an earlier block comment.
