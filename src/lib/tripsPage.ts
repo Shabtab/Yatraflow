@@ -329,6 +329,8 @@ export interface HeroPostcard {
   /** The caption: the place the trip ends at (see heroPlace). */
   place: string
   region: TripRegion
+  /** Original place names for destination and jurisdiction art selection. */
+  destinations?: readonly string[]
   /** Number of distinct stops. It picks road art over city art when the region has no scene. */
   placeCount: number
   /** The trip's own cover image, when it has one. */
@@ -376,6 +378,7 @@ export function heroPostcards({ trips, today, ready }: {
       key: t.id,
       place,
       region: regionFor(t),
+      destinations: t.destinations,
       placeCount: t.destinations?.length ?? 0,
       coverImageUrl: t.coverImageUrl || undefined,
     })

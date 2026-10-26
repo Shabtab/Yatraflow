@@ -30,8 +30,8 @@ export interface ArtIdEntry {
   focalY: Record<string, number> & { default: number }
   /**
    * Horizontal focal point in percent, per crop ratio. Optional: when it is
-   * absent the slot uses 50%, the centre it has always used. Only a square crop
-   * of a 3:2 master can need it, because that is the only crop that loses width.
+   * absent the slot uses 50%, the centre it has always used. Crops narrower
+   * than the master, including 4:3 and square slots, can lose horizontal detail.
    */
   focalX?: Record<string, number> & { default: number }
 }

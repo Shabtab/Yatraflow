@@ -66,7 +66,7 @@ export function TripsHero({ headline, lede, stats, postcards, note, primary, sec
             {postcards.map((card, index) => {
               const choice = card.blank || card.coverImageUrl
                 ? null
-                : coverFor({ region: card.region, seed: card.key, placeCount: card.placeCount })
+                : coverFor({ region: card.region, seed: card.key, placeCount: card.placeCount, destinations: card.destinations })
               return (
                 <figure className={`ex-postcard ex-pc-${index + 1}`} key={card.key}>
                   <div className="ex-postcard-art">

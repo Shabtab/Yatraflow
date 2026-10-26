@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { cardNextStep, countdownText, heroHeadline, heroNote, heroPostcards, heroStats, otherTripsEmptyKind, pickUpNext, planning, rangeText, regionFor, statusOf, whenBucket, type HeroTrip } from '../src/lib/tripsPage'
 import { routeLine } from '../src/lib/tripsCard'
+import { coverFor } from '../src/lib/regionArt'
 import type { ItineraryDay, StopStatus } from '../src/data/types'
 
 // Local noon on 2026-10-10: far from any day boundary.
@@ -430,7 +431,14 @@ describe('heroPostcards', () => {
   })
   it('captions each postcard with the place the trip ends at and picks its art region', () => {
     const cards = heroPostcards({ trips: [goa], today: TODAY, ready: true })
-    expect(cards).toEqual([{ key: 'goa', place: 'Panjim', region: 'goa', placeCount: 2, coverImageUrl: undefined }])
+    expect(cards).toEqual([{ key: 'goa', place: 'Panjim', region: 'goa', destinations: goa.destinations, placeCount: 2, coverImageUrl: undefined }])
+  })
+  it.each([['Rishikesh', 'rishikesh-v1'], ['Srinagar', 'jammu-and-kashmir-v2']])('keeps %s destinations available for hero art', (place, id) => {
+    const trip = heroTrip({ id: 'art-trip', destinations: [place] })
+    const card = heroPostcards({ trips: [trip], today: TODAY, ready: true })[0]
+    expect(card.destinations).toEqual([place])
+    expect(coverFor({ region: card.region, seed: card.key, placeCount: card.placeCount, destinations: card.destinations }))
+      .toEqual({ kind: 'generated', id })
   })
   it('cuts a caption at its first comma', () => {
     const abroad = heroTrip({ id: 'k', destinations: ['Kolkata, India'], startDate: '2026-10-20', endDate: '2026-10-21' })
