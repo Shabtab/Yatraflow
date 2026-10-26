@@ -241,7 +241,7 @@ end;
 $$;
 
 -- --------------------------------------------------------- 6. Realtime moves
--- Publishing the whole `profiles` row sent every column — email included — to
+-- The whole `profiles` row sent every column, including email, to
 -- every subscriber. The projection replaces it, so a live event carries the safe
 -- columns and nothing else. Realtime DDL can fail on a read-only role, so this is
 -- guarded the way the rest of the schema guards optional DDL.

@@ -69,7 +69,7 @@ async function freshStore() {
   const db = store.getSnapshot() as any
   db.sessionUserId = 'amelia'
   db.trips.push({
-    id: 'trip-1', title: 'Lisbon', destination: 'Lisbon, Portugal',
+    id: 'trip-1', title: 'Lisbon', destination: 'Lisbon, Portugal', writeVersion: 1,
     startDate: '2026-09-01', endDate: '2026-09-03', attendees: 2, ownerId: 'amelia',
     members: [
       { userId: 'amelia', role: 'owner', joinedAt: 1 },
@@ -128,11 +128,11 @@ describe('#52 — every optimistic write must actually reach the client', () => 
     // request is actually issued (issue #52's property, new path).
     { name: 'voteSuggestion', table: 'submit_collab_command', method: 'rpc', run: s => s.voteSuggestion('trip-1', 'sug-1', 1) },
     { name: 'addCommentToSuggestion', table: 'submit_collab_command', method: 'rpc', run: s => s.addCommentToSuggestion('trip-1', 'sug-1', 'great idea') },
-    { name: 'acceptSuggestionIntoTimeline', table: 'suggestions', method: 'update', run: s => s.acceptSuggestionIntoTimeline('trip-1', 'sug-1') },
-    { name: 'declineSuggestion', table: 'suggestions', method: 'update', run: s => s.declineSuggestion('trip-1', 'sug-1') },
+    { name: 'acceptSuggestionIntoTimeline', table: 'submit_collab_command', method: 'rpc', run: s => s.acceptSuggestionIntoTimeline('trip-1', 'sug-1') },
+    { name: 'declineSuggestion', table: 'submit_collab_command', method: 'rpc', run: s => s.declineSuggestion('trip-1', 'sug-1') },
     { name: 'addDecision', table: 'submit_collab_command', method: 'rpc', run: s => s.addDecision('trip-1', { question: 'Beach or museum?', context: '', options: [{ id: 'o1', label: 'Beach' }] }) },
     { name: 'voteOnDecision', table: 'submit_collab_command', method: 'rpc', run: s => s.voteOnDecision('dec-1', 'opt-1') },
-    { name: 'resolveDecision', table: 'decisions', method: 'update', run: s => s.resolveDecision('dec-1', 'opt-1') },
+    { name: 'resolveDecision', table: 'submit_collab_command', method: 'rpc', run: s => s.resolveDecision('dec-1', 'opt-1') },
     { name: 'addActivity', table: 'submit_collab_command', method: 'rpc', run: s => s.addActivity('trip-1', 'checked in') },
     { name: 'pushNotification', table: 'notifications', method: 'insert', run: s => s.pushNotification('priya', 'trip-1', 'Amelia liked Time Out Market') },
     { name: 'markAllNotificationsRead', table: 'notifications', method: 'update', run: s => s.markAllNotificationsRead('amelia') },

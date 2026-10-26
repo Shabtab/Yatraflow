@@ -191,8 +191,9 @@ export interface Expense {
  *  place selection, not a weather reading (#839). The weather forecast calls in
  *  src/lib/weather.ts are a different surface and are unaffected. */
 export type PlaceProvider = 'google' | 'mappls' | 'open-meteo' | 'wikipedia' | 'osm'
-/** Stage B records only what is known. #843 owns indoor/outdoor classification. */
-export type PlaceExposure = 'unknown'
+/** Exposure is explicit evidence; missing evidence stays unknown. */
+export const PLACE_EXPOSURES = ['indoor', 'outdoor', 'unknown'] as const
+export type PlaceExposure = (typeof PLACE_EXPOSURES)[number]
 
 /** The provider facts that survive a save and a reload. Kept beside the
  *  authoritative `location_name`/`lat`/`lng` columns, never duplicated in them. */
@@ -413,6 +414,8 @@ export interface StopSuggestion {
   /** Provider identity beside the authoritative coordinates. Null/absent on
    *  legacy rows, which stay readable. */
   place?: PersistedPlaceIdentity
+  /** Stop acknowledged by the atomic acceptance transition. */
+  acceptedStopId?: ID
   description?: string
   visitMinutes: number
   estimatedEntryFeeInr: number
@@ -491,6 +494,8 @@ export interface TripDecision {
                                   // supabase/migrations/20260920_decision_comments.sql
   status: 'open' | 'resolved'
   resolvedOptionId?: ID
+  /** Stop acknowledged by the atomic resolution placement transition. */
+  resolvedStopId?: ID
   raisedBy: ID
   createdAt: number
   resolvedAt?: number

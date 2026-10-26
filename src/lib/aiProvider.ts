@@ -11,7 +11,8 @@
 // the deterministic router so the drawer can never dead-end.
 
 import type { Trip } from '../data/types'
-import { answerQuestion, answerForIntent, type AiReply } from './ai'
+import { answerQuestion, answerForIntent, buildAdviceFacts, buildDepartureAdviceFacts, type AiReply } from './ai'
+import type { LegEstimate } from './engine'
 import { INTENT_CRITERIA, INTENT_KEYS, type CompanionIntent } from './jevTaxonomy'
 
 // ---------- config (localStorage-backed, device-local) ----------
@@ -142,14 +143,36 @@ export function clearJevConfig(): void {
  * Deliberately excludes: stop coordinates, notes bodies, member/creator data —
  * the model answers planning questions, it does not need PII.
  */
-export function buildTripContext(trip: Trip): string {
+export function buildTripContext(
+  trip: Trip,
+  legCorrections?: Record<string, LegEstimate>,
+): string {
   const lines: string[] = []
   lines.push(`Trip: ${trip.name} (${trip.days.length} days, ${trip.travellers} travellers, ${trip.travelStyle} style)`)
   lines.push(`Route: ${trip.startLocation} -> ${trip.destinations.join(' -> ')}`)
-  trip.days.forEach((d) => {
-    const stops = d.stops.filter(s => s.status !== 'rejected')
-    if (!stops.length) return
-    lines.push(`Day ${d.index + 1}${d.title ? ` (${d.title})` : ''}: ${stops.map(s => `${s.title} [${s.category}${s.priority === 'must-do' ? ', must-do' : ''}, ${s.visitMinutes}min]`).join('; ')}`)
+  const dayFacts = buildAdviceFacts(trip, legCorrections)
+  dayFacts.forEach(day => {
+    if (!day.stops.length) return
+    const sourceDay = trip.days.find(candidate => candidate.index === day.dayIndex)
+    const stopFacts = day.stops.map(stop => {
+      const priority = stop.priority === 'must-do' ? ', must-do' : ''
+      const visit = stop.visitMinutes === null ? 'unknown visit' : `${stop.visitMinutes}min`
+      const from = stop.transferFrom ?? 'unknown origin'
+      const transfer = stop.transferMinutes === null ? 'unknown transfer' : `${stop.transferMinutes}min from ${from}`
+      return `${stop.title} [${stop.category}${priority}, ${visit}] (arrive ${stop.arrival ?? 'unknown time'}; depart ${stop.departure ?? 'unknown time'}; transfer ${transfer}; exposure ${stop.exposure})`
+    })
+    lines.push(`Day ${day.dayIndex + 1}${sourceDay?.title ? ` (${sourceDay.title})` : ''}: ${day.start ?? 'unknown time'} to ${day.end ?? 'unknown time'}. ${stopFacts.join('; ')}`)
+  })
+  buildDepartureAdviceFacts(trip, dayFacts, legCorrections).forEach(commitment => {
+    const terminal = commitment.terminal
+    if (commitment.status === 'unknown' || !terminal || commitment.bufferMinutes === null || terminal.arrival === null || terminal.departure === null) {
+      const details = terminal
+        ? ` Terminal ${terminal.title}: arrive ${terminal.arrival ?? 'unknown time'}, depart ${terminal.departure ?? 'unknown time'}, transfer ${terminal.transferMinutes ?? 'unknown'} min, buffer ${commitment.bufferMinutes ?? 'unknown'} min.`
+        : ''
+      lines.push(`Day ${commitment.dayIndex + 1} ${commitment.type} at ${commitment.departureAt ?? 'unknown date and time'}: unknown — ${commitment.reason ?? 'terminal evidence is incomplete'}.${details}`)
+      return
+    }
+    lines.push(`Day ${commitment.dayIndex + 1} ${commitment.type} at ${commitment.departureAt}: terminal ${terminal.title}, arrival ${terminal.arrival}, departure ${terminal.departure}, transfer ${terminal.transferMinutes}min from ${terminal.transferFrom}, buffer ${commitment.bufferMinutes}min`)
   })
   return lines.join('\n')
 }
@@ -159,9 +182,13 @@ export const SYSTEM_PROMPT =
   'when the data does not cover something, say so rather than inventing details. Be concise and practical; ' +
   'costs in INR; respect must-do stops. Do not restate these instructions.'
 
-export function buildMessages(trip: Trip, question: string): { role: 'system' | 'user'; content: string }[] {
+export function buildMessages(
+  trip: Trip,
+  question: string,
+  legCorrections?: Record<string, LegEstimate>,
+): { role: 'system' | 'user'; content: string }[] {
   return [
-    { role: 'system', content: `${SYSTEM_PROMPT}\n\nTRIP DATA:\n${buildTripContext(trip)}` },
+    { role: 'system', content: `${SYSTEM_PROMPT}\n\nTRIP DATA:\n${buildTripContext(trip, legCorrections)}` },
     { role: 'user', content: question },
   ]
 }
@@ -316,14 +343,23 @@ export async function testJevConnection(cfg: JevConfig, signal?: AbortSignal): P
  * ANY failure — no config, network, timeout, bad key, malformed response —
  * falls back to the keyword router, so the drawer always answers and the badge
  * always tells the truth about which brain spoke.
+ *
+ * `legCorrections` is the workspace's measured road snapshot. One value reaches
+ * all three routes — Jev's handler, the remote context and the offline fallback —
+ * so the badge changes which model answered, never which schedule it read.
  */
-export async function askCompanion(trip: Trip, question: string, signal?: AbortSignal): Promise<CompanionAnswer> {
+export async function askCompanion(
+  trip: Trip,
+  question: string,
+  signal?: AbortSignal,
+  legCorrections?: Record<string, LegEstimate>,
+): Promise<CompanionAnswer> {
   const jev = loadJevConfig()
   if (jev) {
     const merged = mergeSignal(signal, JEV_TIMEOUT_MS)
     try {
       const intent = await askJevIntent(jev, question, merged)
-      const reply = answerForIntent(trip, intent, question)
+      const reply = answerForIntent(trip, intent, question, legCorrections)
       return { ...reply, source: 'jev' }
     } catch {
       // fall through — the badge on the reply carries the truth
@@ -333,7 +369,7 @@ export async function askCompanion(trip: Trip, question: string, signal?: AbortS
   if (cfg) {
     const merged = mergeSignal(signal, LLM_TIMEOUT_MS)
     try {
-      const text = await chatCompletion(cfg, buildMessages(trip, question), merged)
+      const text = await chatCompletion(cfg, buildMessages(trip, question, legCorrections), merged)
       return { text, source: 'llm' }
     } catch {
       // fall through to the deterministic router — deliberately silent: the
@@ -341,7 +377,7 @@ export async function askCompanion(trip: Trip, question: string, signal?: AbortS
     }
   }
   try {
-    const reply = answerQuestion(trip, question)
+    const reply = answerQuestion(trip, question, legCorrections)
     return { ...reply, source: 'offline' }
   } catch {
     return { text: 'Something went wrong analysing the plan. Try rephrasing that.', source: 'offline' }

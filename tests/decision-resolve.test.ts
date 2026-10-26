@@ -65,12 +65,20 @@ describe('#432 — decisions.resolved_option_id is text, and every layer agrees'
   it('the store writes that column with the ids it actually mints', () => {
     // The payload side of the pairing: if either end changes shape alone, this
     // fails rather than the bug returning silently in production.
-    expect(store).toMatch(/update\(\{ status: 'resolved', resolved_option_id: optionId/)
+    //
+    // #838 stage C moved the write itself into the atomic
+    // `submit_collab_command` RPC (`update … set status='resolved',
+    // resolved_option_id=v_choice`), so the store no longer names the column;
+    // the agreement it must still hold is: the store sends the minted id in
+    // the command (`optionId`) and the SQL writes THAT id into the column.
+    expect(store).toMatch(/type: 'decision\.resolve' as const/)
+    expect(store).toMatch(/optionId,$/m)
     // …and the shapes it sends are not uuids — which is the whole point.
     // (`uid('o')` is the mint; what happens to a caller-supplied id is #335's
     // own assertion, deliberately not asserted here so this file passes on
     // either side of that change.)
     expect(store).toMatch(/uid\('o'\)/)
-    expect(store).toMatch(/\^slot:\(\[a-z\]\+\):/)
+    // The slot part is parsed back where the stop lands now — the RPC.
+    expect(schema).toMatch(/\^slot:\(\[a-z\]\+\):/)
   })
 })
