@@ -1,25 +1,3 @@
-// ============ #800 — the authority-aware profile catalogue ============
-//
-// `buildCatalog` decides the final contents of `cache.users` from the read
-// outcomes, the authority those reads were taken under, and the catalogue they
-// replace. `installCatalog` is the only writer, and it refuses a ticket whose
-// identity, authority revision or generation no longer matches the live state.
-//
-// These tests drive the REAL init, auth-event and subscribe handlers, because
-// every failure this closes was cross-cutting:
-//
-//   R1  a run superseded while its request was in flight must not publish the
-//       departing account's private rows, and must not have its captured ticket
-//       refreshed to authorise a late answer.
-//   R2  safe events and the reconnect must actually refresh the private rows the
-//       current authority covers, and account-level work must run with no trips.
-//   R3  a failed private read that KEEPS its row must still reach the notice and
-//       its Try again, and self success must stand on its own verdict.
-//   R4  fresh public fields must overlay eligible private fallbacks.
-//   R5  a refused optimistic edit must restore its own fields and leave an
-//       unrelated accepted change alone.
-//   R6  a disabled sign-out owns exactly one expected auth successor.
-//   R7  one reviewed social-link serializer serves every public projection.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { rowToPrivateUser, rowToPublicUser } from '../src/store/store'
 
@@ -289,7 +267,6 @@ beforeEach(() => {
   toast.mockClear()
 })
 
-// ============ R8/F4 — the authority gate, not a filter on the array ============
 describe('the catalogue installs under the authority that is current', () => {
   it('a same-ID admin loss plus a failed bulk read removes the other-account private row', async () => {
     const store = await freshStore()
@@ -426,7 +403,6 @@ describe('the catalogue installs under the authority that is current', () => {
   })
 })
 
-// ============ F2 — safe events, the public retry and the reconnect ============
 describe('the public paths never widen or erase the boundary', () => {
   it('a public refresh keeps the private rows the current authority covers', async () => {
     const store = await freshStore()
@@ -523,7 +499,6 @@ describe('the public paths never widen or erase the boundary', () => {
   })
 })
 
-// ============ F3 — the owned sign-out operation ============
 describe('the disabled sign-out belongs to the account that asked', () => {
   it('its own expected SIGNED_OUT successor keeps the explanation', async () => {
     const store = await freshStore()
@@ -679,7 +654,6 @@ describe('the disabled sign-out belongs to the account that asked', () => {
   })
 })
 
-// ============ F1 — the visible retry ============
 describe('a stale private row does not hide the failure', () => {
   it('the lookup reads failed while a private row is still in the cache', async () => {
     const { profileLookupState, needsProfileLookup, profileLookupBlocksRoute } = await import('../src/App')
@@ -733,7 +707,6 @@ describe('a stale private row does not hide the failure', () => {
   })
 })
 
-// ============ the writers all enter the one gate ============
 describe('every catalogue writer installs through the gate', () => {
   it('updateProfile edits and rolls back through the install', async () => {
     const store = await freshStore()
@@ -888,7 +861,6 @@ describe('every catalogue writer installs through the gate', () => {
   })
 })
 
-// ============ R2 — safe events and reconnect refresh the private rows ============
 describe('a private change reaches the screen through a real trigger', () => {
   it('an admin sees another account\'s changed private flag after a safe event', async () => {
     const store = await freshStore()
@@ -1016,7 +988,6 @@ describe('a private change reaches the screen through a real trigger', () => {
   })
 })
 
-// ============ R4 — fresh public fields overlay eligible private fallbacks ============
 describe('a public refresh overlays fresh fields onto a retained private row', () => {
   it('a remote rename, avatar and availability change reach the private row', async () => {
     const store = await freshStore()
@@ -1077,7 +1048,6 @@ describe('a public refresh overlays fresh fields onto a retained private row', (
   })
 })
 
-// ============ R7 — one reviewed social-link serializer ============
 describe('a hostile nested social key never survives a public projection', () => {
   const HOSTILE = {
     id: 'u-1', kind: 'private' as const, email: 'a@example.invalid', createdAt: 1,
@@ -1161,7 +1131,6 @@ describe('a hostile nested social key never survives a public projection', () =>
   })
 })
 
-// ============ REPAIR-06 A — rollback carries the operation that started it ============
 describe('a refused edit restores only its own operation-owned data', () => {
   it('a refusal from retired A cannot mutate B\'s admin-held A row', async () => {
     const store = await freshStore()
@@ -1243,7 +1212,6 @@ describe('a refused edit restores only its own operation-owned data', () => {
   })
 })
 
-// ============ REPAIR-06 A — delete restores only its own entry ============
 describe('a refused delete restores only the row it removed', () => {
   it('a refusal preserves an unrelated accepted rename', async () => {
     const store = await freshStore()
@@ -1311,7 +1279,6 @@ describe('a refused delete restores only the row it removed', () => {
   })
 })
 
-// ============ REPAIR-06 B — a first-time optional field ============
 describe('ownership covers a field whose prior value was absent', () => {
   it('a first-time creatorBio is removed when the write is refused', async () => {
     const store = await freshStore()
@@ -1367,7 +1334,6 @@ describe('ownership covers a field whose prior value was absent', () => {
   })
 })
 
-// ============ REPAIR-06 C — the sign-out owns its record on every branch ============
 describe('a disabled sign-out owns its record on every branch', () => {
   it('a same-ID replacement that stays active is not the expected successor', async () => {
     const store = await freshStore()
@@ -1445,7 +1411,6 @@ describe('a disabled sign-out owns its record on every branch', () => {
   })
 })
 
-// ============ REPAIR-06 D — self provenance is separate from the admin lease ============
 describe('an admin loss keeps the same session\'s self row and drops the others', () => {
   it('the constructor keeps self private while other rows become public', async () => {
     const { buildCatalog } = await import('../src/store/profileCatalog')
@@ -1530,7 +1495,6 @@ describe('an admin loss keeps the same session\'s self row and drops the others'
   })
 })
 
-// ============ REPAIR-06 E — a private refresh says nothing about the public catalogue ============
 describe('a private refresh never certifies the public catalogue', () => {
   it('a public failure survives a successful private read through a safe event', async () => {
     const store = await freshStore()
@@ -1628,7 +1592,6 @@ describe('a private refresh never certifies the public catalogue', () => {
   })
 })
 
-// ============ REPAIR-06 F — the snapshot-load ticket ============
 describe('a signed-in offline snapshot boot keeps its safe identities', () => {
   const legacy = {
     users: [
@@ -1675,7 +1638,6 @@ describe('a signed-in offline snapshot boot keeps its safe identities', () => {
   })
 })
 
-// ============ REPAIR-06 G — captured credentials ============
 describe('session lifetime and ordered profile edits', () => {
   async function boot() {
     const store = await freshStore()
@@ -1717,6 +1679,21 @@ describe('session lifetime and ordered profile edits', () => {
     await flush()
     expect(store.currentUser()?.id).toBe('u-2')
     expect(store._isAdminForTest()).toBe(true)
+  })
+
+  it('does not revive bootstrap after resume adopts a newer session without a callback', async () => {
+    const store = await freshStore()
+    let release = () => {}
+    state.sessionReply = new Promise(resolve => { release = () => resolve({ data: { session: signedSession('u-1', '11111111-1111-4111-8111-111111111111') } }) })
+    store.init()
+    state.sessionUser = 'u-2'
+    state.sessionId = '22222222-2222-4222-8222-222222222222'
+    state.profileRows = { 'u-2': OTHER_PRIVATE }
+    await store.resumeSync()
+    expect(store.currentUser()?.id).toBe('u-2')
+    release()
+    await flush(); await flush()
+    expect(store.currentUser()?.id).toBe('u-2')
   })
 
   it('starts a same-account replacement before the old private response resolves', async () => {
@@ -1820,6 +1797,46 @@ describe('session lifetime and ordered profile edits', () => {
     state.writes[1].resolve(false)
     await second
     expect(store.currentUser()?.profile.homeCity).toBe('Accepted')
+  })
+
+  it('projects resume-time admin loss before private reads finish', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', true)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
+    store.init()
+    await flush(); await flush()
+    expect(privateIds(store)).toEqual(['u-1', 'u-2'])
+    state.sessionAdmin = false
+    let release = () => {}
+    state.deferred.__holdSelf = () => new Promise<void>(resolve => { release = resolve })
+    const pending = store.resumeSync()
+    await flush()
+    expect(store._isAdminForTest()).toBe(false)
+    expect(store.getSnapshot().users.find(user => user.id === 'u-2')?.kind).toBe('public')
+    expect(store.getSnapshot().users.find(user => user.id === 'u-2')).not.toHaveProperty('email')
+    release()
+    await pending
+  })
+
+  it.each(['hydrate', 'event'])('does not replace a newer %s with a held canonical reply', async newerRead => {
+    const store = await boot()
+    state.holdWrites = true
+    const edit = store.updateProfile({ homeCity: 'OlderCanonical' })
+    await flush()
+    let release = () => {}
+    state.deferred.__holdSelf = () => new Promise<void>(resolve => { release = resolve })
+    state.writes[0].resolve(true)
+    await edit
+    await flush()
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, home_city: 'NewerRead' } }
+    if (newerRead === 'hydrate') await store.resumeSync()
+    else store._applyRealtimeEventForTest('profile_cards', { eventType: 'UPDATE', table: 'profile_cards', schema: 'public', new: OWNER_CARD, old: {} } as never)
+    await flush(); await flush()
+    expect(store.currentUser()?.profile.homeCity).toBe('NewerRead')
+    release()
+    await flush(); await flush()
+    expect(store.currentUser()?.profile.homeCity).toBe('NewerRead')
   })
 
   it('drains an event arriving during the fourth refresh pass', async () => {

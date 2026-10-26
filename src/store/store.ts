@@ -111,7 +111,7 @@ interface DB {
 }
 
 /** The authority an installed catalogue was built under. See `DB.catalogAuthority`. */
-export interface CatalogStamp {
+interface CatalogStamp {
   userId: ID | null
   identityEpoch: number
   authorityEpoch: number
@@ -382,10 +382,6 @@ export async function rereadPublicSlices(): Promise<void> {
   // and overwriting with it would mark trips ok/failed on evidence this read
   // never collected. Only the two public slices move; `trips` is preserved.
   //
-  // #800 R7: each verdict comes from THAT read's own response. The previous form
-  // seeded the failure list with both slices and only ever removed `profiles`, so
-  // a fully successful retry still reported `suggested itineraries` failed — and
-  // CreatorPage kept its error branch over publications that had loaded.
   const failed: string[] = []
   try {
     const [publicUsers, pubRes] = await Promise.all([
@@ -499,7 +495,7 @@ export function rowToPublicUser(row: unknown): PublicUser {
  *   * `failed`  — the read itself failed: network, RLS refusal, missing table.
  *  A collapse of `failed` into `absent` used to let a public RPC success report
  *  the signed-in account as ready while it was simply unreadable. */
-export type PrivateReadOutcome = SliceRead<PrivateUser>
+type PrivateReadOutcome = SliceRead<PrivateUser>
 
 /** The credentials a private request is bound to.
  *
@@ -691,9 +687,6 @@ export function sanitizeSnapshotUsers(rows: unknown[]): PublicUser[] {
     // available. The administrative flag itself is NOT carried forward.
     const disabled = profile.isDisabled === true
     const available = profile.creatorAvailable === false ? false : !disabled
-    // The nested object is REBUILT from the reviewed keys. A return of the stored
-    // object kept whatever keys the snapshot held — an independent probe put a
-    // private canary in there and it survived.
     out.push({
       id: r.id,
       kind: 'public',
@@ -921,6 +914,7 @@ async function signOutDisabled(owner: Owner): Promise<boolean> {
  *  the 10 trips AFTER that patch — so the trips loaded and then vanished. A
  *  redundant hydrate for the same user now just awaits the in-flight one. */
 let activeHydrate: { userId: string | null; owner: Owner | null; authorityEpoch: number; promise: Promise<void | boolean> } | null = null
+let hydrateObservedSession: ((userId: string | null, owner: Owner | null) => Promise<void>) | null = null
 
 /** Monotonic id of the newest auth intent. Every auth event (sign-in, account
  *  switch, sign-out) bumps it, and a hydrate commits its `patch()` only while its
@@ -975,6 +969,7 @@ function observeAdminAuthority(): void {
     sessionOwner = { ...sessionOwner, authorityEpoch }
     if (sessionCredentials) sessionCredentials = { ...sessionCredentials, owner: sessionOwner }
   }
+  reprojectCatalog()
 }
 
 function scopeForInstall(): AccessScope {
@@ -1000,7 +995,7 @@ function previousCatalog(): PreviousCatalog {
 /** A read's ticket: the authority it was taken under, and the hydrate generation
  *  that issued it. An install is judged against BOTH, and a ticket is never
  *  refreshed to fit an answer that arrived late. */
-export interface InstallTicket {
+interface InstallTicket {
   scope: AccessScope
   generation: number
 }
@@ -1046,6 +1041,17 @@ function installCatalog(ticket: InstallTicket, reads: CatalogReads, previous?: P
   const retired = retiredReason(ticket)
   if (retired) return { status: 'retired', reason: retired }
   const scope = ticket.scope
+  const observedIds = new Set<ID>()
+  if (reads.public.requested && !reads.public.failed) {
+    for (const user of reads.public.users) observedIds.add(user.id)
+    if (reads.public.complete) for (const user of cache.users) observedIds.add(user.id)
+  }
+  if (reads.self.status === 'ok') observedIds.add(reads.self.value.id)
+  if (reads.self.status === 'absent' && scope.userId) observedIds.add(scope.userId)
+  if (reads.admin.status === 'ok') {
+    for (const user of [...cache.users, ...reads.admin.value]) observedIds.add(user.id)
+  }
+  for (const id of observedIds) profileReadRevisions.set(id, (profileReadRevisions.get(id) ?? 0) + 1)
   const built = buildCatalog(scope, reads, previous ?? previousCatalog())
   const result = { ...built, users: built.users.map(user => {
     const ledger = ledgers.get(user.id)
@@ -1065,7 +1071,7 @@ function installCatalog(ticket: InstallTicket, reads: CatalogReads, previous?: P
   return { status: 'installed', result }
 }
 
-export type InstallOutcome =
+type InstallOutcome =
   | { status: 'installed'; result: CatalogResult }
   | { status: 'retired'; reason: string }
 
@@ -1207,6 +1213,7 @@ interface OwnedFields {
  *  ordered intents issued against them. */
 const ledgers = new Map<ID, FieldLedger>()
 const profileMutationCursors = new Map<ID, number>()
+const profileReadRevisions = new Map<ID, number>()
 
 /** Install an optimistic edit to a private row, through the one gate.
  *
@@ -1563,20 +1570,20 @@ export function init(): void {
   }
 
   let authEvents = 0
+  hydrateObservedSession = hydrate
+  const initialObservation = ++observationSeq
   supabase.auth.getSession().then(({ data }) => {
-    if (authEvents > 0) return
+    if (authEvents > 0 || initialObservation !== observationSeq) return
     // Reserve this response's place in the observation order BEFORE the await's
     // result is applied, so a callback that lands while it is in flight can
     // supersede it rather than the response reviving an older session.
-    const observed = ++observationSeq
-    const owner = observeSession(data.session, observed)
+    const owner = observeSession(data.session, initialObservation)
     adminFromSession(data.session ?? null)
     observeAdminAuthority()
     void hydrate(data.session?.user?.id ?? null, owner)
   })
   supabase.auth.onAuthStateChange((event, session) => {
     ++authEvents
-    const before = authorityEpoch
     // The observation seam decides lifetime from the session key, not the event
     // name: a duplicate SIGNED_IN or a TOKEN_REFRESHED for the same session keeps
     // valid work, and a different session id retires it.
@@ -1587,7 +1594,6 @@ export function init(): void {
     // identity change at all, so `hydrate`'s account-change branch never runs.
     // Project the catalogue NOW, before any read: the private rows the old
     // authority unlocked must not wait for a round-trip to disappear.
-    if (authorityEpoch !== before) reprojectCatalog()
     void hydrate(session?.user?.id ?? null, owner)
   })
 }
@@ -1609,7 +1615,11 @@ export async function resumeSync(): Promise<void> {
   adminFromSession(data.session ?? null)
   observeAdminAuthority()
   const userId = data.session?.user?.id ?? null
-  if (!userId || !owner || !sameSession(owner, currentOwner())) return
+  if (!userId || !owner || cache.sessionUserId !== userId) {
+    await hydrateObservedSession?.(userId, owner)
+    return
+  }
+  if (!sameSession(owner, currentOwner())) return
   if (!isCurrentIdentity({ userId, epoch: identityEpoch })) return
   // Full refetch (notifications, trips, the lot). hydrate's same-user
   // dedupe would SKIP a plain hydrate() call — so go around it with a
@@ -2312,9 +2322,12 @@ async function reconcileProfileEdits(id: ID, scope: AccessScope): Promise<void> 
   const owner = currentOwner()
   const credentials = credentialsFor(owner)
   const cursor = profileMutationCursors.get(id)
+  const readRevision = profileReadRevisions.get(id)
+  const ticket = currentTicket()
   if (!owner || !credentials || !cursor || (id !== owner.userId && !scope.admin)) return
   const live = () => scope.identityEpoch === identityEpoch && scope.authorityEpoch === authorityEpoch
     && sameSession(owner, currentOwner()) && profileMutationCursors.get(id) === cursor && !ledgers.has(id)
+    && profileReadRevisions.get(id) === readRevision && retiredReason(ticket) === null
   try {
     const { data, error } = await pinBearer(supabase.from('profiles').select('*').eq('id', id).maybeSingle(), credentials.bearer)
     if (!live()) return
@@ -2322,7 +2335,7 @@ async function reconcileProfileEdits(id: ID, scope: AccessScope): Promise<void> 
     const before = previousCatalog()
     const row = data ? rowToPrivateUser(data) : null
     const users = before.users.map(user => user.id !== id ? user : row ?? toPublicUser(user))
-    installCatalog(currentTicket(), {
+    installCatalog(ticket, {
       public: { users: users.map(toPublicUser), complete: false, failed: false, requested: false },
       self: id === owner.userId ? row ? { status: 'ok', value: row } : { status: 'absent' } : { status: 'not-requested' },
       admin: { status: 'not-requested' },
@@ -2330,7 +2343,7 @@ async function reconcileProfileEdits(id: ID, scope: AccessScope): Promise<void> 
   } catch {
     if (!live()) return
     const failed: SliceRead<PrivateUser> = { status: 'failed', reason: 'profile reconciliation failed' }
-    installCatalog(currentTicket(), {
+    installCatalog(ticket, {
       public: { users: [], complete: false, failed: false, requested: false },
       self: id === owner.userId ? failed : { status: 'not-requested' },
       admin: id !== owner.userId ? { status: 'failed', reason: 'profile reconciliation failed' } : { status: 'not-requested' },

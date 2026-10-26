@@ -1,9 +1,8 @@
-// ============ #800 — the authority-aware profile catalogue ============
 //
 // `buildCatalog` decides the final contents of `cache.users` from the read
 // outcomes, the authority those reads were taken under, and the catalogue they
 // are replacing. The store's installer is the only writer.
-import type { CachedUser, ID, PrivateUser, PrivateUserProfile, PublicUser } from '../data/types'
+import type { CachedUser, ID, PrivateUser, PublicUser } from '../data/types'
 import { toPublicUser } from '../lib/publicProfile'
 
 /** The authority a read was taken under. Both epochs are captured BEFORE any
@@ -238,6 +237,3 @@ function freshCard(out: Map<ID, CachedUser>, id: ID): PublicUser | undefined {
   const held = out.get(id)
   return held?.kind === 'public' ? held : undefined
 }
-
-export type { PublicUser, PrivateUser, CachedUser }
-export type { PrivateUserProfile }

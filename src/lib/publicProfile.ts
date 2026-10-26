@@ -1,4 +1,3 @@
-// ============ #800 — the one public profile projection ============
 //
 // Every public shape of a cached identity is built here: the offline snapshot, the
 // authority downgrade, the private-to-public mutation conversion and the public

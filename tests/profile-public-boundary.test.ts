@@ -1,4 +1,3 @@
-// ============ #800 — the public/private profile boundary ============
 //
 // The database half is proved by the SQL probe; this file proves the CLIENT half
 // through the store's real seams: the mappers, the merge rule, the public read
@@ -221,7 +220,6 @@ describe('the merge rule', () => {
     expect(natural.find(u => u.id === 'u-2')?.kind).toBe('public')
   })
 
-  // ---- the independent probe's findings, as failing-first regressions ----
   it('a public rename lands on a privately cached identity without erasing its email', async () => {
     const { mergeUsers, rowToPublicUser, rowToPrivateUser } = await freshStore()
     const priv = rowToPrivateUser(OWNER_PRIVATE)
@@ -336,10 +334,6 @@ describe('the realtime dispatch', () => {
   })
 
   it('a remote rename of the SIGNED-IN user reaches the screen and keeps the account', async () => {
-    // The independent probe's finding, at the real dispatch seam: the channel
-    // subscribes to every `profile_cards` event, and the public-to-public rename
-    // always worked. What failed was a rename arriving while the cache held the
-    // PRIVATE variant — the old merge ignored it, so the screen kept the old name.
     const store = await freshStore()
     const { rowToPrivateUser, _applyRealtimeEventForTest } = store
     store.getSnapshot().sessionUserId = 'u-1'
@@ -407,10 +401,6 @@ describe('the offline snapshot', () => {
   })
 
   it('the write side projects a private identity instead of deleting it', async () => {
-    // An independent probe found the write side filtering private entries out
-    // entirely, which removed the signed-in user (and every admin-held account)
-    // from the offline public directory. The identity must survive; only the
-    // private DATA is dropped.
     const { publicOnlyUsers, rowToPrivateUser } = await freshStore()
     const users = publicOnlyUsers([rowToPrivateUser(OWNER_PRIVATE)])
 
@@ -542,7 +532,6 @@ describe('the disabled-account check', () => {
   })
 })
 
-// ============ #800 R4 — the delayed disabled check ============
 describe('the delayed disabled-account check', () => {
   it('an answer that arrives after an account switch signs nobody out', async () => {
     // The browser reproduction: account A has no private row, its `is_disabled`
@@ -611,7 +600,6 @@ describe('the delayed disabled-account check', () => {
   })
 })
 
-// ============ #800 R7 — truthful public retry verdicts ============
 describe('the public retry reports each slice from its own response', () => {
   it('a fully successful retry clears both failure verdicts', async () => {
     const store = await freshStore()
@@ -660,7 +648,6 @@ describe('the public retry reports each slice from its own response', () => {
   })
 })
 
-// ============ #800 R8 — private reads have their own verdict ============
 describe('the private read has its own verdict and retry', () => {
   // `resumeSync` is the real authorised re-hydration path (app-resume and the
   // reconnect retry), so these tests drive it rather than a private helper.

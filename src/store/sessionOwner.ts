@@ -12,7 +12,7 @@ export interface Credentials {
   bearer: string
 }
 
-export type AuthState =
+type AuthState =
   | { kind: 'anonymous' }
   | { kind: 'unavailable'; failure: 'missing-token' | 'malformed-token' | 'session-mismatch' }
   | { kind: 'active'; owner: Owner; credentials: Credentials }

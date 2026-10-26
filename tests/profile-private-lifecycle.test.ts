@@ -1,13 +1,3 @@
-// ============ #800 REPAIR-03 — the user-facing and lifecycle findings ============
-//
-// F1  actual self/admin consumers and a visible authorized retry
-// F2  authorized private refresh on reconnect, and a safe event path
-// F3  post-SDK-signOut continuation fenced to its own identity
-// F4  same-ID admin-authority loss downgrades other-account private rows
-// F5  the final catalogue is built after the read outcomes, not by aliasing
-//
-// Each finding was reproduced by root's browser probe or the reviewer's
-// fixed-source probe. These tests drive the same seams through the store.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { profileSession } from './helpers/profileSession'
@@ -180,7 +170,6 @@ beforeEach(() => {
   toast.mockClear()
 })
 
-// ============ F1 — the actual consumers and a working retry ============
 describe('the profile lookup follows the private read', () => {
   it('a failed private read reports failed, not a completed-without-account', async () => {
     const { profileLookupState } = await import('../src/App')
@@ -222,7 +211,6 @@ describe('the profile lookup follows the private read', () => {
   })
 })
 
-// ============ F2 — private refresh and safe events ============
 describe('the private reads are fenced to their caller', () => {
   it('an admin-authority loss during the read refuses rather than installing rows', async () => {
     const store = await freshStore()
@@ -257,7 +245,7 @@ describe('the private reads are fenced to their caller', () => {
     expect(store.getSnapshot().users).not.toContainEqual(expect.objectContaining({ id: 'u-2', kind: 'private' }))
   })
 
-  it('a remote disablement during the read refuses rather than installing rows', async () => {
+  it('an account switch during the read refuses rather than installing old rows', async () => {
     const store = await freshStore()
     state.profileRows = { 'u-1': OWNER_PRIVATE }
     state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
@@ -306,7 +294,6 @@ describe('the private reads are fenced to their caller', () => {
   })
 })
 
-// ============ F3 — the signOut completion is fenced ============
 describe('the sign-out completion belongs to its own identity', () => {
   it('an obsolete signOut completion does not clear the next account\'s admin cache', async () => {
     const store = await freshStore()
@@ -350,7 +337,6 @@ describe('the sign-out completion belongs to its own identity', () => {
   })
 })
 
-// ============ F4 — same-ID authority loss ============
 describe('a same-ID authority loss downgrades other-account private rows', () => {
   it('losing admin on the same id removes the private rows it unlocked', async () => {
     const store = await freshStore()
@@ -413,7 +399,6 @@ describe('a same-ID authority loss downgrades other-account private rows', () =>
   })
 })
 
-// ============ F5 — the catalogue is built, not aliased ============
 describe('the final catalogue is built after the read outcomes', () => {
   it('an admin bulk read produces a catalogue that is entirely private rows', async () => {
     const store = await freshStore()
