@@ -24,6 +24,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **SQL comments stay under the prose rules.** The checker now reads block comments beside statements and keeps nested comment bodies in scope. A later line comment cannot hide an earlier block comment.
+
 - **Group actions now apply as one piece.** One action used to write a stop and its receipt in two saves. A failed save could leave a stop with no receipt. It could also leave a receipt with no stop. Each action now sends one command. Its receipt returns both results, so the plan and its audit trail agree. A deleted or dangling stop now retries cleanly. A failed identity parse stops the command instead of writing a half state. Live SQL for this repair is written but not yet applied to the hosted database. (#838)
 
 - **Suggestions keep their picked place and intended day.** Editing location text clears its old pin. A deleted day needs an explicit choice from the current days. Same-day repeats need confirmation. Visits on different days remain allowed. Rejected visits do not block another addition. Place identity survives saves, reloads, imports and recovery. Keyless city picks retain their provider. Accepted and declined ideas stop influencing crew preferences. Failed saves keep drafts and metadata. Guarded contribution recovery preserves legacy rows and picked places.

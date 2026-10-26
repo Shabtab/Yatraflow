@@ -292,6 +292,35 @@ describe('STE100 lint (scripts/lint-ste.mjs)', () => {
     expect(good.code).toBe(0)
   }, SLOW)
 
+  it('reads block comments beside SQL statement text as prose', () => {
+    for (const text of [
+      `select 1; /* The owner ${BANNED_SHOULD} confirm this. */`,
+      `select 1,\n/* The owner ${BANNED_SHOULD} confirm this. */\n2;`,
+      `select 1; /* Check this. */ -- The owner ${BANNED_SHOULD} confirm this.`,
+      `select 1; /* The owner ${BANNED_SHOULD} confirm this. */ -- Check this.`,
+      `raise notice 'Check this.'; /* The owner ${BANNED_SHOULD} confirm this. */`,
+    ]) {
+      const result = runSql(text)
+      expect(result.code, text).toBe(1)
+      expect(result.out).toMatch(/must/)
+    }
+    expect(runSql('select 1; /* Check the value. */').code).toBe(0)
+  }, SLOW)
+
+  it('keeps nested SQL block comment bodies under the prose rules', () => {
+    for (const text of [
+      `/* Check this. /* Check that. */ The owner ${BANNED_SHOULD} confirm this. */`,
+      `/* Check this.\n /* Check that. */\n The owner ${BANNED_SHOULD} confirm this.\n */`,
+      `select 1; /* Check this. /* The owner ${BANNED_SHOULD} confirm this. */ */`,
+      `/* Check this.\n -- /* Check that. */ The owner ${BANNED_SHOULD} confirm this.\n */`,
+    ]) {
+      const result = runSql(text)
+      expect(result.code, text).toBe(1)
+      expect(result.out).toMatch(/must/)
+    }
+    expect(runSql('/* Check this. /* Check that. */ Check both. */ select 1;').code).toBe(0)
+  }, SLOW)
+
   it('reads an inline comment on a statement line as prose', () => {
     const bad = runSql('select 1; -- You should push to main.\n')
     expect(bad.code).toBe(1)

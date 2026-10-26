@@ -334,10 +334,11 @@ const SQL_STATEMENT_PROSE = /^raise\s+(?:exception|warning|notice|info|log|debug
 
 function sqlLineKinds(lines) {
   const kinds = []
-  let inBlock = false
+  let blockDepth = 0
   let inStatement = false
   for (const line of lines) {
-    const startsComment = !inStatement && sqlLineCommentAt(line) >= 0
+    const commentAt = sqlLineCommentAt(line)
+    const startsComment = blockDepth === 0 && !inStatement && commentAt >= 0 && !line.slice(0, commentAt).trim()
     if (startsComment) {
       const at = sqlLineCommentAt(line)
       kinds.push({ kind: 'comment', prose: line.slice(at + 2).trim() })
@@ -348,12 +349,16 @@ function sqlLineKinds(lines) {
     let block = ''
     let i = 0
     while (i < line.length) {
-      if (inBlock) {
-        const close = line.indexOf('*/', i)
-        block += ' ' + (close < 0 ? line.slice(i) : line.slice(i, close))
-        if (close < 0) { i = line.length; continue }
-        i = close + 2
-        inBlock = false
+      if (blockDepth > 0) {
+        const pair = line.slice(i, i + 2)
+        if (pair === '/*' || pair === '*/') {
+          blockDepth += pair === '/*' ? 1 : -1
+          block += ' '
+          i += 2
+        } else {
+          block += line[i]
+          i += 1
+        }
         continue
       }
       const ch = line[i]
@@ -374,7 +379,7 @@ function sqlLineKinds(lines) {
         }
       }
       if (ch === '/' && line[i + 1] === '*') {
-        inBlock = true
+        blockDepth = 1
         i += 2
         continue
       }
@@ -386,16 +391,17 @@ function sqlLineKinds(lines) {
       i += 1
     }
     const body = statement.replace(/\s+/g, ' ').trim()
+    const comments = [block.trim(), comment].filter(Boolean).join(' ')
     if (inStatement && !body && comment) {
-      kinds.push({ kind: 'comment', prose: comment })
+      kinds.push({ kind: 'comment', prose: comments })
       continue
     }
     if (!inStatement && !body) {
-      kinds.push({ kind: 'comment', prose: block.trim() })
+      kinds.push({ kind: 'comment', prose: comments })
       continue
     }
     const raise = SQL_STATEMENT_PROSE.test(body) ? sqlStatementProse(body) : null
-    kinds.push({ kind: 'statement', prose: comment, message: raise })
+    kinds.push({ kind: 'statement', prose: [comments, raise].filter(Boolean).join(' ') })
     // A function body ends at `$$;`, and a plain statement at `;`. Both close
     // the statement, so the next line starts fresh.
     if (/(?:^|[^$])\$\$;\s*$|;\s*$/.test(body) && !/^begin\b/i.test(body)) inStatement = false
