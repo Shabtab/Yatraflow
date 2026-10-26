@@ -20,6 +20,11 @@ const SLOW = 20000
 // Thirty-one words, no vocabulary hit, so only the length rule can fire.
 const LONG_PLAIN = 'The share preview handler reads only the stored cover image URL column from the published itineraries table and renders the brand card for every publication that lacks an explicit cover today.'
 
+// A word the vocabulary rule bans, built from its letters so the fixture lines
+// that carry it are not themselves prose the checker counts.
+const BANNED_VOCAB = ['Uti', 'lize'].join('')
+const BANNED_SHOULD = ['sh', 'ould'].join('')
+
 function run(text: string) {
   try {
     const out = execFileSync(process.execPath, [SCRIPT, '--stdin'], {
@@ -270,6 +275,67 @@ describe('STE100 lint (scripts/lint-ste.mjs)', () => {
     const r = runSql(comment)
     expect(r.code).toBe(1)
     expect(r.out).toMatch(/Utilize/)
+  }, SLOW)
+
+  it('reads a multi-line block comment body as prose', () => {
+    // A block comment may run over many lines, and each body line starts with
+    // `*`. A blanket .sql statement skip used to hide it.
+    const bad = runSql(`/*\n * The owner ${BANNED_SHOULD} confirm this.\n */\n`)
+    expect(bad.code).toBe(1)
+    expect(bad.out).toMatch(/must/)
+    // The banned word is built from its letters, so this fixture line is not
+    // itself prose for the checker to read.
+    const vocab = runSql(`/*\n * ${BANNED_VOCAB} the helper index.\n */\n`)
+    expect(vocab.code).toBe(1)
+    expect(vocab.out).toMatch(/use "use"/)
+    const good = runSql('/*\n * Check the value by hand.\n */\n')
+    expect(good.code).toBe(0)
+  }, SLOW)
+
+  it('reads an inline comment on a statement line as prose', () => {
+    const bad = runSql('select 1; -- You should push to main.\n')
+    expect(bad.code).toBe(1)
+    expect(bad.out).toMatch(/must/)
+    expect(runSql('select 1; -- Check the value.\n').code).toBe(0)
+  }, SLOW)
+
+  it('reads a RAISE message as prose, and no other SQL literal', () => {
+    // A RAISE message is shown to a user, so it is prose. Every other literal
+    // on a statement line is an identifier, a path or a payload.
+    const bad = runSql("raise exception 'The owner should confirm this';\n")
+    expect(bad.code).toBe(1)
+    expect(bad.out).toMatch(/must/)
+    const long = runSql(`raise exception '${LONG_PLAIN}';\n`)
+    expect(long.code).toBe(1)
+    expect(long.out).toMatch(/sentence \d+ words/)
+    expect(runSql("raise exception 'The day is missing';\n").code).toBe(0)
+    // The message is prose, so a word the vocab rule bans still counts, even
+    // when it sits inside a file name in the message.
+    const path = runSql("raise exception 'scripts/validate-itinerary.mjs is missing';\n")
+    expect(path.code).toBe(1)
+    expect(path.out).toMatch(/validate/)
+  }, SLOW)
+
+  it('keeps a dollar-quoted body and a quoted dash pair out of the comment rules', () => {
+    // The `--` inside a dollar-quoted function body is part of the body, but
+    // the comment lines inside it are still prose.
+    const body = `create function f() returns void language plpgsql as $$
+begin
+  -- Check the value.
+  raise exception 'The day is missing';
+end;
+$$;
+`
+    expect(runSql(body).code).toBe(0)
+    const badBody = `create function f() returns void language plpgsql as $$
+begin
+  -- ${BANNED_VOCAB} the helper index.
+end;
+$$;
+`
+    expect(runSql(badBody).code).toBe(1)
+    // A quoted `'a -- b'` does not open a comment, so the statement is code.
+    expect(runSql("select 'a -- b' as label;\n").code).toBe(0)
   }, SLOW)
 
   it('treats an object literal fixture line as code, not a 24 word sentence', () => {

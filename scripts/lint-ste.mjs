@@ -124,15 +124,23 @@ function stripListMarker(line) {
   return line.slice(m[0].length).replace(TASK_BOX, '')
 }
 
+const SQL_RAISE = /^raise\s+(?:exception|warning|notice|info|log|debug)\b/i
+
+// The prose of a SQL statement: a RAISE message is shown to a user, so it is
+// prose; every other literal on a statement line is an identifier, a path or a
+// payload. This is the one supported string surface, not an all-string rule.
+function sqlStatementProse(text) {
+  if (!SQL_RAISE.test(text.trim())) return null
+  const quote = text.indexOf("'")
+  if (quote < 0) return null
+  return readSqlQuoted(text, quote).value
+}
+
 function isProse(line, file) {
   const raw = line.trim()
   if (!raw) return false
   if (raw.startsWith('#')) return false        // heading
   if (raw.startsWith('```')) return false      // fence
-  // A SQL file's prose is its comments. Every other line of a .sql file is a
-  // statement, whose keywords and identifiers can read as English (the DDL that
-  // re-checks a table constraint is one), so only comment lines are checked.
-  if (file.endsWith('.sql') && !/^(?:--|\/\*)/.test(raw)) return false
   // The code rules judge the text after the list marker and the task box.
   const t = stripListMarker(raw)
   if (!t) return false
@@ -272,6 +280,130 @@ function indentWidth(line) {
   return /^[ \t]*/.exec(line)[0].replace(/\t/g, '    ').length
 }
 
+// Reads a SQL single-quoted literal that opens at `start`. A doubled quote is
+// one literal quote inside the value.
+function readSqlQuoted(text, start) {
+  let i = start + 1
+  let value = ''
+  while (i < text.length) {
+    if (text[i] === "'") {
+      if (text[i + 1] === "'") {
+        value += "'"
+        i += 2
+        continue
+      }
+      return { value, end: i + 1, closed: true }
+    }
+    value += text[i]
+    i += 1
+  }
+  return { value, end: text.length, closed: false }
+}
+
+// The offset of a leading `--` comment, or -1. A `--` inside a quoted literal
+// or a dollar-quoted body is not a comment.
+function sqlLineCommentAt(text) {
+  let i = 0
+  while (i < text.length) {
+    const ch = text[i]
+    if (ch === "'") {
+      i = readSqlQuoted(text, i).end
+      continue
+    }
+    if (ch === '$') {
+      const m = /^\$\w*\$/.exec(text.slice(i))
+      if (m) {
+        const close = text.indexOf(m[0], i + m[0].length)
+        i = close < 0 ? text.length : close + m[0].length
+        continue
+      }
+    }
+    if (ch === '-' && text[i + 1] === '-') return i
+    i += 1
+  }
+  return -1
+}
+
+// Classifies the lines of a SQL file as `comment` or `statement`, and returns
+// the prose each one carries. A block comment may run over many lines, and a
+// statement keeps going until its `;`, so both carry state from line to line.
+// The prose of a comment is its body; the prose of a statement is the RAISE
+// message it carries, if any. A `--` comment that starts a line is a comment
+// line, even in the middle of a statement. Only SQL files get these kinds.
+const SQL_STATEMENT_PROSE = /^raise\s+(?:exception|warning|notice|info|log|debug)\b/i
+
+function sqlLineKinds(lines) {
+  const kinds = []
+  let inBlock = false
+  let inStatement = false
+  for (const line of lines) {
+    const startsComment = !inStatement && sqlLineCommentAt(line) >= 0
+    if (startsComment) {
+      const at = sqlLineCommentAt(line)
+      kinds.push({ kind: 'comment', prose: line.slice(at + 2).trim() })
+      continue
+    }
+    let statement = ''
+    let comment = ''
+    let block = ''
+    let i = 0
+    while (i < line.length) {
+      if (inBlock) {
+        const close = line.indexOf('*/', i)
+        block += ' ' + (close < 0 ? line.slice(i) : line.slice(i, close))
+        if (close < 0) { i = line.length; continue }
+        i = close + 2
+        inBlock = false
+        continue
+      }
+      const ch = line[i]
+      if (ch === "'") {
+        const q = readSqlQuoted(line, i)
+        statement += line.slice(i, q.end)
+        i = q.end
+        continue
+      }
+      if (ch === '$') {
+        const m = /^\$\w*\$/.exec(line.slice(i))
+        if (m) {
+          const close = line.indexOf(m[0], i + m[0].length)
+          const end = close < 0 ? line.length : close + m[0].length
+          statement += line.slice(i, end)
+          i = end
+          continue
+        }
+      }
+      if (ch === '/' && line[i + 1] === '*') {
+        inBlock = true
+        i += 2
+        continue
+      }
+      if (ch === '-' && line[i + 1] === '-') {
+        comment = line.slice(i + 2).trim()
+        break
+      }
+      statement += ch
+      i += 1
+    }
+    const body = statement.replace(/\s+/g, ' ').trim()
+    if (inStatement && !body && comment) {
+      kinds.push({ kind: 'comment', prose: comment })
+      continue
+    }
+    if (!inStatement && !body) {
+      kinds.push({ kind: 'comment', prose: block.trim() })
+      continue
+    }
+    const raise = SQL_STATEMENT_PROSE.test(body) ? sqlStatementProse(body) : null
+    kinds.push({ kind: 'statement', prose: comment, message: raise })
+    // A function body ends at `$$;`, and a plain statement at `;`. Both close
+    // the statement, so the next line starts fresh.
+    if (/(?:^|[^$])\$\$;\s*$|;\s*$/.test(body) && !/^begin\b/i.test(body)) inStatement = false
+    else inStatement = true
+  }
+  return kinds
+}
+
 // Directory prefixes the diff runs skip. Each entry names its reason beside it.
 const EXCLUDED_PATH_PREFIXES = [
   'docs/consistency/', // planning notes written before the STE rules applied
@@ -283,13 +415,34 @@ function isExcludedPath(file) {
 }
 
 // Checks one line. A list item in a fence is code, and an indented block is
-// code, so both are skipped. A plain line in a fence is still checked.
-function checkIfProse(file, lineno, text, kind = 'text') {
-  if (kind === 'indented') return
-  if (kind === 'fenced' && LIST_MARKER.test(text)) return
+// code, so both are skipped. A plain line in a fence is still checked. A SQL
+// file supplies its own kinds, and the prose its scanner found.
+function checkIfProse(file, lineno, text, kind = 'text', prose) {
+  const name = kind && typeof kind === 'object' ? kind.kind : kind
+  if (name === 'indented') return
+  if (name === 'fenced' && LIST_MARKER.test(text)) return
+  if (name === 'comment' || name === 'statement') {
+    if (!prose) return
+    checkedLines += 1
+    checkLine(file, lineno, prose)
+    return
+  }
   if (!isProse(text, file)) return
   checkedLines += 1
   checkLine(file, lineno, text)
+}
+
+// The kinds a file uses for its lines. A SQL file is read as comments and
+// statements, so a block-comment body and a RAISE message are prose while the
+// statements stay code.
+function kindsFor(file, lines) {
+  return file.endsWith('.sql') ? sqlLineKinds(lines) : lineKinds(lines)
+}
+
+function proseOf(kind) {
+  if (!kind || typeof kind !== 'object') return undefined
+  if (kind.message !== undefined) return kind.message || undefined
+  return kind.prose
 }
 
 // Git runs with core.quotePath off, so file names stay unquoted for the parser.
@@ -359,8 +512,9 @@ function checkAdded(added, staged) {
   const kinds = new Map()
   for (const a of added) {
     if (isExcludedPath(a.file)) continue
-    if (!kinds.has(a.file)) kinds.set(a.file, lineKinds(newText(a.file, staged).split(/\r?\n/)))
-    checkIfProse(a.file, a.lineno, a.text, kinds.get(a.file)[a.lineno - 1])
+    if (!kinds.has(a.file)) kinds.set(a.file, kindsFor(a.file, newText(a.file, staged).split(/\r?\n/)))
+    const kind = kinds.get(a.file)[a.lineno - 1]
+    checkIfProse(a.file, a.lineno, a.text, kind, proseOf(kind))
   }
 }
 
@@ -414,8 +568,8 @@ function rangeNote(base, added) {
 // Checks every line of a whole text, such as a file or stdin.
 function checkWholeText(file, text) {
   const lines = text.split(/\r?\n/)
-  const kinds = lineKinds(lines)
-  lines.forEach((line, i) => checkIfProse(file, i + 1, line, kinds[i]))
+  const kinds = kindsFor(file, lines)
+  lines.forEach((line, i) => checkIfProse(file, i + 1, line, kinds[i], proseOf(kinds[i])))
 }
 
 function main() {

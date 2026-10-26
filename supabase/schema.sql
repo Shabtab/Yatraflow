@@ -1947,6 +1947,33 @@ revoke all on function public.record_trip_contribution_delete() from public, ano
 create trigger trips_record_contribution_delete before delete on public.trips
 for each row execute function public.record_trip_contribution_delete();
 
+-- Remove direct whole-row write paths, including the authenticated admin escape
+-- hatch. SELECT remains available to admins. Service-role recovery remains an
+-- explicit trusted backend operation.
+drop policy if exists "suggestions write" on public.suggestions;
+drop policy if exists "suggestions insert" on public.suggestions;
+drop policy if exists "suggestions update" on public.suggestions;
+drop policy if exists "suggestions delete" on public.suggestions;
+drop policy if exists "admin write" on public.suggestions;
+drop policy if exists "decisions write" on public.decisions;
+drop policy if exists "decisions insert" on public.decisions;
+drop policy if exists "decisions update" on public.decisions;
+drop policy if exists "decisions delete" on public.decisions;
+drop policy if exists "admin write" on public.decisions;
+drop policy if exists "activity write" on public.activity;
+drop policy if exists "activity insert" on public.activity;
+drop policy if exists "activity update" on public.activity;
+drop policy if exists "activity delete" on public.activity;
+drop policy if exists "admin write" on public.activity;
+
+-- Editors may still change suggestion/decision workflow fields. The trigger
+-- blocks direct replacement of ballots, comments, identities, options or scope.
+create policy "suggestions update" on public.suggestions for update
+  using (public.is_editor(trip_id)) with check (public.is_editor(trip_id));
+create policy "suggestions delete" on public.suggestions for delete using (public.is_editor(trip_id) and (proposed_by = auth.uid() or exists (select 1 from public.trips t where t.id = suggestions.trip_id and t.owner_id = auth.uid())));
+create policy "decisions update" on public.decisions for update
+  using (public.is_editor(trip_id)) with check (public.is_editor(trip_id));
+create policy "decisions delete" on public.decisions for delete using (public.is_editor(trip_id) and (raised_by = auth.uid() or exists (select 1 from public.trips t where t.id = decisions.trip_id and t.owner_id = auth.uid())));
 
 drop trigger if exists suggestions_guard_contributions on public.suggestions;
 drop trigger if exists decisions_guard_contributions on public.decisions;
