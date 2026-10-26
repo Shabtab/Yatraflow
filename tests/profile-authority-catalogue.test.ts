@@ -1839,6 +1839,35 @@ describe('session lifetime and ordered profile edits', () => {
     expect(store.currentUser()?.profile.homeCity).toBe('NewerRead')
   })
 
+  it.each([false, true])('keeps a public event over an older canonical reply when private refresh succeeds=%s', async succeeds => {
+    const store = await boot()
+    state.holdWrites = true
+    const edit = store.updateProfile({ homeCity: 'OlderCanonical' })
+    await flush()
+    let releaseCanonical = () => {}
+    state.deferred.__holdSelf = () => new Promise<void>(resolve => { releaseCanonical = resolve })
+    state.writes[0].resolve(true)
+    await edit
+    await flush()
+    let releaseRefresh = () => {}
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, name: 'NewEventName' } }
+    if (!succeeds) state.profileErrors['u-1'] = { message: 'private refresh failed' }
+    state.deferred.__holdSelf = () => new Promise<void>(resolve => { releaseRefresh = resolve })
+    store._applyRealtimeEventForTest('profile_cards', {
+      eventType: 'UPDATE', table: 'profile_cards', schema: 'public',
+      new: { ...OWNER_CARD, name: 'NewEventName' }, old: {},
+    } as never)
+    await flush()
+    expect(store.currentUser()?.profile.name).toBe('NewEventName')
+    releaseCanonical()
+    await flush(); await flush()
+    expect(store.currentUser()?.profile.name).toBe('NewEventName')
+    releaseRefresh()
+    await flush(); await flush()
+    expect(store.currentUser()?.profile.name).toBe('NewEventName')
+    expect(store.getSnapshot().sliceReads?.['self profile']).toBe(succeeds ? 'ok' : 'failed')
+  })
+
   it('drains an event arriving during the fourth refresh pass', async () => {
     const store = await boot()
     const trigger = () => store._applyRealtimeEventForTest('profile_cards', {

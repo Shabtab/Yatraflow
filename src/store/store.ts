@@ -8168,6 +8168,7 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       // Where the caller is authorised for that row's private half, the event also
       // asks for it, coalesced so a burst shares one read.
       const ticket = currentTicket()
+      if (id !== undefined) profileReadRevisions.set(id, (profileReadRevisions.get(id) ?? 0) + 1)
       const merged = event === 'DELETE'
         ? cache.users.filter(u => u.id !== id)
         : mergeUsers(cache.users, [rowToPublicUser(row)])

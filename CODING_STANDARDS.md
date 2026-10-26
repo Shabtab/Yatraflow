@@ -33,6 +33,8 @@ anywhere in this repo means the entry labelled `6b` below.
 Source-contract tests must handle both LF and CRLF line endings.
 Tests for helper use must check the call site. A function definition does not prove that callers use it.
 
+Record fresh row events independently of whole-catalogue read verdicts. Test delayed reconciliation while the event's private refresh remains pending or fails.
+
 Query changes can remount a form when its page key includes the full URL. Exclude only step navigation from that key. Preserve keys for new entries and seed changes. Prove that Next, Back and Review edits keep live answers.
 
 Flight records can exist without stored stops. Protect their days during date reconciliation and preserve them through imports and snapshots.
