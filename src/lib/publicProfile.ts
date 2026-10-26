@@ -1,10 +1,8 @@
 // ============ #800 — the one public profile projection ============
 //
-// Every public shape of a cached identity is built here: the offline snapshot,
-// the authority downgrade, the private-to-public mutation conversion and the
-// public fallback card. One implementation, so a second one cannot disagree with
-// it — and so the nested allowlist below is applied on every path rather than
-// only the ones somebody remembered to sanitise.
+// Every public shape of a cached identity is built here: the offline snapshot, the
+// authority downgrade, the private-to-public mutation conversion and the public
+// fallback card.
 import type { CachedUser, PublicUser, PublicUserProfile } from '../data/types'
 
 /** The reviewed nested social-links allowlist, rebuilt from an untrusted value.

@@ -66,9 +66,15 @@ describe('notification read state', () => {
   })
 
   it('keeps an authenticated profile available after a failed refresh', () => {
-    expect(needsProfileLookup('userA', false)).toBe(true)
-    expect(needsProfileLookup('userA', true)).toBe(false)
-    expect(needsProfileLookup(null, false)).toBe(false)
+    // The verdict argument has no default: a caller that omits it would silently
+    // treat a failed read as settled.
+    expect(needsProfileLookup('userA', false, 'ready')).toBe(true)
+    expect(needsProfileLookup('userA', true, 'ready')).toBe(false)
+    expect(needsProfileLookup('userA', false, 'reading')).toBe(true)
+    // A row plus a read still in flight is settled: the previous row stands.
+    expect(needsProfileLookup('userA', true, 'reading')).toBe(false)
+    expect(needsProfileLookup('userA', true, 'failed')).toBe(true)
+    expect(needsProfileLookup(null, false, 'failed')).toBe(false)
     expect(profileLookupState('userA', false, { profiles: 'ok' })).toBe('missing')
     expect(profileLookupState('userA', false, {})).toBe('reading')
     expect(profileLookupState(null, false, { profiles: 'failed' })).toBe('anonymous')

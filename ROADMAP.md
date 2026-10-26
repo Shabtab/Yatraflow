@@ -41,6 +41,52 @@ number collides with a shipped release, the ledger wins.
 
 ## Open issues
 
+### Issue #800: protect private profiles
+
+Status: the user confirmed the specification and local implementation delegation on 2026-10-25.
+The fixed design base is `85ef831ff24f13391babbda73b884b8f2d71753e` on `test`.
+
+Implementation status: the SQL boundary, the public projection, the private read rule and the
+authority-aware catalogue are complete locally on `fix/800-public-profile-boundary-minimax`. The
+typecheck, the focused suites, the lint ratchet and the prose gate pass on that candidate. The
+browser checks and the one full verification gate below are root's and are PENDING. Nothing here
+claims they have run.
+
+The user confirmed these privacy choices on 2026-10-25:
+
+- Keep home city and languages private. Remove them from public creator pages.
+- Keep names and avatars in past crews when an account is disabled.
+- Hide disabled accounts from creator pages and public discovery.
+
+The repair must meet these requirements:
+
+- Limit private profile reads to the authenticated owner and authorized admins.
+- Preserve restrictive disabled-account rules and self profile updates.
+- Provide a typed public-profile RPC with an explicit field allowlist.
+- Expose only names, avatars, IDs, and reviewed public creator metadata.
+- Allow only reviewed YouTube and Instagram keys inside public social links.
+- Keep email, location, languages, preferences, account dates, and administrative flags private.
+- Distinguish retained crew identity from public creator availability without exposing administrative flags.
+- Preserve current publication access rules, including buyer access to withdrawn plans.
+- Remove other members' email addresses from crew displays.
+- Separate public and private profile types, readers, and cache entries.
+- Scrub private fields from old offline snapshots and future public snapshots.
+- Prevent stale private data from surviving account changes or public refreshes.
+- Preserve public name and avatar updates without private Realtime payloads.
+- Update creator link previews, reconnect reads, and all four whole-row readers.
+- Audit alternate views, functions, grants, and admin audit access.
+- Add a forward migration and mirror its final contract in `supabase/schema.sql`.
+- Fail safely when database support is missing. Never restore permissive reads as a fallback.
+
+MiniMax owns local implementation. Codex will integrate and verify locally.
+An independent fixed-candidate security review must pass before completion.
+Disposable SQL tests must reproduce the old leak before they prove the new boundary.
+Tests must cover anonymous users, owners, outsiders, crew, admins, and disabled accounts.
+Browser checks must cover discovery, creator pages, crew identity, account changes, and profile edits.
+Run one full verification gate on the exact final candidate after focused checks pass.
+Hosted Auth and Realtime remain unverified until separately authorized staging checks run.
+Pushes, pull requests, hosted SQL, deployments, and live data changes need separate approval.
+
 You must read current counts from GitHub with `gh issue list --state open --limit 1000`.
 This table tracks three named sets, not the full queue. These sets are the
 **launch-readiness criteria** (#227–#234), filed from

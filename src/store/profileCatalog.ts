@@ -43,6 +43,11 @@ export interface CatalogReads {
      *  mentions only the ids it carries and must not evict the rest. A complete
      *  read (hydrate, anonymous hydrate, the public retry) does. */
     complete: boolean
+    /** True when this run read the public catalogue, so its outcome is
+     *  authoritative for the `profiles` verdict. A run that never asked — a
+     *  private-only refresh, an optimistic edit, a reprojection — must not
+     *  certify or revoke a slice it did not read. */
+    requested: boolean
   }
   self: SliceRead<PrivateUser>
   admin: SliceRead<readonly PrivateUser[]>
@@ -55,6 +60,9 @@ export interface CatalogReads {
  *  revision is proof the admin authority is unchanged. */
 export interface PreviousCatalog {
   ownerUserId: ID | null
+  /** The identity generation the entries were collected under. A new login with
+   *  the SAME id moves it, so self provenance cannot be inherited across one. */
+  identityEpoch: number | null
   authorityEpoch: number | null
   /** Whether the previous catalogue held a PRIVATE, authorised row for its owner. */
   selfAuthorized: boolean
@@ -99,9 +107,14 @@ function retainPrivate(held: PrivateUser, fresh: PublicUser | undefined): Privat
 
 export function buildCatalog(scope: AccessScope, reads: CatalogReads, previous: PreviousCatalog): CatalogResult {
   const sameOwner = scope.userId !== null && previous.ownerUserId === scope.userId
+  // Self provenance and the admin lease are separate, and must be. A same-session
+  // admin loss keeps the caller's own authorised row while converting every other
+  // account's private row to public identity; a new login with the same id
+  // inherits neither.
+  const sameSession = sameOwner && previous.identityEpoch !== null && previous.identityEpoch === scope.identityEpoch
   // An unchanged revision is proof the admin authority is unchanged — and a
   // changed one is proof it is not, whatever the user id says.
-  const sameAuthority = sameOwner && previous.authorityEpoch !== null && previous.authorityEpoch === scope.authorityEpoch
+  const sameAuthority = sameSession && previous.authorityEpoch !== null && previous.authorityEpoch === scope.authorityEpoch
   const previousEligible = sameOwner ? previous.users : []
   // A private entry wins over a public card for the same id, so the order the
   // previous array happens to be in cannot decide which one is the fallback.
@@ -126,23 +139,27 @@ export function buildCatalog(scope: AccessScope, reads: CatalogReads, previous: 
 
   // 2. Self.
   let selfAuthorized = false
-  const priorSelf = sameAuthority && previous.selfAuthorized ? previousById.get(scope.userId ?? '') : undefined
+  const priorSelf = sameSession && previous.selfAuthorized ? previousById.get(scope.userId ?? '') : undefined
   if (reads.self.status === 'ok') {
     out.set(reads.self.value.id, reads.self.value)
     selfAuthorized = true
     verdicts['self profile'] = 'ok'
   } else if (reads.self.status === 'absent') {
-    // Authoritative absence: the account has no readable private row. Drop any
-    // stale self-private data rather than leaving it claiming to be current.
-    if (scope.userId !== null) out.delete(scope.userId)
+    // Authoritative absence: the account has no readable private row. Remove the
+    // PRIVATE state, and keep any public card this run successfully read — a
+    // disabled account still has a safe name and avatar.
+    if (scope.userId !== null) {
+      const held = out.get(scope.userId)
+      if (held?.kind === 'private') out.delete(scope.userId)
+    }
     verdicts['self profile'] = 'ok'
   } else if (reads.self.status === 'failed') {
     verdicts['self profile'] = 'failed'
     // A same-session fallback is allowed, and it carries the failed verdict: the
     // account keeps its row so the settings page can show a failure with a retry
     // instead of silently reading as a public card. It is still AUTHORISED —
-    // `sameAuthority` already proved the revision is unchanged — so the gate
-    // below must not downgrade it.
+    // `sameSession` already proved the revision is unchanged — so the gate
+    // below must not downgrade it. The admin lease is irrelevant here.
     if (priorSelf?.kind === 'private') {
       out.set(priorSelf.id, retainPrivate(priorSelf, freshCard(out, priorSelf.id)))
       selfAuthorized = true
@@ -197,7 +214,11 @@ export function buildCatalog(scope: AccessScope, reads: CatalogReads, previous: 
   // Not requested while still an admin: no verdict at all, so the previous one
   // stands. A public-only refresh must not certify or revoke the bulk read.
 
-  verdicts.profiles = reads.public.failed ? 'failed' : 'ok'
+  // A run that did not read the public catalogue emits no verdict for it, so a
+  // private-only refresh cannot turn a real public failure into a ready one.
+  if (reads.public.requested) {
+    verdicts.profiles = reads.public.failed ? 'failed' : 'ok'
+  }
 
   // 4. Authority gate. Runs last, over the whole map, and it is the only place
   //    that decides what the current authority covers.
@@ -217,18 +238,6 @@ export function buildCatalog(scope: AccessScope, reads: CatalogReads, previous: 
 function freshCard(out: Map<ID, CachedUser>, id: ID): PublicUser | undefined {
   const held = out.get(id)
   return held?.kind === 'public' ? held : undefined
-}
-
-/** Project an existing array under a new authority, with no new reads. Used by
- *  the auth callback to make a loss immediate: the projection happens before any
- *  network read can fail, so an other-account private row never survives long
- *  enough to be displayed. */
-export function normalizeCatalog(scope: AccessScope, previous: PreviousCatalog): CatalogResult {
-  return buildCatalog(scope, {
-    public: { users: [], failed: true, complete: false },
-    self: { status: 'not-requested' },
-    admin: { status: 'not-requested' },
-  }, previous)
 }
 
 export type { PublicUser, PrivateUser, CachedUser }

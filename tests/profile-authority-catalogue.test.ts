@@ -21,6 +21,7 @@
 //   R6  a disabled sign-out owns exactly one expected auth successor.
 //   R7  one reviewed social-link serializer serves every public projection.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { rowToPrivateUser, rowToPublicUser } from '../src/store/store'
 
 const { state, toast } = vi.hoisted(() => ({
   state: {
@@ -58,11 +59,23 @@ const { state, toast } = vi.hoisted(() => ({
     realtimeEvents: [] as string[],
     /** How many auth events the SDK delivered. */
     authEvents: 0,
+    /** Authorization headers a request pinned through `pinBearer`. */
+    pinnedHeaders: [] as Array<[string, string]>,
+    /** A held SDK signOut, so a test can change the session mid-flight. */
+    signOutGate: null as null | Promise<void>,
+    /** The offline snapshot `loadSnapshot` answers. */
+    snapshot: null as null | { users: unknown[]; trips: unknown[]; trashedTrips: unknown[]; published: unknown[]; suggestions: unknown[]; decisions: unknown[]; activity: unknown[]; savedAt: number },
   },
   toast: vi.fn(),
 }))
 
 vi.mock('../src/components/ui', () => ({ toast }))
+
+vi.mock('../src/lib/offlineCache', () => ({
+  loadSnapshot: async () => state.snapshot,
+  saveSnapshot: async () => undefined,
+  clearSnapshot: async () => undefined,
+}))
 
 vi.mock('../src/lib/supabase', () => {
   const builder = (table: string) => {
@@ -78,7 +91,7 @@ vi.mock('../src/lib/supabase', () => {
       update: () => b,
       upsert: () => b,
       delete: () => b,
-      setHeader: () => b,
+      setHeader: (name: string, value: string) => { state.pinnedHeaders.push([name, value]); return b },
       then: (res: (v: { data: unknown; error: unknown }) => unknown) => {
         state.tableReads.push(table)
         // Only an `eq('id', …)` filter is a single-row read. `.in('id', …)` (a
@@ -123,7 +136,7 @@ vi.mock('../src/lib/supabase', () => {
       removeChannel: () => Promise.resolve(),
       auth: {
         getSession: () => Promise.resolve({
-          data: { session: state.sessionUser ? { user: { id: state.sessionUser, app_metadata: state.sessionAdmin ? { role: 'masteradmin' } : {} }, access_token: 'tok' } : null },
+          data: { session: state.sessionUser ? { user: { id: state.sessionUser, app_metadata: state.sessionAdmin ? { role: 'masteradmin' } : {} }, access_token: `synthetic-${state.sessionUser}` } : null },
         }),
         signOut: () => {
           state.signOuts.push(String(state.sessionUser))
@@ -140,7 +153,7 @@ vi.mock('../src/lib/supabase', () => {
       rpc: (fn: string, args: unknown) => {
         state.rpcCalls.push({ fn, args })
         const b: Record<string, unknown> = {
-          setHeader: () => b,
+          setHeader: (name: string, value: string) => { state.pinnedHeaders.push([name, value]); return b },
           then: (res: (v: { data: unknown; error: unknown }) => unknown) => {
             const failed = (state.rpcError && fn === 'get_public_profile_cards')
               || (fn === 'is_disabled' && state.disabled === null)
@@ -224,6 +237,9 @@ beforeEach(() => {
   state.authHandler = null
   state.subscribeHandler = null
   state.realtimeEvents = []
+  state.pinnedHeaders = []
+  state.signOutGate = null
+  state.snapshot = null
   toast.mockClear()
 })
 
@@ -1037,7 +1053,7 @@ describe('a hostile nested social key never survives a public projection', () =>
         self: { status: 'not-requested' },
         admin: { status: 'not-requested' },
       },
-      { ownerUserId: 'u-1', authorityEpoch: 0, selfAuthorized: true, users: [HOSTILE] },
+      { ownerUserId: 'u-1', identityEpoch: 0, authorityEpoch: 0, selfAuthorized: true, users: [HOSTILE] },
     )
     const me = result.users.find(u => u.id === 'u-1') as unknown as { kind: string; profile: Record<string, unknown> }
     // The private row is retained — the private fields survive…
@@ -1095,5 +1111,572 @@ describe('a hostile nested social key never survives a public projection', () =>
     expect(Object.keys(u2.profile.socialLinks ?? {})).toEqual(['youtube'])
     expect(store.publicOnlyUsers(store.getSnapshot().users).find(u => u.id === 'u-2')?.profile.socialLinks)
       .toEqual({ youtube: 'https://y/@b' })
+  })
+})
+
+// ============ REPAIR-06 A — rollback carries the operation that started it ============
+describe('a refused edit restores only its own operation-owned data', () => {
+  it('a refusal from retired A cannot mutate B\'s admin-held A row', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, home_city: 'OldCity' } }
+    store.init()
+    await flush(); await flush()
+    expect((store.currentUser()?.profile as { homeCity?: string }).homeCity).toBe('OldCity')
+
+    // A's write is HELD by the table, so the refusal is still in flight when B
+    // signs in.
+    state.profileErrors = { 'u-1': { message: 'row-level security policy' } }
+    let release!: () => void
+    state.deferred.__holdSelf = () => new Promise<void>(r => { release = r })
+    const pending = store.updateProfile({ homeCity: 'NewCity' })
+    await flush()
+    expect((store.currentUser()?.profile as { homeCity?: string }).homeCity).toBe('NewCity')
+
+    // B signs in as admin and hydrates A's row, which currently holds the value
+    // A optimistically wrote.
+    state.sessionUser = 'u-2'
+    state.sessionAdmin = true
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, home_city: 'NewCity' }, 'u-2': { ...OTHER_PRIVATE } }
+    state.allProfileRows = [{ ...OWNER_PRIVATE, home_city: 'NewCity' }, { ...OTHER_PRIVATE }]
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-2', app_metadata: { role: 'masteradmin' } } })
+    await flush(); await flush()
+    const held = store.getSnapshot().users.find(u => u.id === 'u-1') as { kind: string; profile: { homeCity?: string } }
+    expect(held.kind).toBe('private')
+    expect(held.profile.homeCity).toBe('NewCity')
+
+    // A's refusal now lands. Its operation was retired by B's sign-in, so it
+    // writes nothing at all — even though the current value equals the value it
+    // optimistically wrote.
+    release()
+    expect(await pending).toEqual({ ok: false, error: 'Profile not saved. Check your connection and try again.' })
+    const after = store.getSnapshot().users.find(u => u.id === 'u-1') as { profile: { homeCity?: string } }
+    expect(after.profile.homeCity).toBe('NewCity')
+  })
+
+  it('a refusal under the same session still restores its own field', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, home_city: 'OldCity' } }
+    store.init()
+    await flush(); await flush()
+
+    state.profileErrors = { 'u-1': { message: 'row-level security policy' } }
+    expect(await store.updateProfile({ homeCity: 'NewCity' })).toEqual({
+      ok: false, error: 'Profile not saved. Check your connection and try again.',
+    })
+    expect((store.currentUser()?.profile as { homeCity?: string }).homeCity).toBe('OldCity')
+  })
+
+  it('a refused admin edit cannot revert another account\'s row after an authority loss', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', true)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
+    store.init()
+    await flush(); await flush()
+
+    state.rpcFailures = ['admin_set_disabled']
+    let release!: () => void
+    state.deferred.admin_set_disabled = () => new Promise<void>(r => { release = r })
+    const pending = store.adminSetDisabled('u-2', true)
+    await flush()
+    expect((store.getSnapshot().users.find(u => u.id === 'u-2') as { profile: { isDisabled?: boolean } }).profile.isDisabled).toBe(true)
+
+    // The caller loses admin authority while the RPC is in flight.
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    await flush()
+    expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.kind).toBe('public')
+
+    release()
+    expect(await pending).toBe(false)
+    // The retired operation wrote nothing back, and u-2 stays public.
+    expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.kind).toBe('public')
+    expect(store.getSnapshot().users.some(u => u.id === 'u-2' && u.kind === 'private')).toBe(false)
+  })
+})
+
+// ============ REPAIR-06 A — delete restores only its own entry ============
+describe('a refused delete restores only the row it removed', () => {
+  it('a refusal preserves an unrelated accepted rename', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', true)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
+    store.init()
+    await flush(); await flush()
+    expect(privateIds(store).sort()).toEqual(['u-1', 'u-2'])
+
+    let release!: () => void
+    state.deferred.admin_delete_user = () => new Promise<void>(r => { release = r })
+    state.rpcFailures = ['admin_delete_user']
+    const pending = store.adminDeleteUser('u-2')
+    await flush()
+    expect(store.getSnapshot().users.some(u => u.id === 'u-2')).toBe(false)
+
+    // An unrelated accepted rename lands while the delete is in flight.
+    state.allProfileRows = [OWNER_PRIVATE, { ...OTHER_PRIVATE, name: 'Bilal Ahmed' }]
+    store._applyRealtimeEventForTest('profile_cards', {
+      eventType: 'UPDATE', table: 'profile_cards', schema: 'public',
+      new: { ...OTHER_CARD, name: 'Bilal Ahmed' }, old: {},
+    } as never)
+    await flush(); await flush()
+    expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.profile.name).toBe('Bilal Ahmed')
+
+    release()
+    expect(await pending).toBe(false)
+    // The deleted row is back, and the rename survived.
+    const u2 = store.getSnapshot().users.find(u => u.id === 'u-2') as { kind: string; profile: { name: string } }
+    expect(u2.kind).toBe('private')
+    expect(u2.profile.name).toBe('Bilal Ahmed')
+    expect(privateIds(store).sort()).toEqual(['u-1', 'u-2'])
+  })
+
+  it('a refusal from retired A cannot restore A\'s row under B', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', true)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
+    store.init()
+    await flush(); await flush()
+
+    let release!: () => void
+    state.deferred.admin_delete_user = () => new Promise<void>(r => { release = r })
+    state.rpcFailures = ['admin_delete_user']
+    const pending = store.adminDeleteUser('u-2')
+    await flush()
+    expect(store.getSnapshot().users.some(u => u.id === 'u-2')).toBe(false)
+
+    // B signs in as admin while the delete is in flight.
+    state.sessionUser = 'u-2'
+    state.sessionAdmin = true
+    state.profileRows = { 'u-2': { ...OTHER_PRIVATE } }
+    state.allProfileRows = [{ ...OTHER_PRIVATE }]
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-2', app_metadata: { role: 'masteradmin' } } })
+    await flush(); await flush()
+    expect(privateIds(store)).toEqual(['u-2'])
+
+    release()
+    expect(await pending).toBe(false)
+    // The retired operation restored nothing, and A's row did not come back.
+    expect(privateIds(store)).toEqual(['u-2'])
+    expect(store.getSnapshot().users.some(u => u.id === 'u-1' && u.kind === 'private')).toBe(false)
+  })
+})
+
+// ============ REPAIR-06 B — a first-time optional field ============
+describe('ownership covers a field whose prior value was absent', () => {
+  it('a first-time creatorBio is removed when the write is refused', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    // creatorBio starts ABSENT.
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, creator_bio: null } }
+    store.init()
+    await flush(); await flush()
+    expect((store.currentUser()?.profile as { creatorBio?: string }).creatorBio).toBeUndefined()
+
+    state.profileErrors = { 'u-1': { message: 'row-level security policy' } }
+    expect(await store.updateProfile({ creatorBio: 'Rejected bio' })).toEqual({
+      ok: false, error: 'Profile not saved. Check your connection and try again.',
+    })
+    // The rejected value is gone, not left behind.
+    expect((store.currentUser()?.profile as { creatorBio?: string }).creatorBio).toBeUndefined()
+    // And it is absent from the public projection too, so nothing carries it.
+    const projected = store.publicOnlyUsers(store.getSnapshot().users).find(u => u.id === 'u-1')
+    expect(projected?.profile.creatorBio).toBeUndefined()
+  })
+
+  it('an unrelated accepted update survives a refused optional field', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, creator_bio: null } }
+    store.init()
+    await flush(); await flush()
+
+    // Hold the write so the event lands while it is in flight.
+    state.profileErrors = { 'u-1': { message: 'row-level security policy' } }
+    let release!: () => void
+    state.deferred.__holdSelf = () => new Promise<void>(r => { release = r })
+    const pending = store.updateProfile({ creatorBio: 'Rejected bio' })
+    await flush()
+    expect((store.currentUser()?.profile as { creatorBio?: string }).creatorBio).toBe('Rejected bio')
+
+    // A live event renames the account while the write is in flight. The source
+    // trigger updates the private row too.
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, creator_bio: null, name: 'Asha Nair' } }
+    store._applyRealtimeEventForTest('profile_cards', {
+      eventType: 'UPDATE', table: 'profile_cards', schema: 'public',
+      // The card carries no bio, so the only accepted change here is the name.
+      new: { id: 'u-1', name: 'Asha Nair', avatar_url: 'https://cdn/a.png', is_creator: true, creator_available: true }, old: {},
+    } as never)
+    await flush(); await flush()
+
+    release()
+    expect(await pending).toEqual({ ok: false, error: 'Profile not saved. Check your connection and try again.' })
+    const profile = store.currentUser()?.profile as { name: string; creatorBio?: string }
+    // The accepted rename survived, and the refused bio is gone.
+    expect(profile.name).toBe('Asha Nair')
+    expect(profile.creatorBio).toBeUndefined()
+  })
+})
+
+// ============ REPAIR-06 C — the sign-out owns its record on every branch ============
+describe('a disabled sign-out owns its record on every branch', () => {
+  it('a same-ID replacement that stays active is not the expected successor', async () => {
+    const store = await freshStore()
+    state.sessionUser = 'u-1'
+    state.disabled = false
+    state.profileRows = {}
+    store.init()
+    await flush()
+
+    let release!: () => void
+    state.signOutGate = new Promise<void>(r => { release = r })
+    state.disabled = true
+    const pending = store.enforceDisabledCheck()
+    await flush()
+    expect(state.signOuts).toEqual(['u-1'])
+
+    // The SAME id signs in again — a new session that moves no identity epoch —
+    // and stays active. The old sign-out's expected successor can never arrive.
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    expect(store.getSnapshot().sessionUserId).toBe('u-1')
+
+    release()
+    expect(await pending).toBe(false)
+    expect(toast).not.toHaveBeenCalledWith(
+      'This account has been disabled. Contact support if you think this is a mistake.', 'err',
+    )
+  })
+
+  it('a token refresh is not a replacement, so the expected successor survives', async () => {
+    const store = await freshStore()
+    state.sessionUser = 'u-1'
+    state.disabled = false
+    state.profileRows = {}
+    store.init()
+    await flush()
+
+    let release!: () => void
+    state.signOutGate = new Promise<void>(r => { release = r })
+    state.disabled = true
+    const pending = store.enforceDisabledCheck()
+    await flush()
+    expect(state.signOuts).toEqual(['u-1'])
+
+    // A token refresh carries the same session. It must not retire the record.
+    state.authHandler!('TOKEN_REFRESHED', { user: { id: 'u-1' } })
+    release()
+    expect(await pending).toBe(true)
+    expect(toast).toHaveBeenCalledWith(
+      'This account has been disabled. Contact support if you think this is a mistake.', 'err',
+    )
+  })
+
+  it('a reconnect and a direct check share one operation and one message', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    store.init()
+    await flush(); await flush()
+
+    state.disabled = true
+    state.rpcCalls = []
+    // The reconnect step calls recheckDisabledStatus directly, which is the entry
+    // point the old serialization did not cover.
+    state.subscribeHandler!('SUBSCRIBED')
+    state.subscribeHandler!('SUBSCRIBED')
+    const direct = store.recheckDisabledStatus()
+    await flush()
+
+    // One SDK sign-out and one explanation, not two.
+    expect(state.signOuts).toEqual(['u-1'])
+    expect(await direct).toBe(true)
+    const calls = toast.mock.calls.filter(c => c[0] === 'This account has been disabled. Contact support if you think this is a mistake.')
+    expect(calls).toHaveLength(1)
+  })
+})
+
+// ============ REPAIR-06 D — self provenance is separate from the admin lease ============
+describe('an admin loss keeps the same session\'s self row and drops the others', () => {
+  it('the constructor keeps self private while other rows become public', async () => {
+    const { buildCatalog } = await import('../src/store/profileCatalog')
+    const previous = {
+      ownerUserId: 'u-1', identityEpoch: 0, authorityEpoch: 0, selfAuthorized: true,
+      users: [
+        { ...rowToPrivateUser(OWNER_PRIVATE) },
+        { ...rowToPrivateUser(OTHER_PRIVATE) },
+      ],
+    }
+    // Admin lost: the authority revision moved, the identity generation did not.
+    const result = buildCatalog(
+      { userId: 'u-1', identityEpoch: 0, authorityEpoch: 1, admin: false },
+      {
+        public: { users: [], failed: true, complete: false, requested: false },
+        self: { status: 'not-requested' },
+        admin: { status: 'not-requested' },
+      },
+      previous,
+    )
+    expect(result.users.find(u => u.id === 'u-1')?.kind).toBe('private')
+    expect(result.users.find(u => u.id === 'u-2')?.kind).toBe('public')
+  })
+
+  it('a new login with the same id does not inherit the self fallback', async () => {
+    const { buildCatalog } = await import('../src/store/profileCatalog')
+    const previous = {
+      ownerUserId: 'u-1', identityEpoch: 0, authorityEpoch: 0, selfAuthorized: true,
+      users: [{ ...rowToPrivateUser(OWNER_PRIVATE) }],
+    }
+    const result = buildCatalog(
+      { userId: 'u-1', identityEpoch: 1, authorityEpoch: 0, admin: false },
+      {
+        public: { users: [], failed: true, complete: false, requested: false },
+        self: { status: 'not-requested' },
+        admin: { status: 'not-requested' },
+      },
+      previous,
+    )
+    expect(result.users.find(u => u.id === 'u-1')?.kind).toBe('public')
+  })
+
+  it('the auth callback keeps self private and downgrades the rest on a loss', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', true)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
+    store.init()
+    await flush(); await flush()
+    expect(privateIds(store).sort()).toEqual(['u-1', 'u-2'])
+
+    // Same id, no role: the authority revision moves, the identity generation
+    // does not, and the reprojection runs before any read.
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
+    await flush(); await flush()
+    expect(privateIds(store)).toEqual(['u-1'])
+    expect(store.getSnapshot().users.find(u => u.id === 'u-2')?.kind).toBe('public')
+    expect(store.currentUser()?.kind).toBe('private')
+    expect(store.currentUser()?.email).toBe('a@example.invalid')
+  })
+
+  it('explicit private absence keeps a public card read in the same run', async () => {
+    const { buildCatalog } = await import('../src/store/profileCatalog')
+    const previous = {
+      ownerUserId: 'u-1', identityEpoch: 0, authorityEpoch: 0, selfAuthorized: true,
+      users: [{ ...rowToPrivateUser(OWNER_PRIVATE) }],
+    }
+    const result = buildCatalog(
+      { userId: 'u-1', identityEpoch: 0, authorityEpoch: 0, admin: false },
+      {
+        public: { users: [rowToPublicUser(OWNER_CARD)], failed: false, complete: true, requested: true },
+        self: { status: 'absent' },
+        admin: { status: 'not-requested' },
+      },
+      previous,
+    )
+    const self = result.users.find(u => u.id === 'u-1')
+    // The private state is gone; the safe public identity survives.
+    expect(self?.kind).toBe('public')
+    expect((self as { email?: string }).email).toBeUndefined()
+    expect((self as { profile: { name: string } }).profile.name).toBe('Asha')
+  })
+})
+
+// ============ REPAIR-06 E — a private refresh says nothing about the public catalogue ============
+describe('a private refresh never certifies the public catalogue', () => {
+  it('a public failure survives a successful private read through a safe event', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    store.init()
+    await flush(); await flush()
+    expect(store.getSnapshot().sliceReads.profiles).toBe('ok')
+
+    // The public catalogue fails, then a safe event triggers the private refresh.
+    // The source trigger updates the private row too, so the refresh answers with
+    // the new name.
+    state.rpcError = true
+    state.profileRows = { 'u-1': { ...OWNER_PRIVATE, name: 'Asha Nair' } }
+    await store.rereadPublicSlices()
+    await flush(); await flush()
+    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+
+    store._applyRealtimeEventForTest('profile_cards', {
+      eventType: 'UPDATE', table: 'profile_cards', schema: 'public',
+      new: { ...OWNER_CARD, name: 'Asha Nair' }, old: {},
+    } as never)
+    await flush(); await flush(); await flush()
+
+    // The private read succeeded and the private row is fresh…
+    expect(store.currentUser()?.kind).toBe('private')
+    expect(store.currentUser()?.profile.name).toBe('Asha Nair')
+    // …but the public slice keeps its failure.
+    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+  })
+
+  it('a zero-trip reconnect leaves a public failure failed after the private refresh', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    store.init()
+    await flush(); await flush()
+    expect(store.getSnapshot().trips).toHaveLength(0)
+
+    state.rpcError = true
+    await store.rereadPublicSlices()
+    await flush(); await flush()
+    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+
+    state.subscribeHandler!('SUBSCRIBED')
+    state.subscribeHandler!('SUBSCRIBED')
+    await flush(); await flush(); await flush()
+
+    // The reconnect performs the private refresh and then returns before the
+    // public profile step, so a false ready state would be final here.
+    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+    expect(store.currentUser()?.kind).toBe('private')
+  })
+
+  it('a private failure survives a successful public read', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    store.init()
+    await flush(); await flush()
+
+    state.profileErrors = { 'u-1': { message: 'row unavailable' } }
+    await store.resumeSync()
+    await flush(); await flush()
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
+
+    await store.rereadPublicSlices()
+    await flush(); await flush()
+    expect(store.getSnapshot().sliceReads.profiles).toBe('ok')
+    expect(store.getSnapshot().sliceReads['self profile']).toBe('failed')
+  })
+
+  it('a new session does not join an old session\'s refresh', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    store.init()
+    await flush(); await flush()
+    const readsBefore = state.tableReads.filter(t => t === 'profiles').length
+
+    // An event for u-1 starts a refresh, then B signs in before it settles.
+    store._applyRealtimeEventForTest('profile_cards', {
+      eventType: 'UPDATE', table: 'profile_cards', schema: 'public',
+      new: { ...OWNER_CARD, name: 'Asha Nair' }, old: {},
+    } as never)
+    state.sessionUser = 'u-2'
+    state.profileRows = { 'u-2': { ...OTHER_PRIVATE } }
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-2' } })
+    await flush(); await flush(); await flush()
+
+    // B's own private read ran, rather than B returning on A's read.
+    const reads = state.tableReads.filter(t => t === 'profiles').length - readsBefore
+    expect(reads).toBeGreaterThan(0)
+    expect(store.currentUser()?.id).toBe('u-2')
+  })
+})
+
+// ============ REPAIR-06 F — the snapshot-load ticket ============
+describe('a signed-in offline snapshot boot keeps its safe identities', () => {
+  const legacy = {
+    users: [
+      { id: 'u-1', kind: 'private', email: 'a@example.invalid', createdAt: 1, profile: { name: 'Asha', homeCity: 'Kochi', languages: ['en'], travelStyles: [], isCreator: true } },
+      { id: 'u-2', kind: 'private', email: 'b@example.invalid', createdAt: 2, profile: { name: 'Bilal', homeCity: 'Kochi', languages: ['en'], travelStyles: [], isCreator: false } },
+    ],
+    trips: [], trashedTrips: [], published: [], suggestions: [], decisions: [], activity: [], savedAt: 1,
+  }
+
+  it('installs the sanitized snapshot under the current session ticket', async () => {
+    const store = await freshStore()
+    state.sessionUser = 'u-1'
+    state.snapshot = legacy
+    store.init()
+    await flush(); await flush(); await flush()
+
+    const users = store.getSnapshot().users
+    // The safe names and avatars survived the sanitising boot.
+    expect(users.map(u => u.id).sort()).toEqual(['u-1', 'u-2'])
+    // No private field came back, and no private authority was manufactured.
+    expect(users.every(u => u.kind === 'public')).toBe(true)
+    expect(users.every(u => (u as { email?: string }).email === undefined)).toBe(true)
+    expect(store.getSnapshot().catalogAuthority?.selfAuthorized).toBe(false)
+    expect(store.getSnapshot().ready).toBe(true)
+    expect(store.getSnapshot().sessionUserId).toBe('u-1')
+  })
+
+  it('an account switch while loading does not install the old snapshot', async () => {
+    const store = await freshStore()
+    state.sessionUser = 'u-1'
+    state.snapshot = legacy
+    store.init()
+    await flush()
+
+    // B signs in while the snapshot is still loading.
+    state.sessionUser = 'u-2'
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-2' } })
+    await flush(); await flush(); await flush()
+
+    // The retired snapshot install was rejected, so A's rows are not in B's cache
+    // and B's readiness was not published from A's snapshot.
+    expect(store.getSnapshot().users.some(u => u.id === 'u-1' && u.kind === 'private')).toBe(false)
+    expect(store.getSnapshot().sessionUserId).toBe('u-2')
+  })
+})
+
+// ============ REPAIR-06 G — captured credentials ============
+describe('a private request is bound to the credentials that asked for it', () => {
+  it('the self read pins the captured bearer', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.pinnedHeaders = []
+    store.init()
+    await flush(); await flush(); await flush()
+
+    const pinned = state.pinnedHeaders.filter(([n]) => n === 'Authorization')
+    expect(pinned).toContainEqual(['Authorization', 'Bearer synthetic-u-1'])
+    expect(pinned.every(([, v]) => v === 'Bearer synthetic-u-1')).toBe(true)
+  })
+
+  it('the admin bulk read pins the captured bearer', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', true)
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
+    state.pinnedHeaders = []
+    store.init()
+    await flush(); await flush(); await flush()
+
+    const pinned = state.pinnedHeaders.filter(([n]) => n === 'Authorization')
+    expect(pinned).toContainEqual(['Authorization', 'Bearer synthetic-u-1'])
+  })
+
+  it('the header stays bound across a deferred session change', async () => {
+    const store = await freshStore()
+    signIn(store, 'u-1', false)
+    // Hold the self read so the session can change underneath it.
+    let release!: () => void
+    state.deferred.__holdSelf = () => new Promise<void>(r => { release = r })
+    state.pinnedHeaders = []
+    store.init()
+    await flush()
+    // The request was already issued with A's bearer.
+    expect(state.pinnedHeaders.filter(([n]) => n === 'Authorization'))
+      .toContainEqual(['Authorization', 'Bearer synthetic-u-1'])
+
+    // B signs in, then A's held read resolves.
+    state.sessionUser = 'u-2'
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-2' } })
+    release()
+    await flush(); await flush(); await flush()
+
+    // A's answer was fenced by its retired ticket, so B's cache holds no A row.
+    expect(store.getSnapshot().users.some(u => u.id === 'u-1' && u.kind === 'private')).toBe(false)
+    // And no request was ever issued with B's bearer for A's read.
+    expect(state.pinnedHeaders.filter(([n]) => n === 'Authorization').every(([, v]) => v !== 'Bearer synthetic-u-2')).toBe(true)
   })
 })
