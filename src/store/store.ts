@@ -9,7 +9,7 @@
 // toast; the cache is re-hydrated from the server on next load.
 import { useSyncExternalStore } from 'react'
 import type {
-  CachedUser, PublicUser, PrivateUser, PublicUserProfile, PrivateUserProfile, Trip, StopSuggestion, TripDecision, ActivityEntry, Notification,
+  CachedUser, PublicUser, PrivateUser, PrivateUserProfile, Trip, StopSuggestion, TripDecision, ActivityEntry, Notification,
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
   NewDecisionOption, VehicleProfile, Comment, Vote, DecisionOption,
 } from '../data/types'
@@ -45,6 +45,12 @@ import {
   type CollabOutcome, type CollabCommand,
 } from './collabCommand'
 import { adminFromSession, clearAdminCache, isAdminCached, setAdminForTest } from '../lib/adminSession'
+import {
+  buildCatalog, type AccessScope, type CatalogReads, type CatalogResult, type PreviousCatalog, type SliceRead,
+} from './profileCatalog'
+import { toPublicUser, reviewedSocialLinks } from '../lib/publicProfile'
+
+export { reviewedSocialLinks } from '../lib/publicProfile'
 import type { RealtimeChannel, RealtimePostgresChangesPayload, SupabaseClient } from '@supabase/supabase-js'
 
 // In-memory cache — the synchronous snapshot the UI reads. No localStorage.
@@ -88,12 +94,29 @@ interface DB {
    *  `refreshAdminAudit`; cleared on the next success (the tab renders a
    *  retry, mirroring the trash bin's honest-failure shape). */
   adminAuditFailed: boolean
+  /** #800: the provenance of the installed catalogue — WHICH authority the
+   *  private rows in `users` were collected under. One stamp beside the data it
+   *  describes, never a second permission map: a public consumer reads `users`
+   *  and never this. `selfAuthorized` records whether the owner's own row was
+   *  private-and-authorised when it was installed, which is what lets a later
+   *  run tell a stale self row from a current one. Null when the catalogue
+   *  carries no private authority at all. */
+  catalogAuthority: CatalogStamp | null
+}
+
+/** The authority an installed catalogue was built under. See `DB.catalogAuthority`. */
+export interface CatalogStamp {
+  userId: ID | null
+  identityEpoch: number
+  authorityEpoch: number
+  selfAuthorized: boolean
 }
 
 let cache: DB = {
   users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [],
   activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null,
   ready: false, sliceReads: {}, trashLoaded: false, trashFailed: false, cachedAt: null, adminAuditFailed: false,
+  catalogAuthority: null,
 }
 
 const listeners = new Set<() => void>()
@@ -368,9 +391,20 @@ export async function rereadPublicSlices(): Promise<void> {
     // Replace-on-success only, per slice. A retry that fails must not also wipe
     // the rows a previous hydrate managed to load — "still broken" and "now
     // empty as well" are different states, and only one of them is a regression.
-    // The merge keeps a private entry for an id, so a public refresh can never
-    // erase the signed-in user's own account fields (#800).
-    if (!publicUsers.failed) patch({ users: mergeUsers(cache.users, publicUsers.users) })
+    //
+    // #800: the install goes through the same gate as a hydrate. This read is
+    // PUBLIC-ONLY, so the constructor keeps every private row the current
+    // authority still covers — the signed-in account's own, and an admin's bulk
+    // — and takes the fresh public cards underneath them. It also emits no
+    // verdict for the private slices, so a public retry can neither certify nor
+    // revoke a read it never issued.
+    if (!publicUsers.failed) {
+      installCatalog(currentTicket(), {
+        public: { users: publicUsers.users, failed: false, complete: true, requested: true },
+        self: { status: 'not-requested' },
+        admin: { status: 'not-requested' },
+      })
+    }
     if (!pubRes.error) patch({ published: dedupePublished(mapOrSkip((pubRes.data ?? []), rowToPublished)) })
   } catch (e) {
     // One throw fails the slices it was serving. Both reads run in one
@@ -459,45 +493,70 @@ export function rowToPublicUser(row: unknown): PublicUser {
  *   * `failed`  — the read itself failed: network, RLS refusal, missing table.
  *  A collapse of `failed` into `absent` used to let a public RPC success report
  *  the signed-in account as ready while it was simply unreadable. */
-export type PrivateReadOutcome =
-  | { status: 'ok'; user: PrivateUser }
-  | { status: 'absent' }
-  | { status: 'failed'; reason: string }
+export type PrivateReadOutcome = SliceRead<PrivateUser>
+
+/** The credentials a private request is bound to.
+ *
+ *  Captured with the session that delivered them, so a request issued under one
+ *  session keeps that session's bearer even while the shared SDK client's own auth
+ *  state moves on. RLS remains the server boundary; this binds the client side to
+ *  the account that asked. Never persisted into a snapshot, a user row, a report
+ *  or a toast. */
+export interface RequestCredentials {
+  token: string | null
+}
+
+/** The bearer from the most recent resolved session, keyed by the identity
+ *  generation it belongs to. A stale key yields no token, which falls back to the
+ *  shared client exactly as before — never to a wrong account's token. */
+let capturedBearer: { identityEpoch: number; token: string | null } = { identityEpoch: -1, token: null }
+
+/** Bind a request to the credentials captured with the session that is asking. */
+function captureCredentials(): RequestCredentials {
+  return { token: capturedBearer.identityEpoch === identityEpoch ? capturedBearer.token : null }
+}
 
 /** The signed-in account's own private row, read through RLS (`profiles read
  *  self`). `absent` when the account is disabled — the RESTRICTIVE
  *  `deny disabled` policy withholds the row from its own owner too — which is why
  *  `enforceDisabledCheck` must not read a missing row as proof of an enabled
  *  account (#800). */
-async function readSelfProfile(userId: ID, scope: IdentityScope): Promise<PrivateReadOutcome> {
+async function readSelfProfile(userId: ID, scope: IdentityScope, credentials: RequestCredentials): Promise<PrivateReadOutcome> {
   if (!isCurrentIdentity(scope)) return { status: 'failed', reason: 'identity changed' }
   try {
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+    const { data, error } = await pinBearer(
+      supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+      credentials.token ?? undefined,
+    )
     // Fenced again AFTER the await: the answer belongs to the account that asked.
     if (!isCurrentIdentity(scope)) return { status: 'failed', reason: 'identity changed' }
     if (error) return { status: 'failed', reason: error.message ?? 'read failed' }
     if (!data) return { status: 'absent' }
-    return { status: 'ok', user: rowToPrivateUser(data) }
+    return { status: 'ok', value: rowToPrivateUser(data) }
   } catch (e) {
     return { status: 'failed', reason: e instanceof Error ? e.message : 'read failed' }
   }
 }
 
-/** An authorised admin's bulk private read (#800 F2, F4). The admin flag is read
- *  at CALL time, not carried from the read that decided to issue this: an
- *  authority loss between the decision and the request must not produce a
- *  private read at all. Same three states as `readSelfProfile`. */
-async function readAdminProfiles(scope: IdentityScope): Promise<
-  | { status: 'ok'; users: PrivateUser[] }
-  | { status: 'failed'; reason: string }
-> {
-  if (!isAdminCached() || !isCurrentIdentity(scope)) return { status: 'failed', reason: 'not authorised' }
+/** An authorised admin's bulk private read (#800 F2, F4). Bound to the CAPTURED
+ *  authority and the CAPTURED credentials: the flag, the revision and the bearer
+ *  are all re-checked after the await, so a loss between the decision and the
+ *  answer refuses the read rather than letting the answer be stamped with the new
+ *  grant. Same states as `readSelfProfile`. */
+async function readAdminProfiles(scope: AccessScope, credentials: RequestCredentials): Promise<SliceRead<readonly PrivateUser[]>> {
+  if (!scope.admin || !isCurrentIdentity({ userId: scope.userId ?? '', epoch: scope.identityEpoch })) {
+    return { status: 'failed', reason: 'not authorised' }
+  }
   try {
-    const { data, error } = await supabase.from('profiles').select('*')
-    // Fenced again AFTER the await: the answer belongs to the admin who asked.
-    if (!isCurrentIdentity(scope) || !isAdminCached()) return { status: 'failed', reason: 'authority changed' }
+    const { data, error } = await pinBearer(supabase.from('profiles').select('*'), credentials.token ?? undefined)
+    // Fenced again AFTER the await, against the captured credentials.
+    if (!isCurrentIdentity({ userId: scope.userId ?? '', epoch: scope.identityEpoch })) {
+      return { status: 'failed', reason: 'identity changed' }
+    }
+    if (scope.authorityEpoch !== authorityEpoch) return { status: 'failed', reason: 'authority revision changed' }
+    if (!isAdminCached()) return { status: 'failed', reason: 'authority changed' }
     if (error) return { status: 'failed', reason: error.message ?? 'read failed' }
-    return { status: 'ok', users: (Array.isArray(data) ? data : []).map(rowToPrivateUser) }
+    return { status: 'ok', value: (Array.isArray(data) ? data : []).map(rowToPrivateUser) }
   } catch (e) {
     return { status: 'failed', reason: e instanceof Error ? e.message : 'read failed' }
   }
@@ -584,18 +643,7 @@ export function mergeUsers(current: CachedUser[], incoming: CachedUser[]): Cache
  * so a direct copy would put them in the public snapshot.
  */
 export function publicOnlyUsers(users: CachedUser[]): PublicUser[] {
-  return users.map(u => ({
-    id: u.id,
-    kind: 'public',
-    profile: {
-      name: u.profile.name,
-      avatarUrl: u.profile.avatarUrl,
-      isCreator: u.profile.isCreator,
-      creatorBio: u.profile.creatorBio,
-      socialLinks: reviewedSocialLinks(u.profile.socialLinks),
-      creatorAvailable: u.profile.creatorAvailable,
-    },
-  }))
+  return users.map(toPublicUser)
 }
 
 /**
@@ -653,22 +701,6 @@ export function sanitizeSnapshotUsers(rows: unknown[]): PublicUser[] {
     })
   }
   return out
-}
-
-/** The reviewed nested social-links allowlist, rebuilt from an untrusted value.
- *  Only `youtube` and `instagram` survive, and only as non-empty strings. This is
- *  the client-side twin of `public.safe_social_links`, and it exists because a
- *  snapshot is untrusted input: whatever the database rebuilt, a device may still
- *  hold an older object with extra keys. */
-export function reviewedSocialLinks(value: unknown): PublicUserProfile['socialLinks'] {
-  if (!value || typeof value !== 'object') return undefined
-  const src = value as Record<string, unknown>
-  const out: NonNullable<PublicUserProfile['socialLinks']> = {}
-  for (const key of ['youtube', 'instagram'] as const) {
-    const v = src[key]
-    if (typeof v === 'string' && v.trim() !== '') out[key] = v
-  }
-  return Object.keys(out).length ? out : undefined
 }
 
 // ---------------- Auth ----------------
@@ -744,7 +776,9 @@ export async function logout(): Promise<void> {
   tripAccessEpochs.clear()
   clearAdminCache()
   const departing = cache.sessionUserId
-  patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, users: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
+  // The rows go with the authority they were read under: an empty catalogue
+  // carries no private authority, so the stamp is nulled beside it.
+  patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, users: [], catalogAuthority: null, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
   commit()
   // #578 — the in-memory debounce timers are a module Map that knows nothing
   // of auth, and they outlive this wipe unless told not to. A timer firing
@@ -771,38 +805,49 @@ export async function logout(): Promise<void> {
  *  read as "my data got deleted", so hydrate checks the flag right after the
  *  session resolves and signs the account straight back out with a message. */
 export async function enforceDisabledCheck(): Promise<boolean> {
+  return withDisabledCheck(runDisabledCheck)
+}
+
+/** Every disabled-status entry point goes through here, so two overlapping
+ *  checks — one from a resume, one from a reconnect, one direct — share a single
+ *  SDK sign-out and a single explanation rather than racing two of them. */
+function withDisabledCheck(run: () => Promise<boolean>): Promise<boolean> {
+  if (disabledCheckInFlight) return disabledCheckInFlight
+  const running = run()
+  disabledCheckInFlight = running
+  // Clear the slot when this operation settles, so a later check starts its own.
+  running.then(() => { if (disabledCheckInFlight === running) disabledCheckInFlight = null },
+    () => { if (disabledCheckInFlight === running) disabledCheckInFlight = null })
+  return running
+}
+
+async function runDisabledCheck(): Promise<boolean> {
   try {
     // #800 R4: the check awaits a server round-trip, and the answer belongs to
     // the account that ASKED. Capture the scope and the access generation before
     // the await, and re-check both before anything happens: a sign-out, an admin
     // cache mutation and a toast all act on whoever is current, so an answer that
     // arrives after an account switch — or after the same user signed out and
-    // back in — must be discarded silently. The user id alone is not enough: the
-    // epoch is what distinguishes a re-login from the original session.
+    // back in — must be discarded silently.
     const scope = identityScope()
     if (!scope) return false
     const generation = identityEpoch
 
-    // No extra auth round-trip here: hydrate() awaits this inside Promise.all
-    // territory, and an unmocked getUser() hangs the mocked tests.
-    //
-    // #800: the in-hand cache used to be the only source, and it was read as
-    // `me?.profile.isDisabled === true`. Under the new boundary a disabled
-    // account CANNOT read its own row — the RESTRICTIVE `deny disabled` policy
-    // withholds it from its owner too — so `me` is null and the old test read
-    // "no row" as "not disabled". The check now distinguishes the three cases
-    // and only the first one signs the account out:
-    //   * a private row saying disabled  → sign out with the message;
-    //   * a private row saying enabled   → nothing to do;
-    //   * NO private row at all          → unproven, so ask the server directly.
+    // The cache is trusted only for a row the CURRENT authority installed, under
+    // the current identity generation. A row retained by a FAILED read is exactly
+    // the stale state a resume exists to catch, so it falls through to the server
+    // rather than certifying the account as enabled.
     const me = currentUser()
-    if (me) return me.profile.isDisabled === true ? signOutDisabled(scope, generation) : false
+    const stamp = cache.catalogAuthority
+    const cacheIsCurrent = !!stamp && stamp.selfAuthorized === true
+      && stamp.authorityEpoch === authorityEpoch
+      && stamp.identityEpoch === identityEpoch
+      && cache.sliceReads['self profile'] !== 'failed'
+    if (me && cacheIsCurrent) {
+      return me.profile.isDisabled === true ? signOutDisabled(scope, generation) : false
+    }
     if (cache.sessionUserId !== scope.userId) return false
-    const disabled = await disabledOnServer()
-    // The fence. An obsolete answer stays silent and touches nothing.
-    if (!isCurrentIdentity(scope) || identityEpoch !== generation) return false
-    if (cache.sessionUserId !== scope.userId) return false
-    return disabled ? signOutDisabled(scope, generation) : false
+    return await recheckDisabledStatus()
   } catch {
     // A failed check must never lock a legitimate user out: the RESTRICTIVE
     // policies are the real enforcement, this is only the friendly message.
@@ -810,37 +855,80 @@ export async function enforceDisabledCheck(): Promise<boolean> {
   }
 }
 
-/**
- * Sign a disabled account out with the explanation, and report that it happened.
+/** Ask the server whether the CALLER is disabled, when the cache cannot say — or
+ *  when the cache's answer is too old to be worth trusting.
  *
- * #800 F3: the SDK `signOut` itself awaits, and its completion used to clear the
- * admin cache and show a message with no fence. Root held the instrumented
- * signOut for account A, activated B as admin with a fresh generation, then
- * released A's completion — and B's admin flag flipped to false while B stayed
- * current. The effects now belong to the account that asked: the scope and
- * generation are captured before the await and re-checked after it, so an
- * obsolete completion touches nothing.
- */
-async function signOutDisabled(scope: IdentityScope, generation: number): Promise<boolean> {
-  await supabase.auth.signOut()
-  if (!isCurrentIdentity(scope) || identityEpoch !== generation) return false
-  clearAdminCache()
-  toast('This account has been disabled. Contact support if you think this is a mistake.', 'err')
-  return true
+ *  A reconnect, a resume and a failed self read all land here. The socket was
+ *  down or the process was frozen, so a disablement that arrived in that gap is
+ *  invisible to every read that came back, and the cached row still says enabled.
+ *  Asking is the only honest answer.
+ *
+ *  `is_disabled()` is the existing security-definer helper: it reads
+ *  `where p.id = auth.uid()`, so it answers about the caller and nobody else, and
+ *  it already holds its execute grant. A disabled account then answers `true`
+ *  even though the RESTRICTIVE policy withholds its own row. A missing helper
+ *  answers `false` — unproven, never a lockout. */
+export async function recheckDisabledStatus(): Promise<boolean> {
+  return withDisabledCheck(runRecheckDisabledStatus)
+}
+
+async function runRecheckDisabledStatus(): Promise<boolean> {
+  try {
+    const scope = identityScope()
+    if (!scope) return false
+    const generation = identityEpoch
+    if (cache.sessionUserId !== scope.userId) return false
+    const disabled = await disabledOnServer()
+    // The answer must still describe the session that asked. A sign-out, an
+    // account switch or a re-login all invalidate it.
+    if (!isCurrentIdentity(scope) || identityEpoch !== generation) return false
+    if (cache.sessionUserId !== scope.userId) return false
+    return disabled ? signOutDisabled(scope, generation) : false
+  } catch {
+    return false
+  }
 }
 
 /**
  * Ask the server whether the CALLER is disabled, when the cache cannot say.
  * `is_disabled()` is the existing security-definer helper: it reads
  * `where p.id = auth.uid()`, so it answers about the caller and nobody else, and
- * it already holds its execute grant. A disabled account then answers
- * `true` even though the RESTRICTIVE policy withholds its own row. A missing
- * helper answers `false` — unproven, never a lockout.
+ * it already holds its execute grant. A disabled account then answers `true`
+ * even though the RESTRICTIVE policy withholds its own row. A missing helper
+ * answers `false` — unproven, never a lockout.
  */
 async function disabledOnServer(): Promise<boolean> {
   const { data, error } = await supabase.rpc('is_disabled')
   if (error || typeof data !== 'boolean') return false
   return data
+}
+
+/**
+ * Sign a disabled account out with the explanation, and report that it happened.
+ *
+ * The effects belong to the operation that asked. Its record is written before the
+ * await and judged after it, so a completion that no longer owns anything — a
+ * same-ID replacement, an account switch, an authority loss — touches nothing.
+ * Only the completing record is cleared.
+ */
+async function signOutDisabled(scope: IdentityScope, generation: number): Promise<boolean> {
+  const record: OwnedSignOut = { id: ++operationSeq, userId: scope.userId, identityEpoch: generation, authorityEpoch }
+  ownedSignOut = record
+  let completed = false
+  try {
+    await supabase.auth.signOut()
+    // Read the verdict while the expectation is still on record. Clearing it in
+    // the `finally` and testing afterwards would consume the very fact that this
+    // completion was ours, and every expected SIGNED_OUT would read as obsolete.
+    completed = signOutCompletedFor(record, scope, generation)
+  } finally {
+    // Clear only this operation's record, whichever way the await settled.
+    if (ownedSignOut?.id === record.id) ownedSignOut = null
+  }
+  if (!completed) return false
+  clearAdminCache()
+  toast('This account has been disabled. Contact support if you think this is a mistake.', 'err')
+  return true
 }
 
 // ---------------- Init / hydration ----------------
@@ -851,7 +939,7 @@ async function disabledOnServer(): Promise<boolean> {
  *  `patch({ trips })` overwrote the first's cache mid-seed — the seed appends
  *  the 10 trips AFTER that patch — so the trips loaded and then vanished. A
  *  redundant hydrate for the same user now just awaits the in-flight one. */
-let activeHydrate: { userId: string | null; promise: Promise<void | boolean> } | null = null
+let activeHydrate: { userId: string | null; authorityEpoch: number; promise: Promise<void | boolean> } | null = null
 
 /** Monotonic id of the newest auth intent. Every auth event (sign-in, account
  *  switch, sign-out) bumps it, and a hydrate commits its `patch()` only while its
@@ -879,6 +967,426 @@ function identityScope(): IdentityScope | null {
 function isCurrentIdentity(scope: IdentityScope): boolean {
   return scope.epoch === identityEpoch && cache.sessionUserId === scope.userId
     && (lastAuthUserId === null || lastAuthUserId === scope.userId)
+}
+
+// ---------------- #800: the authority revision and the one installer ----------------
+
+/** Moves on every OBSERVED admin loss or regain, including a same-ID transition.
+ *
+ *  `identityEpoch` cannot do this job: an admin true → false → true cycle keeps
+ *  the same user, so the identity check reads the old session as current and the
+ *  private rows that authority unlocked stay installed. */
+let authorityEpoch = 0
+
+/** The admin flag this module last observed, so a change is detectable at all. */
+let observedAdmin = false
+
+/** Compare the live admin flag against the last observed one and move the
+ *  authority revision when it differs. Called from every place the flag can
+ *  change — the two `adminFromSession` sites in init(), and the top of
+ *  `hydrateFromSupabase`, which is what a test seam (`setAdminForTest`) reaches.
+ *  Idempotent: two observations of the same value move nothing. */
+function observeAdminAuthority(): void {
+  const admin = isAdminCached()
+  if (admin === observedAdmin) return
+  observedAdmin = admin
+  ++authorityEpoch
+}
+
+/** A disabled sign-out this module started, whose completion it EXPECTS.
+ *
+ *  The SDK emits SIGNED_OUT for it, which bumps `identityEpoch` and empties the
+ *  session. The record is written BEFORE the await and matched AFTER it, so the
+ *  completion can tell its own successor from a real account switch.
+ *
+ *  `id` is what makes that match exact. A same-ID replacement moves no identity
+ *  epoch, so the epoch alone cannot tell "my own session is still here" from "a
+ *  new session replaced mine" — only the record's survival can. */
+interface OwnedSignOut {
+  id: number
+  userId: ID
+  identityEpoch: number
+  authorityEpoch: number
+}
+
+let ownedSignOut: OwnedSignOut | null = null
+
+/** Serialized disabled checks. Every entry point — `enforceDisabledCheck`,
+ *  `recheckDisabledStatus`, the reconnect step — joins the one in flight rather
+ *  than recording a second expectation over the first. */
+let disabledCheckInFlight: Promise<boolean> | null = null
+
+/** Retire the owned sign-out because another session took over. */
+function retireOwnedSignOut(): void {
+  ownedSignOut = null
+}
+
+/** Whether the identity change that ended `scope` is the one this operation
+ *  itself caused. An expected SIGNED_OUT successor is not an account switch.
+ *
+ *  Ownership is checked on EVERY branch, including the one where the identity
+ *  epoch still matches: a same-ID replacement retires the record without moving
+ *  that epoch, so an early identity match would accept a completion that no
+ *  longer owns anything. */
+function signOutCompletedFor(record: OwnedSignOut, scope: IdentityScope, generation: number): boolean {
+  if (!ownedSignOut || ownedSignOut.id !== record.id) return false
+  if (ownedSignOut.userId !== scope.userId) return false
+  if (ownedSignOut.identityEpoch !== generation) return false
+  // Either the SDK emitted no successor and the session is unchanged, or it
+  // emitted our expected SIGNED_OUT and the session is now empty with nobody
+  // signed in since. A later login would have retired the record above.
+  if (isCurrentIdentity(scope) && identityEpoch === generation) return true
+  return cache.sessionUserId === null && lastAuthUserId === null
+}
+
+/** The authority the cache is under RIGHT NOW, with the admin flag observed
+ *  first so a live event or a public refresh never judges the catalogue under a
+ *  revision that a flag change has already invalidated. */
+function scopeForInstall(): AccessScope {
+  observeAdminAuthority()
+  const userId = cache.sessionUserId
+  return userId
+    ? { userId, identityEpoch, authorityEpoch, admin: isAdminCached() }
+    : { userId: null, identityEpoch, authorityEpoch, admin: false }
+}
+
+/** What the next install is allowed to start from: the installed array plus the
+ *  stamp that says which authority installed it. */
+function previousCatalog(): PreviousCatalog {
+  const stamp = cache.catalogAuthority
+  if (!stamp) return { ownerUserId: null, identityEpoch: null, authorityEpoch: null, selfAuthorized: false, users: [] }
+  return {
+    ownerUserId: stamp.userId,
+    identityEpoch: stamp.identityEpoch,
+    authorityEpoch: stamp.authorityEpoch,
+    selfAuthorized: stamp.selfAuthorized,
+    users: cache.users,
+  }
+}
+
+/** A read's ticket: the authority it was taken under, and the hydrate generation
+ *  that issued it. An install is judged against BOTH, and a ticket is never
+ *  refreshed to fit an answer that arrived late. */
+export interface InstallTicket {
+  scope: AccessScope
+  generation: number
+}
+
+// ---------------- #800: operation ownership ----------------
+
+/** One in-flight operation's ownership.
+ *
+ *  Captured when the operation starts, held through its awaits, and judged at
+ *  completion. A completion is judged against the record the operation itself
+ *  wrote — never against a ticket minted at completion time, and never treated as
+ *  still owned because the user id or the identity epoch happens to match.
+ *
+ *  `retired` is the explicit half. `retiredReason(ticket)` is the implicit half:
+ *  an authority loss that moves the revision retires the operation even when no
+ *  auth event fires. A same-ID replacement moves no identity epoch at all, so
+ *  only the explicit flag catches it. */
+export interface OperationRecord {
+  /** Monotonic, so a completion can be identified as this operation's. */
+  id: number
+  /** What the operation is doing, for the evidence log. */
+  kind: string
+  ticket: InstallTicket
+  retired: boolean
+}
+
+let operationSeq = 0
+
+/** Every operation that has not yet completed. Retired in place by a session
+ *  replacement, so a late completion can see that it no longer owns anything. */
+const liveOperations = new Set<OperationRecord>()
+
+/** Begin an operation and capture its ownership. */
+function startOperation(kind: string, ticket: InstallTicket): OperationRecord {
+  const record: OperationRecord = { id: ++operationSeq, kind, ticket, retired: false }
+  liveOperations.add(record)
+  return record
+}
+
+/** Retire every live operation. Called when a session actually replaces another,
+ *  which is the one transition no counter can see for a same-id sign-in. */
+function retireOperations(): void {
+  for (const record of liveOperations) record.retired = true
+  liveOperations.clear()
+}
+
+/** Whether an operation still owns what it started with. */
+function operationIsLive(record: OperationRecord): boolean {
+  return !record.retired && retiredReason(record.ticket) === null
+}
+
+/** Finish an operation, retiring its own record only. */
+function finishOperation(record: OperationRecord): void {
+  record.retired = true
+  liveOperations.delete(record)
+}
+
+/** THE ONE WRITER of `cache.users` for anything a read produced: the anonymous
+ *  hydrate, the snapshot boot, the public retry, a live `profile_cards` event, and
+ *  the optimistic profile and admin edits with their rollbacks.
+ *
+ *  A ticket whose identity, identity generation, authority revision, admin flag or
+ *  hydrate generation no longer matches the live state is REJECTED before any
+ *  write. A superseded answer is discarded, never re-authorised. */
+function installCatalog(ticket: InstallTicket, reads: CatalogReads, previous?: PreviousCatalog): InstallOutcome {
+  const retired = retiredReason(ticket)
+  if (retired) return { status: 'retired', reason: retired }
+  const scope = ticket.scope
+  const result = buildCatalog(scope, reads, previous ?? previousCatalog())
+  patch({
+    users: result.users,
+    catalogAuthority: {
+      userId: scope.userId,
+      identityEpoch: scope.identityEpoch,
+      authorityEpoch: scope.authorityEpoch,
+      selfAuthorized: result.selfAuthorized,
+    },
+    sliceReads: { ...cache.sliceReads, ...result.verdicts },
+  })
+  commit()
+  return { status: 'installed', result }
+}
+
+export type InstallOutcome =
+  | { status: 'installed'; result: CatalogResult }
+  | { status: 'retired'; reason: string }
+
+/** Why a ticket may no longer write, or null when it may. Compared field by
+ *  field rather than through one boolean, so the reason names what moved. */
+function retiredReason(ticket: InstallTicket): string | null {
+  if (ticket.scope.userId !== cache.sessionUserId) return 'identity changed'
+  if (ticket.scope.identityEpoch !== identityEpoch) return 'identity generation changed'
+  if (ticket.scope.authorityEpoch !== authorityEpoch) return 'authority revision changed'
+  if (ticket.scope.admin !== isAdminCached()) return 'authority changed'
+  if (ticket.generation !== hydrateGen) return 'a newer hydrate superseded this run'
+  return null
+}
+
+/** The ticket for a read issued NOW. Synchronous callers — the public retry, a
+ *  live event, an optimistic edit — cannot have been superseded between building
+ *  the ticket and installing, so the current generation is the right one. */
+function currentTicket(): InstallTicket {
+  return { scope: scopeForInstall(), generation: hydrateGen }
+}
+
+// ---------------- #800: the coalesced private refresh ----------------
+
+/** One in-flight private refresh, keyed by the session and authority that started
+ *  it. A burst of safe events, or a reconnect replay that feeds one event per
+ *  cached row, joins the read already running instead of stacking one private read
+ *  per event. A refresh owned by a DIFFERENT session or authority is never joined:
+ *  a new session must run its own read rather than return on somebody else's. */
+let privateRefreshInFlight: { key: string; promise: Promise<void> } | null = null
+/** Whether another trigger arrived while one was running, so one more pass runs
+ *  after it settles. */
+let privateRefreshQueued = false
+/** Bound on trailing passes, so a burst that keeps arriving cannot livelock. */
+const PRIVATE_REFRESH_MAX_PASSES = 4
+
+/** The ownership key of a private refresh. */
+function refreshKey(ticket: InstallTicket): string {
+  const s = ticket.scope
+  return `${s.userId ?? ''}:${s.identityEpoch}:${s.authorityEpoch}:${s.admin ? 1 : 0}:${ticket.generation}`
+}
+
+/** Re-read the private rows the CURRENT authority still covers, and install them
+ *  through the one gate. Safe events and the reconnect replay both carry only
+ *  public fields, so a private change — an admin's disabled flag, a preference —
+ *  stays stale until something asks the private table again.
+ *
+ *  A caller who is not an admin and whose own row is the only private row reads
+ *  just that one; a non-admin caller with no private authority reads nothing.
+ *  Fenced to the captured ticket, so a refresh issued before an authority loss is
+ *  discarded rather than stamped with the new grant. */
+function coalescedPrivateRefresh(ticket: InstallTicket): Promise<void> {
+  const key = refreshKey(ticket)
+  const inFlight = privateRefreshInFlight
+  if (inFlight && inFlight.key === key) {
+    // Same owner: join the read already running. The returned promise covers the
+    // trailing pass too, so a joined caller never returns before its own refresh
+    // has actually run.
+    privateRefreshQueued = true
+    return inFlight.promise
+  }
+  if (inFlight) {
+    // A different session or authority owns the read in flight. Wait for it to
+    // settle, then run this one, rather than returning on the other owner's read.
+    return inFlight.promise.then(() => coalescedPrivateRefresh(ticket))
+  }
+  const run = (async () => {
+    for (let pass = 0; pass < PRIVATE_REFRESH_MAX_PASSES; pass++) {
+      await runPrivateRefresh(ticket)
+      if (!privateRefreshQueued) break
+      privateRefreshQueued = false
+    }
+  })().finally(() => { privateRefreshInFlight = null })
+  privateRefreshInFlight = { key, promise: run }
+  return run
+}
+
+async function runPrivateRefresh(ticket: InstallTicket): Promise<void> {
+  if (ticket.scope.userId === null) return
+  const scope: IdentityScope = { userId: ticket.scope.userId, epoch: ticket.scope.identityEpoch }
+  let self: SliceRead<PrivateUser> = { status: 'not-requested' }
+  let admin: SliceRead<readonly PrivateUser[]> = { status: 'not-requested' }
+  if (ticket.scope.admin) {
+    admin = await readAdminProfiles(ticket.scope, captureCredentials())
+  } else {
+    self = await readSelfProfile(ticket.scope.userId, scope, captureCredentials())
+  }
+  if (retiredReason(ticket)) return
+  // The public catalogue was NOT read here, so this run says nothing about it:
+  // an existing public failure must survive a successful private read.
+  const outcome = installCatalog(ticket, {
+    public: { users: previousCatalog().users.map(toPublicUser), failed: false, complete: false, requested: false },
+    self,
+    admin,
+  })
+  if (outcome.status === 'retired') return
+}
+
+/** Whether a `profile_cards` event for `id` is one this caller may follow with a
+ *  private read. The caller's own row always is. Another account's row is only an
+ *  admin's, so a non-admin other-user event stays public-only. */
+function privateRefreshRelevant(ticket: InstallTicket, id: ID): boolean {
+  if (ticket.scope.userId === null) return false
+  if (ticket.scope.admin) return true
+  return id === ticket.scope.userId
+}
+
+/** The private fields an optimistic edit owns, and the value each held before.
+ *  A refusal restores exactly these, so an unrelated accepted change that landed
+ *  while the request was in flight survives.
+ *
+ *  `before` carries EVERY requested field, including one whose prior value was
+ *  absent. Presence of a key is not the list of fields the operation owns: a
+ *  first-time optional field has no prior key and must still be reverted. */
+export interface OwnedFields {
+  id: ID
+  before: Partial<PrivateUserProfile>
+  after: Partial<PrivateUserProfile>
+}
+
+/** Install an optimistic edit to a private row, through the one gate.
+ *
+ *  Returns the ownership record the refusal needs, or null when the caller holds
+ *  no authority to edit that row at all. */
+function installCatalogEdit(owned: OwnedFields, apply: (u: PrivateUser) => PrivateUser): OperationRecord | null {
+  const ticket = currentTicket()
+  const before = previousCatalog()
+  const stamp = cache.catalogAuthority
+  // Only an identity this module still considers current, holding the authority
+  // the installed catalogue was built under, may transform it.
+  if (ticket.scope.userId === null || !stamp || stamp.authorityEpoch !== ticket.scope.authorityEpoch) return null
+  const mutated: CachedUser[] = before.users.map(u => (u.id === owned.id && u.kind === 'private' ? apply(u) : u))
+  const outcome = installCatalog(ticket, {
+    public: { users: mutated.map(toPublicUser), failed: false, complete: false, requested: false },
+    self: { status: 'not-requested' },
+    admin: { status: 'not-requested' },
+  }, { ...before, users: mutated })
+  return outcome.status === 'installed' ? startOperation('profile-edit', ticket) : null
+}
+
+/** Restore the fields a refused edit owned, and only those.
+ *
+ *  Judged against the record the operation captured when it STARTED, so a
+ *  completion that arrives after the session or the authority moved writes
+ *  nothing at all. Each field is restored only while it still holds the value the
+ *  edit wrote, so a newer accepted change to that field is not clobbered and an
+ *  unrelated one is never touched. */
+function revertOwnedFields(owned: OwnedFields, record: OperationRecord): void {
+  if (!operationIsLive(record)) return
+  finishOperation(record)
+  const ticket = record.ticket
+  const before = previousCatalog()
+  const held = before.users.find(u => u.id === owned.id && u.kind === 'private')
+  if (!held || held.kind !== 'private') return
+  let changed = false
+  const profile = { ...held.profile }
+  for (const key of Object.keys(owned.before) as (keyof PrivateUserProfile)[]) {
+    if (profile[key] !== owned.after[key]) continue
+    if (owned.before[key] === undefined) {
+      // The field was absent before this edit, so restoring it means removing it.
+      delete (profile as Record<string, unknown>)[key]
+    } else {
+      ;(profile as Record<string, unknown>)[key] = owned.before[key]
+    }
+    changed = true
+  }
+  if (!changed) return
+  const mutated: CachedUser[] = before.users.map(u => (u.id === owned.id && u.kind === 'private' ? { ...u, profile } : u))
+  installCatalog(ticket, {
+    public: { users: mutated.map(toPublicUser), failed: false, complete: false, requested: false },
+    self: { status: 'not-requested' },
+    admin: { status: 'not-requested' },
+  }, { ...before, users: mutated })
+}
+
+/** Drop one entry from the installed catalogue, through the one gate. Returns the
+ *  ownership record the refusal needs, or null when there was nothing to drop or
+ *  the caller holds no authority. */
+function removeCatalogEntry(id: ID): OperationRecord | null {
+  const ticket = currentTicket()
+  if (retiredReason(ticket)) return null
+  const before = previousCatalog()
+  // Nothing to drop is a successful no-op, not a refusal.
+  if (!before.users.some(u => u.id === id)) return startOperation('profile-delete', ticket)
+  const stamp = cache.catalogAuthority
+  if (ticket.scope.userId === null || !stamp || stamp.authorityEpoch !== ticket.scope.authorityEpoch) return null
+  const mutated = before.users.filter(u => u.id !== id)
+  const outcome = installCatalog(ticket, {
+    public: { users: mutated.map(toPublicUser), failed: false, complete: false, requested: false },
+    self: { status: 'not-requested' },
+    admin: { status: 'not-requested' },
+  }, { ...before, users: mutated })
+  return outcome.status === 'installed' ? startOperation('profile-delete', ticket) : null
+}
+
+/** Restore the one entry a refused delete removed, and only that entry.
+ *
+ *  The current catalogue is the starting point, so an unrelated rename that
+ *  landed while the request was in flight survives. A whole-array restore would
+ *  overwrite it. */
+function restoreCatalogEntry(record: OperationRecord, row: CachedUser): void {
+  if (!operationIsLive(record)) return
+  finishOperation(record)
+  const ticket = record.ticket
+  const before = previousCatalog()
+  if (before.users.some(u => u.id === row.id)) return
+  const mutated = [...before.users, row]
+  installCatalog(ticket, {
+    public: { users: mutated.map(toPublicUser), failed: false, complete: false, requested: false },
+    self: { status: 'not-requested' },
+    admin: { status: 'not-requested' },
+  }, { ...before, users: mutated })
+}
+
+/** Replace the installed catalogue with nothing, through the same gate. The
+ *  throw path and the identity reset use it, so a catalogue that dies mid-read
+ *  still leaves its rows and its stamp agreeing. */
+function clearInstalledCatalog(): void {
+  installCatalog(currentTicket(), {
+    public: { users: [], failed: false, complete: true, requested: false },
+    self: { status: 'not-requested' },
+    admin: { status: 'not-requested' },
+  })
+}
+
+/** Project the installed catalogue under the authority that is current NOW, with
+ *  no read at all. Runs before any network call, so an admin loss is visible on
+ *  the next render instead of after a round-trip that may never come. */
+function reprojectCatalog(): void {
+  const ticket = currentTicket()
+  if (ticket.scope.userId === null) return
+  installCatalog(ticket, {
+    public: { users: [], failed: true, complete: false, requested: false },
+    self: { status: 'not-requested' },
+    admin: { status: 'not-requested' },
+  })
 }
 
 /** Pending snapshots stay separate from server revisions and account identities. */
@@ -932,7 +1440,7 @@ export function init(): void {
   // held. (Node tests have no addEventListener - init() must not throw there.)
   if (typeof addEventListener !== 'undefined') addEventListener('online', () => { void replayQueuedWrites() })
 
-  const hydrate = async (userId: string | null) => {
+  const hydrate = async (userId: string | null, bearer: string | null = null) => {
     const changed = lastAuthUserId !== userId
     if (changed) {
       const departing = lastAuthUserId ?? cache.sessionUserId
@@ -940,6 +1448,10 @@ export function init(): void {
       ++hydrateGen
       lastAuthUserId = userId
       activeHydrate = null
+      // The bearer captured with the session that delivered it, keyed to the new
+      // identity generation. A request issued under this session keeps it even
+      // while the shared SDK client's own auth state moves on.
+      capturedBearer = { identityEpoch, token: bearer }
       _cancelTripWrites()
       disconnectRealtime()
       detachDnaAccount()
@@ -954,18 +1466,27 @@ export function init(): void {
       commentDrafts.clear()
       suggestionBallotOwners.clear()
       decisionBallotOwners.clear()
-      // Publish the new identity before any storage or network await.
+      // Publish the new identity before any storage or network await. The
+      // catalogue's authority stamp goes with the rows it described: the next
+      // account starts with no private authority of its own.
       patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false,
         users: [], suggestions: [], decisions: [], activity: [], notifications: [],
         adminAudit: [], adminAuditFailed: false, sessionUserId: userId,
-        ready: false, cachedAt: null, sliceReads: {} })
+        ready: false, cachedAt: null, sliceReads: {}, catalogAuthority: null })
       commit()
       if (departing) {
         void clearSnapshot(departing)
         void clearWritesFor(departing)
       }
+    } else if (bearer !== null) {
+      // Same session, a fresh token. Keep the key pointing at this generation.
+      capturedBearer = { identityEpoch, token: bearer }
     }
-    if (activeHydrate && activeHydrate.userId === userId) {
+    // #800: the dedupe keys on the AUTHORITY as well as the user id. A same-id
+    // admin-role change bumps `authorityEpoch`, and joining the run that is
+    // already in flight would scope this event to the authority that run
+    // captured — so a regain would silently reuse a read taken after the loss.
+    if (activeHydrate && activeHydrate.userId === userId && activeHydrate.authorityEpoch === authorityEpoch) {
       await activeHydrate.promise
       return
     }
@@ -987,8 +1508,15 @@ export function init(): void {
           const failed: string[] = []
           if (publicUsers.failed) failed.push('profiles')
           if (pubRes.error) failed.push('suggested itineraries')
-          patch({ users: publicUsers.users, trips: [], trashedTrips: [],
-            trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [],
+          // The anonymous catalogue goes through the same gate as every other
+          // one: no session means no self row and no private authority, so the
+          // gate's own rules produce exactly the public cards.
+          installCatalog({ scope: { userId: null, identityEpoch, authorityEpoch, admin: false }, generation: gen }, {
+            public: { users: publicUsers.users, failed: publicUsers.failed, complete: true, requested: true },
+            self: { status: 'not-requested' },
+            admin: { status: 'not-requested' },
+          })
+          patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [],
             notifications: [], published: dedupePublished(mapOrSkip(pubRes.data ?? [], rowToPublished)),
             adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null,
             sliceReads: sliceReadReport(failed, PUBLIC_READ_SLICES) })
@@ -996,7 +1524,7 @@ export function init(): void {
         } catch (error) {
           if (gen !== hydrateGen || lastAuthUserId !== null) return
           console.error('[yatraflow] anonymous hydration failed', error)
-          patch({ users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [],
+          patch({ users: [], catalogAuthority: null, trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [],
             notifications: [], published: [], sessionUserId: null, ready: true, cachedAt: null,
             sliceReads: sliceReadReport(PUBLIC_READ_SLICES, PUBLIC_READ_SLICES) })
           commit()
@@ -1007,12 +1535,27 @@ export function init(): void {
         const [snapshot, writes] = await Promise.all([loadSnapshot(userId), pendingWrites()])
         if (gen !== hydrateGen || lastAuthUserId !== userId) return
         if (snapshot) {
+          // #800: a snapshot written before the boundary shipped whole private
+          // rows. Sanitise on the way IN, so an old cached email cannot come
+          // back on a cold boot. Only public cards survive — and they carry no
+          // private authority, which is what the resulting stamp records.
+          //
+          // The ticket is the session this run captured, not an anonymous one:
+          // the snapshot carries public-only outcomes, so no self or admin read
+          // is requested and no private authority is manufactured. Readiness is
+          // published only when the install was accepted.
+          const snapshotTicket: InstallTicket = {
+            scope: { userId, identityEpoch, authorityEpoch, admin: isAdminCached() },
+            generation: gen,
+          }
+          const installed = installCatalog(snapshotTicket, {
+            public: { users: sanitizeSnapshotUsers(snapshot.users as unknown[]), failed: false, complete: true, requested: true },
+            self: { status: 'not-requested' },
+            admin: { status: 'not-requested' },
+          })
+          if (installed.status === 'retired') return
           patch({ trips: overlayQueuedTrips(snapshot.trips as Trip[], writes, userId),
             trashedTrips: snapshot.trashedTrips as Trip[],
-            // #800: a snapshot written before the boundary shipped whole private
-            // rows. Sanitise on the way IN, so an old cached email cannot come
-            // back on a cold boot. Only public cards survive.
-            users: sanitizeSnapshotUsers(snapshot.users as unknown[]),
             published: snapshot.published as PublishedItinerary[], suggestions: snapshot.suggestions as StopSuggestion[],
             decisions: snapshot.decisions as TripDecision[], activity: snapshot.activity as ActivityEntry[],
             sessionUserId: userId, cachedAt: snapshot.savedAt, ready: true })
@@ -1030,7 +1573,7 @@ export function init(): void {
       if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void replayQueuedWrites()
     })()
     // Register the whole operation, including its first storage await.
-    activeHydrate = { userId, promise }
+    activeHydrate = { userId, authorityEpoch, promise }
     try { await promise } finally { if (activeHydrate?.promise === promise) activeHydrate = null }
   }
 
@@ -1038,12 +1581,29 @@ export function init(): void {
   supabase.auth.getSession().then(({ data }) => {
     if (authEvents > 0) return
     adminFromSession(data.session ?? null)
-    void hydrate(data.session?.user?.id ?? null)
+    observeAdminAuthority()
+    void hydrate(data.session?.user?.id ?? null, data.session?.access_token ?? null)
   })
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabase.auth.onAuthStateChange((event, session) => {
     ++authEvents
+    const before = authorityEpoch
     adminFromSession(session ?? null)
-    void hydrate(session?.user?.id ?? null)
+    observeAdminAuthority()
+    // A SIGNED_IN is a real session replacement — another account, or the same id
+    // signing in again, which moves no identity epoch at all. Every operation in
+    // flight loses its session, so all of them are retired and their late
+    // completions write nothing. A token refresh carries the same session and is
+    // deliberately not a replacement.
+    if (event === 'SIGNED_IN') {
+      retireOperations()
+      retireOwnedSignOut()
+    }
+    // A same-id admin loss or regain moves the authority revision with no
+    // identity change at all, so `hydrate`'s account-change branch never runs.
+    // Project the catalogue NOW, before any read: the private rows the old
+    // authority unlocked must not wait for a round-trip to disappear.
+    if (authorityEpoch !== before) reprojectCatalog()
+    void hydrate(session?.user?.id ?? null, session?.access_token ?? null)
   })
 }
 
@@ -1066,6 +1626,10 @@ export async function resumeSync(): Promise<void> {
   const gen = ++hydrateGen
   activeHydrate = null
   const hydrationSucceeded = await hydrateFromSupabase(userId, gen, false)
+  // A resume is a reconnect by another name: the socket was frozen or the app
+  // was backgrounded, and a disablement that landed in that gap is invisible to
+  // every read above. Ask the server directly, fenced to the account that asked.
+  if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) await enforceDisabledCheck()
   if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) connectRealtime(userId)
   // PWA phase 3: a resumed app is by definition back on the network - push any
   // edits the backgrounded device is still holding.
@@ -1074,6 +1638,10 @@ export async function resumeSync(): Promise<void> {
 
 async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = true): Promise<boolean> {
   const accessAtStart = new Map(tripAccessEpochs)
+  // #800: observe the admin flag BEFORE anything is captured, so a change a test
+  // seam or a late auth event made is reflected in the authority revision this
+  // run is scoped to — and so in the stamp its install writes.
+  observeAdminAuthority()
   // #704: the slices this run answers for, named as its verdict names them. Stage 1
   // fixes the first four. Stage 2 adds the trip-scoped ones once the scope is known.
   // A throw ends the run before its verdict. The catch fails every name here that has
@@ -1100,9 +1668,22 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // admin-authority loss or an account switch during a read must produce a
     // recoverable refusal, never another account's private rows.
     const hydrateScope = identityScope() ?? { userId, epoch: identityEpoch }
+    // The ticket this run is judged against, captured with the identity above and
+    // read AFTER `observeAdminAuthority()` ran, so both epochs describe one
+    // moment. It is never refreshed: an install whose ticket no longer matches the
+    // live state is rejected rather than re-authorised.
+    const ticket: InstallTicket = {
+      scope: {
+        userId,
+        identityEpoch: hydrateScope.epoch,
+        authorityEpoch,
+        admin: isAdminCached(),
+      },
+      generation: gen,
+    }
     const [publicUsers, selfProfile, pubRes, myMembershipsRes] = await Promise.all([
       readPublicUsers(),
-      readSelfProfile(userId, hydrateScope),
+      readSelfProfile(userId, hydrateScope, captureCredentials()),
       supabase.from('published_itineraries').select('*'),
       supabase.from('trip_members').select('*').eq('user_id', userId),
     ])
@@ -1129,48 +1710,32 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // keep the previous cache instead of overwriting good rows with a partial
     // result (a wipe that made every later open say "Trip not found").
     let tripsReadFailed = false
-    let profilesReadFailed = false
     let suggestionsReadFailed = false
     let decisionsReadFailed = false
     let activityReadFailed = false
     let notificationsReadFailed = false
-    if (publicUsers.failed) { console.error('[yatraflow] hydrate profile cards failed'); partial.push('profiles'); profilesReadFailed = true }
+    if (publicUsers.failed) { console.error('[yatraflow] hydrate profile cards failed'); partial.push('profiles') }
     // The self row is the private half, and its own failure is its OWN verdict
     // (#800 R8). A public RPC success must never certify the signed-in account as
     // ready: a failed self read keeps the previous private row (so the account is
     // not silently downgraded to a public card) and names its own slice, so the
     // settings page can show a failure with a retry that reissues THIS read.
+    //
+    // What that failure does to the REST of the catalogue is decided by the
+    // constructor, from the read outcomes and the stamp on the catalogue it
+    // replaces.
     let selfRead: PrivateReadOutcome = { status: 'absent' }
-    let selfReadFailed = false
-    // #800 R8/F2/F4: the private reads' own failures, kept apart from the public
-    // one. The admin console's user table and overview follow these, not
-    // `profiles`, so a public RPC success can never certify an admin email table
-    // as ready — and an authority loss downgrades every other-account private row.
-    let adminProfilesFailed = false
     if (selfProfile.status === 'failed') {
       console.error('[yatraflow] hydrate self profile failed', selfProfile.reason)
       partial.push('self profile')
-      selfReadFailed = true
       selfRead = { status: 'failed', reason: selfProfile.reason }
     } else if (selfProfile.status === 'ok') {
       selfRead = selfProfile
     }
-    const users: CachedUser[] = mergeUsers(publicUsers.users, selfRead.status === 'ok' ? [selfRead.user] : [])
-    // #800 F5: the catalogue is REBUILT from the read outcomes, never mutated in
-    // place. `users` is the array the install aliases, so emptying and pushing
-    // into it would re-point what the install already chose. The admin branch
-    // below replaces this wholesale with its own private rows.
-    let installedUsers: CachedUser[] = users
-    // #800 R8/F4: a private read that failed, or an authority loss that
-    // downgraded the read, must not leave the PREVIOUS account's private rows
-    // installed. `mergeUsers` starts from the public cards, so the only way an
-    // old private row survives is the cache this run is patching — drop it when
-    // the account changed, the read failed, or the caller stopped being an admin.
-    const dropStalePrivate = selfReadFailed || adminProfilesFailed || cache.sessionUserId !== userId
-    if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true; tripsReadFailed = true }
     const myRows = (myMembershipsRes.data ?? []) as MemberRow[]
     const memberTripIds = myRows.map(m => m.trip_id)
     const myTripIds = [...new Set(memberTripIds)]
+    if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true; tripsReadFailed = true }
     // #704: a failed memberships read leaves the trip scope unknown, so stage 2 read
     // nothing for a member. The admin reads are not scoped by membership, so they stand.
     const scopeUnread = !!myMembershipsRes.error && !admin
@@ -1200,6 +1765,10 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     let activity: ActivityEntry[] = []
     let notifications: Notification[] = []
     let adminAudit: AdminAuditEntry[] = []
+    // The one install this run performs. Set by whichever branch read the private
+    // slices, and `null` until then — which is how the non-admin path knows it
+    // still has to install.
+    let installed: CatalogResult | null = null
     if (admin) {
       // The mock builder in tests/hydrate-race.test.ts has no order()/limit()
       // chainables, and production PostgREST needs limit() AFTER order() —
@@ -1218,7 +1787,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
         // legitimate. The admin flag is checked at call time and again after the
         // await, so an authority loss in between downgrades the read rather than
         // installing another account's private rows (#800 F2, F4).
-        readAdminProfiles(hydrateScope),
+        readAdminProfiles(ticket.scope, captureCredentials()),
       ])
       for (const [name, res] of [
         ['trips', tripsRes], ['members', memRes], ['suggestions', sugRes],
@@ -1234,25 +1803,39 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       activityReadFailed = !!actRes.error
       suggestionsReadFailed = !!sugRes.error
       notificationsReadFailed = !!notRes.error
-      // The admin's bulk private read replaces the public cards wholesale: every
-      // row it returns is a private row, and the console is the only surface that
-      // needs them. A failure keeps the public cards already loaded rather than
-      // emptying the catalogue (#800) — and it names its own slice, so the
-      // console's user state follows a read that actually happened instead of a
-      // public RPC success certifying data it never saw (#800 R8).
+      // The admin's bulk private read is the authoritative list of private rows.
+      // A failure names its own slice, so the console's user state follows a read
+      // that actually happened instead of a public RPC success certifying data it
+      // never saw (#800 R8).
       //
-      // #800 F5: the catalogue is REBUILT from the read outcomes here, not
-      // mutated in place. `users` is the value a later `usersToInstall` aliases,
-      // so emptying and pushing into it re-pointed the array the install had
-      // already chosen — the admin branch then produced a catalogue that looked
-      // private but held whatever the alias happened to see.
+      // What it INSTALLS is not decided here. `installCatalog` below takes the
+      // read outcomes as outcomes and lets the constructor apply the authority
+      // gate once, at the end — which is the only place a same-ID loss, a failed
+      // self read and a successful batch can be weighed against each other.
+      let adminRead: SliceRead<readonly PrivateUser[]> = { status: 'absent' }
       if (adminProfiles.status === 'ok' && isCurrentIdentity(hydrateScope) && isAdminCached()) {
-        installedUsers = adminProfiles.users
+        adminRead = adminProfiles
       } else {
-        if (adminProfiles.status !== 'ok') console.error('[yatraflow] hydrate admin profiles failed', adminProfiles.reason)
+        if (adminProfiles.status !== 'ok') console.error('[yatraflow] hydrate admin profiles failed', adminProfiles.status === 'failed' ? adminProfiles.reason : 'not authorised')
         partial.push('admin profiles')
-        adminProfilesFailed = true
+        adminRead = { status: 'failed', reason: 'authority changed' }
       }
+      // The one install, on the ticket this run captured. The ticket is never
+      // refreshed to fit a late answer: if the identity, the authority revision
+      // or the generation moved while the request was in flight, the install is
+      // rejected and the newer run's own install is what the screen shows. The
+      // immediate loss itself is applied by the auth callback's reprojection,
+      // which needs no read at all.
+      const outcome = installCatalog(ticket, {
+        public: { users: publicUsers.users, failed: publicUsers.failed, complete: true, requested: true },
+        self: selfRead,
+        admin: adminRead,
+      })
+      if (outcome.status === 'retired') {
+        console.warn('[yatraflow] hydrate profile install retired:', outcome.reason)
+        return false
+      }
+      installed = outcome.result
       if (tripsRes.error || memRes.error) { tripCountUnknown = true; tripsReadFailed = true }
       trips = (tripsRes.data ?? []) as TripRow[]
       members.push(...((memRes.data ?? []) as MemberRow[]))
@@ -1293,6 +1876,37 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       decisions = mapOrSkip((decRes.data ?? []), rowToDecision)
       activity = mapOrSkip((actRes.data ?? []), rowToActivity)
       notifications = mapOrSkip((notRes.data ?? []), rowToNotification)
+    }
+
+    // A non-admin installs through the SAME gate, on the same ticket. The scope
+    // carries `admin: false`, so the gate's own rules keep the caller's private
+    // self row and downgrade every other-account entry to its public card.
+    if (!installed) {
+      const outcome = installCatalog(ticket, {
+        public: { users: publicUsers.users, failed: publicUsers.failed, complete: true, requested: true },
+        self: selfRead,
+        admin: { status: 'not-requested' },
+      })
+      if (outcome.status === 'retired') {
+        console.warn('[yatraflow] hydrate profile install retired:', outcome.reason)
+        return false
+      }
+      installed = outcome.result
+    }
+
+    // The catalogue's own verdicts are the authority for the slices this run
+    // asked for, because the constructor saw the whole picture: a successful admin
+    // batch that carried the caller's own row makes the self result successful
+    // even when the narrower self read failed, and a batch that omitted self
+    // cannot. Reconcile `partial` with them rather than trusting the booleans
+    // above, which were collected before that weighing happened. A slice this run
+    // did not ask for is left alone — its verdict is published, but it is not
+    // this run's failure to report.
+    for (const [name, verdict] of Object.entries(installed.verdicts)) {
+      if (!askedSlices.includes(name)) continue
+      const at = partial.indexOf(name)
+      if (verdict === 'failed' && at < 0) partial.push(name)
+      if (verdict === 'ok' && at >= 0) partial.splice(at, 1)
     }
 
     // `users` already carries the public cards plus the private self row (see
@@ -1342,20 +1956,12 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // Failed reads keep rows only when the cache belongs to this account.
     // A new account must not inherit another account's rows through a failed query.
     //
-    // #800 R8/F4: the private read failure is its own case, and it must never
-    // leave another account's private row installed. Keeping the previous cache
-    // is right only while it holds a private row for THIS account — otherwise the
-    // old row belongs to whoever was signed in before, and a new account would
-    // inherit their email. `usersToInstall` is built from the public cards this
-    // run read (or the admin bulk, when that read succeeded), so it is always
-    // safe to install; `keepPreviousUsers` is the narrow case where keeping more
-    // is better than replacing.
-    const usersToInstall = dropStalePrivate
-      ? installedUsers.filter(u => u.kind === 'public' || u.id === userId)
-      : installedUsers
-    const keepPreviousUsers = (profilesReadFailed || selfReadFailed || adminProfilesFailed) && sameSessionUser
-      && cache.users.some(u => u.id === userId && u.kind === 'private')
-    const usersRead = keepPreviousUsers ? undefined : usersToInstall
+    // #800 R8/F4: the profile catalogue has no equivalent decision here any more.
+    // Keeping a private row on a failed read, dropping it on an authority loss and
+    // installing a successful admin batch were three judgements made at three
+    // different times; `installCatalog` above made all three at once, from the
+    // read outcomes and the stamp on the catalogue it replaced. There is nothing
+    // left for this block to choose, which is the point.
     const suggestionsRead = (scopeUnread || suggestionsReadFailed) && sameSessionUser
       ? undefined
       : (scopeUnread || suggestionsReadFailed) ? [] : suggestions
@@ -1410,7 +2016,6 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     }
 
     patch({
-      ...(usersRead !== undefined ? { users: usersRead } : {}),
       ...(displayedTrips !== undefined ? { trips: displayedTrips } : {}),
       // #704: a failed slice keeps same-account rows; another account cannot keep them.
       ...(suggestionsRead !== undefined ? { suggestions: suggestionsRead } : {}),
@@ -1477,7 +2082,11 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // unread one — instead of being reported 'ok' without ever being read.
     // The trips verdict comes from the memberships read. A zero-row read is a read,
     // so trips reports ready. A failed read reports failed, because partial names trips.
-    patch({ sliceReads: sliceReadReport(partial, askedSlices) })
+    // The catalogue's own verdicts ride the final report. A slice this run did not
+    // ask for keeps whatever the previous run — or an immediate reprojection on an
+    // authority change — published for it, so a public-only run cannot certify or
+    // revoke a private read it never issued.
+    patch({ sliceReads: { ...cache.sliceReads, ...sliceReadReport(partial, askedSlices), ...installed.verdicts } })
     verdictPublished = true
     // Publish the verdict now. patch() wakes no subscriber by itself.
     // A retry or a resume reaches this line with no commit after it.
@@ -1508,9 +2117,13 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       // sliceReadReport marks a name failed when the list it gets lists that name. Here every name is listed.
       const sameSessionUser = cache.sessionUserId === userId
       const sessionWasUnknown = cache.sessionUserId === null
+      // A run that died under a DIFFERENT account must not leave the previous
+      // account's catalogue installed, and the clear goes through the same gate
+      // so the stamp goes with it.
+      if (!sameSessionUser) clearInstalledCatalog()
       patch({
         ...(cache.sessionUserId === userId ? {} : { decisions: [], activity: [] }),
-        ...(!sameSessionUser ? { users: [], suggestions: [], notifications: [] } : {}),
+        ...(!sameSessionUser ? { suggestions: [], notifications: [] } : {}),
         ...(sessionWasUnknown ? { sessionUserId: userId } : {}),
         sliceReads: { ...cache.sliceReads, ...sliceReadReport(unread, unread) },
       })
@@ -1672,32 +2285,47 @@ export const PROFILE_NOT_SAVED = 'Profile not saved. Check your connection and t
 export async function updateProfile(patchFields: Partial<PrivateUserProfile>): Promise<{ ok: boolean; error?: string }> {
   const u = currentUser()
   if (!u) return { ok: false, error: PROFILE_NOT_SAVED }
-  const idx = cache.users.findIndex(x => x.id === u.id)
-  // The cache entry for the signed-in account is a PRIVATE row, so the optimistic
-  // edit is applied to that row's shape (#800). `currentUser()` already returned
-  // one, which is why this cast is a narrowing of something already established
-  // rather than a widening.
-  const before = idx >= 0 && privateUser(cache.users[idx]) ? cache.users[idx] : null
-  if (before) { cache.users[idx] = { ...before, profile: { ...before.profile, ...patchFields } }; commit() }
-  const rollBack = () => {
-    const i = cache.users.findIndex(x => x.id === u.id)
-    if (before && i >= 0) { cache.users[i] = before; commit() }
+  // The optimistic edit goes through the same install gate as a hydrate, so the
+  // authority revision is re-checked and the stamp is rewritten.
+  // `currentUser()` already returned a PRIVATE row for this account, which is why
+  // the shape is a narrowing of something established rather than a widening.
+  //
+  // The refusal restores exactly the fields this edit wrote. An unrelated change
+  // that landed while the request was in flight — a live rename, another edit —
+  // survives, because it is not one of these fields.
+  const after = { ...u.profile, ...patchFields }
+  const owned: OwnedFields = {
+    id: u.id,
+    before: pickFields(u.profile, patchFields),
+    after: pickFields(after, patchFields),
   }
+  const applied = installCatalogEdit(owned, x => ({ ...x, profile: after }))
+  if (!applied) return { ok: false, error: PROFILE_NOT_SAVED }
   try {
     const { error } = await supabase.from('profiles').update({
       name: patchFields.name, home_city: patchFields.homeCity, languages: patchFields.languages,
       travel_styles: patchFields.travelStyles, is_creator: patchFields.isCreator,
       creator_bio: patchFields.creatorBio, social_links: patchFields.socialLinks,
     }).eq('id', u.id)
-    if (!error) return { ok: true }
+    if (!error) { finishOperation(applied); return { ok: true } }
     console.error('[yatraflow] profiles write failed', error)
-    rollBack()
+    revertOwnedFields(owned, applied)
     return { ok: false, error: PROFILE_NOT_SAVED }
   } catch (err) {
     console.error('[yatraflow] profiles write rejected', err)
-    rollBack()
+    revertOwnedFields(owned, applied)
     return { ok: false, error: PROFILE_NOT_SAVED }
   }
+}
+
+/** The subset of `from` named by `keys`, keeping an explicit undefined.
+ *
+ *  Dropping undefined would lose ownership of a field whose prior value was
+ *  absent, which is exactly the field a first-time optional write needs reverted. */
+function pickFields<T extends object>(from: T, keys: Partial<T>): Partial<T> {
+  const out: Partial<T> = {}
+  for (const key of Object.keys(keys) as (keyof T)[]) out[key] = from[key]
+  return out
 }
 
 // ---------------- Trips ----------------
@@ -2709,25 +3337,27 @@ function rpcErrorMessage(e: unknown): string {
 /** Disable (or re-enable) any account. The RPC refuses self-disable. */
 export async function adminSetDisabled(userId: ID, disabled: boolean): Promise<boolean> {
   if (!requireAdmin()) return false
-  const prev = cache.users
-  // #800: the disabled flag is private metadata, so the optimistic edit applies
-  // only to a PRIVATE row. An admin hydrates private rows for every account (see
-  // hydrate's admin branch), so the row is there; a public card is left alone
-  // rather than having a flag manufactured onto it.
-  patch({
-    users: prev.map(u => u.id === userId && privateUser(u)
-      ? { ...u, profile: { ...u.profile, isDisabled: disabled } }
-      : u),
-  })
-  commit()
+  // The disabled flag is private metadata, so the optimistic edit applies only to
+  // a PRIVATE row. An admin hydrates private rows for every account, so the row is
+  // there; a public card is left alone rather than having a flag manufactured
+  // onto it.
+  const held = cache.users.find(u => u.id === userId)
+  if (!held || !privateUser(held)) return false
+  const owned: OwnedFields = {
+    id: userId,
+    before: { isDisabled: held.profile.isDisabled },
+    after: { isDisabled: disabled },
+  }
+  const applied = installCatalogEdit(owned, u => ({ ...u, profile: { ...u.profile, isDisabled: disabled } }))
+  if (!applied) return false
   const { error } = await supabase.rpc('admin_set_disabled', { p_user_id: userId, p_disabled: disabled })
   if (error) {
     console.error('[yatraflow] admin_set_disabled failed', error)
-    patch({ users: prev })
-    commit()
+    revertOwnedFields(owned, applied)
     toast(rpcErrorMessage(error), 'err')
     return false
   }
+  finishOperation(applied)
   toast(disabled ? 'Account disabled.' : 'Account re-enabled.')
   void refreshAdminAudit()
   return true
@@ -2736,24 +3366,26 @@ export async function adminSetDisabled(userId: ID, disabled: boolean): Promise<b
 /** Toggle the creator badge on any profile. */
 export async function adminSetCreator(userId: ID, isCreator: boolean): Promise<boolean> {
   if (!requireAdmin()) return false
-  const prev = cache.users
-  // #800: `is_creator` IS a public field, but the optimistic edit is still applied
-  // only to a private row — the console's list is private rows, and a public card
-  // is refreshed by its own live event rather than edited here.
-  patch({
-    users: prev.map(u => u.id === userId && privateUser(u)
-      ? { ...u, profile: { ...u.profile, isCreator } }
-      : u),
-  })
-  commit()
+  // `is_creator` IS a public field, but the optimistic edit is still applied only
+  // to a private row — the console's list is private rows, and a public card is
+  // refreshed by its own live event rather than edited here.
+  const held = cache.users.find(u => u.id === userId)
+  if (!held || !privateUser(held)) return false
+  const owned: OwnedFields = {
+    id: userId,
+    before: { isCreator: held.profile.isCreator },
+    after: { isCreator },
+  }
+  const applied = installCatalogEdit(owned, u => ({ ...u, profile: { ...u.profile, isCreator } }))
+  if (!applied) return false
   const { error } = await supabase.rpc('admin_set_creator', { p_user_id: userId, p_is_creator: isCreator })
   if (error) {
     console.error('[yatraflow] admin_set_creator failed', error)
-    patch({ users: prev })
-    commit()
+    revertOwnedFields(owned, applied)
     toast(rpcErrorMessage(error), 'err')
     return false
   }
+  finishOperation(applied)
   toast(isCreator ? 'Creator badge granted.' : 'Creator badge removed.')
   void refreshAdminAudit()
   return true
@@ -2892,8 +3524,14 @@ export async function adminDeleteUser(userId: ID, force = false): Promise<boolea
     .filter(t => (t.members ?? []).some(m => m.userId === userId && m.role === 'owner'))
     .map(t => t.id))
   const isOwnedTrip = (tripId: ID) => ownedTripIds.has(tripId)
+  // The user row leaves through the SAME install gate as every other catalogue
+  // write, under the ownership this operation captured. A refusal restores ONLY
+  // that row into the current catalogue, so an unrelated rename that landed while
+  // the request was in flight survives.
+  const deleted = prevUsers.find(u => u.id === userId)
+  const removed = removeCatalogEntry(userId)
+  if (!removed) return false
   patch({
-    users: prevUsers.filter(u => u.id !== userId),
     // #367: the DB cascade deletes OWNED trips and takes their children; a
     // trip the target was only a MEMBER of survives for the remaining crew —
     // so the optimistic patch evicts only the membership row there, not the
@@ -2914,14 +3552,16 @@ export async function adminDeleteUser(userId: ID, force = false): Promise<boolea
   const { error } = await supabase.rpc('admin_delete_user', { p_user_id: userId, p_force: force })
   if (error) {
     console.error('[yatraflow] admin_delete_user failed', error)
+    if (deleted) restoreCatalogEntry(removed, deleted)
     patch({
-      users: prevUsers, trips: prevTrips, published: prevPubs,
+      trips: prevTrips, published: prevPubs,
       suggestions: prevSug, decisions: prevDec, activity: prevAct, notifications: prevNotif,
     })
     commit()
     toast(rpcErrorMessage(error), 'err')
     return false
   }
+  finishOperation(removed)
   toast('User deleted — their data is gone (see the audit log).')
   void refreshAdminAudit()
   return true
@@ -7170,6 +7810,29 @@ export function _isAdminForTest(): boolean {
   return isAdminCached()
 }
 
+/** Test hook — install a catalogue the way a hydrate does, under the authority
+ *  that is current now.
+ *
+ *  A fixture that assigns `cache.users` directly is a SECOND WRITER: the
+ *  authority gate cannot see it, so the stamp stays null and every private row
+ *  the fixture planted is treated as unauthorised on the next install. That is
+ *  the correct reading of a state the real store cannot reach, and it is exactly
+ *  why a fixture must come through here instead. */
+export function _installUsersForTest(users: CachedUser[]): void {
+  const ticket = currentTicket()
+  installCatalog(ticket, {
+    public: { users: users.map(toPublicUser), failed: false, complete: false, requested: false },
+    self: { status: 'not-requested' },
+    admin: { status: 'not-requested' },
+  }, {
+    ownerUserId: ticket.scope.userId,
+    identityEpoch: ticket.scope.identityEpoch,
+    authorityEpoch: ticket.scope.authorityEpoch,
+    selfAuthorized: users.some(u => u.id === ticket.scope.userId && u.kind === 'private'),
+    users,
+  })
+}
+
 /** Test hook — run the real full-row loader the join and gate paths use, so a
  *  test can prove what a read does to the cache without a live session. */
 export function loadTripForTest(tripId: ID): Promise<LoadOutcome> {
@@ -7265,13 +7928,27 @@ function sweepPhantoms(
 async function resyncTripsAfterReconnect(scope: IdentityScope): Promise<void> {
   const live = () => isCurrentIdentity(scope)
   if (!live()) return
-  const ids = cache.trips.map(t => t.id)
-  if (!ids.length) return
   // Each slice reconciles independently: one flaky read must not strand the
   // slices after it — the next resync only happens at the NEXT reconnect.
   const step = async (label: string, fn: () => Promise<void>): Promise<void> => {
     try { if (live()) await fn() } catch (e) { console.error(`[yatraflow] reconnect resync (${label}) failed`, e) }
   }
+  // The lifecycle status is checked BEFORE the row reads, and always against the
+  // server. A socket gap can hide a disablement that landed while it was down,
+  // and every read below would then answer as an enabled account. This is the
+  // authoritative check, not the cache's opinion of itself.
+  //
+  // It runs OUTSIDE the trip-count gate below: a new account, or an admin with no
+  // trips, still has to learn that it was disabled.
+  await step('caller status', async () => { await recheckDisabledStatus() })
+  // The private rows this authority covers are re-read too. The reconnect's
+  // profile step reads only the public projection, so a private change that
+  // landed during the gap would otherwise stay stale for as long as the socket
+  // stayed down. Coalesced, so a reconnect that replays one event per row issues
+  // a single private read.
+  await step('private profiles', async () => { await coalescedPrivateRefresh(currentTicket()) })
+  const ids = cache.trips.map(t => t.id)
+  if (!ids.length) return
   await step('trips', async () => {
     const { data, error } = await supabase.from('trips').select('*').in('id', ids)
     if (!live()) return
@@ -7579,15 +8256,35 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       cache.notifications = reduceSlice(cache.notifications, event, row ? rowToNotification(row) : undefined, oldRow?.id)
       break
     case 'profile_cards': {
-      // #800: the live channel publishes the PUBLIC projection, so the payload
-      // carries the safe columns and never a private one. The mapper is the
-      // public one, and the merge keeps a private entry for the same id — a live
-      // name change must not erase the signed-in user's own account fields.
-      if (event === 'DELETE') {
-        cache.users = cache.users.filter(u => u.id !== id)
-        break
-      }
-      cache.users = mergeUsers(cache.users, [rowToPublicUser(row)])
+      // The live channel publishes the PUBLIC projection, so the payload carries
+      // the safe columns and never a private one. The mapper is the public one,
+      // and the install keeps a private entry for the same id — a live name
+      // change must not erase the signed-in user's own account fields.
+      //
+      // The event is a DELTA, so it is installed as one: the gate takes the fresh
+      // card, keeps the entries the delta did not mention, and re-applies the
+      // authority revision to whatever survives.
+      //
+      // The card carries only public fields, so a PRIVATE change that produced it
+      // — an admin's disabled flag, a preference — is still stale afterwards.
+      // Where the caller is authorised for that row's private half, the event also
+      // asks for it, coalesced so a burst shares one read.
+      const ticket = currentTicket()
+      const merged = event === 'DELETE'
+        ? cache.users.filter(u => u.id !== id)
+        : mergeUsers(cache.users, [rowToPublicUser(row)])
+      installCatalog(ticket, {
+        public: { users: merged.map(toPublicUser), failed: false, complete: false, requested: false },
+        self: { status: 'not-requested' },
+        admin: { status: 'not-requested' },
+      }, {
+        ownerUserId: ticket.scope.userId,
+        identityEpoch: ticket.scope.identityEpoch,
+        authorityEpoch: ticket.scope.authorityEpoch,
+        selfAuthorized: cache.catalogAuthority?.selfAuthorized ?? false,
+        users: merged,
+      })
+      if (privateRefreshRelevant(ticket, id)) void coalescedPrivateRefresh(ticket)
       break
     }
     case 'published_itineraries':

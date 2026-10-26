@@ -187,10 +187,13 @@ function UsersTab() {
   // rendered a ready table with only the rows it happened to have. The private
   // verdict wins when it exists; `profiles` is only the fallback for a read that
   // never asked for the bulk.
+  //
+  // The fallback used to run after an admin SUCCESS too, which is the other half
+  // of the same mistake: a complete private table read as failed because the
+  // public catalogue broke. This console issues the bulk read on every hydrate,
+  // so its verdict is the one this table follows — full stop.
   const adminProfilesRead = sliceState(db.sliceReads, 'admin profiles')
-  const usersView = rowsView(adminProfilesRead === 'reading' || adminProfilesRead === 'failed'
-    ? adminProfilesRead
-    : sliceState(db.sliceReads, 'profiles'), users.length)
+  const usersView = rowsView(adminProfilesRead, users.length)
   const [readRetrying, setReadRetrying] = useState(false)
 
   return (

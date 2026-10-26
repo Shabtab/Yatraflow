@@ -46,6 +46,9 @@ number collides with a shipped release, the ledger wins.
 Status: the user confirmed the specification and local implementation delegation on 2026-10-25.
 The fixed design base is `85ef831ff24f13391babbda73b884b8f2d71753e` on `test`.
 
+Implementation status: local source review and verification are in progress.
+The full gate and hosted checks have not run.
+
 The user confirmed these privacy choices on 2026-10-25:
 
 - Keep home city and languages private. Remove them from public creator pages.

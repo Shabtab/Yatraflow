@@ -30,6 +30,9 @@ const { state, toast } = vi.hoisted(() => ({
     signOuts: [] as string[],
     sessionUser: 'u-1' as 'u-1' | 'u-2',
     admin: false,
+    /** The auth-event handler the SDK would call, so a test can emit a real
+     *  SIGNED_IN / SIGNED_OUT instead of poking the store's test seam. */
+    authHandler: null as null | ((event: string, session: unknown) => void),
   },
   toast: vi.fn(),
 }))
@@ -84,7 +87,7 @@ vi.mock('../src/lib/supabase', () => {
       removeChannel: () => Promise.resolve(),
       auth: {
         getSession: () => Promise.resolve({
-          data: { session: state.sessionUser ? { user: { id: state.sessionUser }, access_token: 'tok' } : null },
+          data: { session: state.sessionUser ? { user: { id: state.sessionUser, app_metadata: state.admin ? { role: 'masteradmin' } : {} }, access_token: 'tok' } : null },
         }),
         signOut: () => {
           state.signOuts.push(String(state.sessionUser))
@@ -92,7 +95,10 @@ vi.mock('../src/lib/supabase', () => {
           if (gate) { state.signOutGate = null; return gate.then(() => ({ error: null })) }
           return Promise.resolve({ error: null })
         },
-        onAuthStateChange: () => ({ data: { subscription: {} } }),
+        onAuthStateChange: (cb: (event: string, session: unknown) => void) => {
+          state.authHandler = cb
+          return { data: { subscription: {} } }
+        },
       },
       rpc: (fn: string, args: unknown) => {
         state.rpcCalls.push({ fn, args })
@@ -151,6 +157,7 @@ beforeEach(() => {
   state.signOuts = []
   state.sessionUser = 'u-1'
   state.admin = false
+  state.authHandler = null
   toast.mockClear()
 })
 
@@ -202,20 +209,25 @@ describe('the private reads are fenced to their caller', () => {
     const store = await freshStore()
     state.profileRows = { 'u-1': OWNER_PRIVATE }
     state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
+
+    store.getSnapshot().sessionUserId = 'u-1'
+    state.admin = true
+    store.init()
+    await flush(); await flush(); await flush()
+    expect(store.getSnapshot().users.filter(u => u.kind === 'private').map(u => u.id).sort()).toEqual(['u-1', 'u-2'])
+
     // Hold the private bulk read open, so the authority can change mid-flight.
     let release = () => {}
     state.deferred.__holdProfiles = new Promise<void>(r => { release = r })
-
-    store.getSnapshot().sessionUserId = 'u-1'
-    store._setAdminForTest(true)
-    const pending = store.resumeSync()
+    store.resumeSync()
     await flush()
-    expect(state.tableReads.filter(t => t === 'profiles').length).toBeGreaterThan(0)
+    expect(state.tableReads.filter(t => t === 'profiles').length).toBeGreaterThan(2)
 
-    // The authority is revoked while the read is still in the air.
-    store._setAdminForTest(false)
+    // The authority is revoked while the read is still in the air. Emitted as a
+    // real auth event, so the store observes the loss, moves the authority
+    // revision and reprojects the catalogue before the held read lands.
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
     release()
-    await pending
     await flush(); await flush(); await flush()
 
     // The read is refused, the console's verdict says so, and no OTHER-account
@@ -223,6 +235,7 @@ describe('the private reads are fenced to their caller', () => {
     // came from the self read, which is fenced separately.
     expect(store.getSnapshot().sliceReads['admin profiles']).toBe('failed')
     expect(store.getSnapshot().users.filter(u => u.kind === 'private').every(u => u.id === 'u-1')).toBe(true)
+    expect(store.getSnapshot().users).not.toContainEqual(expect.objectContaining({ id: 'u-2', kind: 'private' }))
   })
 
   it('a remote disablement during the read refuses rather than installing rows', async () => {
@@ -233,24 +246,27 @@ describe('the private reads are fenced to their caller', () => {
     state.deferred.__holdProfiles = new Promise<void>(r => { release = r })
 
     store.getSnapshot().sessionUserId = 'u-1'
-    store._setAdminForTest(true)
-    const pending = store.resumeSync()
+    state.admin = true
+    store.init()
     await flush()
+    expect(state.tableReads.filter(t => t === 'profiles').length).toBeGreaterThan(0)
 
-    // The caller is disabled remotely while the bulk read is in the air. The
-    // RESTRICTIVE policy would then refuse the read server-side too.
+    // A different account signs in while A's bulk read is still held. The auth
+    // callback retires A's run: its identity, authority revision and generation
+    // all moved.
     state.sessionUser = 'u-2'
-    store.getSnapshot().sessionUserId = 'u-2'
+    state.profileRows = { 'u-2': { ...OTHER_PRIVATE } }
+    state.allProfileRows = [{ ...OTHER_PRIVATE }]
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-2', app_metadata: { role: 'masteradmin' } } })
     release()
-    await pending
     await flush(); await flush(); await flush()
 
-    // The answer belonged to the account that asked, so it is discarded, and no
-    // OTHER-account private row is installed under the account now signed in.
-    expect(store.getSnapshot().sliceReads['admin profiles']).toBe('failed')
-    expect(store.getSnapshot().users.filter(u => u.kind === 'private').every(u => u.id === 'u-1')).toBe(true)
+    // The answer belonged to the account that asked, so it is discarded. The
+    // account now signed in reads its OWN rows, and A's private rows are not
+    // among them — the stale install is rejected rather than re-authorised.
+    expect(store.getSnapshot().users.filter(u => u.kind === 'private').every(u => u.id === 'u-2')).toBe(true)
     expect(store.getSnapshot().users.filter(u => u.kind === 'private')).not.toContainEqual(
-      expect.objectContaining({ id: 'u-2' }),
+      expect.objectContaining({ id: 'u-1' }),
     )
   })
 
@@ -319,17 +335,24 @@ describe('a same-ID authority loss downgrades other-account private rows', () =>
     const store = await freshStore()
     state.profileRows = { 'u-1': OWNER_PRIVATE }
     state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
-    let release = () => {}
-    state.deferred.__holdProfiles = new Promise<void>(r => { release = r })
 
     store.getSnapshot().sessionUserId = 'u-1'
-    store._setAdminForTest(true)
-    const pending = store.resumeSync()
+    state.admin = true
+    store.init()
+    await flush(); await flush(); await flush()
+    // Phase 1: an admin hydrate installs both private rows.
+    expect(store.getSnapshot().users.filter(u => u.kind === 'private').map(u => u.id).sort()).toEqual(['u-1', 'u-2'])
+
+    // Phase 2: the SAME id loses admin authority while the bulk read is in flight.
+    let release = () => {}
+    state.deferred.__holdProfiles = new Promise<void>(r => { release = r })
+    store.resumeSync()
     await flush()
-    // Same id, no generation bump: the authority itself changed mid-read.
-    store._setAdminForTest(false)
+    // Same id, no generation bump: the authority itself changed mid-read. Emitted
+    // the way the SDK emits it, so the auth callback observes the loss, moves the
+    // authority revision and reprojects the catalogue before the held read lands.
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-1' } })
     release()
-    await pending
     await flush(); await flush(); await flush()
 
     // No other-account private row survives the authority loss. The caller's own
@@ -337,6 +360,35 @@ describe('a same-ID authority loss downgrades other-account private rows', () =>
     expect(store.getSnapshot().users.filter(u => u.kind === 'private').every(u => u.id === 'u-1')).toBe(true)
     expect(store.getSnapshot().users).not.toContainEqual(expect.objectContaining({ id: 'u-2', kind: 'private' }))
     expect(store.getSnapshot().sliceReads['admin profiles']).toBe('failed')
+  })
+
+  it('a held bulk read cannot publish the departing account rows into the next account', async () => {
+    const store = await freshStore()
+    state.profileRows = { 'u-1': OWNER_PRIVATE }
+    state.allProfileRows = [OWNER_PRIVATE, OTHER_PRIVATE]
+    let release = () => {}
+    state.deferred.__holdProfiles = new Promise<void>(r => { release = r })
+
+    store.getSnapshot().sessionUserId = 'u-1'
+    state.admin = true
+    store.init()
+    await flush()
+
+    // A different account signs in while A's bulk read is still held. The auth
+    // callback retires A's run: its identity, authority revision and generation
+    // all moved.
+    state.sessionUser = 'u-2'
+    state.profileRows = { 'u-2': { ...OTHER_PRIVATE } }
+    state.allProfileRows = [{ ...OTHER_PRIVATE }]
+    state.authHandler!('SIGNED_IN', { user: { id: 'u-2', app_metadata: { role: 'masteradmin' } } })
+    release()
+    await flush(); await flush(); await flush()
+
+    // A's private rows never reach B's cache, and B's own account is the only
+    // private entry. A's stale install is rejected rather than re-authorised.
+    const users = store.getSnapshot().users
+    expect(users.filter(u => u.kind === 'private').map(u => u.id)).toEqual(['u-2'])
+    expect(users.some(u => u.id === 'u-1' && u.kind === 'private')).toBe(false)
   })
 })
 

@@ -52,7 +52,11 @@ describe('P15 R23 — every console panel reads its verdict, not the raw length'
     expect(page).toMatch(/import \{ sliceState, rowsView, combinedReadState \} from '\.\.\/lib\/readState'/)
     // users -> profiles, trips -> trips, invites -> trips (the ranking reads
     // trips), content -> the published catalog.
-    expect(page).toMatch(/const usersView = rowsView\(sliceState\(db\.sliceReads, 'profiles'\), users\.length\)/)
+    expect(page).toMatch(/const adminProfilesRead = sliceState\(db\.sliceReads, 'admin profiles'\)/)
+    // #800 F1: the private verdict wins, with no fallback to `profiles` after an
+    // admin SUCCESS either — a complete private table read as failed because the
+    // public catalogue broke.
+    expect(page).toMatch(/const usersView = rowsView\(adminProfilesRead, users\.length\)/)
     expect(page).toMatch(/const tripsView = rowsView\(sliceState\(db\.sliceReads, 'trips'\), trips\.length\)/)
     expect(page).toMatch(/const tripsView = rowsView\(sliceState\(db\.sliceReads, 'trips'\), rows\.length\)/)
     expect(page).toMatch(/const pubsView = rowsView\(sliceState\(db\.sliceReads, 'suggested itineraries'\), pubs\.length\)/)

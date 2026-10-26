@@ -39,8 +39,11 @@ const STEPS = [
   'replayQueuedWrites',
 ]
 
-/** The two steps resumeSync repeats after its refetch. */
-const RESUME_STEPS = ['connectRealtime', 'replayQueuedWrites']
+/** The three steps resumeSync repeats after its refetch. Root needs the
+ *  authoritative caller-disabled check on a RESUME as well as on auth and on a
+ *  reconnect: a frozen process or a dead socket can hide a disablement that
+ *  landed while it was down, and every read that came back still says enabled. */
+const RESUME_STEPS = ['enforceDisabledCheck', 'connectRealtime', 'replayQueuedWrites']
 
 /** Characters that may precede a call of a seam we scan for. A hit that
  *  starts after one of these is part of a longer name, not a call. */
@@ -125,14 +128,14 @@ describe('the post-hydrate gates (#759)', () => {
     for (const step of STEPS) expectGated(callsOf(hydrate, step), step, 'hydrate()')
   })
 
-  it('guards the two steps resumeSync repeats', () => {
+  it('guards the steps resumeSync repeats', () => {
     for (const step of RESUME_STEPS) expectGated(callsOf(resume, step), step, 'resumeSync()')
   })
 
   it('takes the verdict from the awaited fetch, so a failure runs none of them', () => {
     const code = codeLines(hydrate).join('\n')
     expect(code).toContain('const hydrationSucceeded = await hydrateFromSupabase(userId, gen)')
-    expect(code).toContain('activeHydrate = { userId, promise }')
+    expect(code).toContain('activeHydrate = { userId, authorityEpoch, promise }')
   })
 })
 
@@ -203,7 +206,8 @@ vi.mock('../src/lib/supabase', () => {
     const chain = () => builder
     Object.assign(builder, {
       select: chain, eq: chain, is: chain, in: chain, limit: chain, order: chain,
-      maybeSingle: chain, single: chain,
+      maybeSingle: () => { builder.singleUsed = true; return builder },
+      single: () => { builder.singleUsed = true; return builder },
       insert: () => { isWrite = true; state.writes += 1; return builder },
       update: () => { isWrite = true; state.writes += 1; return builder },
       upsert: () => { isWrite = true; state.writes += 1; return builder },
@@ -218,7 +222,15 @@ vi.mock('../src/lib/supabase', () => {
         return gate.then(() => {
           const thrown = state.throws[table]
           if (thrown) throw thrown
-          return { data: state.tables[table] ?? [], error: null, count: 1 }
+          // A `.maybeSingle()` / `.single()` read asks for ONE row, and the code
+          // it feeds maps that row directly. Handing it the whole array made
+          // `rowToPrivateUser` read `id` off an array and produce `undefined`, so
+          // the account was never found and the disabled check fell through to a
+          // server call the mock could not answer. Unwrap only when the chain
+          // asked for a single row; every other read still sees the array.
+          const rows = state.tables[table] ?? []
+          const data = builder.singleUsed === true ? (rows[0] ?? null) : rows
+          return { data, error: null, count: 1 }
         }).then(res, reject)
       },
     })
@@ -369,19 +381,28 @@ describe('the four steps act only when the gates say yes (#759)', () => {
     state.session = { user: { id: 'userA', app_metadata: {} } }
     state.snapshot = snapshotForDisabledA()
     state.tables = loadedAccount()
-    // The first stage-1 read throws, so hydrateFromSupabase catches and its
-    // verdict stays unpublished: hydrationSucceeded === false.
-    state.throws = { profiles: new Error('offline') }
+    // A stage-1 read that is NOT wrapped in its own try/catch throws, so
+    // hydrateFromSupabase catches and its verdict stays unpublished:
+    // hydrationSucceeded === false. (`profiles` cannot be the one — the self
+    // read catches its own error and reports it as a slice verdict, which is a
+    // partial hydrate, not a failed one.)
+    state.throws = { published_itineraries: new Error('offline') }
 
     const store = await freshStore()
     store.init()
     await drain()
 
-    // The other two conditions hold, so the verdict is the only reason the
-    // steps stayed put. A disabled profile is in the cache and it is this
-    // user's, which is what makes instrument 1 non-vacuous here.
+    // The other two conditions hold — the cache still belongs to this account
+    // and the run is the newest generation — so the fetch VERDICT is the only
+    // reason the steps stayed put. That is what makes them non-vacuous: every
+    // gate except the first is satisfied and the steps still did not run.
+    //
+    // (The old guard looked for a private row in the cache and cannot any more:
+    // an offline snapshot carries public cards only — #800's boundary — and the
+    // public read succeeds with an empty catalogue, so a failed self read has
+    // nothing to fall back to.)
     expect(store.getSnapshot().sessionUserId).toBe('userA')
-    expect(store.getSnapshot().users.map((u) => u.id)).toContain('userA')
+    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
     expect(instruments()).toEqual(SILENT)
   })
 
@@ -411,10 +432,12 @@ describe('the four steps act only when the gates say yes (#759)', () => {
     state.releaseWrite()
     await drain()
 
-    // resumeSync's own two steps ran once each. The superseded run added
-    // nothing: its three exclusive steps never fired, and neither count moved.
+    // resumeSync's own steps ran once each — the authoritative disabled check
+    // signs this disabled account out, which is the point of running it on a
+    // resume. The superseded run added nothing beyond that: its two exclusive
+    // steps never fired.
     expect(instruments()).toEqual({
-      enforceDisabledCheck: 0, connectRealtime: 1, attachDnaAccount: 0,
+      enforceDisabledCheck: 1, connectRealtime: 1, attachDnaAccount: 0,
       replayQueuedWrites: 1,
     })
   })

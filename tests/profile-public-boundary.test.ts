@@ -268,7 +268,7 @@ describe('the public read path', () => {
     const { rowToPublicUser, rowToPrivateUser } = store
     // Seed the cache the way a hydrate does: public cards plus the private self row.
     store.getSnapshot().sessionUserId = 'u-1'
-    store.getSnapshot().users = [rowToPrivateUser(OWNER_PRIVATE), ...state.cards.map(rowToPublicUser)]
+    store._installUsersForTest([rowToPrivateUser(OWNER_PRIVATE), ...state.cards.map(rowToPublicUser)])
     await store.rereadPublicSlices()
     await flush(); await flush()
 
@@ -307,7 +307,7 @@ describe('the realtime dispatch', () => {
     const store = await freshStore()
     const { rowToPublicUser, rowToPrivateUser, _applyRealtimeEventForTest } = store
     store.getSnapshot().sessionUserId = 'u-1'
-    store.getSnapshot().users = [rowToPrivateUser(OWNER_PRIVATE), rowToPublicUser(OTHER_CARD)]
+    store._installUsersForTest([rowToPrivateUser(OWNER_PRIVATE), rowToPublicUser(OTHER_CARD)])
 
     _applyRealtimeEventForTest('profile_cards', {
       eventType: 'UPDATE', schema: 'public', table: 'profile_cards',
@@ -332,7 +332,7 @@ describe('the realtime dispatch', () => {
     const store = await freshStore()
     const { rowToPrivateUser, _applyRealtimeEventForTest } = store
     store.getSnapshot().sessionUserId = 'u-1'
-    store.getSnapshot().users = [rowToPrivateUser(OWNER_PRIVATE)]
+    store._installUsersForTest([rowToPrivateUser(OWNER_PRIVATE)])
 
     _applyRealtimeEventForTest('profile_cards', {
       eventType: 'UPDATE', schema: 'public', table: 'profile_cards',
@@ -352,7 +352,7 @@ describe('the realtime dispatch', () => {
     const store = await freshStore()
     const { rowToPrivateUser, _applyRealtimeEventForTest } = store
     store.getSnapshot().sessionUserId = 'u-1'
-    store.getSnapshot().users = [rowToPrivateUser(OWNER_PRIVATE)]
+    store._installUsersForTest([rowToPrivateUser(OWNER_PRIVATE)])
 
     _applyRealtimeEventForTest('profile_cards', {
       eventType: 'UPDATE', schema: 'public', table: 'profile_cards',
@@ -486,13 +486,13 @@ describe('the offline snapshot', () => {
       id: 'u-1', email: 'a@example.invalid', createdAt: 1,
       profile: { name: 'Asha', isCreator: true, isDisabled: false, homeCity: 'Kochi', languages: ['en'], travelStyles: ['balanced'], socialLinks: { instagram: 'https://i/a', email: 'CANARY' } },
     }])
-    store.getSnapshot().users = legacy
+    store._installUsersForTest(legacy)
     expect(store.getSnapshot().users).toHaveLength(1)
     expect(JSON.stringify(store.getSnapshot().users).includes('CANARY')).toBe(false)
 
     // The hydrate's public read then lands, and the self row on top of it.
     store.getSnapshot().sessionUserId = 'u-1'
-    store.getSnapshot().users = mergeUsers(legacy, [rowToPrivateUser(OWNER_PRIVATE)])
+    store._installUsersForTest(mergeUsers(legacy, [rowToPrivateUser(OWNER_PRIVATE)]))
     const me = store.currentUser()
     expect(me?.kind).toBe('private')
     expect(me?.email).toBe('a@example.invalid')
@@ -508,7 +508,7 @@ describe('the disabled-account check', () => {
     const store = await freshStore()
     // A disabled account cannot read its own row, so there is no private entry.
     store.getSnapshot().sessionUserId = 'u-1'
-    store.getSnapshot().users = store.getSnapshot().users
+    store._installUsersForTest([])
     expect(store.currentUser()).toBeNull()
 
     // The server helper answers for the caller, so the friendly message still fires.
@@ -522,7 +522,7 @@ describe('the disabled-account check', () => {
     const store = await freshStore()
     const { rowToPrivateUser } = store
     store.getSnapshot().sessionUserId = 'u-1'
-    store.getSnapshot().users = [rowToPrivateUser(OWNER_PRIVATE)]
+    store._installUsersForTest([rowToPrivateUser(OWNER_PRIVATE)])
 
     expect(await store.enforceDisabledCheck()).toBe(false)
     expect(state.rpcCalls.some(c => c.fn === 'is_disabled')).toBe(false)
