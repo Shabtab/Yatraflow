@@ -13,7 +13,7 @@ import type { FormEvent } from 'react'
 import { Car, ChevronDown, ChevronUp, ClipboardList, Clock, Lightbulb, MapPin, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
 import { PillNav } from '../../components/PillNav'
 import type { StopCategory, StopSuggestion, Trip, TripDecision } from '../../data/types'
-import type { CollabOutcome } from '../../store/collabCommand'
+import type { AcceptanceOutcome, CollabOutcome } from '../../store/collabCommand'
 import { STOP_CATEGORIES } from '../../data/types'
 import {
   useDb, userById, currentUser, addSuggestion, voteSuggestion, addCommentToSuggestion,
@@ -319,56 +319,38 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
   // render time: a day removed while the panel was open must disappear from the
   // choices too, instead of offering a day that no longer exists (#839).
   const [retarget, setRetarget] = useState<null | { dayId: string; reason: 'missing-day' | 'legacy-ambiguous' }>(null)
+  const [retargetDays, setRetargetDays] = useState<Array<{ id: string; index: number; title?: string }> | null>(null)
   const [duplicate, setDuplicate] = useState<null | { dayId: string; dayIndex: number }>(null)
-  const liveDays = useMemo(() => trip.days.map(d => ({ id: d.id, index: d.index, ...(d.title ? { title: d.title } : {}) })),
-    [trip.days])
+  const liveDays = useMemo(() => retargetDays ?? trip.days.map(d => ({ id: d.id, index: d.index, ...(d.title ? { title: d.title } : {}) })),
+    [retargetDays, trip.days])
   // One follow-up at a time. Retarget wins when both somehow want to be open,
   // because the missing day is the question that has to be answered first.
   const followUp: SuggestionFollowUp | null = retarget
     ? { kind: 'retarget', ...retarget }
     : duplicate ? { kind: 'duplicate', ...duplicate } : null
 
-  function accept(opts: { dayId?: string; dayIndex?: number; allowDuplicate?: boolean } = {}) {
-    const outcome = acceptSuggestionIntoTimeline(trip.id, sg.id, opts)
-    if (outcome.status === 'applied') {
-      setRetarget(null); setDuplicate(null)
-      toast('Added to timeline')
-      return
-    }
-    if (outcome.status === 'alreadyApplied') {
-      setRetarget(null); setDuplicate(null)
-      toast('This idea is already on the timeline.')
-      return
-    }
-    if (outcome.status === 'retarget') {
-      // The day the user chose is gone, or a legacy index is ambiguous. The idea
-      // stays OPEN and they are asked again. Never re-file it onto another day,
-      // and never close it with the work lost. This panel replaces the duplicate
-      // one, because two follow-ups on one row read as two answers to one
-      // question. The first action asked a question rather than writing, so its
-      // claim is released here and the follow-up takes its own. That is what lets
-      // the follow-up's buttons disable while it is in flight.
-      setDuplicate(null)
+  async function accept(opts: { dayId?: string; dayIndex?: number; allowDuplicate?: boolean } = {}) {
+    try {
+      const outcome = await acceptSuggestionIntoTimeline(trip.id, sg.id, opts)
+      const follow = followUpFromOutcome(outcome)
+      setRetarget(follow?.retarget ?? null)
+      setRetargetDays(follow?.retargetDays ?? null)
+      setDuplicate(follow?.duplicate ?? null)
+      if (follow?.toast) toast(follow.toast, follow.toastTone)
+      if (follow?.report) reportCollabOutcome(follow.report)
+    } catch {
+      toast('Could not add this idea. Your idea is still open — try again.', 'err')
+    } finally {
       release()
-      setRetarget({ dayId: '', reason: outcome.reason })
-      return
     }
-    if (outcome.status === 'visitConflict') {
-      setRetarget(null)
-      release()
-      setDuplicate({ dayId: outcome.dayId, dayIndex: outcome.dayIndex })
-      return
-    }
-    toast(outcome.reason ?? 'Could not add this idea to the timeline.', 'err')
-    release()
   }
   return (
     <Surface id={`gi-item-${sg.id}`} tabIndex={-1} className={`card gi-item gin-item-card gin-panel${needsMe ? ' gi-needs-you' : ''}`}>
       <div className="gin-item-layout">
       <div className="vote-col">
-        <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} onClick={() => void voteSuggestion(trip.id, sg.id, 1).then(o => reportCollabOutcome(o))} aria-label="Upvote" aria-pressed={myVote === 1}><ChevronUp size={13} aria-hidden /></button>
+        <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} disabled={sg.status !== 'open'} onClick={() => void voteSuggestion(trip.id, sg.id, 1).then(o => reportCollabOutcome(o))} aria-label="Upvote" aria-pressed={myVote === 1}><ChevronUp size={13} aria-hidden /></button>
         <span className="vote-count">{ups - downs}</span>
-        <button className={`vote-btn ${myVote === -1 ? 'on' : ''}`} onClick={() => void voteSuggestion(trip.id, sg.id, -1).then(o => reportCollabOutcome(o))} aria-label="Downvote" aria-pressed={myVote === -1}><ChevronDown size={13} aria-hidden /></button>
+        <button className={`vote-btn ${myVote === -1 ? 'on' : ''}`} disabled={sg.status !== 'open'} onClick={() => void voteSuggestion(trip.id, sg.id, -1).then(o => reportCollabOutcome(o))} aria-label="Downvote" aria-pressed={myVote === -1}><ChevronDown size={13} aria-hidden /></button>
       </div>
       <div>
         <div className="row-between">
@@ -435,6 +417,7 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
             onCancel={() => {
               if (followUp.kind === 'retarget') setRetarget(null)
               else setDuplicate(null)
+              if (followUp.kind === 'retarget') setRetargetDays(null)
               release()
             }}
           />
@@ -471,6 +454,36 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
 export type SuggestionFollowUp =
   | { kind: 'retarget'; dayId: string; reason: 'missing-day' | 'legacy-ambiguous' }
   | { kind: 'duplicate'; dayId: string; dayIndex: number }
+
+/** One accept outcome → the follow-up the row must ask, its toasts, and who
+ *  reports it. The repeat-confirmation contract lives here: a needsDuplicate
+ *  receipt opens the add-another panel for the SERVER-resolved day, and no
+ *  other outcome can ever open it — allowDuplicate is sent only by that
+ *  panel's explicit confirm. */
+export function followUpFromOutcome(outcome: AcceptanceOutcome): {
+  retarget?: { dayId: string; reason: 'missing-day' | 'legacy-ambiguous' }
+  retargetDays?: Array<{ id: string; index: number; title?: string }>
+  duplicate?: { dayId: string; dayIndex: number }
+  toast?: string
+  toastTone?: 'ok' | 'err'
+  report?: CollabOutcome
+} | null {
+  switch (outcome.status) {
+    case 'applied':
+    case 'alreadyApplied':
+      return { toast: outcome.status === 'applied' ? 'Added to timeline' : 'This idea is already on the timeline.' }
+    case 'needsDay':
+      return { retarget: { dayId: '', reason: 'missing-day' }, retargetDays: outcome.availableDays }
+    case 'needsDuplicate':
+      return { duplicate: { dayId: outcome.dayId, dayIndex: outcome.dayIndex } }
+    case 'needsPlace':
+      return { toast: 'This idea needs a valid place before it can be added.', toastTone: 'err' }
+    case 'conflict':
+    case 'forbidden':
+    case 'unavailable':
+      return { report: outcome }
+  }
+}
 
 export function SuggestionFollowUpPanel({ followUp, days, busy, previewOpen, onPickDay, onConfirm, onCancel }: {
   followUp: SuggestionFollowUp
@@ -570,6 +583,38 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
   const ctx = useMemo(() => decisionContext(trip), [trip])
   const rec = useMemo(() => recommendForDecision(trip, d, ctx), [trip, d, ctx])
   const { busy, claim, release } = useBusyClaim(d.id)
+  const [placementDayId, setPlacementDayId] = useState('')
+  const [placementDays, setPlacementDays] = useState<Array<{ id: string; index: number; title?: string }> | null>(null)
+  const resolvedOption = d.options.find(o => o.id === d.resolvedOptionId)
+  const needsPlacement = d.status === 'resolved' && !!d.resolvedOptionId && !d.resolvedStopId && !!resolvedOption?.place
+  const availablePlacementDays = placementDays ?? trip.days.map(day => ({
+    id: day.id, index: day.index, ...(day.title ? { title: day.title } : {}),
+  }))
+
+  async function resolveChoice(optionId: string, target: { dayId?: string; dayIndex?: number } = {}) {
+    if (!claim()) return
+    try {
+      const outcome = await resolveDecision(d.id, optionId, target)
+      if (outcome.status === 'applied' || outcome.status === 'alreadyApplied') {
+        if (outcome.placement.status === 'needsDay') {
+          setPlacementDays(outcome.placement.availableDays)
+          setPlacementDayId('')
+          toast('The vote is resolved. Choose a current day to place the winning stop.', 'err')
+        } else if (outcome.placement.status === 'needsPlace') {
+          toast('The vote is resolved, but its winning place needs a valid location.', 'err')
+        } else {
+          setPlacementDays(null)
+          toast(outcome.placement.status === 'notRequired' ? 'Decision resolved' : 'Decision resolved and placed')
+        }
+        return
+      }
+      reportCollabOutcome(outcome)
+    } catch {
+      toast('Could not resolve this vote. It is still open — try again.', 'err')
+    } finally {
+      release()
+    }
+  }
 
   return (
     <Surface id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-item-card gin-panel${needsMe ? ' gi-needs-you' : ''}`}>
@@ -632,17 +677,36 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
             <button key={o.id} className={`btn btn-sm ${i === leadingIdx ? 'btn-primary' : 'btn-outline'}`} disabled={busy} aria-busy={busy}
               onClick={() => {
                 if (refuseWhileStaged(previewOpen)) return
-                if (!claim()) return
-                void resolveDecision(d.id, o.id).then(o2 => {
-                  reportCollabOutcome(o2, 'Decision resolved')
-                  // A refused receipt leaves the poll open — free the claim
-                  // or the Resolve buttons strand disabled.
-                  if (o2.status !== 'applied' && o2.status !== 'alreadyApplied') release()
-                })
+                void resolveChoice(o.id)
               }}>
               Resolve: {o.label}
             </button>
           ))}
+        </div>
+      )}
+      {needsPlacement && (
+        <div className="gin-item-actions gin-followup" role="group" aria-label="Choose a day for the winning stop">
+          <p className="small muted">{resolvedOption?.place?.title} won the vote. Choose a current day to place it.</p>
+          {availablePlacementDays.length === 0 ? (
+            <p className="small">This trip has no days. Add a day in the timeline, then choose a day here.</p>
+          ) : (
+            <>
+              <select className="select" aria-label="Day for the winning stop" value={placementDayId}
+                onChange={e => setPlacementDayId(e.target.value)}>
+                <option value="">Pick a day</option>
+                {availablePlacementDays.map(day => <option key={day.id} value={day.id}>
+                  Day {day.index + 1}{day.title ? ` · ${day.title}` : ''}
+                </option>)}
+              </select>
+              <button className="btn btn-primary btn-sm" disabled={busy || !placementDayId} aria-busy={busy}
+                onClick={() => {
+                  const optionId = d.resolvedOptionId
+                  if (optionId) void resolveChoice(optionId, { dayId: placementDayId })
+                }}>
+                Place winning stop
+              </button>
+            </>
+          )}
         </div>
       )}
       {/* Discussion, same card language as suggestions (I-7): comments stay

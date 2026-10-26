@@ -38,12 +38,11 @@ import { publishedToRow } from '../lib/restoreRows'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
 import { MISSING_BACKEND_MESSAGE, describeAuthFailure } from '../lib/authErrors'
 import { nextOrderInDay, renumberDay } from '../lib/stopOrder'
-import { resolveDayRef } from '../lib/dayRef'
-import { sameVisitPlace } from '../lib/placeIdentity'
 import {
-  submitCollabCommand, suggestionRowToEntry, decisionRowToEntry,
-  type CollabOutcome, type CollabCommand,
+  submitCollabCommand, submitCollabTransition, suggestionRowToEntry, decisionRowToEntry,
+  type AcceptanceOutcome, type DecisionResolutionOutcome, type CollabOutcome, type CollabCommand,
 } from './collabCommand'
+export type { AcceptanceOutcome, DecisionResolutionOutcome } from './collabCommand'
 import { adminFromSession, clearAdminCache, isAdminCached } from '../lib/adminSession'
 import type { RealtimeChannel, RealtimePostgresChangesPayload, SupabaseClient } from '@supabase/supabase-js'
 
@@ -4945,14 +4944,6 @@ export function markExpenseUnsettled(tripId: ID, expenseId: ID, by: ID | null): 
 
 type ContributionKind = 'suggestion' | 'decision'
 
-/** The client's own acknowledgment revision for a direct (non-RPC) write:
- *  the cached trip's write_version, or 0 when unknown. Never invented — the
- *  client does not advance its trip CAS revision for a contribution. */
-function tripRevisionOf(tripId: ID): number {
-  const t = tripById(tripId)
-  return t && validWriteVersion(t.writeVersion) ? t.writeVersion : 0
-}
-
 /** Acknowledge a receipt's tripRevision. It is NOT a trip snapshot and MUST
  *  NOT advance the client's CAS revision while an older snapshot is held
  *  (contract rule 1). It only schedules a background refetch when the server
@@ -5743,106 +5734,66 @@ export function addCommentToDecision(tripId: ID, decisionId: ID, text: string): 
   })
 }
 
-export type AcceptanceOutcome =
-  | { status: 'applied'; dayId: ID; dayIndex: number; stopId?: ID }
-  | { status: 'alreadyApplied'; dayId: ID; dayIndex: number; stopId?: ID }
-  | { status: 'retarget'; reason: 'missing-day' | 'legacy-ambiguous'; availableDays: Array<{ id: ID; index: number; title?: string }> }
-  | { status: 'visitConflict'; dayId: ID; dayIndex: number }
-  | { status: 'invalid' | 'forbidden' | 'unavailable'; reason?: string }
-
-/** Land one idea on a day. The day is a CHOICE, never a guess: a deleted target
- *  asks the caller to pick again instead of falling back to its old index, and
- *  a visit already on that day needs an explicit "add another" confirmation. */
+/** Land one idea through the shared command ledger. The trip JSON, transition,
+ *  event, and receipt are one server transaction. */
 export function acceptSuggestionIntoTimeline(
   tripId: ID,
   suggestionId: ID,
   opts: { dayId?: ID; dayIndex?: number; allowDuplicate?: boolean } = {},
-): AcceptanceOutcome {
+): Promise<AcceptanceOutcome> {
+  const scope = identityScope()
   const sg = cache.suggestions.find(x => x.id === suggestionId)
   const trip = tripById(tripId)
-  if (!sg || !trip || sg.tripId !== tripId) return { status: 'invalid', reason: 'unknown suggestion' }
-  if (sg.status === 'accepted') {
-    const day = trip.days.find(d => d.id === sg.dayId) ?? trip.days.find(d => d.index === sg.dayIndex)
-    return { status: 'alreadyApplied', dayId: day?.id ?? '', dayIndex: day?.index ?? sg.dayIndex }
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!sg || !trip || sg.tripId !== tripId) return Promise.resolve({ status: 'unavailable' })
+  if (!validWriteVersion(trip.writeVersion)) return Promise.resolve({ status: 'unavailable' })
+  const rowBefore = sg
+  const command = {
+    type: 'suggestion.accept' as const,
+    suggestionId,
+    expectedRevision: trip.writeVersion,
+    ...(opts.dayId !== undefined ? { dayId: opts.dayId } : {}),
+    ...(opts.dayIndex !== undefined ? { dayIndex: opts.dayIndex } : {}),
+    ...(opts.allowDuplicate !== undefined ? { allowDuplicate: opts.allowDuplicate } : {}),
   }
-  if (sg.status && sg.status !== 'open') return { status: 'invalid', reason: 'suggestion is not open' }
-
-  const resolution = resolveDayRef(trip.days, {
-    dayId: opts.dayId ?? sg.dayId,
-    dayIndex: opts.dayIndex ?? sg.dayIndex,
-  })
-  if (resolution.status === 'missing') {
-    return {
-      status: 'retarget',
-      reason: resolution.reason,
-      availableDays: trip.days.map(d => ({ id: d.id, index: d.index, ...(d.title ? { title: d.title } : {}) })),
+  return submitCollabTransition(uuid(), tripId, command).then(outcome => {
+    if (!isCurrentIdentity(scope)) return outcome
+    if (outcome.status === 'applied' || outcome.status === 'alreadyApplied') {
+      const current = cache.suggestions.find(x => x.id === suggestionId)
+      if (current === rowBefore && outcome.suggestion) {
+        cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? outcome.suggestion! : x)
+        commit()
+      } else {
+        void refetchContributionRow('suggestion', suggestionId, scope)
+      }
+      noteTripRevision(tripId, outcome.tripRevision)
+    } else if (outcome.status === 'conflict') {
+      void refetchContributionRow('suggestion', suggestionId, scope)
+      noteTripRevision(tripId, outcome.tripRevision)
     }
-  }
-  const day = resolution.day
-  const conflict = day.stops.find(s => s.status !== 'rejected' && sameVisitPlace(sg, s))
-  if (conflict && !opts.allowDuplicate) {
-    return { status: 'visitConflict', dayId: day.id, dayIndex: day.index }
-  }
-
-  const place = sg.place
-  const stop = addStop(tripId, day.index, {
-    title: sg.title, category: sg.category, locationName: sg.locationName, lat: sg.lat, lng: sg.lng,
-    ...(place?.placeId ? { placeId: place.placeId } : {}),
-    ...(place?.eLoc ? { eLoc: place.eLoc } : {}),
-    ...(place?.source ? { placeSource: place.source } : {}),
-    ...(place ? { exposure: place.exposure } : {}),
-    description: sg.description, visitMinutes: sg.visitMinutes,
-    entryFeeInrPerPerson: sg.estimatedEntryFeeInr, transportCostInrTotal: sg.estimatedTransportInr,
-    priority: 'nice-to-have', status: 'confirmed',
+    return outcome
   })
-  cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? { ...x, status: 'accepted' as const } : x)
-  void addActivity(tripId, 'accepted suggestion into timeline', sg.title)
-  commit()
-  fire('suggestions', supabase.from('suggestions').update({ status: 'accepted' }).eq('id', suggestionId))
-  return { status: 'applied', dayId: day.id, dayIndex: day.index, stopId: stop.id }
 }
 export function declineSuggestion(tripId: ID, suggestionId: ID): Promise<CollabOutcome> {
   const scope = identityScope()
   if (!scope) return Promise.resolve({ status: 'forbidden' })
   const sg = cache.suggestions.find(x => x.id === suggestionId)
   if (!sg) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
-  // F13 — the decline lifecycle: a repeated decline is an idempotent no-op,
-  // and a terminal suggestion (accepted) cannot flip to declined.
-  if (sg.status === 'declined') return Promise.resolve({ status: 'alreadyApplied', tripRevision: tripRevisionOf(tripId) })
-  if (sg.status && sg.status !== 'open') return Promise.resolve({ status: 'invalid', reason: 'suggestion is not open' })
-  // A workflow update (status only) — it stays on the direct write path by
-  // contract; only create/ballot/comment/activity commands use the RPC. The
-  // outcome still reaches the caller, and a failed update retracts only THIS
-  // operation's change (surgical rollback, gate round 2 F1) instead of
-  // reading as success.
   const rowBefore = sg
-  cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? { ...x, status: 'declined' as const } : x)
-  commit()
-  const rowRef = cache.suggestions.find(x => x.id === suggestionId)
-  void addActivity(tripId, 'declined a suggestion', sg.title)
-  const scopeAtAwait = scope
-  // `.select('id')` answers the rows the update actually reached: an empty
-  // answer means the contribution row is gone server-side, so there is
-  // nothing to mark declined and the optimistic status must go.
-  return Promise.resolve(supabase.from('suggestions').update({ status: 'declined' }).eq('id', suggestionId).select('id'))
-    .then(({ data, error }) => {
-      if (error) {
-        // A rollback is an identity-bound continuation too: writing the
-        // previous identity's state into the next identity's cache would be
-        // the #45 leak all over again.
-        if (isCurrentIdentity(scopeAtAwait)) {
-          rollbackContribution({ rowKind: 'suggestion', rowId: suggestionId, rowBefore, rowRef })
-        }
-        return { status: 'unavailable' }
-      }
-      if (Array.isArray(data) && data.length === 0) {
-        if (isCurrentIdentity(scopeAtAwait)) {
-          rollbackContribution({ rowKind: 'suggestion', rowId: suggestionId, rowBefore, rowRef })
-        }
-        return { status: 'invalid', reason: 'suggestion row is gone' }
-      }
-      return { status: 'applied', tripRevision: tripRevisionOf(tripId) }
-    })
+  return submitCollabTransition(uuid(), tripId, { type: 'suggestion.decline', suggestionId }).then(outcome => {
+    if (isCurrentIdentity(scope) && (outcome.status === 'applied' || outcome.status === 'alreadyApplied')) {
+      const current = cache.suggestions.find(x => x.id === suggestionId)
+      if (current === rowBefore && outcome.suggestion) {
+        cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? outcome.suggestion! : x)
+        commit()
+      } else void refetchContributionRow('suggestion', suggestionId, scope)
+      noteTripRevision(tripId, outcome.tripRevision)
+    } else if (isCurrentIdentity(scope) && outcome.status === 'conflict') {
+      void refetchContributionRow('suggestion', suggestionId, scope)
+      noteTripRevision(tripId, outcome.tripRevision)
+    }
+    return outcome
+  })
 }
 
 // ---------------- Decisions ----------------
@@ -5966,112 +5917,39 @@ export function voteOnDecision(decisionId: ID, optionId: ID): Promise<CollabOutc
   })
 }
 
-export function resolveDecision(decisionId: ID, optionId: ID): Promise<CollabOutcome> {
+export function resolveDecision(decisionId: ID, optionId: ID,
+  target: { dayId?: ID; dayIndex?: number } = {}): Promise<DecisionResolutionOutcome> {
   const scope = identityScope()
   if (!scope) return Promise.resolve({ status: 'forbidden' })
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
-  if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
-  // Idempotence (#336): a decision resolves ONCE. A double-tap used to stamp
-  // the status again AND run the landing branch twice, adding the winner twice
-  // (each addStop minted a fresh uid per call). The lifecycle now answers:
-  // the SAME winner again is an alreadyApplied no-op, a DIFFERENT one is a
-  // refused rewrite of a settled vote, and a chosen id that is not on the
-  // poll is invalid — the contract validates all three server-side too.
-  const status = cache.decisions[dIdx].status
-  if (status && status !== 'open') {
-    return Promise.resolve(cache.decisions[dIdx].resolvedOptionId === optionId
-      ? { status: 'alreadyApplied', tripRevision: tripRevisionOf(cache.decisions[dIdx].tripId) }
-      : { status: 'invalid', reason: 'decision is already resolved' })
-  }
-  if (!cache.decisions[dIdx].options.some(o => o.id === optionId)) {
-    return Promise.resolve({ status: 'invalid', reason: 'unknown option' })
-  }
-  const d = structuredClone(cache.decisions[dIdx])
+  if (dIdx < 0) return Promise.resolve({ status: 'unavailable' })
   const rowBefore = cache.decisions[dIdx]
-  d.status = 'resolved'; d.resolvedOptionId = optionId; d.resolvedAt = Date.now()
-  cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
-  void addActivity(d.tripId, 'resolved a decision', d.question)
-  const winning = d.options.find(o => o.id === optionId)
-  const winningLabel = winning?.label ?? 'an option'
-  const trip = tripById(d.tripId)
-  const notifIdsBefore = new Set(cache.notifications.map(n => n.id))
-  if (trip) {
-    for (const m of trip.members ?? []) {
-      if (m.userId !== scope.userId) pushNotification(m.userId, d.tripId, `${userName(scope.userId)} resolved “${d.question}” — ${winningLabel}.`)
-    }
+  const trip = tripById(rowBefore.tripId)
+  if (!trip || !validWriteVersion(trip.writeVersion)) return Promise.resolve({ status: 'unavailable' })
+  const command = {
+    type: 'decision.resolve' as const,
+    decisionId,
+    optionId,
+    expectedRevision: trip.writeVersion,
+    ...(target.dayId !== undefined ? { dayId: target.dayId } : {}),
+    ...(target.dayIndex !== undefined ? { dayIndex: target.dayIndex } : {}),
   }
-  const localNotificationIds = cache.notifications.filter(n => !notifIdsBefore.has(n.id)).map(n => n.id)
-  // The last mile of shortlist → vote → resolved (user ask): when the winning
-  // option carries a place payload from the Map rail's vote, it LANDS on the
-  // timeline as a confirmed stop — which also makes every surface reflect it
-  // (Board + Timeline read the trip; the Map rail filters by stop name) and
-  // the suggestion rows it beats drop out via the same name check.
-  if (winning?.place && trip) {
-    const placeDay = winning.place.dayIndex
-    // The destination is a stable day when the vote carried one. A legacy
-    // index resolves only while exactly one day matches it. Never clamp, and
-    // never invent Day 1 (#336).
-    const resolution = resolveDayRef(trip.days, { dayId: winning.place.dayId, dayIndex: placeDay })
-    if (resolution.status === 'missing') {
-      toast(placeDay == null
-        ? `“${winning.place.title}” won the vote, but its day was never set — add it from the Map tab.`
-        : `“${winning.place.title}” won the vote, but its day is no longer on this trip — add it from the Map tab.`, 'err')
-    } else if (resolution.day.stops.some(s => s.status !== 'rejected' && sameVisitPlace(winning.place!, s))) {
-      // The chosen day already holds this visit (someone added it by hand, or
-      // another poll landed it there): resolving must not double it.
-      toast(`“${winning.place.title}” won the vote — it is already on Day ${resolution.day.index + 1}.`)
-    } else {
-      const target = resolution.day
-      const identity = winning.place.place
-      // A slot poll's option id carries the part it was raised for
-      // (slot:<key>:<placeId>), so the landed stop says which part it fills -
-      // the day plan reads that part as filled the moment the vote resolves (P4).
-      const slotKey = /^slot:([a-z]+):/.exec(String(winning.id))?.[1]
-      addStop(d.tripId, target.index, {
-        title: winning.place.title,
-        category: winning.place.category,
-        locationName: winning.place.locationName,
-        lat: winning.place.lat,
-        lng: winning.place.lng,
-        ...(identity?.placeId ? { placeId: identity.placeId } : {}),
-        ...(identity?.eLoc ? { eLoc: identity.eLoc } : {}),
-        ...(identity?.source ? { placeSource: identity.source } : {}),
-        ...(identity ? { exposure: identity.exposure } : {}),
-        description: winning.place.description,
-        visitMinutes: winning.place.visitMinutes,
-        ...(winning.place.openTime ? { openTime: winning.place.openTime } : {}),
-        ...(winning.place.closeTime ? { closeTime: winning.place.closeTime } : {}),
-        entryFeeInrPerPerson: 0,
-        transportCostInrTotal: 0,
-        priority: 'nice-to-have',
-        notes: `Chosen by group vote — “${d.question}”`,
-        // The part this vote was raised for, as DATA. It used to be appended to
-        // `notes` as prose, which made a user-editable, printed field the only
-        // record of a derived state: tidying the note un-planned the day.
-        ...(slotKey ? { slotKey } : {}),
-        status: 'confirmed',
-      })
-    }
-  }
-  commit()
-  const rowRef = cache.decisions.find(x => x.id === decisionId)
-  const scopeAtAwait = scope
-  // A workflow update (status + winner) — it stays on the direct write path by
-  // contract. A failed update retracts only THIS operation's decision change
-  // and notification entries (surgical rollback, gate round 2 F1); the landed
-  // stop is trip-write territory with its own write-through recovery (stage C
-  // owns the accept/resolve rollback union).
-  return Promise.resolve(supabase.from('decisions').update({ status: 'resolved', resolved_option_id: optionId, resolved_at: d.resolvedAt }).eq('id', decisionId).select('id')).then(({ data, error }) => {
-    if (error || (Array.isArray(data) && data.length === 0)) {
-      if (isCurrentIdentity(scopeAtAwait)) {
-        rollbackContribution({
-          rowKind: 'decision', rowId: decisionId, rowBefore, rowRef,
-          localNotificationIds,
-        })
+  return submitCollabTransition(uuid(), rowBefore.tripId, command).then(outcome => {
+    if (!isCurrentIdentity(scope)) return outcome
+    if (outcome.status === 'applied' || outcome.status === 'alreadyApplied') {
+      const current = cache.decisions.find(x => x.id === decisionId)
+      if (current === rowBefore && outcome.decision) {
+        cache.decisions = cache.decisions.map(x => x.id === decisionId ? outcome.decision! : x)
+        commit()
+      } else {
+        void refetchContributionRow('decision', decisionId, scope)
       }
-      return error ? { status: 'unavailable' } : { status: 'invalid', reason: 'decision row is gone' }
+      noteTripRevision(rowBefore.tripId, outcome.tripRevision)
+    } else if (outcome.status === 'conflict') {
+      void refetchContributionRow('decision', decisionId, scope)
+      noteTripRevision(rowBefore.tripId, outcome.tripRevision)
     }
-    return { status: 'applied', tripRevision: tripRevisionOf(d.tripId) }
+    return outcome
   })
 }
 

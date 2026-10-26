@@ -340,6 +340,22 @@ export const NO_PROBE_SURFACE = {
     // asserts the same shape against the real catalog.
     reason: 'trigger + policies + revoke only — none adds a column or bucket, so no presence probe can see it, and its absence is silent (the exploit simply stays open); pinned by tests/trip-owner-delete-guards.test.ts and by supabase/tests/rls_contract.test.sql',
   },
+  '20261025b_collab_transition_cutover.sql': {
+    // Freezes the transition columns behind the guard trigger (838) and
+    // refuses to apply without the Stage A guards present. Nothing it creates
+    // is visible to a column/table probe, and its absence is silent (direct
+    // status writes simply stay open), so the shape is pinned instead:
+    // tests/collab-command-parity.test.ts pins the guard body against the
+    // schema mirror and tests/stage-c executes the trigger on PGlite.
+    reason: 'guard trigger rewrite + precondition only — no column or bucket to probe; absence is silent (direct transition writes stay open); pinned by tests/collab-command-parity.test.ts and tests/stage-c/838-collab-transitions-db.test.ts',
+  },
+  '20261025c_place_exposure.sql': {
+    // Rewrites submit_collab_command to carry exposure through (843). A
+    // function body is invisible to every read-only probe and a missing file
+    // leaves the older RPC working — silent by nature — so the definition is
+    // parity-pinned and its behavior executed on PGlite.
+    reason: 'submit_collab_command rewrite only — function bodies have no probe surface and the previous definition keeps working without it; pinned by tests/collab-command-parity.test.ts and tests/stage-c/843-exposure-persistence.test.ts',
+  },
 }
 
 /** The plan: one entry per migration file, with its probes and the reason none

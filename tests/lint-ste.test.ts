@@ -20,10 +20,34 @@ const SLOW = 20000
 // Thirty-one words, no vocabulary hit, so only the length rule can fire.
 const LONG_PLAIN = 'The share preview handler reads only the stored cover image URL column from the published itineraries table and renders the brand card for every publication that lacks an explicit cover today.'
 
+// A word the vocabulary rule bans, built from its letters so the fixture lines
+// that carry it are not themselves prose the checker counts.
+const BANNED_VOCAB = ['Uti', 'lize'].join('')
+const BANNED_SHOULD = ['sh', 'ould'].join('')
+
 function run(text: string) {
   try {
     const out = execFileSync(process.execPath, [SCRIPT, '--stdin'], {
       input: text,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    return { code: 0, out }
+  } catch (err) {
+    const e = err as { status?: number; stderr?: string }
+    return { code: e.status ?? 1, out: e.stderr ?? '' }
+  }
+}
+
+// A SQL file's prose is its comments, and the statement lines are code, so the
+// SQL rules need a real .sql file. Each call writes a throwaway one.
+function runSql(text: string) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'lint-ste-sql-'))
+  fixtureDirs.push(dir)
+  const file = path.join(dir, 'fixture.sql')
+  writeFileSync(file, text)
+  try {
+    const out = execFileSync(process.execPath, [SCRIPT, '--file', file], {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
     })
@@ -231,6 +255,137 @@ describe('STE100 lint (scripts/lint-ste.mjs)', () => {
     expect(run(gerundBox).code).toBe(1)
     const shouldBox = '- [ ] You should push to main.\n'
     expect(run(shouldBox).code).toBe(1)
+  }, SLOW)
+
+  it('treats the SQL that re-checks a table constraint as code, but still checks a bad comment', () => {
+    // The DDL keyword pair `validate constraint` reads as the prose word the
+    // vocab rule bans. The statement is the one form SQL gives for this job, so
+    // the checker skips the statement, and a comment that carries a real
+    // violation still fails.
+    const ddl = 'alter table public.suggestions validate constraint suggestions_place_identity_shape;\n'
+    const good = runSql('-- Check the constraint by hand first.\n' + ddl)
+    expect(good.code).toBe(0)
+    const bad = runSql('-- You should validate the constraint by hand.\n' + ddl)
+    expect(bad.code).toBe(1)
+    expect(bad.out).toMatch(/must/)
+  }, SLOW)
+
+  it('reads a SQL comment as prose, so a vocab hit in one still fails', () => {
+    const comment = '-- Utilize the helper index before the migration runs.\n'
+    const r = runSql(comment)
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(/Utilize/)
+  }, SLOW)
+
+  it('reads a multi-line block comment body as prose', () => {
+    // A block comment may run over many lines, and each body line starts with
+    // `*`. A blanket .sql statement skip used to hide it.
+    const bad = runSql(`/*\n * The owner ${BANNED_SHOULD} confirm this.\n */\n`)
+    expect(bad.code).toBe(1)
+    expect(bad.out).toMatch(/must/)
+    // The banned word is built from its letters, so this fixture line is not
+    // itself prose for the checker to read.
+    const vocab = runSql(`/*\n * ${BANNED_VOCAB} the helper index.\n */\n`)
+    expect(vocab.code).toBe(1)
+    expect(vocab.out).toMatch(/use "use"/)
+    const good = runSql('/*\n * Check the value by hand.\n */\n')
+    expect(good.code).toBe(0)
+  }, SLOW)
+
+  it('reads block comments beside SQL statement text as prose', () => {
+    for (const text of [
+      `select 1; /* The owner ${BANNED_SHOULD} confirm this. */`,
+      `select 1,\n/* The owner ${BANNED_SHOULD} confirm this. */\n2;`,
+      `select 1; /* Check this. */ -- The owner ${BANNED_SHOULD} confirm this.`,
+      `select 1; /* The owner ${BANNED_SHOULD} confirm this. */ -- Check this.`,
+      `raise notice 'Check this.'; /* The owner ${BANNED_SHOULD} confirm this. */`,
+    ]) {
+      const result = runSql(text)
+      expect(result.code, text).toBe(1)
+      expect(result.out).toMatch(/must/)
+    }
+    expect(runSql('select 1; /* Check the value. */').code).toBe(0)
+  }, SLOW)
+
+  it('keeps nested SQL block comment bodies under the prose rules', () => {
+    for (const text of [
+      `/* Check this. /* Check that. */ The owner ${BANNED_SHOULD} confirm this. */`,
+      `/* Check this.\n /* Check that. */\n The owner ${BANNED_SHOULD} confirm this.\n */`,
+      `select 1; /* Check this. /* The owner ${BANNED_SHOULD} confirm this. */ */`,
+      `/* Check this.\n -- /* Check that. */ The owner ${BANNED_SHOULD} confirm this.\n */`,
+    ]) {
+      const result = runSql(text)
+      expect(result.code, text).toBe(1)
+      expect(result.out).toMatch(/must/)
+    }
+    expect(runSql('/* Check this. /* Check that. */ Check both. */ select 1;').code).toBe(0)
+  }, SLOW)
+
+  it('reads an inline comment on a statement line as prose', () => {
+    const bad = runSql('select 1; -- You should push to main.\n')
+    expect(bad.code).toBe(1)
+    expect(bad.out).toMatch(/must/)
+    expect(runSql('select 1; -- Check the value.\n').code).toBe(0)
+  }, SLOW)
+
+  it('reads a RAISE message as prose, and no other SQL literal', () => {
+    // A RAISE message is shown to a user, so it is prose. Every other literal
+    // on a statement line is an identifier, a path or a payload.
+    const bad = runSql("raise exception 'The owner should confirm this';\n")
+    expect(bad.code).toBe(1)
+    expect(bad.out).toMatch(/must/)
+    const long = runSql(`raise exception '${LONG_PLAIN}';\n`)
+    expect(long.code).toBe(1)
+    expect(long.out).toMatch(/sentence \d+ words/)
+    expect(runSql("raise exception 'The day is missing';\n").code).toBe(0)
+    // The message is prose, so a word the vocab rule bans still counts, even
+    // when it sits inside a file name in the message.
+    const path = runSql("raise exception 'scripts/validate-itinerary.mjs is missing';\n")
+    expect(path.code).toBe(1)
+    expect(path.out).toMatch(/validate/)
+  }, SLOW)
+
+  it('keeps a dollar-quoted body and a quoted dash pair out of the comment rules', () => {
+    // The `--` inside a dollar-quoted function body is part of the body, but
+    // the comment lines inside it are still prose.
+    const body = `create function f() returns void language plpgsql as $$
+begin
+  -- Check the value.
+  raise exception 'The day is missing';
+end;
+$$;
+`
+    expect(runSql(body).code).toBe(0)
+    const badBody = `create function f() returns void language plpgsql as $$
+begin
+  -- ${BANNED_VOCAB} the helper index.
+end;
+$$;
+`
+    expect(runSql(badBody).code).toBe(1)
+    // A quoted `'a -- b'` does not open a comment, so the statement is code.
+    expect(runSql("select 'a -- b' as label;\n").code).toBe(0)
+  }, SLOW)
+
+  it('treats an object literal fixture line as code, not a 24 word sentence', () => {
+    // Verbatim from tests/stage-c/838-collab-transitions-db.test.ts. The word
+    // count rule read the keys and values as one long English sentence.
+    const fixture =
+      "  { id: 'slot:lunch:place-a', label: 'Cafe A', place: { title: 'Cafe A', category: 'food', locationName: 'Cafe A', lat: 12.91, lng: 77.61, visitMinutes: 45, dayId: 'day-missing', dayIndex: 0 } },\n"
+    expect(run(fixture).code).toBe(0)
+  }, SLOW)
+
+  it('treats an assertion with a fat arrow and a script path as code, not prose', () => {
+    // Two spaces, so the line is prose-shaped under the line-kind rules exactly
+    // as it is in tests/stage-c/843-exposure-persistence.test.ts:178 (a lazy
+    // continuation of the line above). The arrow marks a callback, and the
+    // banned vocab word is part of a real script name on disk.
+    const assertion =
+      "  expect(() => execFileSync(process.execPath, ['scripts/validate-itinerary.mjs', file], { encoding: 'utf8' })).not.toThrow()\n"
+    expect(run(assertion).code).toBe(0)
+    // A fat arrow inside a code span is quoted text, so the prose stays checked.
+    const quoted = 'The callback `() => execFileSync(file)` should stay checked here in this sentence.\n'
+    expect(run(quoted).code).toBe(1)
   }, SLOW)
 })
 
