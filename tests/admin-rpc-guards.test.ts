@@ -226,10 +226,11 @@ describe('store wiring: optimistic patch + rollback + audit refresh, all six', (
     const body = store.slice(start, next === -1 ? store.length : next)
     // requireAdmin gate first, rollback on error, audit refresh on success.
     expect(body).toContain('requireAdmin()')
-    // The optimistic-rollback shape is TWO patches: the optimistic one and the
-    // error-path restore from the captured prev slices (publishItinerary
-    // precedent). One patch alone would mean a write with no way back.
-    expect(body.match(/patch\(\{/g)?.length).toBeGreaterThanOrEqual(2)
+    if (fn === 'adminSetDisabled' || fn === 'adminSetCreator') {
+      expect(body).toContain('const applied = installCatalogEdit(owned,')
+      expect(body).toMatch(/if \(error\) \{[\s\S]*?settleOwnedFields\(owned, applied, 'failed'\)/)
+      expect(body).toContain("settleOwnedFields(owned, applied, 'accepted')")
+    } else expect(body.match(/patch\(\{/g)?.length).toBeGreaterThanOrEqual(2)
     expect(body).toContain('if (error)')
     expect(body).toContain('toast(rpcErrorMessage(error)')
     expect(body).toContain('void refreshAdminAudit()')

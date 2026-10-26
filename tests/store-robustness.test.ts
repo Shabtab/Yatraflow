@@ -12,6 +12,7 @@ import {
 import { supabase } from '../src/lib/supabase'
 import { sliceState } from '../src/lib/readState'
 import type { Trip, PublishedItinerary } from '../src/data/types'
+import { profileSession } from './helpers/profileSession'
 
 function resetCacheForTest() {
   // getSnapshot() is stable until a mutation replaces the cache; we just read it.
@@ -259,9 +260,11 @@ describe('unpublishItinerary owner gate + rollback (v0.36)', () => {
 /** A query builder that answers with `result`, as the store's awaited reads do. */
 function answering(result: { data: unknown; error: unknown }) {
   const builder: Record<string, unknown> = {}
-  for (const m of ['select', 'eq', 'in']) builder[m] = () => builder
+  let single = false
+  for (const m of ['select', 'eq', 'in', 'setHeader']) builder[m] = () => builder
+  builder.maybeSingle = () => { single = true; return builder }
   builder.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
-    Promise.resolve(result).then(res, rej)
+    Promise.resolve({ ...result, data: single && Array.isArray(result.data) ? result.data[0] ?? null : result.data }).then(res, rej)
   return builder
 }
 
@@ -271,11 +274,12 @@ async function freshStore(user: string) {
   const store = await import('../src/store/store')
   const { supabase: client } = await import('../src/lib/supabase')
   vi.spyOn(client.auth, 'getSession').mockResolvedValue(
-    { data: { session: { user: { id: user } } }, error: null } as never,
+    { data: { session: profileSession({ user: { id: user } }) }, error: null } as never,
   )
   vi.spyOn(client.auth, 'onAuthStateChange').mockReturnValue(
     { data: { subscription: { unsubscribe: () => {} } } } as never,
   )
+  vi.spyOn(client, 'rpc').mockImplementation(((name: string) => Promise.resolve({ data: name === 'is_disabled' ? false : [], error: null })) as never)
   return { store, client }
 }
 
@@ -325,8 +329,7 @@ describe('#704 — a throw during hydrate fails every slice it left unread', () 
   it('a throw before the membership scope is known leaves no page slice reading', async () => {
     const { store, client } = await freshStore('user-e2')
     vi.spyOn(client, 'from').mockImplementation(((table: string) => {
-      // The first stage-1 read throws, so the run never learns which trips the user belongs to.
-      if (table === 'profiles') throw new Error('forced at the start of stage 1')
+      if (table === 'trip_members') throw new Error('forced before membership scope')
       return answering({ data: [], error: null })
     }) as never)
 

@@ -172,7 +172,7 @@ describe('#704 — the store publishes each read verdict to the pages', () => {
   const store = read('../src/store/store.ts')
 
   it('a hydrate commits between writing the per-slice verdicts and the demo seed step', () => {
-    const verdictAt = store.indexOf('patch({ sliceReads: sliceReadReport(partial, askedSlices) })')
+    const verdictAt = store.indexOf('patch({ sliceReads: { ...cache.sliceReads, ...sliceReadReport(partial, askedSlices), ...installed.verdicts } })')
     const seedAt = store.indexOf('if (tripList.length === 0 && seedIfEmpty', verdictAt)
     expect(verdictAt, 'the verdict write').toBeGreaterThan(-1)
     expect(seedAt, 'the seed step').toBeGreaterThan(verdictAt)

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { seedData } from '../src/data/seed'
+import { profileSession } from './helpers/profileSession'
 
 /**
  * Tests for the #46 minor-store-bug sweep.
@@ -124,10 +125,11 @@ vi.mock('../src/lib/supabase', () => {
     }),
     auth: {
       _session: { user: { id: 'amelia' } } as { user: { id: string } } | null,
-      getSession: async () => ({ data: { session: supabase.auth._session ? { ...supabase.auth._session, access_token: 'fixture-amelia' } : null } }),
+      getSession: async () => ({ data: { session: supabase.auth._session ? profileSession(supabase.auth._session) : null } }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
       signOut: async () => {},
     },
+    rpc: async (name: string) => ({ data: name === 'is_disabled' ? false : [], error: null }),
     channel: () => channel(),
     removeChannel: () => {},
     realtime: { removeChannel: () => {} },

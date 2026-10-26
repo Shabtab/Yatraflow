@@ -13,13 +13,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import type { TripRow } from '../src/lib/tripRow'
+import { profileSession } from './helpers/profileSession'
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
 const { state } = vi.hoisted(() => ({
   state: {
     tables: {} as Record<string, unknown[]>,
-    rpcs: {} as Record<string, unknown[]>,
+    rpcs: {} as Record<string, unknown>,
     activeUser: null as string | null,
     authHandler: null as ((event: string, session: unknown) => void) | null,
     resolveSession: null as (() => void) | null,
@@ -53,13 +54,13 @@ vi.mock('../src/lib/supabase', () => {
     isSupabaseConfigured: true,
     supabase: {
       from: (t: string) => makeBuilder(t),
-      rpc: (name: string) => Promise.resolve({ data: state.rpcs[name] ?? [], error: null }),
+      rpc: (name: string) => Object.assign(Promise.resolve({ data: state.rpcs[name] ?? [], error: null }), { setHeader() { return this } }),
       channel: () => chain,
       removeChannel: () => Promise.resolve(),
       auth: {
         getSession: () => {
           const response = () => ({ data: { session: state.sessionUser
-            ? { user: { id: state.sessionUser }, access_token: `fixture-${state.sessionUser}` } : null } })
+            ? profileSession({ user: { id: state.sessionUser } }) : null } })
           if (state.sessionLoaded) return Promise.resolve(response())
           return new Promise(resolve => {
             state.resolveSession = () => { state.sessionLoaded = true; resolve(response()) }
@@ -167,9 +168,10 @@ describe('#393 — the Trash does not outlive the session', () => {
 })
 
 describe('#393 — a disabled account is told, not emptied', () => {
-  it('signs straight back out when the flag is on the in-hand profile', async () => {
+  it('signs straight back out when the authoritative status is disabled', async () => {
     const store = await freshStore()
     state.tables = rowsFor('tripA', 'userA', /* isDisabled */ true)
+    state.rpcs.is_disabled = true
     state.sessionUser = 'userA'
     store.init()
     state.resolveSession!()

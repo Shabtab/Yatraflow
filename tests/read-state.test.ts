@@ -137,7 +137,9 @@ describe('#364 — the pages check the failure before the empty copy', () => {
     // And the re-read replaces rows only on success, so a failed retry cannot
     // turn "still broken" into "now empty as well".
     const store = src('../src/store/store.ts')
-    expect(store).toMatch(/if \(!profRes\.error\) patch\(\{ users:/)
+    const retry = store.slice(store.indexOf('export async function rereadPublicSlices()'), store.indexOf('export async function rereadTrips()'))
+    expect(retry).toMatch(/if \(!publicUsers\.failed\) \{\s*installCatalog\(currentTicket\(\), \{/)
+    expect(retry).toMatch(/public: \{ users: publicUsers\.users, failed: false, complete: true, requested: true \}/)
     expect(store).toMatch(/if \(!pubRes\.error\) patch\(\{ published:/)
   })
 })

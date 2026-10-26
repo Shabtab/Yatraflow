@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { QueuedWrite, WriteQueueStore } from '../src/lib/writeQueue'
 import type { TripRow } from '../src/lib/tripRow'
+import { profileSession } from './helpers/profileSession'
 
 type Row = Record<string, unknown>
 type Operation = { table: string; method: string; actor: string | null; filters: Record<string, unknown>; payload?: Row }
@@ -104,7 +105,7 @@ vi.mock('../src/lib/supabase', () => {
           // A request-bound token must survive a later account switch.
           if (method === 'update') await state.tokenGate
           const token = headers.authorization?.replace(/^Bearer /, '')
-          const actor = token?.startsWith('token-') ? token.slice('token-'.length) : state.actor
+          const actor = token?.startsWith('e30.') ? JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).sub : state.actor
           const operation = { table, method, actor, filters: { ...filters }, payload }
           state.operations.push(operation)
           if (method === 'select' && state.offlineReads) return { data: null, error: { message: 'Offline fixture' } }
@@ -162,7 +163,7 @@ vi.mock('../src/lib/supabase', () => {
       },
       removeChannel: async () => undefined,
       auth: {
-        getSession: async () => { state.sessionCalls++; const actor=state.actor; await state.sessionGate; return { data: { session: actor ? { user: { id: actor }, access_token: `token-${actor}` } : null } }; },
+        getSession: async () => { state.sessionCalls++; const actor=state.actor; await state.sessionGate; return { data: { session: actor ? profileSession({ user: { id: actor } }) : null } }; },
         onAuthStateChange: (handler: typeof state.authHandler) => {
           state.authHandler = handler
           return { data: { subscription: {} } }
@@ -300,7 +301,7 @@ describe('round three additional real-store behavior', () => {
   });
   it('an account cannot discard another queued owner', async () => {
     const store=await fresh(true); await capture(store,'A COPY');
-    state.actor='B'; state.authHandler('SIGNED_IN',{user:{id:'B'},access_token:'token-B'}); await flush();
+    state.actor='B'; state.authHandler('SIGNED_IN',profileSession({user:{id:'B'}})); await flush();
     expect(await store.resolveQueuedTripWrite('shared','discard')).toBe(false);
     expect(state.writes).toEqual([]);
   });
@@ -343,10 +344,10 @@ describe('round three additional real-store behavior', () => {
         const request=store.resolveQueuedTripWrite('shared','discard'); await flush();
         const observed=[];
         store.subscribe(()=>{const s=store.getSnapshot();if((s.sessionUserId==='B'||!s.sessionUserId)&&s.trips.some(t=>t.name==='A PRIVATE COPY'))observed.push(s.sessionUserId);});
-        if(transition==='switch') {state.actor='B';state.authHandler('SIGNED_IN',{user:{id:'B'},access_token:'token-B'});}
+        if(transition==='switch') {state.actor='B';state.authHandler('SIGNED_IN',profileSession({user:{id:'B'}}));}
         else {state.actor=null;state.authHandler('SIGNED_OUT',null);}
         await flush();
-        if(transition==='same-user-new-generation') {state.actor='A';state.authHandler('SIGNED_IN',{user:{id:'A'},access_token:'token-A'});await flush();}
+        if(transition==='same-user-new-generation') {state.actor='A';state.authHandler('SIGNED_IN',profileSession({user:{id:'A'}}));await flush();}
         hold.release(); expect(await request).toBe(false); await flush();
         expect(observed).toEqual([]); expect(state.writes).toEqual([]);
         expect(store.getSnapshot().trips.some(t=>t.name==='A PRIVATE COPY')).toBe(false);
