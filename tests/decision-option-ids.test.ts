@@ -81,6 +81,22 @@ function lastDecision(): TripDecision {
   return list[list.length - 1]
 }
 
+/** The Map-rail poll shape the transition path resolves. */
+function raiseSlotPoll(tripId: string): TripDecision {
+  addDecision(tripId, {
+    question: 'Day 1 lunch - where?',
+    options: [{
+      id: 'slot:lunch:h1',
+      label: 'Grand Hotel',
+      place: {
+        title: 'Grand Hotel', category: 'food', locationName: 'Ernakulam',
+        lat: 10.01, lng: 76.3, description: '', visitMinutes: 45, dayIndex: 0,
+      },
+    }],
+  })
+  return lastDecision()
+}
+
 function decisionInsertPayload(): { options?: Array<{ id?: string }> } | undefined {
   const call = calls.find(c => c.table === 'submit_collab_command' && c.method === 'rpc')
   const params = call?.payload as { p_command?: { decision?: { options?: Array<{ id?: string }> } } } | undefined
@@ -197,9 +213,12 @@ describe('#335 — the slot vote survives addDecision end to end', () => {
     expect(lunch?.vote?.voters).toBe(3)
   })
 
-  it('resolving a slot vote stamps the part it was raised for on the stop', () => {
+  it('sends the stable slot option id through the server transition receipt', async () => {
     const trip = freshTrip()
     getSnapshot().sessionUserId = ownerId
+    // The transition preflight is strict: a copy with no server revision never
+    // sends a CAS transition, so this poll resolves on a persisted trip.
+    tripById(trip.id)!.writeVersion = 1
     const before = tripById(trip.id)!.days[0].stops.length
     addDecision(trip.id, {
       question: 'Day 1 lunch - where?',
@@ -213,13 +232,27 @@ describe('#335 — the slot vote survives addDecision end to end', () => {
       }],
     })
     const d = lastDecision()
-    resolveDecision(d.id, d.options[0].id)
+    await resolveDecision(d.id, d.options[0].id)
 
-    const landed = tripById(trip.id)!.days[0].stops.find(s => s.title === 'Grand Hotel')
-    expect(landed, 'the winning place lands on the timeline').toBeTruthy()
-    // The part travels as DATA, so tidying the note cannot un-plan the slot.
-    expect(landed!.slotKey).toBe('lunch')
-    expect(tripById(trip.id)!.days[0].stops.length).toBe(before + 1)
+    const transition = calls.find(c => c.table === 'submit_collab_command' && c.method === 'rpc' &&
+      (c.payload as { p_command?: { type?: string } } | undefined)?.p_command?.type === 'decision.resolve')
+    expect((transition?.payload as { p_command?: { optionId?: string } } | undefined)?.p_command?.optionId).toBe('slot:lunch:h1')
+    // The client holds no optimistic placement. The server must acknowledge a
+    // winning stop before the itinerary can report the slot as filled.
+    expect(tripById(trip.id)!.days[0].stops.length).toBe(before)
+  })
+
+  it('an unsynced copy refuses the transition before any RPC', async () => {
+    const trip = freshTrip()
+    getSnapshot().sessionUserId = ownerId
+    // A duplicated copy has no server revision yet (buildTripCopy clears
+    // writeVersion): the strict preflight must answer unavailable and the
+    // ledger must show no decision.resolve command was sent.
+    const d = raiseSlotPoll(trip.id)
+    const outcome = await resolveDecision(d.id, d.options[0].id)
+    expect(outcome.status).toBe('unavailable')
+    expect(calls.some(c => c.table === 'submit_collab_command' && c.method === 'rpc' &&
+      (c.payload as { p_command?: { type?: string } } | undefined)?.p_command?.type === 'decision.resolve')).toBe(false)
   })
 })
 

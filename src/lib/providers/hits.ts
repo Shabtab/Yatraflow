@@ -7,6 +7,7 @@ import type { VehicleProfile } from '../../data/types'
 // exercise this module directly.
 import { haversineKm } from '../geo'
 import type { DnaVector } from '../tripDna'
+import type { PlaceExposure } from '../../data/types'
 
 export interface PlaceHit {
   id: number | string
@@ -25,6 +26,8 @@ export interface PlaceHit {
   placeId?: string
   /** which provider produced this hit (drives pick-time coord resolution + attribution) */
   source?: 'google' | 'mappls' | 'open-meteo' | 'wikipedia' | 'osm'
+  /** Explicit exposure evidence supplied by an upstream user-owned payload. */
+  exposure?: PlaceExposure
   /** stop category hint (e.g. from a nearby category) — used by the add flows */
   category?: string
   /** reported opening hours "HH:MM" — Google hits only, rendered as "reported" */

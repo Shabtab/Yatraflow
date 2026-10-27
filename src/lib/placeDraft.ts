@@ -3,7 +3,7 @@
 // pick left the old pin behind, and a text-only idea was silently pinned to the
 // trip anchor. A draft now either carries a real picked place or it does not;
 // there is no third state the submit path could mistake for one.
-import type { PersistedPlaceIdentity, PlaceProvider, ResolvedPlace } from '../data/types'
+import { PLACE_EXPOSURES, type PersistedPlaceIdentity, type PlaceExposure, type PlaceProvider, type ResolvedPlace } from '../data/types'
 import type { PlaceHit } from './providers/hits'
 
 /** Every provider this build can round-trip as a place identity. `open-meteo`
@@ -25,8 +25,13 @@ export function isPlaceProvider(value: unknown): value is PlaceProvider {
   return typeof value === 'string' && (PLACE_PROVIDERS as readonly string[]).includes(value)
 }
 
+export function isPlaceExposure(value: unknown): value is PlaceExposure {
+  return typeof value === 'string' && (PLACE_EXPOSURES as readonly string[]).includes(value)
+}
+
 function cleanKey(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+  const key = typeof value === 'string' ? value.trim() : ''
+  return key.length > 0 && key.length <= 300 ? key : undefined
 }
 
 /** A usable pick: finite, in-range, non-zero coordinates and no provider this
@@ -39,6 +44,7 @@ export function resolvedPlaceFromHit(hit: PlaceHit): ResolvedPlace | null {
   if (hit.latitude < -90 || hit.latitude > 90 || hit.longitude < -180 || hit.longitude > 180) return null
   if (hit.latitude === 0 || hit.longitude === 0) return null
   if (hit.source !== undefined && !isPlaceProvider(hit.source)) return null
+  if (hit.exposure !== undefined && !isPlaceExposure(hit.exposure)) return null
   const label = (hit.name ?? '').trim()
   if (!label) return null
   return {
@@ -48,7 +54,7 @@ export function resolvedPlaceFromHit(hit: PlaceHit): ResolvedPlace | null {
     ...(hit.source ? { source: hit.source } : {}),
     ...(cleanKey(hit.placeId) ? { placeId: cleanKey(hit.placeId) } : {}),
     ...(cleanKey(hit.eLoc) ? { eLoc: cleanKey(hit.eLoc) } : {}),
-    exposure: 'unknown',
+    exposure: hit.exposure ?? 'unknown',
   }
 }
 
@@ -68,22 +74,26 @@ export function pickPlaceDraft(hit: PlaceHit): PlaceDraft {
 /** The metadata the database stores. Coordinates and the display label stay in
  *  their own columns; this object carries identity only. */
 export function persistedPlace(place: ResolvedPlace): PersistedPlaceIdentity {
+  const exposure = isPlaceExposure(place.exposure) ? place.exposure : 'unknown'
   return {
     ...(place.source ? { source: place.source } : {}),
     ...(place.placeId ? { placeId: place.placeId } : {}),
     ...(place.eLoc ? { eLoc: place.eLoc } : {}),
-    exposure: 'unknown',
+    exposure,
   }
 }
 
 /** Identity only, from a provider hit whose coordinates were resolved by the
  *  caller. Used by the map rails, which keep the pinned coordinates separate. */
 export function persistedPlaceFromHit(hit: PlaceHit): PersistedPlaceIdentity | undefined {
+  if ((hit.source !== undefined && !isPlaceProvider(hit.source))
+    || (hit.exposure !== undefined && !isPlaceExposure(hit.exposure))) return undefined
   const source = hit.source
   const placeId = cleanKey(hit.placeId)
   const eLoc = cleanKey(hit.eLoc)
-  if (!source && !placeId && !eLoc) return undefined
-  return { ...(source ? { source } : {}), ...(placeId ? { placeId } : {}), ...(eLoc ? { eLoc } : {}), exposure: 'unknown' }
+  const exposure = hit.exposure ?? 'unknown'
+  if (!source && !placeId && !eLoc && exposure === 'unknown') return undefined
+  return { ...(source ? { source } : {}), ...(placeId ? { placeId } : {}), ...(eLoc ? { eLoc } : {}), exposure }
 }
 
 /** Read one JSONB value defensively: a malformed historical row cannot make
@@ -92,10 +102,10 @@ export function persistedPlaceFromHit(hit: PlaceHit): PersistedPlaceIdentity | u
   const row = value as Record<string, unknown>
   const allowed = new Set(['source', 'placeId', 'eLoc', 'exposure'])
   if (Object.keys(row).some(k => !allowed.has(k))) return undefined
-  if (row.exposure !== 'unknown') return undefined
+  if (row.exposure !== undefined && !isPlaceExposure(row.exposure)) return undefined
   if (row.source !== undefined && !isPlaceProvider(row.source)) return undefined
   for (const key of ['placeId', 'eLoc'] as const) {
-    if (row[key] !== undefined && (typeof row[key] !== 'string' || !row[key].trim())) return undefined
+    if (row[key] !== undefined && cleanKey(row[key]) === undefined) return undefined
   }
   const source = row.source as PlaceProvider | undefined
   const placeId = cleanKey(row.placeId)
@@ -104,6 +114,6 @@ export function persistedPlaceFromHit(hit: PlaceHit): PersistedPlaceIdentity | u
     ...(source ? { source } : {}),
     ...(placeId ? { placeId } : {}),
     ...(eLoc ? { eLoc } : {}),
-    exposure: 'unknown',
+    exposure: row.exposure === undefined ? 'unknown' : row.exposure,
   }
 }

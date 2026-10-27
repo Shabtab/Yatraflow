@@ -29,10 +29,10 @@
 
 import type {
   Trip, ItineraryDay, ItineraryStop, Expense, FixedCommitment, LatLngPoint,
-  TransportMode, TravelStyle, StopCategory, StopStatus, ExpenseCategory, PlaceProvider,
+  TransportMode, TravelStyle, StopCategory, StopStatus, ExpenseCategory, PlaceProvider, PlaceExposure,
 } from '../data/types'
 import {
-  TRANSPORT_MODES, TRAVEL_STYLES, STOP_CATEGORIES, STOP_STATUSES, EXPENSE_CATEGORIES, STAY_STYLES,
+  TRANSPORT_MODES, TRAVEL_STYLES, STOP_CATEGORIES, STOP_STATUSES, EXPENSE_CATEGORIES, STAY_STYLES, PLACE_EXPOSURES,
 } from '../data/types'
 import { sanitizeFlights, sanitizeTankL, sanitizeRentPerDayInr } from './tripRow'
 import { normalizeVehicleProfile } from './vehicleProfile'
@@ -622,7 +622,7 @@ export function normalizeTrip(source: Record<string, unknown>, report: Normalize
 
       const placeSource = validEnum<PlaceProvider>(s.placeSource, PLACE_SOURCES)
       if (s.placeSource !== undefined && !placeSource) report.repairs.push(`${stopWhere}: placeSource "${String(s.placeSource)}" is not valid - dropped it.`)
-      const exposure = s.exposure === 'unknown' ? 'unknown' as const : undefined
+      const exposure = s.exposure === undefined ? undefined : validEnum<PlaceExposure>(s.exposure, PLACE_EXPOSURES)
       if (s.exposure !== undefined && !exposure) report.repairs.push(`${stopWhere}: exposure "${String(s.exposure)}" is not valid - dropped it.`)
       // Opening hours are all-or-nothing, and must read forwards.
       let openTime: string | undefined
@@ -657,7 +657,7 @@ export function normalizeTrip(source: Record<string, unknown>, report: Normalize
         placeId: str(s.placeId) || undefined,
         eLoc: str(s.eLoc) || undefined,
         placeSource,
-        exposure,
+        ...(exposure !== undefined ? { exposure } : {}),
         lat: coords.lat,
         lng: coords.lng,
         description: str(s.description) || undefined,
