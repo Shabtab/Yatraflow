@@ -20,7 +20,7 @@ The app lives at **https://www.yatraflow.in**, connected to `hasnaina955/Yatrafl
   - `VITE_CREATE_FUNNEL` — the create-flow funnel switch, and **the one that shipped dark** (#427). A comma-separated phase list, not a boolean; the value that lights up the whole v0.65.0 arc is
     `templates,budget,readiness,drafts,crew,moment,iq,guided`.
     **Leaving it unset is a valid state, and in production it is a silent one**: unset in a production build means *dark* (the app renders, `/new` loads, every funnel phase is simply missing), while unset in a dev build means *everything on*. That asymmetry exists so `test` can dark-run a phase before `main` sees it, so do not "fix" a dark production build by changing the default — set the variable. `tests/deploy-flags.test.ts` keeps this list, the `createFunnelOn()` call sites and `FUNNEL_PHASES` in `vite.config.ts` identical, because a typo here silently darkens one phase while the other six light up. `vite.config.ts` warns (never aborts) when a **production** build has this empty or names a phase the code does not gate.
-  - `VITE_AI_COMPANION` — deliberately **absent** from production until the 1.0 cut (M8), where the companion is unmounted as the premium perk; `AI_COMPANION_ENABLED` requires the exact value `on`. Its dark state is a decision, unlike the funnel's.
+  - `VITE_AI_COMPANION` — the AI companion switch (#236). Set `VITE_AI_COMPANION=on`. The parser takes the exact value `on` and nothing else, so `ON`, `true`, `1` and a blank value all leave the drawer unmounted. Production carries it now that the companion is released. Unset stays a safe state rather than a broken one: the app simply shows no drawer and no Profile card for it. Keep the same value on Preview, so a preview matches production.
   Vite **inlines these at build time**, so changing them never affects an existing deployment — you must **Redeploy** (Vercel → Deployments → ⋯ → Redeploy) for a preview to pick them up. Since 2026-08-31 `vite.config.ts` aborts a Vercel build outright when either Supabase variable is missing, so a mis-scoped environment fails loudly instead of shipping an app whose login is broken.
 - Build settings (auto-detected Vite preset):
   - Build command: `npm run build`
@@ -123,7 +123,7 @@ All client config is read from `VITE_`-prefixed variables (see `.env.example`). 
 | `VITE_SUPABASE_ANON_KEY` | ✅ | Supabase **anon** key (public by design). Never put the `service_role` key in a `VITE_` var. |
 | `VITE_MAPPLS_KEY` | optional | Mappls REST key — powers India-best place autocomplete when set; falls back to the free stack when absent. |
 | `VITE_GOOGLE_MAPS_API_KEY` | optional | Google Places key — with it, the suggestion pipeline is Google-only (honest quota/failure notes, never a silent fallback; night-halt towns still ask OSM); the place search box degrades Google → free. Quota-guarded per SKU. |
-| `VITE_AI_COMPANION` | optional | `=on` mounts the AI companion drawer and its Profile settings (kept off in production until the premium launch). |
+| `VITE_AI_COMPANION` | optional | `=on` mounts the AI companion drawer, its floating button and its two Profile cards (endpoint and Jev). Without it the app is unchanged. The value is exact: `on` only. |
 
 The Google key is **optional** and the app fully works without it (free stack only). See the provider facade in `src/lib/geocode.ts`.
 

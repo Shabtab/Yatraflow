@@ -215,9 +215,9 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
           {/* Android only: the installed build and the manual update check. */}
           <UpdatePanel />
 
-          {/* The companion drawer mounts only under VITE_AI_COMPANION=on
-              (until M8) — its settings cards follow the same flag, so a build
-              without the companion never shows settings for it. */}
+          {/* The companion drawer mounts only under VITE_AI_COMPANION=on —
+              its settings cards follow the same flag, so a build without the
+              companion never shows settings for it. */}
           {AI_COMPANION_ENABLED && (
             <>
               <AiProviderCard />

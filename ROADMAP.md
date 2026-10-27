@@ -15,8 +15,8 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-27, verified locally):** v0.80.0 joins the collaboration, driving-plan and destination-art work on `test` with main's dependency security updates. Both histories are preserved. Production deployment is pending. Stages A, B, C, D and G have landed work in this batch; E and F remain open. C and G landed through PR #861. Stage B `20261024` -> `20261025a` -> `20261025c` is applied on backend `hqlqbfpzjmailxydjojw`. The signed-in candidate UI checks passed. Migration `20261025b` is excluded until client deployment and old-client drain. The older `20261023b_collab_cutover.sql` keeps its separate client and `pg_cron` checks. Companion activation remains off under #236. Issue #800 remains separate coordination. Read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
-Current version: **0.80.0** — the candidate for promotion to `main`; production deployment is pending. Under it: **0.79.2**, the Android release pipeline repair. Older releases appear in CHANGELOG.md.
+**Snapshot (2026-10-27, verified locally):** v0.80.0 joins the collaboration, driving-plan and destination-art work on `test` with main's dependency security updates. Both histories are preserved. v0.80.0 is deployed to production. Stages A, B, C, D and G have landed work in this batch; E and F remain open. C and G landed through PR #861. Stage B `20261024` -> `20261025a` -> `20261025c` is applied on backend `hqlqbfpzjmailxydjojw`. The signed-in candidate UI checks passed. Migration `20261025b` is excluded until client deployment and old-client drain. The older `20261023b_collab_cutover.sql` keeps its separate client and `pg_cron` checks. The companion is active in production under #236. Issue #800 remains separate coordination. Read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
+Current version: **0.80.0** — deployed to production. Under it: **0.79.2**, the Android release pipeline repair. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
@@ -67,7 +67,7 @@ the live milestone tracks are #236, #237, #239 and #240. Re-derive the count bef
 | #228 | P2 | F7 · First distribution loop | The repeatable loop, and only after F3 has answered |
 | #252 | P3 | F7 · Decide who becomes a creator, and who may publish | Open. This issue needs a product decision about creator access and publishing. |
 | #255 | P3 | Overdrive: the receipt learns to print — morph the itinerary's numbers into a real bill | Filed 2026-09-18 — this is **I-18** from the Tier 1 bank below, now tracked. Parked, not started: ~~blocked on a product decision~~ **decision made 2026-09-25** (recorded on the issue): the bill shows **the creator's stated estimate** (`estimatedBudgetPerPersonInr`), never a viewer-side recalculation — the §4 D3 morph is then honest by construction. Still parked; remaining gate is the design-token approval rule, and its own contract (2–3 directions presented and one picked before any code) still applies |
-| #236 | P2 | M5 · AI companion — user-configurable LLM endpoint | **Shipped in v0.65.0 (PR #304)** — endpoint, Jev fast path, offline fallback; flag-off in prod until M8's premium unmount, which is why the issue stays open |
+| #236 | P2 | M5 · AI companion — user-configurable LLM endpoint | **Shipped in v0.65.0 (PR #304)** — endpoint, Jev fast path, offline fallback. **Activated in production by v0.80.0.** The issue stays open until the parent reviews the activation. |
 | #237 | P2 | M6 · Together — collaboration depth | The track below |
 | #238 | P2 | M7 · Premium — the payment rail | **Closed 2026-09-19.** The rail shipped in v0.61.0 (order/entitlement tables, webhook, server-side paywall, unlock flow) and the fee model + `admin_revenue` analytics followed on 2026-09-21; the open remainder, F6 (#234 · the CA's merchant-of-record call), is tracked on its own issue — a row no commit can close |
 | #239 | P2 | M8 · 1.0 enablers → the 1.0 cut | The track below |
@@ -215,7 +215,7 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 - [x] **M3** — Performance architecture: store immutability → slice selectors → DaySection memo → workspace split into pages/trip/* + weather dedup + lazy routes (in [Unreleased], local branch redesign/perf-architecture)
 - [x] **M4** — Design-system hygiene: dead CSS purge, mobile-block consolidation, glass/z-index tokens (in [Unreleased], local branch redesign/perf-architecture; raw-rgba glass stragglers intentionally NOT migrated — see commit `f646b45`)
 - [x] **M0 defect** — seed guard: skip demo seeding when hydration had query errors (#94, v0.49.0 — `store.ts` gates the seed on `!tripCountUnknown`)
-- [x] **M5** — AI companion: user-configurable LLM endpoint (#22 → #20 — both closed as audit findings; **shipped in v0.65.0, PR #304** — the drawer stays flag-gated off in prod until M8's premium unmount, which is why issue #236 remains open)
+- [x] **M5** — AI companion: user-configurable LLM endpoint (#22 → #20, both closed as audit findings). **Shipped in v0.65.0, PR #304.** The drawer stayed flag-gated until M8's premium unmount. **v0.80.0 activated it in production.** Issue #236 stays open until the parent reviews that activation.
 - [ ] **M6** — Together: every named item shipped — integration/RLS suite (v0.61.0); co-editing depth (v0.62.0, PR #265 — presence, stale-update guard, remote-edit banner, mark-settled, plus the Board/socket-gap follow-up `e5bba2a`); I-6/I-7 (v0.64.0); I-19 (open-lines balances) and I-16 (cross-device Trip DNA) in v0.65.0. What is left is a human step, not code: the two-account presence confirmation pass, after which issue #237 closes
 - [x] **M10** — Day Planner / travel clock: the engine line shipped through P1-G (plan doc implemented, Sep 13) and the map half — clock anchors, planned-stop arrival chips, return-leg labels, living-plan day states, named overnight halts and tap-to-day — is on `test` (released as **v0.63.0** on 2026-09-20, **PR #262**); no open phases remain named in the plan doc
 - [x] **M7** — Premium: payment gateway, entitlements, unlock flow — the rail shipped in v0.61.0 (PR #251 to `test`, promoted as PR #259) and **issue #238 closed 2026-09-19**; the fee model and the `admin_revenue` analytics followed on 2026-09-21. The one row no commit can close — F6 (#234), the CA's merchant-of-record call — is tracked on its own open issue
@@ -232,12 +232,12 @@ Preserve its seven-stage order and existing issue ownership. Stage A shipped in 
 | Stage | Scope | Dependency | Current state |
 |---|---|---|---|
 | A | Contribution ownership, acknowledged writes, notification policies; F1, F2, F13 | First | Shipped through #835 and #836 in v0.79.0. The author reports both migrations applied and nineteen live assertions passed. |
-| B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Included on `test` under #839 and in the v0.80.0 candidate. Production deployment is pending. Preserve imported trips and unambiguous legacy references. |
-| C | Atomic acceptance, resolution, lifecycle, and honest UI results; F2, F7, F11, F13 | A and B. The approved Stage B `20261024` -> `20261025a` -> `20261025c` SQL is applied on `hqlqbfpzjmailxydjojw`. Migration b remains a separate step after client deployment and old-client drain. | C #838 and G #843 landed on `test` through PR #861. Both are in the v0.80.0 candidate; production deployment is pending. Earlier full-gate and 90 of 90 real PostgreSQL 16.15 checks passed. Two editors commenting on one suggestion keep both comments. Control m7 removes only that row lock and loses the earlier comment while every interleaving precondition passes. The hosted apply passed its catalog check; the later probe found zero missing and zero unknown fields. Signed-in UI checks pass for acceptance, explicit repeat confirmation, poll resolution, reload and deleted-day placement. Exact-request SDK retry adds no artifacts; viewer commands are refused. The QA trip was purged. Two dummy accounts remain signed out because public account deletion is unavailable. Issue #800 is the coordination boundary, not a functional Stage C prerequisite. Companion activation stays off as the separate #236 decision. Surviving mutations m3 and m5 remain a coverage gap; no production lock was removed. |
-| D | One authoritative driving plan; F3 | Before E and final F | Included on `test` under #840 and in the v0.80.0 candidate. Production deployment is pending. Preserve all five regression checks. |
+| B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Included on `test` under #839 and in v0.80.0, which is deployed to production. Preserve imported trips and unambiguous legacy references. |
+| C | Atomic acceptance, resolution, lifecycle, and honest UI results; F2, F7, F11, F13 | A and B. The approved Stage B `20261024` -> `20261025a` -> `20261025c` SQL is applied on `hqlqbfpzjmailxydjojw`. Migration b remains a separate step after client deployment and old-client drain. | C #838 and G #843 landed on `test` through PR #861. Both are in v0.80.0, which is deployed to production. Earlier full-gate and 90 of 90 real PostgreSQL 16.15 checks passed. Two editors commenting on one suggestion keep both comments. Control m7 removes only that row lock and loses the earlier comment while every interleaving precondition passes. The hosted apply passed its catalog check; the later probe found zero missing and zero unknown fields. Signed-in UI checks pass for acceptance, explicit repeat confirmation, poll resolution, reload and deleted-day placement. Exact-request SDK retry adds no artifacts; viewer commands are refused. The QA trip was purged. Two dummy accounts remain signed out because public account deletion is unavailable. Issue #800 is the coordination boundary, not a functional Stage C prerequisite. The companion activation under #236 is a separate decision, and v0.80.0 activated it in production. Surviving mutations m3 and m5 remain a coverage gap; no production lock was removed. |
+| D | One authoritative driving plan; F3 | Before E and final F | Included on `test` under #840 and in v0.80.0, which is deployed to production. Preserve all five regression checks. |
 | E | Day-scoped candidates, slot identity, placement, and shortlist outcomes; F5, F6, F8, F12, F15 | B, C, and D | Planned under #841. Preserve existing option IDs and legacy poll reads. |
 | F | Request ownership, semantic cache freshness, and discovery context; F16, F17, F18 | D and E for final integration | F16 merged through #834. Remaining discovery and cache work belongs to #842. Do not duplicate the search guard. |
-| G | Schedule-based companion advice and explicit uncertainty; F9, F10 | B, D, and authoritative schedules | Landed on `test` through PR #861 with C #838. Included in the v0.80.0 candidate; production deployment is pending. The earlier proof passed 27 companion tests and six kill-anchored controls. Companion activation remains off as the separate #236 decision. |
+| G | Schedule-based companion advice and explicit uncertainty; F9, F10 | B, D, and authoritative schedules | Landed on `test` through PR #861 with C #838. Included in v0.80.0, which is deployed to production. The earlier proof passed 27 companion tests and six kill-anchored controls. v0.80.0 activated the companion in production under #236. |
 
 The current fixed integration base is 9f1916ddd27b40d2c54832ecb05d7904b1bf04f3, upstream test after #844.
 This base includes the guided create flow and v0.79.1. Preserve its confirmation-screen crew labels during integration.
@@ -381,8 +381,19 @@ companion answers with that model, grounded in the trip data, and falls back to
 the deterministic router on ANY failure (no config, network, timeout, bad key,
 malformed response), with an (LLM)/(offline) badge on every reply so the user
 always knows which brain spoke. The key is device-local (localStorage), never
-sent to YatraFlow servers. The drawer stays behind `VITE_AI_COMPANION=on` until
-M8 unmounts it as the premium perk.
+sent to YatraFlow servers.
+
+**State (2026-10-27): activated in production by v0.80.0 (#236).** Production sets
+`VITE_AI_COMPANION=on` and nothing else. The switch mounts the drawer, its
+floating button and both Profile cards. No source file changed for the
+activation, because the flag was always the only gate. The default stays off,
+so a build without the variable is unchanged and shows no broken state. The
+deployed bundle carries the flag folded to `true`. A signed-in production run
+showed the drawer, an `offline` badge and both Profile cards. Proof is in
+`E:/T3/evidence/2026-10-27/companion-activation/`. There is no product LLM
+credential. Each traveller supplies their own endpoint, so this release claims
+no live model answer from a YatraFlow key. The `LLM` and `Jev` badges wait for
+a traveller's own endpoint.
 
 ### M6 — "Together" (collaboration depth) — **issue #237**
 Supabase integration/RLS test suite first (opt-in `VITE_RUN_INTEGRATION`,
@@ -1007,7 +1018,7 @@ the bank is a complete index of unbuilt work:
 |---|---|---|
 | Public route at `/i/<id>` with no hash hop (option B) | [#226](#open-issues) | **Deferred.** The address-bar patch already keeps `/i/<id>#/pub/<id>` crawler-readable, so previews no longer need it. It would still drop the function round-trip on every refresh — and the interim "Opening this itinerary…" page that goes with it — by serving the app at the path the crawler already reads. Needs coordinated app routing, Vercel shell delivery, legacy hash-link handling and refresh/Back/Forward coverage; must not redirect `/i/<id>` to itself or fetch a different deployment's shell |
 | M6 — Together | [Strategic track](#m6--together-collaboration-depth--issue-237) | Every named item shipped — RLS suite (v0.61.0); co-editing depth (v0.62.0); I-6/I-7 (v0.64.0); I-19/I-16 (v0.65.0). Open: the two-account presence confirmation pass |
-| M5 — AI companion | [Strategic track](#m5--ai-companion--issue-236) | Shipped in v0.65.0 (PR #304): LLM endpoint + offline fallback + badge; flag-off in prod until M8 |
+| M5 — AI companion | [Strategic track](#m5--ai-companion--issue-236) | Shipped in v0.65.0 (PR #304): LLM endpoint + offline fallback + badge. v0.80.0 activated it in production |
 
 | M7 — Premium | [Strategic track](#m7--premium-monetization--issue-238) | Shipped: the rail, entitlements and unlock flow landed in v0.61.0 (PRs #251/#259); issue #238 closed 2026-09-19. Open: F6 (#234) only |
 | M9 — Invites & onboarding | [`docs/PLAN-INVITES-ONBOARDING.md`](docs/PLAN-INVITES-ONBOARDING.md) | R1 → R2 → R3; exec plan written |
