@@ -28,6 +28,7 @@ import { CoverThumb } from '../components/CoverThumb'
 import { Avatar, Chip, toast } from '../components/ui'
 import { PageHeader } from '../components/page/PageHeader'
 import { StateBlock } from '../components/page/StateBlock'
+import { StateVignette } from '../components/RegionArt'
 import { Surface } from '../components/page/Surface'
 import { formatInr } from '../lib/engine'
 import type { Entitlement, PurchaseOrder } from '../lib/payments'
@@ -200,7 +201,9 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
       ) : entitlements === null || orders === null ? (
         <StateBlock kind="loading" titleLevel="h2" icon={<span className="spinner" aria-hidden="true" />} title="Loading your purchases…" />
       ) : shelf.rows.length === 0 ? (
-        <StateBlock kind="empty" titleLevel="h2" icon={<ShoppingBag size={38} aria-hidden />} title="Nothing bought yet"
+        <StateBlock kind="empty" titleLevel="h2"
+          art={<StateVignette name="no-purchases" fallback={<ShoppingBag size={38} aria-hidden />} />}
+          title="Nothing bought yet"
           body="Unlock a priced itinerary and it appears here permanently — with the price you paid and any later updates. Free previews you fork live in My trips."
           actions={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Browse itineraries</button>} />
       ) : (

@@ -3,8 +3,18 @@
 // catalog counts and a trio of papercut postcards with a handwritten note. The
 // search field lives in the filter bar, under the title of the catalog. The
 // shell is PageHero; the postcards and the note stay here, in the visual slot.
+//
+// Each postcard shows the scene its own place resolves to. The place layer is
+// asked first with the postcard's place name, so "Srinagar" reaches the J&K
+// scene and "Alappuzha" reaches the Kerala scene rather than the state default.
+// The seven-region scene stays as the answer when the place layer has nothing
+// specific to say. The motif remains the loading and error floor. The postcard
+// set is static, so the seed is the place name: a postcard keeps its scene.
 import { ArrowDown } from 'lucide-react'
+import { ART_MANIFEST, artIdFor } from '../../lib/regionArt'
+import { placeArtFor, placeFallbacksFrom } from '../../lib/placeArt'
 import type { TripRegion } from '../../lib/tripsPage'
+import { RegionArt } from '../RegionArt'
 import { TripArt } from '../trips/TripArt'
 import { PageHero } from '../page/PageHero'
 import { NoteArrow } from '../page/NoteArrow'
@@ -16,6 +26,13 @@ const POSTCARDS: { region: TripRegion; place: string; className: string }[] = [
   { region: 'kerala', place: 'Alappuzha', className: 'ex-pc-2' },
   { region: 'rajasthan', place: 'Udaipur', className: 'ex-pc-3' },
 ]
+
+/**
+ * `.ex-postcard` is 32% of `.ex-hero-visual`, which caps at 480px, less its own
+ * 7px side padding (styles.css:8509, 8514-8515, 8520): 480 * .32 - 14 = 139.6.
+ * The postcards are `display: none` below 960px (8566), so no smaller case exists.
+ */
+const POSTCARD_SIZES = '140px'
 
 export function ExploreHero({ stats, onExplore }: {
   stats: HeroStat[]
@@ -40,12 +57,23 @@ export function ExploreHero({ stats, onExplore }: {
               <path d="M46 150C80 110 130 76 190 82S330 30 372 70 340 170 300 172" />
               <circle cx="46" cy="150" r="4" />
             </svg>
-            {POSTCARDS.map(card => (
-              <figure className={`ex-postcard ${card.className}`} key={card.place}>
-                <div className="ex-postcard-art"><TripArt region={card.region} /></div>
-                <figcaption>{card.place}<span className="ex-stamp" /></figcaption>
-              </figure>
-            ))}
+            {POSTCARDS.map(card => {
+              const place = placeArtFor([card.place], card.place, placeFallbacksFrom(ART_MANIFEST))
+              const id = place && place.kind !== 'generic' ? place.id : artIdFor(card.region, card.place)
+              return (
+                <figure className={`ex-postcard ${card.className}`} key={card.place}>
+                  <div className="ex-postcard-art">
+                    <RegionArt
+                      id={id}
+                      ratio="4:3"
+                      sizes={POSTCARD_SIZES}
+                      fallback={<TripArt region={card.region} />}
+                    />
+                  </div>
+                  <figcaption>{card.place}<span className="ex-stamp" /></figcaption>
+                </figure>
+              )
+            })}
           </div>
           <p className="ex-note">
             <span>

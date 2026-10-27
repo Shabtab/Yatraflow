@@ -10,7 +10,7 @@ import { meterLabel, meterPercent, routeLine, travelHoursText } from '../../lib/
 import { cardNextStep, countdownText, planning, rangeText, statusOf } from '../../lib/tripsPage'
 import type { Trip, User } from '../../data/types'
 import { Planners } from './Planners'
-import { TripCover } from './TripCover'
+import { TripCover, FEATURED_SIZES } from './TripCover'
 import { TripFacts } from './TripFacts'
 
 export interface UpNextCardProps {
@@ -36,7 +36,7 @@ export function UpNextCard({ trip, today, budget, totalTravelMinutes, users, meI
   const targetRoute = step ? nextStepRoute(trip, step) : detailRoute
   return (
     <article className="mt-card mt-feat" data-status={status}>
-      <TripCover trip={trip} status={status} />
+      <TripCover trip={trip} status={status} sizes={FEATURED_SIZES} />
       <div className="mt-feat-body">
         <h3 className="mt-card-title">
           <a className="mt-card-link" {...appLink(detailRoute)}>{trip.name}</a>

@@ -96,8 +96,16 @@ describe('the guided create answers keep the boxed shape', () => {
 
   it('keeps the selection settle and its reduced-motion off switch', () => {
     expect(css).toMatch(/@keyframes create-choice-settle/)
-    const reduced = css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
-    expect(reduced).toMatch(/create-choice-settle|animation:\s*none/)
+    // Target the reduced-motion block that governs the starter, not whichever
+    // one happens to sit last in the file. Later work appends its own
+    // reduced-motion blocks (the generated region art does), and reading the
+    // last one would silently assert against a block this feature never owned.
+    const blocks = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}/g)]
+      .map(m => m[0])
+      .filter(block => block.includes('.trip-starter'))
+    expect(blocks.length, 'no reduced-motion block scoped to .trip-starter').toBeGreaterThan(0)
+    const covers = blocks.some(block => /create-choice-settle|animation:\s*none/.test(block))
+    expect(covers, 'the starter reduced-motion block must cancel the settle').toBe(true)
   })
 
   it('keeps the check mark on the selected answer', () => {
