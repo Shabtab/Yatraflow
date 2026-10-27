@@ -16,6 +16,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-10-27
+
+**This minor release joins the trip collaboration, driving-plan and destination-art work already on `test`.** It preserves main's dependency security updates. Production deployment is pending. The companion stays off under #236. Stages E and F remain open.
+
+Stage B `20261024` -> `20261025a` -> `20261025c` is applied on backend `hqlqbfpzjmailxydjojw`. The signed-in candidate UI checks passed. Migration `20261025b` waits for the deployed client and older-client drain.
+
 ### Added
 
 - **Place-name token filtering now avoids a false timing warning.** The tokenizer drops empty strings through their truth value. Place matching keeps the same results. No secret is compared by this filter.
