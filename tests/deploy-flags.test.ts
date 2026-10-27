@@ -59,6 +59,48 @@ describe('#427 — the three lists that name the funnel phases cannot drift', ()
   })
 })
 
+describe('#236 — the companion switch ships with its activation', () => {
+  /** The value the flag parser accepts, read from the source it gates. */
+  function exactValueInCode(): string {
+    const src = codeOf(read('../src/lib/featureFlags.ts'))
+    const at = src.indexOf('AI_COMPANION_ENABLED')
+    expect(at, 'AI_COMPANION_ENABLED is gone — the companion has no switch').toBeGreaterThan(-1)
+    const assignment = src.slice(at, src.indexOf('\n', at))
+    const m = assignment.match(/===\s*'([a-z]+)'/)
+    expect(m, 'the flag no longer compares against a literal').toBeTruthy()
+    return m![1]
+  }
+
+  it('the deploy doc shows the exact value the parser accepts', () => {
+    const value = exactValueInCode()
+    const doc = read('../docs/DEPLOYMENT.md')
+    // The deployer's line must name the variable AND the literal, together.
+    expect(doc, 'docs/DEPLOYMENT.md must show `VITE_AI_COMPANION=<value>`').toContain(`VITE_AI_COMPANION=${value}`)
+    expect(doc, 'the factory-default trap must stay documented').toMatch(/exact value/)
+  })
+
+  it('the default stays off, so a build without the variable is unchanged', () => {
+    const src = codeOf(read('../src/lib/featureFlags.ts'))
+    const line = src.slice(src.indexOf('AI_COMPANION_ENABLED'))
+    // `?? ''` is the whole reason an absent variable is dark rather than a crash.
+    expect(line.slice(0, line.indexOf('\n'))).toMatch(/\?\?\s*''/)
+  })
+
+  it('the flag is still the only gate: every mount site reads it', () => {
+    // Both surfaces must sit behind the flag. A second, independent condition
+    // would let one surface light up without the other, which no deploy value
+    // could fix.
+    for (const file of ['../src/pages/Profile.tsx', '../src/pages/TripWorkspace.tsx']) {
+      // Line comments only. `codeOf` also strips block comments, and a block
+      // comment in TripWorkspace.tsx contains a `*/`-shaped literal that makes
+      // that regex swallow the following import line.
+      const src = read(file).replace(/(^|\n)[^\S\n]*\/\/[^\n]*/g, '$1')
+      expect(src, `${file} no longer imports the flag`).toMatch(/import\s*\{\s*AI_COMPANION_ENABLED\s*\}/)
+      expect(src, `${file} does not gate its companion surface on the flag`).toMatch(/AI_COMPANION_ENABLED\s*&&/)
+    }
+  })
+})
+
 describe('#427 — the switch lives where a deployer looks', () => {
   it('the deploy table names the variable and the trap', () => {
     const doc = read('../docs/DEPLOYMENT.md')

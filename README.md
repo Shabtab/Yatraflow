@@ -95,11 +95,11 @@ _Release highlights, newest first — the full record lives in [CHANGELOG.md](CH
 
 ## The v0.80.0 release candidate
 
-Production deployment is pending. This candidate joins the verified work on `test` with main's dependency security updates.
+v0.80.0 is deployed to production. This candidate joins the verified work on `test` with main's dependency security updates.
 
 - **Group actions save one result.** Acceptance and poll resolution save the stop and status together. Same-day repeats need explicit confirmation. A deleted day asks for a current day.
 - **Destination covers match their place names.** Uploaded covers still win. Unknown or mixed destinations use neutral art.
-- **Companion advice reads the shared schedule.** Missing evidence stays unknown. Activation remains off under #236.
+- **Companion advice reads the shared schedule.** Missing evidence stays unknown. The companion is active in production under #236.
 
 ## ✨ The v0.79 release, in plain words
 
