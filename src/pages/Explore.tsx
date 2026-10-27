@@ -12,6 +12,7 @@ import { cap } from '../lib/labels'
 import { scrollBehavior } from '../lib/motion'
 import { toast } from '../components/ui'
 import { TripArtSprite } from '../components/trips/TripArt'
+import { StateVignette } from '../components/RegionArt'
 import { ExploreHero } from '../components/explore/ExploreHero'
 import { ExploreFilterBar, type StyleOption } from '../components/explore/ExploreFilterBar'
 import { ExploreCard } from '../components/explore/ExploreCard'
@@ -337,7 +338,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
             ) : (
               <ExploreStateBlock
                 kind="failed"
-                icon={<TriangleAlert size={36} aria-hidden />}
+                art={<StateVignette name="error" fallback={<TriangleAlert size={36} aria-hidden />} />}
                 title={emptyCopyFor(pubsRead, 'catalog', retryCatalog).title}
                 body={emptyCopyFor(pubsRead, 'catalog', retryCatalog).body}
                 actions={<button className="btn btn-secondary" type="button" onClick={retryCatalog}>Try again</button>}
@@ -384,19 +385,19 @@ function ExploreEmpty({ kind, onClear, onNavigate }: {
   const clearButton = <button className="btn btn-secondary" type="button" onClick={onClear}>Clear filters</button>
   if (kind === 'no-saved') {
     return (
-      <ExploreStateBlock kind="empty" icon={<Heart size={36} aria-hidden />} title="You haven’t saved any itineraries yet"
+      <ExploreStateBlock kind="empty" art={<StateVignette name="no-saved" fallback={<Heart size={36} aria-hidden />} />} title="You haven’t saved any itineraries yet"
         body="Tap the heart on a plan to keep it here, ready to fork." actions={clearButton} />
     )
   }
   if (kind === 'no-match') {
     return (
-      <ExploreStateBlock kind="empty" icon={<Search size={36} aria-hidden />} title="Nothing matches those filters"
+      <ExploreStateBlock kind="empty" art={<StateVignette name="no-results" fallback={<Search size={36} aria-hidden />} />} title="Nothing matches those filters"
         body="Try widening the budget or clearing a filter." actions={clearButton} />
     )
   }
   if (kind === 'no-catalog-signed-in') {
     return (
-      <ExploreStateBlock kind="empty" icon={<Compass size={36} aria-hidden />} title="No itineraries published yet"
+      <ExploreStateBlock kind="empty" art={<StateVignette name="no-published" fallback={<Compass size={36} aria-hidden />} />} title="No itineraries published yet"
         body="Publish one of your trips from its Share tab and it will appear here." />
     )
   }

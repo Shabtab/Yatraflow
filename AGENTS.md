@@ -72,6 +72,7 @@ git rev-list --count origin/main..origin/test
 16. Work only in your own clone, and give every command an explicit root. Full text: docs/agents/AGENTS-FULL.md §2.16
 17. Promote `test` to `main` once per finished batch: a minor release for a feature, a patch release for a fix. Full text: docs/agents/AGENTS-FULL.md §2.17
 18. Search for prior art before you build: compare up to three maintained GitHub projects. Adapt code only from MIT, Apache-2.0, BSD or ISC sources. Full text: docs/agents/AGENTS-FULL.md §2.18
+19. Claim an issue before you start it, and check for an existing claim. A claim holds even when its branch is not pushed. Full text: docs/agents/AGENTS-FULL.md §2.19
 
 ### What enforces each rule
 
@@ -96,6 +97,7 @@ A rule with no row here is a judgment call.
 | §2.16 own clone | Judgment (global clone table) |
 | §2.17 promote | Judgment; `git rev-list --count origin/main..origin/test` |
 | §2.18 prior art | Judgment; the PR description lists projects, licences and choice |
+| §2.19 claim before you start | Judgment; the issue assignee, the claim comment and `git ls-remote --heads origin` |
 | §3 gate, CI, migrations | `npm run verify`; `ci.yml`; `npm run check:migrations`; live probe |
 | §4 conventions | `CODING_STANDARDS.md`; `supabase/tests/rls_contract.test.sql`; `tests/design-system.test.ts` |
 | §6 roadmap version | `tests/roadmap-status.test.ts` |

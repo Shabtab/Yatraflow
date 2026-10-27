@@ -12229,3 +12229,47 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
    Probe the computed `border-radius` of an answer button in a browser after any
    change here, the way `CODING_STANDARDS.md` 6d(4) says. */
 
+/* ===== Generated region art (src/components/RegionArt.tsx) ===== */
+/* The picture sits over the inline SVG motif, which stays in place as the
+   loading floor and the error floor. Both are absolutely positioned inside the
+   slot's own aspect-ratio box, so the swap never changes the layout. The slot
+   keeps its radius and its `overflow: hidden` from the component that owns it. */
+.yf-art-picture { position: absolute; inset: 0; display: block; }
+.yf-art-img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform var(--motion-slow) var(--ease-out); }
+/* The scene is opaque, so it hides the motif that every card hover already
+   zoomed. Each rule below repeats the transform of the motif rule it shadows,
+   with the same token, so a card that now shows a scene keeps the interaction
+   it had before. The reduced-motion block at the end cancels both. */
+.mt-card:hover .yf-art-img,
+.ex-card:hover .yf-art-img,
+.ex-trend-card:hover .yf-art-img { transform: scale(1.035); }
+.ex-feature:hover .yf-art-img { transform: scale(1.03); }
+.ex-place:hover .yf-art-img,
+.ex-hero:hover .ex-postcard .yf-art-img { transform: scale(1.06); }
+@media (prefers-reduced-motion: reduce) {
+  .yf-art-img { transition: none; }
+  .mt-card:hover .yf-art-img, .ex-card:hover .yf-art-img, .ex-trend-card:hover .yf-art-img,
+  .ex-feature:hover .yf-art-img, .ex-place:hover .yf-art-img,
+  .ex-hero:hover .ex-postcard .yf-art-img { transform: none; }
+}
+/* The scrim is the one DESIGN.md already puts over the SVG motif, moved onto the
+   scene. It is a sibling overlay, not a filter on the image, so it cannot
+   double-apply with the motif's own dark-theme rule and cannot dim the vignette. */
+.yf-art-picture.is-scrimmed::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; background: transparent;
+}
+[data-theme='dark'] .yf-art-picture.is-scrimmed::after { background: rgba(6, 20, 24, .16); }
+/* A state vignette is square by contract and never takes the scrim. The icon the
+   block already shows sits behind the image, so a failure leaves the icon. */
+.yf-vignette { position: relative; width: 168px; max-width: 100%; aspect-ratio: 1 / 1; }
+.yf-vignette-floor { position: absolute; inset: 0; display: grid; place-items: center; color: var(--teal); }
+@media (max-width: 640px) {
+  .yf-vignette { width: 132px; }
+}
+
+/* #839 stage B - the retarget / add-another-visit follow-ups appear beside a
+   suggestion row's own buttons. They use the shared popover-in keyframe and the
+   motion tokens only; the reduced-motion opt-out is mandatory, matching
+   .tl-mode-copy above. */
+.gin-followup { animation: popover-in var(--motion-fast) var(--ease-glide); }
+@media (prefers-reduced-motion: reduce) { .gin-followup { animation: none; } }

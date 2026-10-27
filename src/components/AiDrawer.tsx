@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { InlineIcon } from './icons'
 import { ClipboardList, Sparkles, X } from 'lucide-react'
 import type { Trip } from '../data/types'
+import type { LegEstimate } from '../lib/engine'
 import { quickPrompts } from '../lib/ai'
 import { askCompanion, type CompanionSource } from '../lib/aiProvider'
 import { scrollBehavior } from '../lib/motion'
@@ -16,7 +17,15 @@ interface Msg {
   source?: CompanionSource
 }
 
-export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: boolean; onOpen: () => void; onClose: () => void }) {
+export function AiDrawer({ trip, open, onOpen, onClose, legCorrections }: {
+  trip: Trip
+  open: boolean
+  onOpen: () => void
+  onClose: () => void
+  /** The workspace's measured road snapshot, so advice reads the same schedule
+   *  the timeline shows. Optional: without it the engine's own estimate stands. */
+  legCorrections?: Record<string, LegEstimate>
+}) {
   const [msgs, setMsgs] = useState<Msg[]>([{
     id: 1, role: 'bot',
     text: `Hi! I’m your YatraFlow companion. I can see “${trip.name}” — ${trip.days.length} days, ${trip.destinations.join(' → ')}. Ask me to lighten a day, check timings against a fixed commitment, find savings or plan for rain.`,
@@ -94,7 +103,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
     // assistant, not a form post; the LLM path takes as long as it takes.
     replyTimer.current = window.setTimeout(() => {
       askAbort.current = new AbortController()
-      askCompanion(trip, q, askAbort.current.signal)
+      askCompanion(trip, q, askAbort.current.signal, legCorrections)
         .then(reply => {
           setMsgs(m => [...m, { id: ++msgIdRef.current, role: 'bot', text: reply.text, assumptions: reply.assumptions, source: reply.source }])
         })

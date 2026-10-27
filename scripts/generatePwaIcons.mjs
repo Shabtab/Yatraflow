@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // ============ PWA icon generator ============
-// Draws icon-192.png, icon-512.png, icon-maskable-512.png and apple-touch-icon.png
+// Draws icon-192.png, icon-512.png, icon-maskable-512.png, apple-touch-icon.png
+// and favicon-96.png
 // from the Ribbon Y mark. The art matches the
 // construction in DESIGN.md → Brand mark, so the launcher icon cannot drift
 // from the header mark:
@@ -217,3 +218,4 @@ writePng(out('icon-192.png'), 192, 1.0, CORNER)
 writePng(out('icon-512.png'), 512, 1.0, CORNER)
 writePng(out('icon-maskable-512.png'), 512, 0.78, 0)
 writePng(out('apple-touch-icon.png'), 180, 0.99, 0)
+writePng(out('favicon-96.png'), 96, 0.99, 0)

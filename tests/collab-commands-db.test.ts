@@ -117,6 +117,8 @@ describe('collaboration command SQL behavior', () => {
     // Both files must be safe to re-run after an interrupted rollout.
     await db.exec(readSql('supabase/migrations/20261023a_collab_commands.sql'))
     await db.exec(readSql('supabase/migrations/20261023b_collab_cutover.sql'))
+    await db.exec(readSql('supabase/migrations/20261024_suggestion_place_identity.sql'))
+    await db.exec(readSql('supabase/migrations/20261024_suggestion_place_identity.sql'))
     await db.exec(`do $$ begin
       if exists(select 1 from pg_policies where schemaname='public' and tablename in ('suggestions','decisions','activity','notifications') and cmd='ALL' and permissive='PERMISSIVE') then raise exception 'permissive FOR ALL write policy remains'; end if;
       if not exists(select 1 from pg_policies where schemaname='public' and tablename='notifications' and cmd='ALL' and permissive='RESTRICTIVE' and policyname='deny disabled') then raise exception 'restrictive disabled-account guard was removed'; end if;
@@ -303,12 +305,37 @@ describe('collaboration command SQL behavior', () => {
   })
 
   it('archives original contributions before delete and restores only the server snapshot', async () => {
+    const metadataId = '30000000-0000-4000-8000-000000000839'
+    const metadata = { source: 'google', placeId: 'archive-round-trip', exposure: 'unknown' }
+    await db.exec('reset role')
+    await db.query(
+      'insert into public.suggestions(id,trip_id,proposed_by,title,place,day_id) values($1,$2,$3,$4,$5::jsonb,$6)',
+      [metadataId, trip, owner, 'Metadata-bearing archived suggestion', JSON.stringify(metadata), 'stable-day'],
+    )
+    const tables = ['suggestions', 'decisions', 'activity', 'notifications']
+    const before: number[] = []
+    for (const table of tables) before.push(await count(table))
     await actor(owner)
     await db.exec(`reset role; delete from public.trips where id='${trip}'; insert into public.trips(id,owner_id) values('${trip}','${owner}'); insert into public.trip_members values('${trip}','${owner}','owner'),('${trip}','${editorA}','editor'),('${trip}','${editorB}','editor'),('${trip}','${viewer}','viewer');`)
+    await actor(owner)
+    await db.exec('reset role')
+    const archived = await db.query<{ suggestions: { id: string; place: unknown }[] }>(
+      'select suggestions from public.trip_contribution_restore_events where trip_id=$1', [trip],
+    )
+    expect(archived.rows[0].suggestions.find(row => row.id === suggestion)).toHaveProperty('place', null)
+    expect(archived.rows[0].suggestions.find(row => row.id === metadataId)?.place).toEqual(metadata)
     await actor(owner)
     const restored = await db.query<{ receipt: Record<string, unknown> }>('select public.restore_trip_contributions($1) as receipt', [trip])
     expect(restored.rows[0].receipt.status).toBe('applied')
     expect(restored.rows[0].receipt.restoredRows).toBeGreaterThan(0)
+    await db.exec('reset role')
+    const restoredMetadata = await db.query<{ day_id: string; place: unknown }>(
+      'select day_id,place from public.suggestions where id=$1', [metadataId],
+    )
+    expect(restoredMetadata.rows[0]).toEqual({ day_id: 'stable-day', place: metadata })
+    const after: number[] = []
+    for (const table of tables) after.push(await count(table))
+    expect(after).toEqual(before)
     await db.exec('reset role')
     const row = await db.query<{ proposed_by: string; votes: unknown; comments: unknown }>('select proposed_by,votes,comments from public.suggestions where id=$1', [suggestion])
     expect(row.rows[0]).toMatchObject({

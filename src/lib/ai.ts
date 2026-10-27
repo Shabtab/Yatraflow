@@ -3,8 +3,9 @@
 // every answer cites the assumptions it used.
 import type { Trip, ItineraryStop } from '../data/types'
 import {
-  getAssumptions, simulateDay, computeTotals, originOf, scheduleRowsById, legCostInr,
-  minutesToHM, hmToMinutes, collectWarnings, formatInr, countHotelNights,
+  getAssumptions, simulateDay, buildJourney, computeTotals, originOf, scheduleRowsById, legCostInr,
+  minutesToHM, hmToMinutes, collectWarnings, formatInr, countHotelNights, AIRPORT_CHECKIN_MIN,
+  type LegEstimate,
 } from './engine'
 import { INTENT_NONE, type CompanionIntent } from './jevTaxonomy'
 
@@ -14,6 +15,206 @@ export interface AiReply {
 }
 
 const DISCLAIMER = 'Estimates use demo coordinates and fixed assumptions — not live traffic or prices.'
+type AdviceExposure = 'indoor' | 'outdoor' | 'unknown'
+type DepartureCommitment = Trip['fixedCommitments'][number] & { type: 'flight-departure' | 'train-departure' }
+type DepartureCandidate =
+  | { dayIndex: number; type: 'flight-departure'; source: 'flight-leg'; title: string; time: string | null; airportIata: string }
+  | { dayIndex: number; type: DepartureCommitment['type']; source: 'fixed-commitment'; title: string; time: string; terminalStopId: string | null }
+
+export interface AdviceStopFact {
+  id: string
+  title: string
+  category: ItineraryStop['category']
+  priority: ItineraryStop['priority']
+  auto: boolean
+  dayIndex: number
+  arrival: string | null
+  departure: string | null
+  visitMinutes: number | null
+  transferFrom: string | null
+  transferMinutes: number | null
+  exposure: AdviceExposure
+}
+
+export interface AdviceDayFacts {
+  dayIndex: number
+  start: string | null
+  end: string | null
+  stops: AdviceStopFact[]
+}
+
+export interface DepartureAdviceFact {
+  dayIndex: number
+  type: 'flight-departure' | 'train-departure'
+  source: 'flight-leg' | 'fixed-commitment'
+  title: string
+  time: string | null
+  departureAt: string | null
+  terminal: AdviceStopFact | null
+  bufferMinutes: number | null
+  status: 'supported' | 'unknown'
+  reason: string | null
+}
+
+/**
+ * The shared, engine-derived schedule facts used by both advice paths.
+ *
+ * `legCorrections` is the workspace's measured road data — the same figures the
+ * timeline, map, ICS export and impact preview render with. Passing it is what
+ * makes an advice verdict and those surfaces agree; omitting it keeps the
+ * deterministic haversine engine in charge, exactly as before.
+ */
+export function buildAdviceFacts(
+  trip: Trip,
+  legCorrections?: Record<string, LegEstimate>,
+): AdviceDayFacts[] {
+  return [...trip.days]
+    .sort((a, b) => a.index - b.index)
+    .map(day => {
+      const journey = buildJourney(trip, day, legCorrections, originOf(trip, day.index))
+      const at = (absoluteMinute: number): string | null => {
+        if (!Number.isFinite(absoluteMinute)) return null
+        // Round once before the date carry and clock modulo, as engine
+        // addMinutesToClock does. Fractional leg durations are normal.
+        const roundedMinute = Math.round(absoluteMinute)
+        const date = shiftIsoDate(trip.startDate, day.index + Math.floor(roundedMinute / 1440))
+        if (date === 'unknown-date') return null
+        const minute = ((roundedMinute % 1440) + 1440) % 1440
+        const clock = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
+        return `${date} ${clock}`
+      }
+      let cursor = hmToMinutes(journey.startTime) + (journey.startDayOffset ?? 0) * 1440
+      const start = Number.isFinite(cursor) ? at(cursor) : null
+      let timelineKnown = start !== null
+      const stops = journey.points.flatMap(point => {
+        if (point.kind === 'start') return []
+        const transfer = point.legIn
+        const transferMinutes = transfer && Number.isFinite(transfer.durationMinutes) ? transfer.durationMinutes : null
+        if (transferMinutes === null) timelineKnown = false
+        else if (timelineKnown) cursor += transferMinutes
+        const arrival = timelineKnown ? at(cursor) : null
+        const source = day.stops.find(stop => stop.id === point.stop.id)
+        const visitMinutes = point.stop.auto === true
+          ? 0
+          : source && Number.isFinite(source.visitMinutes) ? source.visitMinutes : null
+        if (visitMinutes === null || !Number.isFinite(point.dwellMinutes)) timelineKnown = false
+        else if (timelineKnown) cursor += point.dwellMinutes
+        return [{
+          id: point.stop.id,
+          title: point.title,
+          category: point.stop.category,
+          priority: point.stop.priority,
+          auto: point.stop.auto === true,
+          dayIndex: day.index,
+          arrival,
+          departure: timelineKnown ? at(cursor) : null,
+          visitMinutes,
+          transferFrom: transferMinutes === null ? null : transfer?.fromTitle ?? null,
+          transferMinutes,
+          exposure: exposureEvidence(point.stop),
+        }]
+      })
+      return { dayIndex: day.index, start, end: timelineKnown ? at(cursor) : null, stops }
+    })
+}
+
+/** A commitment is usable only when the final terminal and its buffer are evidenced. */
+export function buildDepartureAdviceFacts(
+  trip: Trip,
+  days: AdviceDayFacts[] | undefined = undefined,
+  legCorrections?: Record<string, LegEstimate>,
+): DepartureAdviceFact[] {
+  // `days` defaults to the facts for this same correction snapshot, so a caller
+  // that passes only corrections still gets a consistent day/terminal pair.
+  const dayFacts = days ?? buildAdviceFacts(trip, legCorrections)
+  const flightCandidates: DepartureCandidate[] = (trip.flights ?? []).map(flight => ({
+    dayIndex: flight.dayIndex,
+    type: 'flight-departure',
+    source: 'flight-leg',
+    title: `Flight from ${flight.fromAirport}`,
+    time: flight.departAt ?? null,
+    airportIata: flight.fromAirport,
+  }))
+  const commitmentCandidates = trip.fixedCommitments
+    .filter((commitment): commitment is DepartureCommitment =>
+      commitment.type === 'flight-departure' || commitment.type === 'train-departure')
+    .map((commitment): DepartureCandidate => ({
+      dayIndex: commitment.dayIndex,
+      type: commitment.type,
+      source: 'fixed-commitment',
+      title: commitment.title,
+      time: commitment.time,
+      terminalStopId: commitment.stopId ?? null,
+    }))
+  const candidates = [...flightCandidates, ...commitmentCandidates]
+    .sort((a, b) => a.dayIndex - b.dayIndex || (a.time ?? '99:99').localeCompare(b.time ?? '99:99'))
+  const seen = new Set<string>()
+  return candidates.filter(candidate => {
+    const key = `${candidate.dayIndex}|${candidate.type}|${candidate.time ?? 'unknown'}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).map(candidate => {
+      const day = dayFacts.find(fact => fact.dayIndex === candidate.dayIndex)
+      const terminal = day?.stops.find(stop => candidate.source === 'flight-leg'
+        ? stop.title.startsWith(`${candidate.airportIata} ·`)
+        : stop.id === candidate.terminalStopId) ?? null
+      const finalStop = day?.stops[day.stops.length - 1]
+      const bufferMinutes = candidate.type === 'flight-departure' ? AIRPORT_CHECKIN_MIN : null
+      let reason: string | null = null
+      const departureAt = candidate.time === null
+        ? null
+        : `${shiftIsoDate(trip.startDate, candidate.dayIndex)} ${candidate.time}`
+      if (!departureAt || !Number.isFinite(utcMinute(departureAt))) {
+        reason = 'The commitment date or time is missing, so it cannot be compared with the schedule.'
+      } else if (!day?.start || !Number.isFinite(utcMinute(day.start))) {
+        reason = 'The scheduled start date or time is unknown.'
+      } else if (utcMinute(departureAt) < utcMinute(day.start)) {
+        reason = 'The commitment clock is before the scheduled start. Its date does not show whether it is the following morning.'
+      } else if (!terminal || (candidate.source === 'fixed-commitment' && finalStop?.id !== terminal.id)) {
+        reason = 'No scheduled terminal transfer is recorded, so reachability is unknown.'
+      } else if (candidate.source === 'fixed-commitment' && terminal.category !== 'transport-hub') {
+        reason = 'The linked final stop is not identified as an airport or station.'
+      } else {
+        const terminalIndex = day?.stops.findIndex(stop => stop.id === terminal.id) ?? -1
+        const precedingStops = terminalIndex < 0 ? [] : day?.stops.slice(0, terminalIndex + 1) ?? []
+        if (precedingStops.some(stop => stop.transferMinutes === null || stop.visitMinutes === null || stop.arrival === null || stop.departure === null)) {
+          reason = 'A transfer leg or visit duration is missing, so the scheduled arrival may be incomplete.'
+        } else if (bufferMinutes === null) {
+          reason = 'No station buffer is recorded.'
+        }
+      }
+      return {
+        dayIndex: candidate.dayIndex,
+        type: candidate.type,
+        source: candidate.source,
+        title: candidate.title,
+        time: candidate.time,
+        departureAt,
+        terminal,
+        bufferMinutes,
+        status: reason === null ? 'supported' : 'unknown',
+        reason,
+      }
+    })
+}
+
+function shiftIsoDate(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`)
+  if (!Number.isFinite(value.getTime())) return 'unknown-date'
+  value.setUTCDate(value.getUTCDate() + days)
+  return value.toISOString().slice(0, 10)
+}
+
+function exposureEvidence(stop: ItineraryStop): AdviceExposure {
+  const exposure: unknown = stop.exposure
+  if (exposure === 'indoor' || exposure === 'outdoor') return exposure
+  return stop.weatherSensitive === true ? 'outdoor' : 'unknown'
+}
+
+function utcMinute(value: string): number {
+  return Date.parse(`${value.replace(' ', 'T')}:00Z`) / 60_000
+}
 
 function daySim(trip: Trip, i: number) {
   return simulateDay(trip.days[i], trip, originOf(trip, i), i)
@@ -65,22 +266,35 @@ export function quickPrompts(): string[] {
   ]
 }
 
-export function answerQuestion(trip: Trip, question: string): AiReply {
+export function answerQuestion(
+  trip: Trip,
+  question: string,
+  legCorrections?: Record<string, LegEstimate>,
+): AiReply {
   const q = question.toLowerCase()
   const has = (...words: string[]) => words.some((w) => q.includes(w))
 
-  return answerForIntent(trip, routeIntent(q, has), question)
+  return answerForIntent(trip, routeIntent(q, has), question, legCorrections)
 }
 
 /** Map one classified intent to its handler. Exported for the Jev path — a
  *  classifier picks the capability, the same local handlers compute the answer,
- *  so both routers share one body of trip analysis and can never drift apart. */
-export function answerForIntent(trip: Trip, intent: CompanionIntent, question: string): AiReply {
+ *  so both routers share one body of trip analysis and can never drift apart.
+ *
+ *  `legCorrections` is the workspace's measured road snapshot. Every handler that
+ *  reads scheduled clocks receives it, so a Jev answer, an offline answer and the
+ *  remote context describe the same schedule. */
+export function answerForIntent(
+  trip: Trip,
+  intent: CompanionIntent,
+  question: string,
+  legCorrections?: Record<string, LegEstimate>,
+): AiReply {
   const totals = totals_of(trip)
   switch (intent) {
     case 'compare': return compareRelaxedPacked(trip)
     case 'rain': return rainPlan(trip)
-    case 'airport': return airportFeasibility(trip)
+    case 'airport': return airportFeasibility(trip, legCorrections)
     case 'youtube': return youtubeDescription(trip)
     case 'cheaper': return cheaperAlternative(trip)
     case 'family': return familyVersion(trip)
@@ -204,23 +418,34 @@ function makeLessTiring(trip: Trip): AiReply {
   return { text: lines.join('\n'), assumptions: DISCLAIMER }
 }
 
-function airportFeasibility(trip: Trip): AiReply {
-  const flights = trip.fixedCommitments.filter(c => c.type === 'flight-departure' || c.type === 'train-departure')
-  if (!flights.length) {
+function airportFeasibility(trip: Trip, legCorrections?: Record<string, LegEstimate>): AiReply {
+  const dayFacts = buildAdviceFacts(trip, legCorrections)
+  const [departure] = buildDepartureAdviceFacts(trip, dayFacts, legCorrections)
+  if (!departure) {
     return { text: `There are no flight/train departure commitments saved on this trip yet. Add one under Overview → Fixed commitments and I'll check reachability with current timings.${footer()}` }
   }
-  const fc = flights[0]
-  const sim = daySim(trip, fc.dayIndex)
-  if (!sim.activeStops.length) return { text: `Day ${fc.dayIndex + 1} is empty, so reaching "${fc.title}" by ${fc.time} is easy from your start point.` }
-  const lastArr = sim.arrivalTimes[sim.arrivalTimes.length - 1]
-  const lastStop = sim.activeStops[sim.activeStops.length - 1]
-  const slackMin = hmToMinutes(fc.time) - hmToMinutes(lastArr)
-  const ok = slackMin >= 60
+  const terminal = departure.terminal
+  if (departure.status === 'unknown' || !terminal || !departure.time || !departure.departureAt
+    || departure.bufferMinutes === null || terminal.arrival === null || terminal.departure === null) {
+    const scheduled = terminal
+      ? ` The schedule reaches the linked stop at ${terminal.arrival ?? 'an unknown time'} and leaves it at ${terminal.departure ?? 'an unknown time'}.`
+      : ''
+    return {
+      text: `I can't confirm whether Day ${departure.dayIndex + 1} can reach “${departure.title}” by ${departure.time}.${scheduled} ${departure.reason ?? 'Terminal evidence is incomplete.'}${footer()}`,
+      assumptions: terminal?.transferMinutes !== null && terminal?.transferMinutes !== undefined
+        ? `The transfer into the linked stop is estimated at ${terminal.transferMinutes} min from ${terminal.transferFrom ?? 'an unknown origin'}. ${departure.bufferMinutes === null ? 'The terminal buffer is unknown.' : `The airport check-in buffer is ${departure.bufferMinutes} min.`} ${DISCLAIMER}`
+        : `Transfer evidence is incomplete. ${DISCLAIMER}`,
+    }
+  }
+  const latestDeparture = utcMinute(departure.departureAt) - departure.bufferMinutes
+  const scheduledTerminalTime = departure.source === 'flight-leg' ? terminal.arrival : terminal.departure
+  const slackMin = latestDeparture - utcMinute(scheduledTerminalTime)
+  const ok = slackMin >= 0
   return {
     text: ok
-      ? `Yes, workable. Your Day ${fc.dayIndex + 1} plan finishes at “${lastStop.title}” around ${lastArr}, leaving ~${Math.round(slackMin / 5) * 5} min before the ${fc.time} ${fc.type === 'flight-departure' ? 'flight' : 'train'} (“${fc.title}”). Keep the last stop within ~30 km of the airport to be safe.`
-      : `Risky. The current Day ${fc.dayIndex + 1} plan only reaches “${lastStop.title}” around ${lastArr}, after your ${fc.time} commitment. Remove the last 1–2 stops or start 90 min earlier.`,
-    assumptions: `Uses avg speed ${getAssumptions(trip).avgSpeedKmph} km/h and per-stop buffers. ${DISCLAIMER}`,
+      ? `Yes, workable. The scheduled transfer reaches “${terminal.title}” at ${terminal.arrival} and leaves at ${terminal.departure}. That leaves ${Math.floor(slackMin)} min before the airport check-in buffer for your ${departure.time} flight (“${departure.title}”).`
+      : `Risky. The current Day ${departure.dayIndex + 1} schedule reaches “${terminal.title}” at ${terminal.arrival} and leaves at ${terminal.departure}, ${Math.abs(Math.floor(slackMin))} min after the latest departure that preserves the airport check-in buffer.`,
+    assumptions: `Transfer from ${terminal.transferFrom} to the linked airport stop is estimated at ${terminal.transferMinutes} min. The schedule includes stop visit time and per-stop buffer; airport check-in buffer is ${departure.bufferMinutes} min. ${DISCLAIMER}`,
   }
 }
 
@@ -237,15 +462,20 @@ function cheaperAlternative(trip: Trip): AiReply {
 }
 
 function rainPlan(trip: Trip): AiReply {
-  const outdoor = trip.days.flatMap(d => d.stops.filter(s => s.weatherSensitive && s.status !== 'rejected').map(s => `Day ${d.index + 1}: ${s.title}`))
-  const indoor = trip.days.flatMap(d => d.stops.filter(s => !s.weatherSensitive && s.status !== 'rejected').map(s => `${s.title} (${s.category})`))
+  const stops = buildAdviceFacts(trip).flatMap(day => day.stops
+    .filter(stop => !stop.auto)
+    .map(stop => ({ ...stop, label: `Day ${day.dayIndex + 1}: ${stop.title}` })))
+  const outdoor = stops.filter(stop => stop.exposure === 'outdoor').map(stop => stop.label)
+  const indoor = stops.filter(stop => stop.exposure === 'indoor').map(stop => `${stop.title} (${stop.category})`)
+  const unknown = stops.filter(stop => stop.exposure === 'unknown').map(stop => stop.label)
   const lines = [`Three rain options:\n`]
-  lines.push(`Option A — Shuffle: swap outdoor stops (${outdoor.slice(0, 2).join(', ') || 'none flagged'}) with indoor ones later in the trip.`)
+  lines.push(`Option A — Shuffle: swap outdoor stops (${outdoor.slice(0, 2).join(', ') || 'none verified'}) with indoor ones later in the trip.`)
   lines.push(`Option B — Indoor day: build the day around museums, spas, cafes & shopping; keep drive time similar.`)
   lines.push(`Option C — Push through: keep the plan but add 30–40 min buffer per outdoor stop for wet roads.`)
   if (outdoor.length) lines.push(`\nWeather-sensitive stops flagged: ${outdoor.join('; ')}.`)
-  else if (indoor.length) lines.push(`\nNo stops are flagged weather-sensitive, so rain impact should be limited.`)
-  return { text: lines.join('\n'), assumptions: `YatraFlow flags beach/viewpoint/trek stops as weather-sensitive. ${DISCLAIMER}` }
+  if (indoor.length) lines.push(`\nVerified indoor stops: ${indoor.join('; ')}.`)
+  if (unknown.length) lines.push(`\nExposure is unknown for: ${unknown.join('; ')}. Check these stops before relying on an indoor alternative.`)
+  return { text: lines.join('\n'), assumptions: `A true weather-sensitive flag is outdoor evidence. A false or missing flag is not indoor evidence. ${DISCLAIMER}` }
 }
 
 function familyVersion(trip: Trip): AiReply {

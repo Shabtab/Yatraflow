@@ -8,7 +8,7 @@ import type { PublishedItinerary, User } from '../../data/types'
 import { appLink } from '../../lib/appLink'
 import { cap } from '../../lib/labels'
 import { Avatar } from '../ui'
-import { ExploreCover } from './ExploreCover'
+import { ExploreCover, EX_FEATURE_SIZES } from './ExploreCover'
 import { ExploreFacts } from './ExploreFacts'
 import { RouteTrail } from './RouteTrail'
 
@@ -28,7 +28,7 @@ export function FeaturedCard({ pub, creator, kicker, healthScore, saved, needsLo
   return (
     <article className="ex-feature ex-enter" data-id={pub.id}>
       <div className="ex-feature-cover">
-        <ExploreCover pub={pub} />
+        <ExploreCover pub={pub} sizes={EX_FEATURE_SIZES} />
         <span className="ex-style-tag">{cap(pub.travelStyle)}</span>
       </div>
       <div className="ex-feature-body">

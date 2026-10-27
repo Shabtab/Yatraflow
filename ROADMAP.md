@@ -15,8 +15,8 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-24, verified against the repo):** v0.79.2 is the release candidate that joins `test` and `main`. It keeps both histories. It fixes the Android release pipeline. A tag run now attaches its APK. The APK version follows `package.json`. A stale place-search answer can no longer overwrite a newer one. No database migration goes with this release. The two v0.79.0 migrations keep their own status. `20261023a_collab_commands.sql` is applied. `20261023b_collab_cutover.sql` waits for the client and `pg_cron`. Read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
-Current version: **0.79.2** — the candidate for promotion to `main`. Under it: **0.79.1**, the guided create form. Under that: **0.79.0**, the crew command contract. Under that: **0.78.0**, promoted to `main` on 2026-10-21. Older releases appear in CHANGELOG.md.
+**Snapshot (2026-10-27, verified locally):** v0.80.0 joins the collaboration, driving-plan and destination-art work on `test` with main's dependency security updates. Both histories are preserved. Production deployment is pending. Stages A, B, C, D and G have landed work in this batch; E and F remain open. C and G landed through PR #861. Stage B `20261024` -> `20261025a` -> `20261025c` is applied on backend `hqlqbfpzjmailxydjojw`. The signed-in candidate UI checks passed. Migration `20261025b` is excluded until client deployment and old-client drain. The older `20261023b_collab_cutover.sql` keeps its separate client and `pg_cron` checks. Companion activation remains off under #236. Issue #800 remains separate coordination. Read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
+Current version: **0.80.0** — the candidate for promotion to `main`; production deployment is pending. Under it: **0.79.2**, the Android release pipeline repair. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
@@ -232,12 +232,12 @@ Preserve its seven-stage order and existing issue ownership. Stage A shipped in 
 | Stage | Scope | Dependency | Current state |
 |---|---|---|---|
 | A | Contribution ownership, acknowledged writes, notification policies; F1, F2, F13 | First | Shipped through #835 and #836 in v0.79.0. The author reports both migrations applied and nineteen live assertions passed. |
-| B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Planned under #839. The merged command contract is available. Preserve imported trips and unambiguous legacy references. |
-| C | Atomic acceptance, resolution, lifecycle, and honest UI results; F2, F7, F11, F13 | A and B | Planned under #838. Preserve drafts and release busy state on every refusal. |
-| D | One authoritative driving plan; F3 | Before E and final F | Implemented under #840. Its pull request records candidate verification and landing status. Preserve all five regression checks. |
+| B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Included on `test` under #839 and in the v0.80.0 candidate. Production deployment is pending. Preserve imported trips and unambiguous legacy references. |
+| C | Atomic acceptance, resolution, lifecycle, and honest UI results; F2, F7, F11, F13 | A and B. The approved Stage B `20261024` -> `20261025a` -> `20261025c` SQL is applied on `hqlqbfpzjmailxydjojw`. Migration b remains a separate step after client deployment and old-client drain. | C #838 and G #843 landed on `test` through PR #861. Both are in the v0.80.0 candidate; production deployment is pending. Earlier full-gate and 90 of 90 real PostgreSQL 16.15 checks passed. Two editors commenting on one suggestion keep both comments. Control m7 removes only that row lock and loses the earlier comment while every interleaving precondition passes. The hosted apply passed its catalog check; the later probe found zero missing and zero unknown fields. Signed-in UI checks pass for acceptance, explicit repeat confirmation, poll resolution, reload and deleted-day placement. Exact-request SDK retry adds no artifacts; viewer commands are refused. The QA trip was purged. Two dummy accounts remain signed out because public account deletion is unavailable. Issue #800 is the coordination boundary, not a functional Stage C prerequisite. Companion activation stays off as the separate #236 decision. Surviving mutations m3 and m5 remain a coverage gap; no production lock was removed. |
+| D | One authoritative driving plan; F3 | Before E and final F | Included on `test` under #840 and in the v0.80.0 candidate. Production deployment is pending. Preserve all five regression checks. |
 | E | Day-scoped candidates, slot identity, placement, and shortlist outcomes; F5, F6, F8, F12, F15 | B, C, and D | Planned under #841. Preserve existing option IDs and legacy poll reads. |
 | F | Request ownership, semantic cache freshness, and discovery context; F16, F17, F18 | D and E for final integration | F16 merged through #834. Remaining discovery and cache work belongs to #842. Do not duplicate the search guard. |
-| G | Schedule-based companion advice and explicit uncertainty; F9, F10 | B, D, and authoritative schedules | Planned under #843. Companion activation remains the separate #236 decision. |
+| G | Schedule-based companion advice and explicit uncertainty; F9, F10 | B, D, and authoritative schedules | Landed on `test` through PR #861 with C #838. Included in the v0.80.0 candidate; production deployment is pending. The earlier proof passed 27 companion tests and six kill-anchored controls. Companion activation remains off as the separate #236 decision. |
 
 The current fixed integration base is 9f1916ddd27b40d2c54832ecb05d7904b1bf04f3, upstream test after #844.
 This base includes the guided create flow and v0.79.1. Preserve its confirmation-screen crew labels during integration.
@@ -1168,6 +1168,60 @@ Kept as one line each so the origin is traceable without re-listing the work as 
   reaches. The Map now resolves one day for both the label and the click (`mapPlacement.ts`).
   The two cannot name different days. An unknown position still falls back to the trip's first
   day, and the modal keeps its guess notice.
+
+## Suggestions repair — Stage B (#839): place identity
+
+| Stage | Scope | Dependency | Current state |
+|---|---|---|---|
+| B | Resolved places, entity identity, visit identity, stable day references; F4, F7, F14 | Command interface agreed | Implemented on `fix/839-place-identity-minimax`. The merged command contract is available. Preserve imported trips and unambiguous legacy references. |
+
+The user approved this batch on 2026-10-24. It is the place-identity half of Stage B:
+what a picked place IS, how it survives a save, and how it survives a delete and undo.
+
+- **Settled product behaviour.** When the target day disappears, ask again with a day
+  picker and preserve the idea's text and place data. Never choose another day
+  automatically. Cancel preserves the open idea. Same-day repeats need an explicit
+  "Add another visit" confirmation; different-day visits stay allowed, and Cancel
+  preserves the idea.
+- **Accepted technical choices.** Resolved and unresolved place states are distinct;
+  editing the location text invalidates the selected pin and its metadata. Suggestion
+  metadata and stable day identity are persisted — no transient-only fallback. The
+  table and the command are extended additively; shipped migrations and the
+  contribution tables are not edited or replaced. Every Stage A actor, receipt, guard,
+  archive and restore protection is preserved. The existing 0.5 km name-and-proximity
+  fallback applies, with provider identity taking precedence over names and proximity.
+  Export uses format 3 when the shape it needs changes; legacy reads stay readable and
+  incompatible future versions are rejected honestly. Server-atomic acceptance remains
+  Stage C — Stage B must not claim that separate writes are atomic.
+- **Provider provenance.** `open-meteo` is a place provider, because the free stack's
+  city geocoder returns real populated places through it. The earlier reading — that a
+  weather hostname cannot be a place engine — refused every keyless city pick and is
+  corrected: one vendor serves both a geocoder and a forecast, and the call site
+  decides which is which. `PlaceProvider` in `src/data/types.ts` is the single source
+  of truth, and the runtime guard, the import validator, the SQL CHECK, the RPC
+  validation and the schema mirror all follow it. Unknown provider strings, unusable
+  coordinates and blank names are still refused.
+- **Corrections carried into the build.** The CHECK validates the full allowed
+  shape and data types with an `IS TRUE` form, so missing and null exposure are both
+  rejected (R1). Missing columns or an older RPC produce a recoverable refusal on
+  every write that carries identity (R2, R3). A restore may omit metadata only for a
+  legacy row that has none to lose; a restore carrying metadata preserves it or refuses
+  recoverably, and the recovery payload is kept for retry. Resolved coordinates need
+  not have known provenance, so a provider key is not needed when the source
+  legitimately supplies none — and unknown provenance stays unknown, with the
+  metadata builder, type, RPC and SQL constraint agreeing on that valid state.
+- **Ownership.** MiniMax implements the fixed candidate. Codex independently reviews
+  and verifies it and owns integration, the full gate, browser evidence and
+  publication. The full gate, browser proof, live SQL and rollout stay outside this
+  batch's own proof.
+- **Recovery after a failed restore.** The failure carries an action, and the action
+  is bound to the account, the trip and the payload captured at delete time — a
+  repeat re-reads that capture rather than asking who is signed in now. An account
+  switch, a moved access generation, or a newer deletion refuses the stale recovery
+  instead of writing someone else's rows. Contribution recovery runs through the
+  guarded archive function, because the direct insert policies are gone; a database
+  without that support refuses honestly and keeps the payload. No new hard-delete
+  entry point is added, and the ordinary trash workflow is unchanged.
 
 ## Historical plans (executed — kept for the record, not live guidance)
 

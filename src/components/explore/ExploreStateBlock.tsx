@@ -5,12 +5,14 @@
 import type { ReactNode } from 'react'
 import { StateBlock, type StateKind } from '../page/StateBlock'
 
-export function ExploreStateBlock({ kind = 'empty', icon, title, body, actions }: {
+export function ExploreStateBlock({ kind = 'empty', art, icon, title, body, actions }: {
   kind?: StateKind
+  /** The page-level vignette. The icon stays as its loading and error floor. */
+  art?: ReactNode
   icon?: ReactNode
   title: string
   body?: string
   actions?: ReactNode
 }) {
-  return <StateBlock kind={kind} icon={icon} title={title} body={body} actions={actions} />
+  return <StateBlock kind={kind} art={art} icon={icon} title={title} body={body} actions={actions} />
 }

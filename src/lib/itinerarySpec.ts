@@ -29,22 +29,22 @@
 
 import type {
   Trip, ItineraryDay, ItineraryStop, Expense, FixedCommitment, LatLngPoint,
-  TransportMode, TravelStyle, StopCategory, StopStatus, ExpenseCategory,
+  TransportMode, TravelStyle, StopCategory, StopStatus, ExpenseCategory, PlaceProvider, PlaceExposure,
 } from '../data/types'
 import {
-  TRANSPORT_MODES, TRAVEL_STYLES, STOP_CATEGORIES, STOP_STATUSES, EXPENSE_CATEGORIES, STAY_STYLES,
+  TRANSPORT_MODES, TRAVEL_STYLES, STOP_CATEGORIES, STOP_STATUSES, EXPENSE_CATEGORIES, STAY_STYLES, PLACE_EXPOSURES,
 } from '../data/types'
 import { sanitizeFlights, sanitizeTankL, sanitizeRentPerDayInr } from './tripRow'
 import { normalizeVehicleProfile } from './vehicleProfile'
 import { PUBLISH_FIELD_LABELS, PUBLISH_FIELD_ORDER, publishValidation } from './publishRules'
 
 /** The wire format this build writes and reads. Bump it whenever the SHAPE
- *  changes — a reader that understands 2 must still read 1 (via MIGRATIONS). */
-export const ITINERARY_FORMAT_VERSION = 2
+ *  changes — a reader that understands 3 must still read older versions (via MIGRATIONS). */
+export const ITINERARY_FORMAT_VERSION = 3
 
 /** The prose contract's version (docs/ITINERARY-IMPORT-SPEC.md). The rule IDs
  *  below are pinned to the validator CLI by tests/trip-import.test.ts. */
-export const SPEC_VERSION = '2.0'
+export const SPEC_VERSION = '3.0'
 
 /**
  * Every structural rule the contract names. The validator CLI carries the same
@@ -83,13 +83,17 @@ export const TRIP_KEYS = new Set([
 ])
 export const DAY_KEYS = new Set(['id', 'index', 'title', 'startTime', 'stops'])
 export const STOP_KEYS = new Set([
-  'id', 'title', 'category', 'locationName', 'placeId', 'lat', 'lng', 'description',
+  'id', 'title', 'category', 'locationName', 'placeId', 'eLoc', 'placeSource', 'exposure', 'lat', 'lng', 'description',
   'visitMinutes', 'openTime', 'closeTime', 'entryFeeInrPerPerson', 'transportCostInrTotal',
   'priority', 'notes', 'sourceUrl', 'status', 'orderInDay', 'weatherSensitive', 'auto',
 ])
+/** Mirrors PlaceProvider in src/data/types.ts. `open-meteo` is a place engine (the
+ *  free stack's city geocoder), so a stop or suggestion picked from it keeps its
+ *  provenance through an export/import round-trip instead of being repaired away
+ *  (#839). Anything outside this list is still dropped and named. */
+const PLACE_SOURCES = ['google', 'mappls', 'open-meteo', 'wikipedia', 'osm'] as const
 export const EXPENSE_KEYS = new Set([
-  'id', 'label', 'category', 'amountInr', 'perPerson', 'optional', 'stopId', 'dayIndex', 'paidBy',
-  'settled',
+  'id', 'label', 'category', 'amountInr', 'perPerson', 'optional', 'stopId', 'dayIndex', 'paidBy', 'settled',
 ])
 export const COMMITMENT_KEYS = new Set(['id', 'title', 'type', 'dayIndex', 'time', 'notes', 'stopId'])
 export const PUBLICATION_KEYS = new Set([
@@ -304,7 +308,7 @@ export function looksLikePublicationRow(o: Record<string, unknown>): boolean {
  * Accepted:
  *   v1  a bare `Trip`               — what old "Download JSON" wrote
  *   v1  `{ trip, publication }`     — the gallery import format before versioning
- *   v2  `{ formatVersion, trip, publication? }` — what this build writes
+ *   v3  `{ formatVersion, trip, publication? }` — what this build writes
  *
  * Refused, with a reason written for the person holding the file: anything that
  * is not JSON, a snapshot link payload, a published-itinerary row, a file with
@@ -391,7 +395,8 @@ export function readExport(raw: string): ReadExportResult {
  * v1 → v2 does the two shape repairs v1 files need, so the normalizer meets a
  * v2-shaped trip. v1 wrote 0-based `orderInDay`; the migration renumbers to
  * the app's 1-based convention. v1's schema carried four hand-written leg
- * fields; v2's engine measures every leg itself, so the migration strips them.
+ * fields; the engine measures every leg itself, so the migration strips them.
+ * v2 → v3 adds the optional place identity fields to stops.
  */
 export const MIGRATIONS: Record<number, (trip: Record<string, unknown>) => Record<string, unknown>> = {
   1: (trip) => {
@@ -615,6 +620,10 @@ export function normalizeTrip(source: Record<string, unknown>, report: Normalize
       const status = validEnum<StopStatus>(s.status, STOP_STATUSES)
       if (!status) report.repairs.push(`${stopWhere}: status "${String(s.status ?? '')}" is not valid — used "confirmed".`)
 
+      const placeSource = validEnum<PlaceProvider>(s.placeSource, PLACE_SOURCES)
+      if (s.placeSource !== undefined && !placeSource) report.repairs.push(`${stopWhere}: placeSource "${String(s.placeSource)}" is not valid - dropped it.`)
+      const exposure = s.exposure === undefined ? undefined : validEnum<PlaceExposure>(s.exposure, PLACE_EXPOSURES)
+      if (s.exposure !== undefined && !exposure) report.repairs.push(`${stopWhere}: exposure "${String(s.exposure)}" is not valid - dropped it.`)
       // Opening hours are all-or-nothing, and must read forwards.
       let openTime: string | undefined
       let closeTime: string | undefined
@@ -646,6 +655,9 @@ export function normalizeTrip(source: Record<string, unknown>, report: Normalize
         category: category ?? 'sightseeing',
         locationName,
         placeId: str(s.placeId) || undefined,
+        eLoc: str(s.eLoc) || undefined,
+        placeSource,
+        ...(exposure !== undefined ? { exposure } : {}),
         lat: coords.lat,
         lng: coords.lng,
         description: str(s.description) || undefined,

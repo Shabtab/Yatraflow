@@ -25,6 +25,7 @@ import type { ImpactResult } from '../../../lib/impact'
 import { toast, undoToast } from '../../../components/ui'
 import { addDecision } from '../../../store/store'
 import { reportCollabOutcome } from '../../../lib/collabFeedback'
+import { persistedPlaceFromHit } from '../../../lib/placeDraft'
 import { orderByRoad } from './roadOrder'
 
 export type ShortlistDeps = {
@@ -37,6 +38,8 @@ export type ShortlistDeps = {
   setAddedIds: Dispatch<SetStateAction<Set<string>>>
   newStopId: () => string
   dayForKm: (km: number | null | undefined) => number | null
+  /** stable id for a resolved day position, when the route placed it */
+  dayIdForIndex?: (index: number) => string | undefined
   poiVisitMinutes: (category?: string) => number
   routeKmOf: (lat: number, lng: number) => number | null
   detourMinFor: (hit: PlaceHit) => number | null
@@ -53,6 +56,7 @@ export function useShortlist({
   setAddedIds,
   newStopId,
   dayForKm,
+  dayIdForIndex,
   poiVisitMinutes,
   routeKmOf,
   detourMinFor,
@@ -153,19 +157,26 @@ export function useShortlist({
       const outcome = await addDecision(tripId, {
         question: usable.length === 1 ? `Should we add "${usable[0].h.name}"?` : 'Which of these should we add?',
         context: 'Shortlisted from the Map rail',
-        options: usable.map(({ h, pinned }) => ({
-          id: String(h.id), label: h.name, timeImpactMin: detourMinFor(h) == null ? undefined : Math.round(detourMinFor(h)!) || undefined,
-          place: {
-            title: h.name, category: (h.category as ItineraryStop['category']) ?? 'sightseeing',
-            locationName: h.description ?? h.name, lat: pinned.latitude, lng: pinned.longitude,
-            description: h.description, visitMinutes: poiVisitMinutes(h.category),
-            ...(h.openTime ? { openTime: h.openTime } : {}), ...(h.closeTime ? { closeTime: h.closeTime } : {}),
-            // Unknown route position: leave the day ABSENT (not Day 1 —
-            // #336). Resolution then says it cannot place the winner instead
-            // of dropping it on a day nobody chose.
-            dayIndex: dayForKm(h.cumKm) ?? undefined,
-          },
-        })),
+        options: usable.map(({ h, pinned }) => {
+          const identity = persistedPlaceFromHit(h)
+          const dayIndex = dayForKm(h.cumKm)
+          const dayId = dayIndex == null ? undefined : dayIdForIndex?.(dayIndex)
+          return {
+            id: String(h.id), label: h.name, timeImpactMin: detourMinFor(h) == null ? undefined : Math.round(detourMinFor(h)!) || undefined,
+            place: {
+              title: h.name, category: (h.category as ItineraryStop['category']) ?? 'sightseeing',
+              locationName: h.description ?? h.name, lat: pinned.latitude, lng: pinned.longitude,
+              description: h.description, visitMinutes: poiVisitMinutes(h.category),
+              ...(h.openTime ? { openTime: h.openTime } : {}), ...(h.closeTime ? { closeTime: h.closeTime } : {}),
+              // Unknown route position: leave the day ABSENT (not Day 1 —
+              // #336). Resolution then says it cannot place the winner instead
+              // of dropping it on a day nobody chose.
+              dayIndex: dayIndex ?? undefined,
+              ...(dayId ? { dayId } : {}),
+              ...(identity ? { place: identity } : {}),
+            },
+          }
+        }),
       })
       reportCollabOutcome(outcome, 'Decision posted for the group - resolving it adds the winner to the plan')
       // The tray empties on the RECEIPT: a refused poll must not throw away

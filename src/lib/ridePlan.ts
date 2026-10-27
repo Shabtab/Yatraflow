@@ -699,7 +699,6 @@ export function planTravelClock(input: TravelClockInput, splitOverride?: DriveDa
       ? rainFactorFor(input.dayRainPct[i], input.dayWeatherCode?.[i] ?? undefined)
       : clampRainFactor(input.rainFactor)
   const capKmFor = (i: number): number => capH * 60 * rainFor(i) * kmPerMin
-  const capKmBudget = capKmFor(0)
   if (wheelAvailMin < HOP_WHEEL_MAX_MIN) {
     // Short hop: drive up to 2 h toward a night halt and have dinner there —
     // the real drive starts tomorrow. Never silent night driving.
@@ -728,20 +727,31 @@ export function planTravelClock(input: TravelClockInput, splitOverride?: DriveDa
     const endnoDay = Math.min(ENDNO_KM, split.perDay * 0.15)
     const endnoCap = totalKm - endnoDay
     // Day 1 walks the real clock (it may shrink when the start is late); the
-    // remainder re-balances over the following days. The count grows honestly
-    // when a shrunk first day leaves more than a full cap for the rest.
-    const first = walkClockDay({ dayIndex: dayOffset, startKm: 0, kmBudget: Math.min(split.perDay, capKmBudget, totalKm), startMin: firstStartMin, kmPerMin, isFinal: false, capKm: endnoCap, anchors: input.anchors, profile: input.profile ?? null })
+    // remainder re-balances over the following days.
+    const first = walkClockDay({ dayIndex: dayOffset, startKm: 0, kmBudget: Math.min(split.perDay, capKmFor(0), totalKm), startMin: firstStartMin, kmPerMin, isFinal: false, capKm: endnoCap, anchors: input.anchors, profile: input.profile ?? null })
     days.push(first)
     let remaining = totalKm - first.kmCovered
     let restDays = split.driveDayCount - 1
-    while (restDays > 0 && remaining / restDays > capKmBudget) restDays += 1
+    // #855: day i's forecast caps only day i (#127), and the dry rhythm the
+    // split planned (split.perDay) stays the target for dry days. A later
+    // day's budget never exceeds min(its own rain cap, that rhythm), and the
+    // count grows to the smallest number of later days whose budgets cover
+    // the remainder. Day 0's storm so shortens day 0 only — growing
+    // the count on day 0's cap used to dampen every later dry day.
+    const dayBudgetCap = (i: number): number => Math.min(capKmFor(i), split.perDay)
+    const capacityOf = (n: number): number => {
+      let sum = 0
+      for (let i = 1; i <= n; i++) sum += dayBudgetCap(i)
+      return sum
+    }
+    while (restDays > 0 && remaining > capacityOf(restDays)) restDays += 1
     let startKm = first.kmCovered
     for (let i = 1; i <= restDays; i++) {
       // "Final" only when the day's own cap can actually absorb the remainder
       // (#127) — a wet day 2 spills into the tail guard below, not into an
       // over-cap last day.
-      const isFinal = i === restDays && remaining <= capKmFor(i) + 0.5
-      const budget = isFinal ? remaining : Math.min(remaining / (restDays - i + 1), capKmFor(i))
+      const isFinal = i === restDays && remaining <= dayBudgetCap(i) + 0.5
+      const budget = isFinal ? remaining : Math.min(remaining / (restDays - i + 1), dayBudgetCap(i))
       const laterStartMin = savedStartFor(dayOffset + i)
       const day = walkClockDay({ dayIndex: dayOffset + i, startKm, kmBudget: budget, startMin: laterStartMin, kmPerMin, isFinal, capKm: isFinal ? Infinity : endnoCap, anchors: input.anchors, profile: input.profile ?? null })
       days.push(day)
@@ -755,10 +765,10 @@ export function planTravelClock(input: TravelClockInput, splitOverride?: DriveDa
     // loop above breaks before the destination. Never silently drop route —
     // keep walking capped days until the walk reaches totalKm.
     for (let guard = 0; remaining > 0.5 && guard < 30; guard++) {
-      const isFinal = remaining <= capKmFor(days.length) + 0.5
+      const isFinal = remaining <= dayBudgetCap(days.length) + 0.5
       const laterStartMin = savedStartFor(dayOffset + days.length)
       const day = walkClockDay({
-        dayIndex: dayOffset + days.length, startKm, kmBudget: isFinal ? remaining : Math.min(remaining, capKmFor(days.length)),
+        dayIndex: dayOffset + days.length, startKm, kmBudget: isFinal ? remaining : Math.min(remaining, dayBudgetCap(days.length)),
         startMin: laterStartMin, kmPerMin, isFinal, capKm: isFinal ? Infinity : endnoCap, anchors: input.anchors, profile: input.profile ?? null,
       })
       days.push(day)
