@@ -381,8 +381,17 @@ companion answers with that model, grounded in the trip data, and falls back to
 the deterministic router on ANY failure (no config, network, timeout, bad key,
 malformed response), with an (LLM)/(offline) badge on every reply so the user
 always knows which brain spoke. The key is device-local (localStorage), never
-sent to YatraFlow servers. The drawer stays behind `VITE_AI_COMPANION=on` until
-M8 unmounts it as the premium perk.
+sent to YatraFlow servers.
+
+**State (2026-10-27): activated in v0.80.0 (#236).** The flag turns on with
+`VITE_AI_COMPANION=on` and nothing else. The switch mounts the drawer, its
+floating button and both Profile cards. No source file changed for the
+activation, because the flag was always the only gate. The default stays off,
+so a build without the variable is unchanged and shows no broken state. Proof is
+in `E:/T3/evidence/2026-10-27/companion-activation/`: the enabled build, the
+disabled build, the endpoint transport check and the fallback badge. There is
+no product LLM credential. Each traveller supplies their own endpoint, so this
+release claims no live model answer from a YatraFlow key.
 
 ### M6 — "Together" (collaboration depth) — **issue #237**
 Supabase integration/RLS test suite first (opt-in `VITE_RUN_INTEGRATION`,

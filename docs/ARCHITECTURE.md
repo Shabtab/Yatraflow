@@ -154,7 +154,7 @@ The UI shows this panel *before* a suggestion is accepted or a risky edit lands 
 - computes real answers from engine simulations (busiest day, cheapest removable non-must-do stop, whether the schedule still meets a deadline),
 - returns `{ text, assumptions }` and always cites the assumptions used, prefixed with the disclaimer that estimates are not live data.
 
-The online layer is [`src/lib/aiProvider.ts`](../src/lib/aiProvider.ts): a user-configured OpenAI-compatible endpoint set in Profile, plus an optional Jev fast path that picks which trip analysis to run. `ai.ts` stays the fallback when no endpoint is configured or the call fails, and an "(LLM)"/"(offline)" badge says which brain answered. The drawer and its Profile settings ride behind `VITE_AI_COMPANION` until the premium launch (M8), so the deployed app may not show them. This keeps the companion honest (nothing hallucinated offline), offline-capable, and free by default.
+The online layer is [`src/lib/aiProvider.ts`](../src/lib/aiProvider.ts). It holds a user-configured OpenAI-compatible endpoint, set in Profile. It also holds an optional Jev fast path, which picks which trip analysis to run. `ai.ts` stays the fallback when no endpoint is configured or the call fails. An "(LLM)"/"(offline)" badge says which brain answered. The drawer and its Profile settings ride behind `VITE_AI_COMPANION`, which is `on` in production since #236. A build without the flag simply omits both, with no error state. This keeps the companion honest (it never invents an offline answer), offline-capable, and free by default.
 
 ## 7. Location autocomplete
 
