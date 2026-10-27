@@ -1,6 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,10 +7,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { killed } from '../scripts/control-runs-r13.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const hostNpmCli = path.join(path.dirname(createRequire(import.meta.url).resolve('npm/package.json', {
-  paths: [path.dirname(process.execPath), ...(process.env.PATH ?? '').split(path.delimiter)]
-    .flatMap((dir) => [dir, path.resolve(dir, '..', 'lib')]),
-})), 'bin', 'npm-cli.js')
 const fixtures: string[] = []
 
 afterEach(() => {
@@ -52,19 +47,21 @@ describe('SHA-bound verifier process', () => {
     return path.join(dir, 'bin', 'npm-cli.js')
   }
 
-  // Host PATH minus every entry that exposes an npm through itself or its
-  // sibling lib, so a missing-npm layout really has none left to find.
-  const npmFreePath = (process.env.PATH ?? '').split(path.delimiter).filter((dir) => {
-    if (!dir) return false
-    return !existsSync(path.join(dir, 'node_modules', 'npm')) && !existsSync(path.join(dir, '..', 'lib', 'node_modules', 'npm'))
-  }).join(path.delimiter)
+  // The verifier shells out to git, so the child PATH needs git and nothing
+  // else from the host. Inheriting host PATH would leak the real npm: npm
+  // injects repo .bin directories, and module resolution walks up from them
+  // into the install. The git directory is asserted not to expose npm at all.
+  const gitDir = path.dirname((process.env.PATH ?? '').split(path.delimiter)
+    .map((dir) => path.join(dir, process.platform === 'win32' ? 'git.exe' : 'git'))
+    .find((candidate) => existsSync(candidate)) ?? '')
+  const exposesNpm = (dir: string) => existsSync(path.join(dir, 'node_modules', 'npm'))
+    || existsSync(path.join(dir, '..', 'lib', 'node_modules', 'npm'))
 
   type Layout = {
     runtimeNpm?: boolean
     pathNpm?: boolean
     competingNpm?: boolean
     lifecycleNpm?: boolean
-    hostNpmHidden?: boolean
     verifyExit?: number
   }
 
@@ -113,12 +110,16 @@ describe('SHA-bound verifier process', () => {
     git(['add', '.'])
     git(['-c', 'user.name=Local QA', '-c', 'user.email=qa@example.invalid', '-c', 'core.hooksPath=hooks-disabled', 'commit', '--quiet', '-m', 'fixture'])
 
-    const pathEntries = [wrapperBin]
+    expect(exposesNpm(gitDir)).toBe(false)
+    const pathEntries = [wrapperBin, gitDir]
     if (layout.competingNpm) pathEntries.push(competingBin)
     if (layout.pathNpm) pathEntries.push(prefixBin)
-    pathEntries.push(layout.hostNpmHidden ? npmFreePath : process.env.PATH ?? '')
     const env: NodeJS.ProcessEnv = { ...process.env, VERIFY_OUT: out, PATH: pathEntries.join(path.delimiter) }
-    for (const key of Object.keys(env)) if (key.toLowerCase() === 'npm_execpath') delete env[key]
+    // npm exports npm_execpath and NODE_PATH to its children. Either would let
+    // the host's real npm answer for a layout that is meant to have none.
+    for (const key of Object.keys(env)) {
+      if (['npm_execpath', 'node_path'].includes(key.toLowerCase())) delete env[key]
+    }
     if (layout.lifecycleNpm) env.npm_execpath = lifecycleNpmCli
 
     const result = spawnSync(nodeCopy, ['verify-bound.mjs'], { cwd, env, encoding: 'utf8' })
@@ -154,7 +155,7 @@ describe('SHA-bound verifier process', () => {
   }
 
   it('uses the npm CLI named by the lifecycle path and records success', () => {
-    const { result, nodeCopy, lifecycleNpmCli, binding, raw } = runFixture({ lifecycleNpm: true, hostNpmHidden: true })
+    const { result, nodeCopy, lifecycleNpmCli, binding, raw } = runFixture({ lifecycleNpm: true })
     expect(result.status).toBe(0)
     expectPassed(binding, raw, 0)
     expect(binding.command).toEqual([nodeCopy, lifecycleNpmCli, 'run', 'verify'])
@@ -183,7 +184,7 @@ describe('SHA-bound verifier process', () => {
   })
 
   it('fails closed instead of running verify when no npm CLI resolves', () => {
-    const { result, binding, raw } = runFixture({ hostNpmHidden: true })
+    const { result, binding, raw } = runFixture({})
     expect(result.status).not.toBe(0)
     expect(binding).toBeNull()
     expect(raw).toBe('')
