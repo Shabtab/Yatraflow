@@ -16,6 +16,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-10-27
+
+**This minor release joins the trip collaboration, driving-plan and destination-art work already on `test`.** It preserves main's dependency security updates. Production deployment is pending. The companion stays off under #236. Stages E and F remain open.
+
+Stage B `20261024` -> `20261025a` -> `20261025c` is applied on backend `hqlqbfpzjmailxydjojw`. The signed-in candidate UI checks passed. Migration `20261025b` waits for the deployed client and older-client drain.
+
 ### Added
 
 - **Place-name token filtering now avoids a false timing warning.** The tokenizer drops empty strings through their truth value. Place matching keeps the same results. No secret is compared by this filter.
@@ -47,6 +53,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Failed recovery offers a retry bound to the original account and deletion.** (#839)
 - **A same-named place far away no longer reads as already added. A kept suggestion returns after its stop is deleted or rejected.** Provider hits carry their position as `latitude` and `longitude`. The identity check read the stop's field names, so a hit fell back to the name alone. Two same-named places far apart then looked like one. A session id that Keep retained also outranked the plan. A delete or a reject removed the place, but the id still hid it until a reload. The check now reads either coordinate pair. An open preview decides through a staged list, and the plan answers for every kept id. (#839)
 - **A storm now caps only the day it falls on.** The clock planned every day's budget from day 0's rain cap. A storm on day 0 then dampened every later dry day. Storms on later days under-grew the count. The last full day then over-covered and clamped its halt, leaving a 60 km stub day. Each day now caps on its own forecast. The count grows to the smallest number of later days whose own budgets cover the remainder. (#855)
+### Security
+
+- **Six npm advisories are closed. Three remain, all from the @capacitor/cli chain.** The dev tooling now uses vite 8.2.4 and vitest 4.1.12. The lockfile now uses zod 4.6.7, brace-expansion 5.0.12 and source-map-js 1.2.2. No major version changed.
+- **npm audit still flags uuid, xcode and @capacitor/cli.** The only npm fix downgrades @capacitor/cli to 8.4.3. That is a breaking change. The fix is deferred until upstream ships a fixed release.
 
 ## [0.79.2] - 2026-10-24
 
