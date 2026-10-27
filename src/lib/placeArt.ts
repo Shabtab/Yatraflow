@@ -101,7 +101,7 @@ export function tokensOf(text: string): string[] {
   return text
     .toLowerCase()
     .split(/[^\p{L}\p{M}]+/u)
-    .filter(token => token !== '')
+    .filter(Boolean)
 }
 
 /** True when `needle` appears in `haystack` as one contiguous run of tokens. */
