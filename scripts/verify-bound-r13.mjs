@@ -4,6 +4,8 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import path from 'node:path'
 
 const OUT = process.env.VERIFY_OUT
 if (!OUT) throw new Error('VERIFY_OUT must name the evidence directory')
@@ -28,10 +30,15 @@ function identity() {
 
 const before = identity()
 const started = new Date().toISOString()
-const r = spawnSync('npm', ['run', 'verify'], {
+const npmCli = process.env.npm_execpath ?? path.join(path.dirname(
+  createRequire(import.meta.url).resolve('npm/package.json', {
+    paths: [path.dirname(process.execPath), ...(process.env.PATH ?? '').split(path.delimiter)]
+      .flatMap((dir) => [dir, path.resolve(dir, '..', 'lib')]),
+  }),
+), 'bin', 'npm-cli.js')
+const r = spawnSync(process.execPath, [npmCli, 'run', 'verify'], {
   cwd: process.cwd(),
   encoding: 'utf8',
-  shell: true,
   env: { ...process.env, NODE_ENV: 'test' },
   maxBuffer: 128 * 1024 * 1024,
 })
@@ -42,6 +49,7 @@ const changedDuringRun = Object.keys(before.hashes).filter((f) => before.hashes[
 const binding = {
   verdict: r.status === 0 ? 'PASS' : 'FAIL',
   exitCode: r.status,
+  command: [process.execPath, npmCli, 'run', 'verify'],
   started,
   ended,
   commit: before.head,

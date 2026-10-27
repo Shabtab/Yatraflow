@@ -10,13 +10,10 @@ import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const ROOT = process.cwd()
 const EVIDENCE = process.env.CONTROL_OUT
-if (!EVIDENCE) throw new Error('CONTROL_OUT must name the evidence directory')
-mkdirSync(EVIDENCE, { recursive: true })
-const JSONL = path.join(EVIDENCE, 'controls-r13.jsonl')
-writeFileSync(JSONL, '')
 
 const NODE = process.execPath
 const VITEST = path.join(ROOT, 'node_modules', 'vitest', 'vitest.mjs')
@@ -53,12 +50,12 @@ function passed(run) {
 
 // A kill needs the named assertion to be the thing that failed, so a broken
 // environment cannot pass itself off as a caught mutant.
-function killed(run, failingTitle) {
+export function killed(run, failingTitle) {
   const out = stripAnsi(run.stdout)
   if (run.status === 0) return false
   // The per-test list marks a failure with a cross before the title. The
   // summary block repeats it, so the cross line is the reliable signal.
-  return new RegExp(`×\\s*${failingTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(out)
+  return [...out.matchAll(/×\s*/g)].some((match) => out.startsWith(failingTitle, match.index + match[0].length))
 }
 
 function infraBroken(run) {
@@ -225,20 +222,26 @@ function execute(c) {
   return record
 }
 
-for (const c of controls) {
-  const record = execute(c)
-  const { baselineRun, mutantRun, ...summary } = record
-  writeFileSync(
-    path.join(EVIDENCE, `control-${c.name}.baseline.log`),
-    `${baselineRun.command}\nstarted ${baselineRun.started}\nended ${baselineRun.ended}\nexit ${baselineRun.status}\n\n--- stdout ---\n${baselineRun.stdout}\n--- stderr ---\n${baselineRun.stderr}\n`,
-  )
-  if (mutantRun) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  if (!EVIDENCE) throw new Error('CONTROL_OUT must name the evidence directory')
+  mkdirSync(EVIDENCE, { recursive: true })
+  const JSONL = path.join(EVIDENCE, 'controls-r13.jsonl')
+  writeFileSync(JSONL, '')
+  for (const c of controls) {
+    const record = execute(c)
+    const { baselineRun, mutantRun, ...summary } = record
     writeFileSync(
-      path.join(EVIDENCE, `control-${c.name}.mutant.log`),
-      `${mutantRun.command}\nstarted ${mutantRun.started}\nended ${mutantRun.ended}\nexit ${mutantRun.status}\n\n--- stdout ---\n${mutantRun.stdout}\n--- stderr ---\n${mutantRun.stderr}\n`,
+      path.join(EVIDENCE, `control-${c.name}.baseline.log`),
+      `${baselineRun.command}\nstarted ${baselineRun.started}\nended ${baselineRun.ended}\nexit ${baselineRun.status}\n\n--- stdout ---\n${baselineRun.stdout}\n--- stderr ---\n${baselineRun.stderr}\n`,
     )
+    if (mutantRun) {
+      writeFileSync(
+        path.join(EVIDENCE, `control-${c.name}.mutant.log`),
+        `${mutantRun.command}\nstarted ${mutantRun.started}\nended ${mutantRun.ended}\nexit ${mutantRun.status}\n\n--- stdout ---\n${mutantRun.stdout}\n--- stderr ---\n${mutantRun.stderr}\n`,
+      )
+    }
+    appendFileSync(JSONL, JSON.stringify(summary) + '\n')
+    console.log(`${record.verdict.padEnd(8)} ${c.name}`)
+    if (!record.restoredExact) process.exitCode = 2
   }
-  appendFileSync(JSONL, JSON.stringify(summary) + '\n')
-  console.log(`${record.verdict.padEnd(8)} ${c.name}`)
-  if (!record.restoredExact) process.exitCode = 2
 }

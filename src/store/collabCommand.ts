@@ -329,7 +329,7 @@ export async function submitCollabTransition(
     const tripRevision = revisionOf(receipt)
     switch (receipt.status) {
       case 'applied':
-      case 'alreadyApplied':
+      case 'alreadyApplied': {
         if (command.type === 'suggestion.accept') {
           if (receipt.status === 'applied') {
             return typeof receipt.stopId === 'string' && receipt.stopId.length > 0
@@ -384,6 +384,7 @@ export async function submitCollabTransition(
         return receipt.status === 'applied'
           ? { status: 'applied' as const, ...base }
           : { status: 'alreadyApplied' as const, ...base }
+      }
       case 'needsDay': {
         if (!Array.isArray(receipt.availableDays)) return { status: 'unavailable' }
         const availableDays = receipt.availableDays.flatMap((entry): Array<{ id: string; index: number; title?: string }> => {
