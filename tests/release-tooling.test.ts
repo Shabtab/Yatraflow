@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -8,10 +8,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { killed } from '../scripts/control-runs-r13.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const npmPackage = path.dirname(createRequire(import.meta.url).resolve('npm/package.json', {
+const hostNpmCli = path.join(path.dirname(createRequire(import.meta.url).resolve('npm/package.json', {
   paths: [path.dirname(process.execPath), ...(process.env.PATH ?? '').split(path.delimiter)]
     .flatMap((dir) => [dir, path.resolve(dir, '..', 'lib')]),
-}))
+})), 'bin', 'npm-cli.js')
 const fixtures: string[] = []
 
 afterEach(() => {
@@ -34,59 +34,167 @@ describe('named mutation failure', () => {
 })
 
 describe('SHA-bound verifier process', () => {
-  function runFixture(exitCode: number, lifecyclePath: boolean) {
+  // A stub stands in for the npm entry point so the layout is identical on
+  // every platform. It refuses anything but the literal `run verify` the
+  // verifier must pass, then runs the fixture script with node directly.
+  function writeNpmStub(dir: string, marker?: string) {
+    mkdirSync(path.join(dir, 'bin'), { recursive: true })
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'npm', version: '0.0.0-fixture', bin: { npm: 'bin/npm-cli.js' } }))
+    writeFileSync(path.join(dir, 'bin', 'npm-cli.js'), [
+      "const { spawnSync } = require('node:child_process')",
+      ...(marker ? [`require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`] : []),
+      "const argv = process.argv.slice(2)",
+      "if (argv.join(' ') !== 'run verify') { console.error('BAD_ARGV ' + JSON.stringify(argv)); process.exit(64) }",
+      "const run = spawnSync(process.execPath, ['verify.cjs'], { stdio: 'inherit' })",
+      "process.exit(typeof run.status === 'number' ? run.status : 70)",
+      '',
+    ].join('\n'))
+    return path.join(dir, 'bin', 'npm-cli.js')
+  }
+
+  // Host PATH minus every entry that exposes an npm through itself or its
+  // sibling lib, so a missing-npm layout really has none left to find.
+  const npmFreePath = (process.env.PATH ?? '').split(path.delimiter).filter((dir) => {
+    if (!dir) return false
+    return !existsSync(path.join(dir, 'node_modules', 'npm')) && !existsSync(path.join(dir, '..', 'lib', 'node_modules', 'npm'))
+  }).join(path.delimiter)
+
+  type Layout = {
+    runtimeNpm?: boolean
+    pathNpm?: boolean
+    competingNpm?: boolean
+    lifecycleNpm?: boolean
+    hostNpmHidden?: boolean
+    verifyExit?: number
+  }
+
+  function runFixture(layout: Layout) {
     const fixture = mkdtempSync(path.join(tmpdir(), 'release-tooling-'))
     fixtures.push(fixture)
     const cwd = path.join(fixture, 'repo & literal')
     const out = path.join(fixture, 'evidence')
-    const bin = path.join(fixture, 'bin')
-    for (const dir of [cwd, out, bin]) mkdirSync(dir)
+    const wrapperBin = path.join(fixture, 'bin')
+    const runtimeBin = path.join(fixture, 'runtime', 'bin')
     const prefixBin = path.join(fixture, 'prefix', 'bin')
-    const npmLink = lifecyclePath ? path.join(fixture, 'npm & literal') : path.join(fixture, 'prefix', 'lib', 'node_modules', 'npm')
-    mkdirSync(prefixBin, { recursive: true })
-    mkdirSync(path.dirname(npmLink), { recursive: true })
-    symlinkSync(npmPackage, npmLink, process.platform === 'win32' ? 'junction' : 'dir')
+    const competingBin = path.join(fixture, 'competing', 'bin')
+    for (const dir of [cwd, out, wrapperBin, runtimeBin, prefixBin, competingBin]) mkdirSync(dir, { recursive: true })
+
+    // The verifier derives its runtime prefix from process.execPath, so run it
+    // under a linked node whose sibling `lib` the fixture controls on every
+    // platform. A link is instant and keeps execPath at the fixture path.
+    const nodeCopy = path.join(runtimeBin, process.platform === 'win32' ? 'node.exe' : 'node')
+    try {
+      linkSync(process.execPath, nodeCopy)
+    } catch {
+      copyFileSync(process.execPath, nodeCopy)
+      if (process.platform !== 'win32') chmodSync(nodeCopy, 0o755)
+    }
+    const runtimeNpmCli = path.join(fixture, 'runtime', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+    const prefixNpmCli = path.join(fixture, 'prefix', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+    const lifecycleNpmCli = path.join(fixture, 'lifecycle & literal', 'bin', 'npm-cli.js')
+    const competingMarker = path.join(fixture, 'competing-npm-ran')
+    if (layout.runtimeNpm) writeNpmStub(path.join(fixture, 'runtime', 'lib', 'node_modules', 'npm'))
+    if (layout.pathNpm) writeNpmStub(path.join(fixture, 'prefix', 'lib', 'node_modules', 'npm'))
+    if (layout.lifecycleNpm) writeNpmStub(path.join(fixture, 'lifecycle & literal'))
+    if (layout.competingNpm) writeNpmStub(path.join(fixture, 'competing', 'lib', 'node_modules', 'npm'), competingMarker)
+
     copyFileSync(path.join(root, 'scripts/verify-bound-r13.mjs'), path.join(cwd, 'verify-bound.mjs'))
     writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ name: 'local-verifier-fixture', version: '1.0.0', scripts: { verify: 'node verify.cjs' } }))
-    writeFileSync(path.join(cwd, 'verify.cjs'), `console.log('REAL_VERIFY ' + process.env.NODE_ENV); console.error('REAL_STDERR'); process.exit(${exitCode})`)
-    const marker = path.join(fixture, 'shell-wrapper-ran')
-    const wrapper = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-    writeFileSync(path.join(bin, wrapper), process.platform === 'win32'
-      ? `@echo unsafe>"${marker}"\r\n@exit /b 0\r\n`
-      : `#!/bin/sh\nprintf unsafe > '${marker}'\nexit 0\n`, { mode: 0o755 })
+    writeFileSync(path.join(cwd, 'verify.cjs'), `console.log('REAL_VERIFY ' + process.env.NODE_ENV); console.error('REAL_STDERR'); process.exit(${layout.verifyExit ?? 0})`)
+
+    // A wrapper named npm on PATH must never run: the verifier must not shell.
+    const wrapperMarker = path.join(fixture, 'shell-wrapper-ran')
+    writeFileSync(path.join(wrapperBin, process.platform === 'win32' ? 'npm.cmd' : 'npm'), process.platform === 'win32'
+      ? `@echo unsafe>"${wrapperMarker}"\r\n@exit /b 0\r\n`
+      : `#!/bin/sh\nprintf unsafe > '${wrapperMarker}'\nexit 0\n`, { mode: 0o755 })
+
     const git = (args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' })
     git(['init', '--quiet'])
     git(['add', '.'])
     git(['-c', 'user.name=Local QA', '-c', 'user.email=qa@example.invalid', '-c', 'core.hooksPath=hooks-disabled', 'commit', '--quiet', '-m', 'fixture'])
-    const env = { ...process.env, VERIFY_OUT: out, PATH: [bin, prefixBin, path.dirname(process.execPath), process.env.PATH].join(path.delimiter) }
+
+    const pathEntries = [wrapperBin]
+    if (layout.competingNpm) pathEntries.push(competingBin)
+    if (layout.pathNpm) pathEntries.push(prefixBin)
+    pathEntries.push(layout.hostNpmHidden ? npmFreePath : process.env.PATH ?? '')
+    const env: NodeJS.ProcessEnv = { ...process.env, VERIFY_OUT: out, PATH: pathEntries.join(path.delimiter) }
     for (const key of Object.keys(env)) if (key.toLowerCase() === 'npm_execpath') delete env[key]
-    if (lifecyclePath) env.npm_execpath = path.join(npmLink, 'bin', 'npm-cli.js')
-    else delete env.npm_execpath
-    const result = spawnSync(process.execPath, ['--preserve-symlinks', 'verify-bound.mjs'], { cwd, env, encoding: 'utf8' })
-    const binding = JSON.parse(readFileSync(path.join(out, 'verify-binding.json'), 'utf8'))
-    const raw = readFileSync(path.join(out, 'verify-raw.log'), 'utf8')
-    expect(existsSync(marker)).toBe(false)
+    if (layout.lifecycleNpm) env.npm_execpath = lifecycleNpmCli
+
+    const result = spawnSync(nodeCopy, ['verify-bound.mjs'], { cwd, env, encoding: 'utf8' })
+    const bindingPath = path.join(out, 'verify-binding.json')
+    expect(existsSync(wrapperMarker)).toBe(false)
+    if (layout.competingNpm) expect(existsSync(competingMarker)).toBe(false)
+
+    return {
+      result,
+      nodeCopy,
+      runtimeNpmCli,
+      prefixNpmCli,
+      lifecycleNpmCli,
+      binding: existsSync(bindingPath) ? JSON.parse(readFileSync(bindingPath, 'utf8')) : null,
+      raw: existsSync(path.join(out, 'verify-raw.log')) ? readFileSync(path.join(out, 'verify-raw.log'), 'utf8') : '',
+      git,
+    }
+  }
+
+  function expectPassed(binding: any, raw: string, exitCode: number) {
     expect(raw).toContain('REAL_VERIFY test')
     expect(raw).toContain('REAL_STDERR')
     expect(raw).not.toContain('DEP0190')
-    expect(binding).toMatchObject({ exitCode, commit: git(['rev-parse', 'HEAD']).trim(), shaStable: true, dirtyBefore: false, dirtyAfter: false, trackedFileCount: 3, changedDuringRun: [] })
-    expect(binding.command).toEqual([process.execPath, path.join(npmLink, 'bin', 'npm-cli.js'), 'run', 'verify'])
-    return { result, binding }
+    expect(binding).toMatchObject({
+      verdict: exitCode === 0 ? 'PASS' : 'FAIL',
+      exitCode,
+      shaStable: true,
+      dirtyBefore: false,
+      dirtyAfter: false,
+      trackedFileCount: 3,
+      changedDuringRun: [],
+    })
   }
 
-  it('uses the real npm CLI at a literal lifecycle path and records success', () => {
-    const { result, binding } = runFixture(0, true)
+  it('uses the npm CLI named by the lifecycle path and records success', () => {
+    const { result, nodeCopy, lifecycleNpmCli, binding, raw } = runFixture({ lifecycleNpm: true, hostNpmHidden: true })
     expect(result.status).toBe(0)
-    expect(binding.verdict).toBe('PASS')
+    expectPassed(binding, raw, 0)
+    expect(binding.command).toEqual([nodeCopy, lifecycleNpmCli, 'run', 'verify'])
   })
-  it('resolves installed npm without a lifecycle path or a PATH shell wrapper', () => {
-    const { result, binding } = runFixture(0, false)
+
+  it('resolves the npm CLI from the runtime prefix without a PATH shell wrapper', () => {
+    const { result, nodeCopy, runtimeNpmCli, binding, raw, git } = runFixture({ runtimeNpm: true })
     expect(result.status).toBe(0)
-    expect(binding.verdict).toBe('PASS')
+    expectPassed(binding, raw, 0)
+    expect(binding.command).toEqual([nodeCopy, runtimeNpmCli, 'run', 'verify'])
+    expect(binding.commit).toBe(git(['rev-parse', 'HEAD']).trim())
   })
+
+  it('prefers the runtime prefix over a different npm prefix on PATH', () => {
+    const { result, nodeCopy, runtimeNpmCli, binding, raw } = runFixture({ runtimeNpm: true, competingNpm: true })
+    expect(result.status).toBe(0)
+    expectPassed(binding, raw, 0)
+    expect(binding.command).toEqual([nodeCopy, runtimeNpmCli, 'run', 'verify'])
+  })
+
+  it('falls back to an install prefix on PATH when the runtime has no npm', () => {
+    const { result, nodeCopy, prefixNpmCli, binding, raw } = runFixture({ pathNpm: true })
+    expect(result.status).toBe(0)
+    expectPassed(binding, raw, 0)
+    expect(binding.command).toEqual([nodeCopy, prefixNpmCli, 'run', 'verify'])
+  })
+
+  it('fails closed instead of running verify when no npm CLI resolves', () => {
+    const { result, binding, raw } = runFixture({ hostNpmHidden: true })
+    expect(result.status).not.toBe(0)
+    expect(binding).toBeNull()
+    expect(raw).toBe('')
+    expect(`${result.stdout}${result.stderr}`).not.toContain('REAL_VERIFY')
+    expect(`${result.stdout}${result.stderr}`).toContain('npm')
+  })
+
   it('keeps a failing real npm verify status and its durable transcript', () => {
-    const { result, binding } = runFixture(7, true)
+    const { result, binding, raw } = runFixture({ runtimeNpm: true, verifyExit: 7 })
     expect(result.status).toBe(2)
+    expectPassed(binding, raw, 7)
     expect(binding.verdict).toBe('FAIL')
   })
 })
