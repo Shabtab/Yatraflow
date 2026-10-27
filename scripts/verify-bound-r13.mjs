@@ -32,7 +32,8 @@ const before = identity()
 const started = new Date().toISOString()
 const npmCli = process.env.npm_execpath ?? path.join(path.dirname(
   createRequire(import.meta.url).resolve('npm/package.json', {
-    paths: [path.dirname(process.execPath), ...(process.env.PATH ?? '').split(path.delimiter)],
+    paths: [path.dirname(process.execPath), ...(process.env.PATH ?? '').split(path.delimiter)]
+      .flatMap((dir) => [dir, path.resolve(dir, '..', 'lib')]),
   }),
 ), 'bin', 'npm-cli.js')
 const r = spawnSync(process.execPath, [npmCli, 'run', 'verify'], {

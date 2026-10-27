@@ -9,7 +9,8 @@ import { killed } from '../scripts/control-runs-r13.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const npmPackage = path.dirname(createRequire(import.meta.url).resolve('npm/package.json', {
-  paths: [path.dirname(process.execPath), ...(process.env.PATH ?? '').split(path.delimiter)],
+  paths: [path.dirname(process.execPath), ...(process.env.PATH ?? '').split(path.delimiter)]
+    .flatMap((dir) => [dir, path.resolve(dir, '..', 'lib')]),
 }))
 const fixtures: string[] = []
 
@@ -40,7 +41,10 @@ describe('SHA-bound verifier process', () => {
     const out = path.join(fixture, 'evidence')
     const bin = path.join(fixture, 'bin')
     for (const dir of [cwd, out, bin]) mkdirSync(dir)
-    const npmLink = path.join(fixture, 'npm & literal')
+    const prefixBin = path.join(fixture, 'prefix', 'bin')
+    const npmLink = lifecyclePath ? path.join(fixture, 'npm & literal') : path.join(fixture, 'prefix', 'lib', 'node_modules', 'npm')
+    mkdirSync(prefixBin, { recursive: true })
+    mkdirSync(path.dirname(npmLink), { recursive: true })
     symlinkSync(npmPackage, npmLink, process.platform === 'win32' ? 'junction' : 'dir')
     copyFileSync(path.join(root, 'scripts/verify-bound-r13.mjs'), path.join(cwd, 'verify-bound.mjs'))
     writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ name: 'local-verifier-fixture', version: '1.0.0', scripts: { verify: 'node verify.cjs' } }))
@@ -54,10 +58,11 @@ describe('SHA-bound verifier process', () => {
     git(['init', '--quiet'])
     git(['add', '.'])
     git(['-c', 'user.name=Local QA', '-c', 'user.email=qa@example.invalid', '-c', 'core.hooksPath=hooks-disabled', 'commit', '--quiet', '-m', 'fixture'])
-    const env = { ...process.env, VERIFY_OUT: out, PATH: [bin, path.dirname(process.execPath), process.env.PATH].join(path.delimiter) }
+    const env = { ...process.env, VERIFY_OUT: out, PATH: [bin, prefixBin, path.dirname(process.execPath), process.env.PATH].join(path.delimiter) }
+    for (const key of Object.keys(env)) if (key.toLowerCase() === 'npm_execpath') delete env[key]
     if (lifecyclePath) env.npm_execpath = path.join(npmLink, 'bin', 'npm-cli.js')
     else delete env.npm_execpath
-    const result = spawnSync(process.execPath, ['verify-bound.mjs'], { cwd, env, encoding: 'utf8' })
+    const result = spawnSync(process.execPath, ['--preserve-symlinks', 'verify-bound.mjs'], { cwd, env, encoding: 'utf8' })
     const binding = JSON.parse(readFileSync(path.join(out, 'verify-binding.json'), 'utf8'))
     const raw = readFileSync(path.join(out, 'verify-raw.log'), 'utf8')
     expect(existsSync(marker)).toBe(false)
@@ -65,7 +70,7 @@ describe('SHA-bound verifier process', () => {
     expect(raw).toContain('REAL_STDERR')
     expect(raw).not.toContain('DEP0190')
     expect(binding).toMatchObject({ exitCode, commit: git(['rev-parse', 'HEAD']).trim(), shaStable: true, dirtyBefore: false, dirtyAfter: false, trackedFileCount: 3, changedDuringRun: [] })
-    expect(binding.command).toEqual([process.execPath, path.join(lifecyclePath ? npmLink : npmPackage, 'bin', 'npm-cli.js'), 'run', 'verify'])
+    expect(binding.command).toEqual([process.execPath, path.join(npmLink, 'bin', 'npm-cli.js'), 'run', 'verify'])
     return { result, binding }
   }
 
