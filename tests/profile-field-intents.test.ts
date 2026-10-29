@@ -22,4 +22,17 @@ describe('overlapping profile intents', () => {
     expect(result).not.toHaveProperty('creatorBio')
     expect(result.name).toBe('Remote rename')
   })
+
+  it('reads only intended fields, including non-enumerable optional values', () => {
+    const patch: Partial<PrivateUserProfile> = {}
+    let reads = 0
+    Object.defineProperty(patch, 'creatorBio', { get() { reads++; return 'Updated bio' } })
+    Object.defineProperty(patch, 'unreviewed', { enumerable: true, get() { throw new Error('Unlisted getter must not run') } })
+    const ledger = beginLedger(undefined, base, 1, patch)
+    const result = applyLedger(ledger, base)
+    expect(result.creatorBio).toBe('Updated bio')
+    expect(reads).toBe(1)
+    expect(result).not.toHaveProperty('unreviewed')
+    expect(Object.getOwnPropertyDescriptor(result, 'creatorBio')).toEqual({ value: 'Updated bio', enumerable: true, configurable: true, writable: true })
+  })
 })

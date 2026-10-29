@@ -121,8 +121,8 @@ vi.mock('../src/lib/supabase', () => {
                 : fn === 'is_disabled' ? state.disabled
                   : null
             const settle = () => Promise.resolve({ data, error: failed ? { message: 'PGRST202' } : null })
-            const parked = state.deferred[fn]
-            if (parked) { state.deferred[fn] = () => {}; return parked().then(settle).then(res) }
+            const parked = new Map(Object.entries(state.deferred)).get(fn)
+            if (parked) { Reflect.set(state.deferred, fn, () => {}); return parked().then(settle).then(res) }
             return settle().then(res)
           },
         }

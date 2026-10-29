@@ -28,9 +28,9 @@ export function ledgerHasPending(ledger: FieldLedger): boolean {
 function applyField<K extends keyof PrivateUserProfile>(out: PrivateUserProfile, ledger: FieldLedger, key: K): void {
   if (!ledger.intents.some(intent => Object.prototype.hasOwnProperty.call(intent.patch, key))) return
   const last = [...ledger.intents].reverse().find(intent => intent.outcome !== 'failed' && Object.prototype.hasOwnProperty.call(intent.patch, key))
-  const value = last ? last.patch[key] : ledger.base[key]
-  if (value === undefined) delete out[key]
-  else out[key] = value
+  const value: unknown = Reflect.get(last ? last.patch : ledger.base, key)
+  if (value === undefined) Reflect.deleteProperty(out, key)
+  else Object.defineProperty(out, key, { value, enumerable: true, configurable: true, writable: true })
 }
 
 /** Override only fields with local intents. Keep unrelated values from the current row. */

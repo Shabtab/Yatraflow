@@ -109,9 +109,9 @@ vi.mock('../src/lib/supabase', () => {
             // A deferred answer parks until the test releases it. The release
             // callback the test holds is the ORIGINAL one; the new one this call
             // installs is for the next deferred request, so the two never clash.
-            const parked = state.deferred[fn]
+            const parked = new Map(Object.entries(state.deferred)).get(fn)
             if (parked) {
-              state.deferred[fn] = () => {}
+              Reflect.set(state.deferred, fn, () => {})
               return parked().then(settle).then(res)
             }
             return settle().then(res)
