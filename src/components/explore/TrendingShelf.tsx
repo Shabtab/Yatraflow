@@ -12,7 +12,7 @@ import { Eye } from 'lucide-react'
 import type { PublishedItinerary, CachedUser } from '../../data/types'
 import { appLink } from '../../lib/appLink'
 import { Avatar } from '../ui'
-import { ExploreCover } from './ExploreCover'
+import { ExploreCover, EX_TREND_SIZES } from './ExploreCover'
 import { ExploreFacts } from './ExploreFacts'
 import { ExploreSaveHeart } from './ExploreSaveHeart'
 
@@ -44,7 +44,7 @@ export function TrendingShelf({ pubs, users, isSaved, onToggleSave }: {
             <li key={pub.id} className="ex-trend-item ex-enter" style={enterDelay}>
               <article className="ex-trend-card" data-id={pub.id}>
                 <div className="ex-trend-cover">
-                  <ExploreCover pub={pub} />
+                  <ExploreCover pub={pub} sizes={EX_TREND_SIZES} />
                   <span className="ex-trend-rank" aria-hidden="true">{index + 1}</span>
                   <ExploreSaveHeart title={pub.title} saved={isSaved(pub.id)} onToggle={() => onToggleSave(pub.id)} />
                 </div>

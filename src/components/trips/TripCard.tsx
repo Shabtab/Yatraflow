@@ -25,19 +25,21 @@ export interface TripCardProps {
   meId: string | null
   /** Position in the grid. It sets the entrance delay. */
   enterIndex: number
+  /** The cover slot's real width. The list layout passes its narrow fixed column. */
+  coverSizes?: string
   /** Worn by the list that plays this card's exit (usePresenceList). */
   presence?: PresenceAttrs
   onDelete: (trip: Trip) => void
 }
 
-export function TripCard({ trip, today, budget, totalTravelMinutes, users, meId, enterIndex, presence, onDelete }: TripCardProps) {
+export function TripCard({ trip, today, budget, totalTravelMinutes, users, meId, enterIndex, coverSizes, presence, onDelete }: TripCardProps) {
   const status = statusOf(trip, today)
   const step = cardNextStep(trip, today)
   const plannerCount = (trip.members ?? []).length
   const enterDelay: CSSProperties = { animationDelay: `calc(var(--stagger-step) * ${Math.min(enterIndex, 8)})` }
   return (
     <article className="mt-card" data-status={status} style={enterDelay} {...presence}>
-      <TripCover trip={trip} status={status} />
+      <TripCover trip={trip} status={status} sizes={coverSizes} />
       <div className="mt-card-main">
         <div className="mt-card-body">
           <div className="mt-card-head">

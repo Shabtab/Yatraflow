@@ -93,6 +93,14 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 _Release highlights, newest first — the full record lives in [CHANGELOG.md](CHANGELOG.md)._
 
+## The v0.80.0 release candidate
+
+v0.80.0 is deployed to production. This candidate joins the verified work on `test` with main's dependency security updates.
+
+- **Group actions save one result.** Acceptance and poll resolution save the stop and status together. Same-day repeats need explicit confirmation. A deleted day asks for a current day.
+- **Destination covers match their place names.** Uploaded covers still win. Unknown or mixed destinations use neutral art.
+- **Companion advice reads the shared schedule.** Missing evidence stays unknown. The companion is active in production under #236.
+
 ## ✨ The v0.79 release, in plain words
 
 - **The plan-a-trip form now walks you through six steps.** The form asks one question at a time. The questions are where, how you travel, when you leave, who is coming, your budget, and a final check. A laptop shows the step list, the question and a live trip ticket. A phone shows a ticket sheet and a fixed Next bar. Next names the missing answers and moves focus to their control. Review has Change links and a retry after a failed save. A draft you resume reopens on the step you left. The form is behind the `guided` phase of `VITE_CREATE_FUNNEL`; with the flag off, the old long form stays available.

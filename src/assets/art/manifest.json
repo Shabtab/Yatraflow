@@ -2,19 +2,83 @@
   "version": 1,
   "regions": {
     "kerala": ["kerala-1"],
-    "goa": [],
-    "rajasthan": ["rajasthan-1"],
-    "coorg": [],
-    "meghalaya": [],
-    "kashmir": ["himalaya-1"],
-    "generic": []
+    "goa": ["goa-1", "goa-2"],
+    "rajasthan": ["rajasthan-1", "rajasthan-2"],
+    "coorg": ["coorg-1", "coorg-2"],
+    "meghalaya": ["meghalaya-1", "meghalaya-2"],
+    "kashmir": ["himalaya-1", "himalaya-2"],
+    "generic": ["generic-1"]
   },
   "fallbacks": {
-    "road": ["road-1"],
+    "road": ["road-1", "road-2"],
     "city": ["city-1"]
   },
   "vignettes": {
-    "first-trip": "es-first-trip"
+    "first-trip": "es-first-trip",
+    "no-saved": "es-no-saved",
+    "no-results": "es-no-results",
+    "no-purchases": "es-no-purchases",
+    "no-published": "es-no-published",
+    "offline": "es-offline",
+    "error": "es-error"
+  },
+  "places": {
+    "destination": {
+      "alappuzha": { "place": "Alappuzha", "state": "Kerala", "ids": ["kerala-1"], "aliases": ["alleppey"] },
+      "coorg": { "place": "Coorg", "state": "Karnataka", "ids": ["coorg-1", "coorg-2"], "aliases": ["madikeri"] },
+      "darjeeling": { "place": "Darjeeling", "state": "West Bengal", "ids": ["darjeeling-v1"], "aliases": [] },
+      "delhi": { "place": "Delhi", "state": "Delhi", "ids": ["delhi-v1"], "aliases": [] },
+      "jaipur": { "place": "Jaipur", "state": "Rajasthan", "ids": ["jaipur-v1"], "aliases": [] },
+      "jaisalmer": { "place": "Jaisalmer", "state": "Rajasthan", "ids": ["rajasthan-2"], "aliases": [] },
+      "jodhpur": { "place": "Jodhpur", "state": "Rajasthan", "ids": ["rajasthan-1"], "aliases": [] },
+      "leh": { "place": "Leh", "state": "Ladakh", "ids": ["leh-v1"], "aliases": [] },
+      "manali": { "place": "Manali", "state": "Himachal Pradesh", "ids": ["manali-v1"], "aliases": [] },
+      "mumbai": { "place": "Mumbai", "state": "Maharashtra", "ids": ["mumbai-v1"], "aliases": ["bombay"] },
+      "munnar": { "place": "Munnar", "state": "Kerala", "ids": ["munnar-v1"], "aliases": [] },
+      "puducherry": { "place": "Puducherry", "state": "Puducherry", "ids": ["puducherry-v1"], "aliases": [] },
+      "rishikesh": { "place": "Rishikesh", "state": "Uttarakhand", "ids": ["rishikesh-v1"], "aliases": [] },
+      "shillong": { "place": "Shillong", "state": "Meghalaya", "ids": ["shillong-v1"], "aliases": [] },
+      "srinagar": { "place": "Srinagar", "state": "Jammu and Kashmir", "ids": ["jammu-and-kashmir-v2"], "aliases": [] },
+      "udaipur": { "place": "Udaipur", "state": "Rajasthan", "ids": ["udaipur-v1"], "aliases": [] }
+    },
+    "state": {
+      "andhra-pradesh": { "state": "Andhra Pradesh", "ids": ["andhra-pradesh-v1"], "aliases": [] },
+      "arunachal-pradesh": { "state": "Arunachal Pradesh", "ids": ["arunachal-pradesh-v1"], "aliases": [] },
+      "assam": { "state": "Assam", "ids": ["assam-v1"], "aliases": [] },
+      "bihar": { "state": "Bihar", "ids": ["bihar-v1"], "aliases": [] },
+      "chhattisgarh": { "state": "Chhattisgarh", "ids": ["chhattisgarh-v1"], "aliases": [] },
+      "goa": { "state": "Goa", "ids": ["goa-1", "goa-2"], "aliases": [] },
+      "gujarat": { "state": "Gujarat", "ids": ["gujarat-v1"], "aliases": [] },
+      "haryana": { "state": "Haryana", "ids": ["haryana-v1"], "aliases": [] },
+      "himachal-pradesh": { "state": "Himachal Pradesh", "ids": ["himalaya-2"], "aliases": ["himachal"] },
+      "jharkhand": { "state": "Jharkhand", "ids": ["jharkhand-v1"], "aliases": [] },
+      "karnataka": { "state": "Karnataka", "ids": ["karnataka-v1"], "aliases": [] },
+      "kerala": { "state": "Kerala", "ids": ["kerala-1"], "aliases": [] },
+      "madhya-pradesh": { "state": "Madhya Pradesh", "ids": ["madhya-pradesh-v1"], "aliases": [] },
+      "maharashtra": { "state": "Maharashtra", "ids": ["maharashtra-v1"], "aliases": [] },
+      "manipur": { "state": "Manipur", "ids": ["manipur-v1"], "aliases": [] },
+      "meghalaya": { "state": "Meghalaya", "ids": ["meghalaya-1", "meghalaya-2"], "aliases": [] },
+      "mizoram": { "state": "Mizoram", "ids": ["mizoram-v1"], "aliases": [] },
+      "nagaland": { "state": "Nagaland", "ids": ["nagaland-v1"], "aliases": [] },
+      "odisha": { "state": "Odisha", "ids": ["odisha-v1"], "aliases": ["orissa"] },
+      "punjab": { "state": "Punjab", "ids": ["punjab-v1"], "aliases": [] },
+      "rajasthan": { "state": "Rajasthan", "ids": ["rajasthan-v1"], "aliases": [] },
+      "sikkim": { "state": "Sikkim", "ids": ["sikkim-v1"], "aliases": [] },
+      "tamil-nadu": { "state": "Tamil Nadu", "ids": ["tamil-nadu-v1"], "aliases": [] },
+      "telangana": { "state": "Telangana", "ids": ["telangana-v1"], "aliases": [] },
+      "tripura": { "state": "Tripura", "ids": ["tripura-v1"], "aliases": [] },
+      "uttar-pradesh": { "state": "Uttar Pradesh", "ids": ["uttar-pradesh-v1"], "aliases": [] },
+      "uttarakhand": { "state": "Uttarakhand", "ids": ["uttarakhand-v1"], "aliases": ["uttaranchal"] },
+      "west-bengal": { "state": "West Bengal", "ids": ["west-bengal-v1"], "aliases": [] },
+      "andaman-and-nicobar-islands": { "state": "Andaman and Nicobar Islands", "ids": ["andaman-and-nicobar-islands-v1"], "aliases": ["andaman and nicobar"] },
+      "chandigarh": { "state": "Chandigarh", "ids": ["chandigarh-v1"], "aliases": [] },
+      "dadra-and-nagar-haveli-and-daman-and-diu": { "state": "Dadra and Nagar Haveli and Daman and Diu", "ids": ["dadra-and-nagar-haveli-and-daman-and-diu-v1"], "aliases": ["dadra and nagar haveli", "daman", "diu", "silvassa"] },
+      "delhi": { "state": "Delhi", "ids": ["delhi-v1"], "aliases": ["new delhi"] },
+      "jammu-and-kashmir": { "state": "Jammu and Kashmir", "ids": ["jammu-and-kashmir-v2"], "aliases": ["kashmir"] },
+      "ladakh": { "state": "Ladakh", "ids": ["himalaya-1"], "aliases": [] },
+      "lakshadweep": { "state": "Lakshadweep", "ids": ["lakshadweep-v1"], "aliases": [] },
+      "puducherry": { "state": "Puducherry", "ids": ["puducherry-v1"], "aliases": ["pondicherry"] }
+    }
   },
   "ids": {
     "kerala-1": {
@@ -29,7 +93,55 @@
       "ratio": "3:2",
       "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
     },
+    "himalaya-2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 40, "3.5:1": 45 }
+    },
     "rajasthan-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "rajasthan-2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "goa-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "goa-2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "coorg-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "coorg-2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "meghalaya-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "meghalaya-2": {
       "widths": [320, 640, 960],
       "webp": 640,
       "ratio": "3:2",
@@ -47,10 +159,300 @@
       "ratio": "3:2",
       "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
     },
+    "road-2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "generic-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
     "es-first-trip": {
       "widths": [280, 560],
       "webp": 560,
       "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-no-saved": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-no-results": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-no-purchases": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-no-published": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-offline": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-error": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    }
+,
+    "andhra-pradesh-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "arunachal-pradesh-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "assam-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "bihar-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "chhattisgarh-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "gujarat-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "haryana-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "jharkhand-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "karnataka-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "madhya-pradesh-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "maharashtra-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "manipur-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "mizoram-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "nagaland-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "odisha-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "punjab-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "rajasthan-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "sikkim-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "tamil-nadu-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "telangana-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "tripura-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "uttar-pradesh-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "uttarakhand-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "west-bengal-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "andaman-and-nicobar-islands-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "dadra-and-nagar-haveli-and-daman-and-diu-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "delhi-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "jammu-and-kashmir-v2": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "lakshadweep-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "puducherry-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "chandigarh-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "udaipur-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "munnar-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "darjeeling-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "jaipur-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "mumbai-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "leh-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "manali-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "rishikesh-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 },
+      "focalX": { "default": 50, "1:1": 70.3125 }
+    },
+    "shillong-v1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
       "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
     }
   },

@@ -825,6 +825,20 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    `C:\WINDOWS\system32\convert` is not an image converter. Use `magick` for ImageMagick, or use
    `sharp` through `scripts/build-art.mjs`. Never run `convert` in a shell on this machine.
 
+6ap-bis. **A crop focal point is measured on pixels, and a place name is matched on whole
+   tokens (learned 2026-10-26, the India art integration).** Two traps, both cheap to avoid.
+   First, a focal offset taken from arithmetic alone can still cut the subject. A 480 px
+   suggestion for `rishikesh-v1` implied `focalX` 68.75%, and the window looked safe on paper,
+   but the rendered square crop clipped the left tower's base. Locate the subject in the master
+   (colour separation works when the subject is the only warm structure in a cool scene),
+   compute the bracket that keeps it, and render the candidate crops before recording a value.
+   Second, a place matcher that splits on `\p{L}` alone shreds Indic scripts: Devanagari writes
+   a syllable as base letters plus combining marks, so `कोच्चि` became `क`,`च`,`च`. Split on
+   runs of non-letters and non-marks, `/[^\p{L}\p{M}]+/u`. Match whole token runs, never
+   substrings, or `Goalpara` becomes Goa. A name both a destination table and a jurisdiction
+   table claim is ambiguous only when they disagree about the jurisdiction; agreeing tables are
+   not a conflict, and the more specific answer wins.
+
 6aq. **You must cut a branch with an explicit start point (learned 2026-10-13, the prune
    record).** `git checkout -b <name>` cuts from HEAD, not from the integration branch. A branch
    made while another lane's branch is checked out becomes a stack. Its PR then lists the parent
@@ -919,6 +933,39 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    `versionCode` is a real integer. Nothing downstream compares two strings, and nothing
    leans on a coercion. Do not add a coercion at the comparison site. Keep the parse at
    the boundary.
+
+6ba. **A `sizes` value written from the viewport breakpoints is wrong when the
+   layout is a container query (learned 2026-10-25, region-art batch).** The
+   generated-art covers sit in `.mt-grid`, `.ex-grid` and `.ex-places`, and all
+   three switch column count on the width of their own container, not the
+   viewport. A `sizes` ladder copied from `@media` widths can over-claim
+   or under-claim at the same viewport. The Places tile was the worst case: a
+   later two-column rule overrides the three-column media rule, so the tile is
+   33% wider than a three-column reading gives, and the ladder under-fetched at
+   every tablet width. Two rules follow. Read the container rules and their
+   order in the file before you write a ladder, and prove the ladder by
+   measuring `img.currentSrc` against the box at each breakpoint rather than by
+   reasoning about the CSS. A related trap cost a whole probe round: a toggle
+   that changes the box after an image has loaded does not re-run resource
+   selection, so a "list layout" measurement taken after clicking the switch
+   reports the grid candidate. Persist the layout and reload to measure first
+   paint.
+
+6bb. **A committed image with no honest condition is worse than no image
+   (learned 2026-10-25, batch-1 art).** The batch built a vignette for an offline
+   state, and the obvious move was to show it on every failed read. That would
+   have told a signed-in viewer they were offline when the request was merely
+   refused, and `OfflineBanner` already owns the connection message in the shell.
+   A page-level read cannot tell the two apart, so `es-offline` ships declared and
+   wired to nothing. The same rule kept the Explore signed-out empty state on its
+   icon: the copy invites a sign-up, which is not the "nothing published" claim
+   the vignette makes. Two habits follow. Wire a vignette only where the
+   component's own condition names that exact state, and record an unused asset
+   in the pipeline doc with the reason, so the next run does not "finish" the job
+   by guessing. A related detail: `StateBlock` renders `art` and `icon` as
+   separate slots, so passing both stacks the icon under the vignette. The icon
+   belongs in the vignette's own `fallback`, where it is the loading and failure
+   floor and nothing else.
 
 6ay. **A SQL CHECK passes on TRUE or NULL, so a nullable shape check without an
    existence gate admits malformed rows (learned 2026-10-25, #839).** `check (col

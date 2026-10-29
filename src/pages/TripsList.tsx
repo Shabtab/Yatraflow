@@ -25,9 +25,11 @@ import { SearchField } from '../components/filters/SearchField'
 import { UpNextCard } from '../components/trips/UpNextCard'
 import { SavedShelfSection } from '../components/trips/SavedShelfSection'
 import { TripCard } from '../components/trips/TripCard'
+import { LIST_SIZES } from '../components/trips/TripCover'
 import { ViewSwitch, type TripsLayout } from '../components/trips/ViewSwitch'
 import { SectionHead } from '../components/page/SectionHead'
 import { StateBlock } from '../components/page/StateBlock'
+import { StateVignette } from '../components/RegionArt'
 
 type SortKey = 'recent' | 'name' | 'budget-asc' | 'budget-desc' | 'length-desc'
 
@@ -324,7 +326,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         ) : (
           <StateBlock
             kind="failed"
-            icon={<Compass size={38} aria-hidden />}
+            art={<StateVignette name="error" fallback={<Compass size={38} aria-hidden />} />}
             title={emptyCopyFor(tripsRead, 'trips', retryTrips).title}
             body={emptyCopyFor(tripsRead, 'trips', retryTrips).body}
             actions={<button className="btn btn-primary" onClick={retryTrips}>Try again</button>}
@@ -333,7 +335,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
       ) : trips.length === 0 && !hasFilters ? (
         <StateBlock
           kind="empty"
-          icon={<Compass size={38} aria-hidden />}
+          art={<StateVignette name="first-trip" fallback={<Compass size={38} aria-hidden />} />}
           title="No trips yet"
           body="Start from scratch with dates and budget, or copy a public itinerary from Explore."
           actions={
@@ -467,6 +469,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                       users={users}
                       meId={meId}
                       enterIndex={exiting ? 0 : i}
+                      coverSizes={layout === 'list' ? LIST_SIZES : undefined}
                       presence={presenceAttrs({ exiting })}
                       onDelete={setPendingDelete}
                     />
