@@ -20,6 +20,27 @@
 
 import { MODE_COST_PER_KM, parseFuelEconomyKmL, parseFuelPricePerL } from './engine'
 
+export function suggestedBudgetTarget(estimatedPerHead: number | null): number | null {
+  return estimatedPerHead != null && Number.isFinite(estimatedPerHead) && estimatedPerHead > 0
+    ? Math.max(500, Math.ceil(estimatedPerHead / 500) * 500)
+    : null
+}
+
+export function budgetTargetMessage(targetPerHead: number, estimatedPerHead: number | null): string {
+  if (estimatedPerHead == null || !Number.isFinite(estimatedPerHead) || estimatedPerHead <= 0) {
+    return 'Add dates and route points to get an estimate.'
+  }
+  const estimate = Math.round(estimatedPerHead)
+  const amount = `₹${estimate.toLocaleString('en-IN')}`
+  if (!Number.isFinite(targetPerHead) || targetPerHead <= 0) {
+    return `The current estimate is ${amount} per person. Set a budget target to compare it.`
+  }
+  const difference = estimate - Math.round(targetPerHead)
+  if (difference === 0) return `The current estimate matches your ${amount} target per person.`
+  const gap = `₹${Math.abs(difference).toLocaleString('en-IN')}`
+  return `The current estimate is ${amount} per person. It is ${gap} ${difference > 0 ? 'above' : 'below'} your target.`
+}
+
 /**
  * The notice for a fuel block whose numbers the bill cannot use together.
  * Returns null when nothing needs saying: both fields empty, or both parsing.

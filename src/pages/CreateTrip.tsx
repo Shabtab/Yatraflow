@@ -37,7 +37,7 @@ import { StepProgress, StepNav, useStepFocus } from '../components/CreateFlowShe
 import { CreateFlowCalendar } from '../components/CreateFlowCalendar'
 import { CreateFlowTicket } from '../components/CreateFlowTicket'
 import { currentQuery, navigate, onRouteChange } from '../lib/router'
-import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
+import { budgetTargetMessage, suggestedBudgetTarget, fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
 import { addCrewFields, isMaskedLabel, normalizeIndianMobile, type CrewEntry } from '../lib/crewInvite'
 import { recordCreateEvent } from '../lib/createEvents'
 import { stashHandoff } from '../lib/createHandoff'
@@ -604,9 +604,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
 
   // Auto-fill: the rounded-up rough take lands in the budget field whenever it
   // changes and the user hasn't claimed the field by editing it.
-  const suggestedBudget = bill.perHead != null && bill.perHead > 0
-    ? Math.max(500, Math.round(bill.perHead / 500) * 500)
-    : null
+  const suggestedBudget = suggestedBudgetTarget(bill.perHead)
   // The write is silent by nature — a value changing under a screen-reader user
   // with no announcement is a mutation they never hear about, and the hint only
   // explains it once the field has focus. This notice is read by a polite live
@@ -1690,17 +1688,17 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     onChange={e => { setBudgetTouched(true); patchFields({ budgetPerPersonInr: Number(e.target.value) }) }} />
                 </label>
                 <button type="button" className="ct-mini"
-                  onClick={() => { setBudgetTouched(false); if (suggestedBudget != null) patchFields({ budgetPerPersonInr: suggestedBudget }) }}>
+                  disabled={suggestedBudget == null}
+                  aria-describedby={createFunnelOn('budget') ? 'ct-budget-guidance' : undefined}
+                  onClick={() => { if (suggestedBudget == null) return; setBudgetTouched(false); patchFields({ budgetPerPersonInr: suggestedBudget }) }}>
                   Use estimate
                 </button>
               </div>
               {errs.budgetPerPersonInr && <p className="err-text" id="ct-budget-err" role="status" aria-live="polite">{errs.budgetPerPersonInr}</p>}
               {/* Politely live: the auto-fill above rewrites this number. */}
               <span className="sr-only" role="status">{budgetNotice}</span>
-              {/* Mockup order: money in the hand first (the translation), then
-                  the anchor against reality. Both flag-gated (P2). */}
-              {createFunnelOn('budget') && (<p className="hint-text budget-tier">
-                Your target is <b>&#8377;{f.budgetPerPersonInr.toLocaleString('en-IN')}</b> per person. The estimate uses your route, transport and accommodation choices.
+              {createFunnelOn('budget') && (<p className="hint-text budget-tier" id="ct-budget-guidance" role="status">
+                {budgetTargetMessage(f.budgetPerPersonInr, bill.perHead)}
               </p>)}
               {createFunnelOn('budget') && band && (
                 <p className="hint-text budget-anchor" role="status">

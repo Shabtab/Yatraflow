@@ -18,6 +18,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **Trip creation compares your budget target with the current plan estimate.** The estimate shortcut stays disabled until an estimate exists. Its rounded target covers the estimate. The guided form and regional reference range remain available.
 - **A delayed payment webhook cannot restore access after a full refund.** Grants and refunds lock the same order. Duplicate deliveries remain safe.
 - **Private profile data is restricted to its owner and authorized admins.** Public pages and crew lists use reviewed names, avatars and creator metadata. Email, home city, languages, preferences, account dates and admin flags stay private. Disabled creators disappear from discovery while past crews retain their names and avatars. Offline snapshots and Realtime carry public identity only. Account changes and authority loss remove unauthorized private cache entries. Resume applies access changes before reads. Old operations cannot change a replacement session. Refused edits preserve newer accepted values and absent optional fields. Newer profile reads and public events outrank delayed reconciliation. Profile refreshes retain pending requests. Public and private read failures stay distinct. Failed private reads offer a visible retry and never use uncaptured credentials. (#800)
 
