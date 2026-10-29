@@ -46,8 +46,11 @@ number collides with a shipped release, the ledger wins.
 Status: the user confirmed the specification and local implementation delegation on 2026-10-25.
 The fixed design base is `85ef831ff24f13391babbda73b884b8f2d71753e` on `test`.
 
-Implementation status: local source review and verification are in progress.
-The full gate and hosted checks have not run.
+Implementation status: local source and test-contract reviews pass.
+The local gate and synthetic browser and SQL checks pass.
+Hosted Auth, RLS, Realtime and migration checks remain pending.
+The user approved a pull request to `main` on 2026-10-29.
+This exception does not authorize merging or hosted SQL.
 
 The user confirmed these privacy choices on 2026-10-25:
 
