@@ -44,8 +44,8 @@ number collides with a shipped release, the ledger wins.
 ### Full update: payment grant recovery and budget guidance
 
 Status: the user approved consolidation into a `main` pull request on 2026-10-30.
-The preserved payment repair is integrated locally with the profile privacy work.
-Independent review and final verification remain pending.
+The preserved payment and budget repairs join the profile privacy work in [PR #867](https://github.com/hasnaina955/Yatraflow/pull/867).
+The pull request records verification evidence. Hosted checks remain pending.
 Budget guidance must compare the target with the current plan estimate.
 The suggested target must cover that estimate. Disable the shortcut when no estimate exists.
 Preserve the current guided flow and regional reference range.
@@ -53,6 +53,10 @@ Grants and refunds must lock the same order before they change buyer access.
 Duplicate deliveries must remain safe. Partial refunds must preserve access.
 Apply `20261019b_atomic_entitlement_grant.sql` before deploying the webhook.
 Hosted SQL and deployment remain outside this approval.
+
+The payment review found a separate existing buyer-claim gap under launch gate #776.
+A full refund before payment confirmation can still be followed by a browser claim.
+This consolidation repairs the webhook race. It does not certify the full payment rail.
 
 ### Issue #800: protect private profiles
 
