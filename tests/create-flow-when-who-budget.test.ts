@@ -67,6 +67,19 @@ describe('Who shows the drivers controls only on a driving trip', () => {
 })
 
 describe('Budget asks a question and shows both numbers', () => {
+  it('compares the chosen target with the current plan estimate', () => {
+    expect(page).toContain('const suggestedBudget = suggestedBudgetTarget(bill.perHead)')
+    expect(block(BUDGET, REFINE)).toContain('budgetTargetMessage(f.budgetPerPersonInr, bill.perHead)')
+  })
+
+  it('disables an unavailable estimate and describes the shortcut', () => {
+    const budget = block(BUDGET, REFINE)
+    expect(budget).toContain('disabled={suggestedBudget == null}')
+    expect(budget).toContain("aria-describedby={createFunnelOn('budget') ? 'ct-budget-guidance' : undefined}")
+    expect(budget).toContain('id="ct-budget-guidance"')
+    expect(budget).toContain('if (suggestedBudget == null) return;')
+  })
+
   it('asks the question rather than naming the field', () => {
     const budget = block(BUDGET, REFINE)
     expect(budget).toContain('What is your budget?')

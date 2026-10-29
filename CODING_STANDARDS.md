@@ -33,6 +33,9 @@ anywhere in this repo means the entry labelled `6b` below.
 Source-contract tests must handle both LF and CRLF line endings.
 Tests for helper use must check the call site. A function definition does not prove that callers use it.
 
+Budget guidance must compare the target with the current plan estimate.
+It must not promise room or transport choices from a spending target alone.
+
 Record fresh row events independently of whole-catalogue read verdicts. Test delayed reconciliation while the event's private refresh remains pending or fails.
 A field allowlist must not evaluate unlisted property getters.
 
