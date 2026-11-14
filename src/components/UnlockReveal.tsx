@@ -18,6 +18,7 @@ import { InlineIcon } from './icons'
 import { appLink } from '../lib/appLink'
 import { Modal, StatTile } from './ui'
 import { CoverThumb } from './CoverThumb'
+import { Mascot } from './mascot/Mascot'
 import { formatInr } from '../lib/engine'
 import { unlockRevealStats } from '../lib/purchases'
 import { sharePurchase } from '../lib/purchaseShare'
@@ -57,6 +58,11 @@ export function UnlockReveal({ open, pub, trip, creator, amountPaidInr, entitlem
   return (
     <Modal open={open} onClose={onClose} title="You now own it" variant="full">
       <div className="unlock-reveal">
+        {/* Phase 2 of the mascot plan: one animated mascot opens the sheet, once
+            per reveal. It replaces no control and carries no copy. */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+          <Mascot pose="celebrate" size={120} animated />
+        </div>
         <div className="unlock-reveal-hero">
           <CoverThumb variant="wide" explicitUrl={pub.coverImageUrl} trip={{ name: pub.title, destinations: pub.routeSummary }} emoji="🧭" />
         </div>

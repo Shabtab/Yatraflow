@@ -7,6 +7,10 @@ Every phase 1 placement is wired. The curious head ships as its own file,
 `chakra-head-curious.svg`, for the Explore no-results state, and it stays
 legible at 24 to 32 px for the inline warnings in §4.
 
+Phase 2 is partly wired: the trip-created column and the unlock reveal open with
+`chakra-celebrate`, and the AI drawer shows `chakra-thinking` while it waits.
+The Plan Bench confetti still runs without the proud head.
+
 Chakra is an Asian koel. Its tail turns into a route line that ends in a marigold map dot.
 The art is in `public/brand/mascot/`. The concept sheet is [`MASCOT-SHEET.html`](MASCOT-SHEET.html).
 
