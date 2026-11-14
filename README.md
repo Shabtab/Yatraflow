@@ -95,15 +95,14 @@ _Recent release highlights, newest first. See [CHANGELOG.md](CHANGELOG.md) for t
 
 Pending notes live in [change fragments](changelog.d/README.md). The release owner assembles them into the public record.
 
-## The v0.85.0 release
+## The v0.86.0 release
 
-The repository is at v0.85.0. See the [release record](CHANGELOG.md) for its full scope.
+The repository is at v0.86.0. See the [release record](CHANGELOG.md) for its full scope.
 
-- **The Map tab uses four lenses over one schedule.** Each lens shows its own count. An unscanned lens shows no count. The Fix lens lists verified fixes and can preview a change before you apply it.
-- **Map suggestions use the visit date and its clock.** Opening hours follow the visit date. A fixed booking uses its own time. Clocks follow your 12-hour or 24-hour setting.
-- **Stop pins stay on their places when the map moves.** Labels yield when they overlap. Plan, Stay, and Fix read the day's schedule.
-- **Drive suggestions cover the whole road.** The scan keeps a strong place from each 60 km stretch. Groups of suggestions move aside from stop pins.
-- **Focused test runs use git to select tests.** `npm run test:changed` fails when a source change selects no test.
+- **Chakra the koel meets you at the quiet moments.** The loading, failed, empty and not-found screens carry the mascot, which takes the night art in the dark theme. The trip-created column and the unlock reveal celebrate with it. The AI drawer shows it thinking.
+- **The Board tab shows each stop's place, time and cost in full.** Each fact has one home, and the stop cards wrap instead of cutting their details.
+- **Explore and the published itinerary move in one calm sequence.** Explore has one search field and one shared publication card. The Look inside day cards and the road height charts match the reference design.
+- **Phone map fits keep the trip large and the pins apart.** Side insets use measured covers, and a user pan is never undone.
 
 ## 🚀 Getting started
 
