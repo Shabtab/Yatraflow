@@ -53,6 +53,15 @@ Review pending claims against the batch commits before release.
 Update package versions, the roadmap snapshot, and README highlights with the release.
 Run `npm run verify` and the release checks. The user reviews the changelog diff before a push to `main`.
 
+Tag the promotion merge commit in the same pass as the merge. Use a lightweight tag named `vX.Y.Z`. Nothing in the gate reads tags, so check the tag by hand.
+
+```sh
+git tag vX.Y.Z <merge-commit>
+git push origin refs/tags/vX.Y.Z
+```
+
+`git tag -l -n1 vX.Y.Z` shows the version on the commit. `git ls-remote --tags origin vX.Y.Z` shows the remote tag. A missing tag stops the release.
+
 ## Adoption and bridge
 
 New changes need fragments from the PR that adopts this system.

@@ -72,7 +72,7 @@ git rev-list --count origin/main..origin/test
 14. Never add lint errors. `npm run lint:ratchet` fails when any count rises, so never raise `eslint-baseline.json`. Full text: docs/agents/AGENTS-FULL.md §2.14
 15. Clear `NODE_ENV` before any install, or npm skips devDependencies silently. You must hand each migration the user runs over as complete SQL in the chat, with its absolute path. Full text: docs/agents/AGENTS-FULL.md §2.15
 16. Work only in your own clone, and give every command an explicit root. Full text: docs/agents/AGENTS-FULL.md §2.16
-17. Promote `test` to `main` once per finished batch: a minor release for a feature, a patch release for a fix. Full text: docs/agents/AGENTS-FULL.md §2.17
+17. Promote `test` to `main` once per finished batch: a minor release for a feature, a patch release for a fix. Tag the promotion merge commit `vX.Y.Z` in the same pass. Full text: docs/agents/AGENTS-FULL.md §2.17
 18. Search for prior art before you build: compare up to three maintained GitHub projects. Adapt code only from MIT, Apache-2.0, BSD or ISC sources. Full text: docs/agents/AGENTS-FULL.md §2.18
 19. Claim an issue before you start it, and check for an existing claim. A claim holds even when its branch is not pushed. Full text: docs/agents/AGENTS-FULL.md §2.19
 20. Map V2 controls carry a 44px target floor by product decision. check:ui rule U4 fails the gate on a px size below 44 on a Map floor selector. Full text: docs/agents/AGENTS-FULL.md §2.20

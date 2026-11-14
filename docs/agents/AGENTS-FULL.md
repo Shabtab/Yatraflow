@@ -362,7 +362,8 @@ that notices the drift.
     2026-10-12).** Promote when a coherent batch lands on `test`. Do not let
     `test` collect weeks of work. A release that adds a feature raises the
     minor number. A release that only fixes bugs raises the patch number.
-    A security fix ships alone as a patch hotfix from `main`, then merges
+    Cut the `vX.Y.Z` tag on the promotion merge commit in the same pass
+    (`changelog.d/README.md`). Nothing in the gate reads tags.
     back into `test`. A fix that changes the database and the app ships in
     two SQL steps. Run the additive step before the app deploys. Run the
     tightening step after the new app is live.
