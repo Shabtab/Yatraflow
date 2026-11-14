@@ -606,7 +606,7 @@ describe('public share source wiring', () => {
     expect(source).toContain('settleLegacyHash() ?? currentRoute()')
     // One subscription for pushState, popstate and the native shell's
     // hashchange — the seam lives in lib/router.
-    expect(source).toMatch(/return onRouteChange\(\(\) => \{\s*setRoute\(currentRoute\(\)\)/)
+    expect(source).toMatch(/return onRouteChange\(\(event\?: Event\) => \{\s*const nextRoute = currentRoute\(\)[\s\S]*?setRoute\(nextRoute\)/)
     expect(source).not.toContain('syncPublicAddress')
   })
 

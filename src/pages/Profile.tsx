@@ -30,6 +30,7 @@ import { AI_COMPANION_ENABLED } from '../lib/featureFlags'
 import { cap } from '../lib/labels'
 import { isIosSafari, isStandalone, onInstallAvailability, promptInstall } from '../lib/pwaInstall'
 import { scrollBehavior } from '../lib/motion'
+import { watchSectionHash } from '../lib/sectionNavigation'
 import { appLink } from '../lib/appLink'
 import { PageHeader } from '../components/page/PageHeader'
 import { Surface } from '../components/page/Surface'
@@ -214,8 +215,11 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
   useEffect(() => {
     const nav = navRef.current
     if (!nav || nav.scrollWidth <= nav.clientWidth) return
-    nav.querySelector<HTMLElement>('[aria-current="true"]')
-      ?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'auto' })
+    const item = nav.querySelector<HTMLElement>('[aria-current="true"]')
+    if (!item) return
+    const rail = nav.getBoundingClientRect(), row = item.getBoundingClientRect()
+    if (row.left < rail.left) nav.scrollLeft += row.left - rail.left
+    else if (row.right > rail.right) nav.scrollLeft += row.right - rail.right
   }, [activeSection])
 
   const [f, setF] = useState(() => ({
@@ -297,7 +301,11 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
 
     const io = new IntersectionObserver(mark, { rootMargin: '-96px 0px -60% 0px', threshold: 0 })
     els.forEach(el => io.observe(el))
-    mark()
+    const unwatchHash = watchSectionHash(els.map(el => el.id), id => {
+      railClick.current = id !== null
+      if (id) setActiveSection(id.replace('prof-', ''))
+      else mark()
+    })
     // An intersection fires only when a section crosses the band. Scrolling
     // between two crossings changes which section is at the line without any
     // crossing at all, so the scroll itself recomputes. `passive` and a plain
@@ -313,6 +321,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
       window.addEventListener(type, release, { passive: true })
     }
     return () => {
+      unwatchHash()
       io.disconnect()
       window.removeEventListener('scroll', mark)
       window.removeEventListener('resize', mark)
