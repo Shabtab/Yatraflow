@@ -108,7 +108,7 @@ A drive can also fail with a load timeout. This happens when Vite compiles a rou
 node $V stop
 ```
 
-Kills the browser and the dev server by the PIDs recorded in `.verify-evidence/run/`, using `taskkill /T` on each tree. It never kills by process name. It removes `.verify-evidence/run/`. It keeps every proof file in `.verify-evidence/`.
+Kills the browser and the dev server by the PIDs recorded in `.verify-evidence/run/`, using `taskkill /T` on each tree. It never kills by process name. Edge helpers can outlive `taskkill /T`. On Windows it then kills each process whose command line names this run's profile folder. It removes `.verify-evidence/run/`. It keeps every proof file in `.verify-evidence/`.
 
 Run `stop` after every failed try too, so no process stays on port 5178 or 9333.
 
