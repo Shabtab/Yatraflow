@@ -21,7 +21,7 @@ describe('phone route fit insets', () => {
   it('keeps the 390px canvas clear', () => {
     const padding = firstFitPadding(PHONE_SIZE, PHONE_INSETS)
     expect(PHONE_SIZE.width - padding.left - padding.right).toBe(292)
-    expect(PHONE_SIZE.height - padding.top - padding.bottom).toBe(591)
+    expect(PHONE_SIZE.height - padding.top - padding.bottom).toBe(573)
     expect(padding.left).toBe(MARK_FRAME_MARGIN.left)
     expect(padding.right).toBe(MARK_FRAME_MARGIN.right)
   })

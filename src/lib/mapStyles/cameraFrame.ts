@@ -4,8 +4,9 @@
 export interface FrameRect { left: number; top: number; right: number; bottom: number }
 export interface FrameInsets { top: number; bottom: number; left: number; right: number }
 
-/** Room a mark needs beyond its coordinate: the badge above, the clock pill below. */
-export const MARK_FRAME_MARGIN: FrameInsets = { top: 22, bottom: 46, left: 48, right: 48 }
+/** Room a mark needs beyond its coordinate: the pin body draws upward, the
+ *  badge hangs below, and the pills need side room. */
+export const MARK_FRAME_MARGIN: FrameInsets = { top: 40, bottom: 46, left: 48, right: 48 }
 
 const ZERO: FrameInsets = { top: 0, bottom: 0, left: 0, right: 0 }
 

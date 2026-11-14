@@ -347,10 +347,18 @@ const milestoneMarkId = (index: number) => `ms:${index}`
 // A road label is one pill pair around its point. The time is on the left and the km is on the right.
 // The box is an estimate of the drawn size, so the layout can keep two labels apart.
 function milestoneBox(m: ClockMilestone, timeText: string): { w: number; h: number; x: number } {
-  const whenW = Math.max(timeText.length * 6.4, (m.haltName?.length ?? 0) * 6.8, m.dateLabel.length * 5.6) + 16
-  const kmW = m.kmLabel.length * 5.8 + 16
+  // Per-char widths match the drawn 10.5px bold chips; a box narrower than the
+  // drawn pill lets the resolver place two chips that then cover each other.
+  const whenW = Math.max(timeText.length * 6.8, (m.haltName?.length ?? 0) * 7.2, m.dateLabel.length * 6.2) + 16
+  const kmW = m.kmLabel.length * 6.2 + 16
   const lines = 1 + (m.haltName ? 1 : 0) + (m.dateLabel ? 1 : 0)
   return { w: whenW + kmW + 10, h: 6 + lines * 13, x: (kmW - whenW) / 2 }
+}
+// A stop clock pill draws "h:mm AM (est.) km N": the time half, the km half and
+// the gap between them. The layout box must carry the drawn width, or two pills
+// the layout thinks are apart still cover each other on screen.
+function stopClockBox(arriveText: string, kmText: string): { w: number } {
+  return { w: arriveText.length * 6.8 + kmText.length * 5.8 + 44 }
 }
 /** One distance chip per placed place that has a road km, on the route line. */
 function suggestionDistancePins(places: PlaceHit[], road: [number, number][] | null): Array<{ id: string; name: string; km: number; lat: number; lng: number }> {
@@ -1171,7 +1179,12 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       }
       // The Stay board hides the clock pill while the base tag shows. Hiding it
       // here keeps the two pills from ever colliding on one mark.
-      if (!p.auto && !warned && !(showTag && isBase) && clockMilestones && clockOn && stopClock.has(p.id)) spreadMarks.push({ id: `clock:${p.id}`, layer: 'clock', follows: `stop:${p.id}`, x: 0, y: CLOCK_BOX.dy, w: CLOCK_BOX.w, h: CLOCK_BOX.h, ...base })
+      if (!p.auto && !warned && !(showTag && isBase) && clockMilestones && clockOn && stopClock.has(p.id)) {
+        const c = stopClock.get(p.id)!
+        const arriveText = `${c.arrive}${c.estimated ? ' (est.)' : ''}`
+        const kmText = `km ${Math.max(0, c.cumKm - dayKmBase)}`
+        spreadMarks.push({ id: `clock:${p.id}`, layer: 'clock', follows: `stop:${p.id}`, x: 0, y: CLOCK_BOX.dy, w: stopClockBox(arriveText, kmText).w, h: CLOCK_BOX.h, ...base })
+      }
       if (stopWarning?.stopId === p.id && stopWarning.text != null && stopWarning.text.trim() !== '') {
         const tag = stopTagBox(stopWarning.text, 260)
         // The board puts the tag beside the badge, on its left, like the base tag.
@@ -1221,7 +1234,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
         spreadMarks.push({ id: milestoneMarkId(i), layer: 'clock', x: box.x, y: 0, w: box.w, h: box.h, lat: m.lat, lng: m.lng, ox: 0, oy: 0 })
       })
       for (const pin of suggestionDistancePins(nearbyPois, geom.all ?? null)) {
-        spreadMarks.push({ id: `sd:${pin.id}`, layer: 'clock', x: 30, y: 0, w: `Km ${Math.round(pin.km)}`.length * 5.8 + 16, h: 18, lat: pin.lat, lng: pin.lng, ox: 0, oy: 0 })
+        spreadMarks.push({ id: `sd:${pin.id}`, layer: 'clock', x: 30, y: 0, w: `Km ${Math.round(pin.km)}`.length * 6.2 + 18, h: 19, lat: pin.lat, lng: pin.lng, ox: 0, oy: 0 })
       }
     }
     // The lunch window is placed before the time ticks. It may slide further along the road, so a tick never takes its spot.
@@ -1231,7 +1244,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       // A road tick never slides: a slid tick reads as a wrong place, and a crowd of them stacked
       // into a column. It hides when its own spot is taken, and it claims extra room, so the
       // ticks that stay are spaced out. The density follows the zoom with no extra rule.
-      spreadMarks.push({ id: `route:${mark.id}`, layer: 'clock', x: 0, y: 0, w: mark.kind === 'tick' ? CLOCK_BOX.w + TICK_ROOM : text.length * 7.2 + 26, h: mark.kind === 'tick' ? CLOCK_BOX.h + TICK_ROOM : CLOCK_BOX.h, lat: mark.lat, lng: mark.lng, ox: 0, oy: 0, maxTravel: mark.kind === 'tick' ? 0 : 160 })
+      spreadMarks.push({ id: `route:${mark.id}`, layer: 'clock', x: 0, y: 0, w: mark.kind === 'tick' ? CLOCK_BOX.w + TICK_ROOM : text.length * 7.4 + 28, h: mark.kind === 'tick' ? CLOCK_BOX.h + TICK_ROOM : CLOCK_BOX.h, lat: mark.lat, lng: mark.lng, ox: 0, oy: 0, maxTravel: mark.kind === 'tick' ? 0 : 160 })
     }
     for (const hit of markPois) {
       const tagText = pickTags?.[String(hit.id)]
@@ -1258,6 +1271,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       }
     })
     const spots = layoutMarks(marks, { bounds })
+    if (typeof window !== 'undefined') (window as unknown as { __spotDebug?: Record<string, unknown> }).__spotDebug = Object.fromEntries(spots)
     // The boxes carry their layer. The settle pass uses stop badges alone.
     // A pill that slid or hid adds no padding.
     const boxes: (FrameBox & { layer: string })[] = marks.filter(m => m.layer === 'stop' || (m.layer === 'clock' && m.follows?.startsWith('stop:'))).flatMap(m => {
@@ -1290,7 +1304,22 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
         setMapZoom(prev => prev === zoom ? prev : zoom)
         setCamMoving(false)
         const { size, insets } = measureFrame()
-        const safe = safeRect(size, insets)
+        // The pills may use the whole canvas except the map buttons column:
+        // the 44px pads around the zoom and compass buttons sit at one edge,
+        // and a pill under them is unreachable. A 6px edge pad keeps a placed
+        // pill fully inside the canvas, so no chip is half cut by the viewport.
+        const padded = { ...insets }
+        const ctrls = map.getContainer().querySelector('.yf-map-ctrls')
+        if (ctrls) {
+          const box = ctrls.getBoundingClientRect()
+          const canvasBox = map.getContainer().getBoundingClientRect()
+          if (box.width > 0 && box.height > 0) padded.right = Math.max(padded.right, canvasBox.right - box.left)
+        }
+        padded.left = Math.max(padded.left, 6)
+        padded.top = Math.max(padded.top, 6)
+        padded.bottom = Math.max(padded.bottom, 6)
+        padded.right = Math.max(padded.right, 6)
+        const safe = safeRect(size, padded)
         const { spots: next } = layoutOnMap(map, safe)
         setMarkSpots(prev => {
           const same = prev.size === next.size && [...next].every(([id, spot]) => { const old = prev.get(id); return old && Math.round(old.dx) === Math.round(spot.dx) && Math.round(old.dy) === Math.round(spot.dy) && old.hidden === spot.hidden })
@@ -1450,7 +1479,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   // yields: a later resize would otherwise pull the camera back out to the day.
   const stayOwnsCamera = frameStayRing && stayRings.length > 0
   // fit the viewport to everything the view draws, whenever the map is ready
-  // and that extent changes
+  // and that extent changes. A snap re-frame window makes those fits jump.
+  const [snapRefitUntil, setSnapRefitUntil] = useState(0)
   useEffect(() => {
     if (!mapLoaded || !mapRef.current) return
     if (mapTarget) return
@@ -1486,7 +1516,10 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     const run = () => {
       m.resize()
       // A new day is a long move across the map. It takes the slower glide, with a soft start and end.
-      const duration = prefersReducedMotion() ? 0 : motionTiming('--motion-slower').duration
+      // A snap re-frame jumps instead: the sheet's layout noise cancels a glide
+      // mid-flight, so the re-frame window after an inset change uses jumps.
+      const instant = Date.now() < snapRefitUntil
+      const duration = instant || prefersReducedMotion() ? 0 : motionTiming('--motion-slower').duration
       const base = cameraPadding()
       m.fitBounds(bounds, { padding: base, maxZoom: 12, duration, easing: easeInOutCubic })
       if (!workspaceChrome) return
@@ -1497,11 +1530,15 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     }
     const frame = requestAnimationFrame(run)
     return () => { cancelAnimationFrame(frame); timers.forEach(window.clearTimeout) }
-  }, [fitPointsKey, mapLoaded, mapTarget, dayFilter, frameTick, stayOwnsCamera]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fitPointsKey, mapLoaded, mapTarget, dayFilter, frameTick, stayOwnsCamera, snapRefitUntil]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // A stored inset that changes after mount (the phone sheet snap animates)
   // re-frames the route, unless the user moved the map. The first values
   // arm the baseline; the fit effect above already ran with them.
+  // The re-frame runs on a short interval: the sheet, the day strip and the
+  // lens pill settle on their own transitions, in any order. Each frame
+  // jumps (a glide through the layout noise gets canceled) and lands where
+  // the covers then stand, so the last one carries the final rects.
   const lastInsets = useRef('')
   useEffect(() => {
     const key = `${top}|${bottom}|${left}|${right}`
@@ -1509,25 +1546,39 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     if (lastInsets.current === key) return
     lastInsets.current = key
     if (!workspaceChrome || !mapLoaded) return
-    const t = window.setTimeout(() => setFrameTick(n => n + 1), 260)
-    return () => window.clearTimeout(t)
+    // The first frame arms the jump window; a timeout callback may set state,
+    // a synchronous call in the effect body may not.
+    const frames = [260, 760, 1260, 1760, 2260, 2760].map(delay => window.setTimeout(() => {
+      if (delay === 260) setSnapRefitUntil(Date.now() + 2500)
+      setFrameTick(n => n + 1)
+    }, delay))
+    return () => frames.forEach(window.clearTimeout)
   }, [top, bottom, left, right, workspaceChrome, mapLoaded])
 
   // A new container size frames the route again, unless the user moved the map.
+  // The chrome covers above the map also re-frame it: the phone day strip grows
+  // when its journey content arrives, and the search row slides down with it.
   useEffect(() => {
     const container = mapRef.current?.getContainer()
     if (!workspaceChrome || !mapLoaded || !container) return
     let last = { w: container.clientWidth, h: container.clientHeight }
     let timer = 0
+    const schedule = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => setFrameTick(n => n + 1), 200)
+    }
     const observer = new ResizeObserver(() => {
       const next = { w: container.clientWidth, h: container.clientHeight }
       if (Math.abs(next.w - last.w) < 2 && Math.abs(next.h - last.h) < 2) return
       last = next
-      window.clearTimeout(timer)
-      timer = window.setTimeout(() => setFrameTick(n => n + 1), 200)
+      schedule()
     })
     observer.observe(container)
-    return () => { observer.disconnect(); window.clearTimeout(timer) }
+    const root = container.closest('.mv2-workspace')
+    const covers = root ? Array.from(root.querySelectorAll(WORKSPACE_COVER_SELECTOR)) : []
+    const coverObserver = new ResizeObserver(schedule)
+    covers.forEach(cover => coverObserver.observe(cover))
+    return () => { observer.disconnect(); coverObserver.disconnect(); window.clearTimeout(timer) }
   }, [workspaceChrome, mapLoaded])
 
   // W9c: frame the active stay reach ring when the Stay lens opens one. The
