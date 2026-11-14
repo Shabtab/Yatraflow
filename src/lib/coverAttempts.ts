@@ -17,7 +17,7 @@
 //      loop.
 
 import { artUrl, srcsetFor, type ArtFormat } from './artUrls'
-import { artEntryFor, type ArtManifest, ART_MANIFEST, type CoverPlan } from './regionArt'
+import { artEntryFor, avifWidthsFor, type ArtManifest, ART_MANIFEST, type CoverPlan } from './regionArt'
 
 /** One image a renderer may put in the slot. */
 export type CoverAttempt =
@@ -59,9 +59,10 @@ export function coverAttemptsFor(plan: CoverPlan, manifest: ArtManifest = ART_MA
     const entry = artEntryFor(candidate.id, manifest)
     if (!entry) continue
 
-    const avifSrcSet = srcsetFor(candidate.id, entry.widths, 'avif')
+    const widths = avifWidthsFor(candidate.id, manifest)
+    const avifSrcSet = srcsetFor(candidate.id, widths, 'avif')
     if (avifSrcSet) {
-      const largest = [...entry.widths].reverse().map(width => artUrl(candidate.id, width, 'avif')).find(Boolean)
+      const largest = [...widths].reverse().map(width => artUrl(candidate.id, width, 'avif')).find(Boolean)
       if (largest) push({ kind: 'scene', id: candidate.id, format: 'avif', src: largest, srcSet: avifSrcSet })
     }
 

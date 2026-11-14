@@ -214,8 +214,8 @@ describe('the spur is a map child, not a latch-gated effect', () => {
   })
 
   it('the camera latch and its fit stay exactly as they were', () => {
-    // The watchdog gate is a camera gate. Only the style write moved.
+    // The latch opens on the instance alone; only the style write moved.
     expect(tripMapSrc).toContain('if (!mapLoaded || !mapRef.current) return')
-    expect(tripMapSrc).toMatch(/window\.setTimeout\(onLoad, STYLE_LOAD_WATCHDOG_MS\)/)
+    expect(tripMapSrc).toMatch(/if \(mapRef\.current\) \{ setMapLoaded\(true\); clearInterval\(tick\) \}/)
   })
 })

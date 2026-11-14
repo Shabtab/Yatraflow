@@ -47,22 +47,41 @@ export const EX_TREND_SIZES = [
 ].join(', ')
 
 /**
- * The `.ex-feature` cover: the 1.08fr share of a 2.08fr row above a 640px main
- * column (8749-8751), on the card's content box, so 0.519 of main - 14.
- * Measured: 454 at 1280, 373 at 1100, 483 at 1000 (single column), 431 at 900,
- * 363 at 768, 339 at 720, 598 at 640 (single column), 348 at 390.
+ * The `.ex-feature` cover: a fixed 420px column above a 640px main column,
+ * less its 10px inset. Below that the cover is the whole card width. The
+ * breakpoint follows the main column, not the viewport, so a slightly large
+ * size on a mid-width screen costs image bytes, never layout.
  */
 export const EX_FEATURE_SIZES = [
-  '(min-width: 1280px) 454px',
-  '(min-width: 1100px) calc((100vw - 381px) * 0.519)',
-  '(min-width: 700px) calc((100vw - 54px) * 0.519)',
-  'calc(100vw - 42px)',
+  '(min-width: 700px) 410px',
+  'calc(100vw - 50px)',
 ].join(', ')
 
-export function ExploreCover({ pub, sizes = EX_GRID_SIZES }: {
+/**
+ * The creator page grid (`.explore-grid`), which the shared card also fills.
+ *
+ * Derived from the CSS, not measured, so HY4 should confirm it in the browser
+ * turn: `10-explore`'s `.explore-grid` is `repeat(auto-fill, minmax(290px, 1fr))`
+ * with a 16px gap, inside a `.container` capped at 1180px with 20px inline
+ * padding. That is 1140px of content, so three columns of 369px above 1240px;
+ * `(100vw - 72px) / 3` while the container is still growing; two columns above
+ * 640px (two 290px tracks plus the gap need 596px of content); one below that.
+ * A wrong step costs image bytes, never layout.
+ */
+export const PUB_GRID_SIZES = [
+  '(min-width: 1240px) 369px',
+  '(min-width: 950px) calc((100vw - 72px) / 3)',
+  '(min-width: 640px) calc((100vw - 60px) / 2)',
+  'calc(100vw - 48px)',
+].join(', ')
+
+export function ExploreCover({ pub, sizes = EX_GRID_SIZES, eager = false }: {
   pub: Pick<PublishedItinerary, 'id' | 'coverImageUrl' | 'routeSummary'>
   /** The slot's real container width. The featured card is wider than a grid card. */
   sizes?: string
+  /** Load the image at once. Cards near the top of the page set it, so a cover in
+   *  the first screens never waits for a scroll to show. */
+  eager?: boolean
 }) {
   const coverUrl = pub.coverImageUrl ? sizedCoverUrl(pub.coverImageUrl) : ''
   // The publication's route stops go in as they are, so a stop the India place
@@ -80,6 +99,7 @@ export function ExploreCover({ pub, sizes = EX_GRID_SIZES }: {
       plan={plan}
       ratio="16:10"
       sizes={sizes}
+      eager={eager}
       className="ex-cover-img"
       emojiClassName="itin-cover-fallback"
     />

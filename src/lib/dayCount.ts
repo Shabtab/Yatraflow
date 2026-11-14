@@ -15,7 +15,7 @@
 // hidden in here — a helper that silently coerces is how the three sites
 // disagreed in the first place.
 
-const DAY_MS = 86_400_000
+export const DAY_MS = 86_400_000
 
 /** `yyyy-mm-dd` as LOCAL midnight in ms, or null when the string is missing,
  *  malformed, or a date that does not exist (2026-02-30, month 13). A trailing

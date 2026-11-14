@@ -29,6 +29,7 @@ import { haptic, HAPTIC } from '../lib/haptics'
 import { toast } from '../components/ui'
 import { StateBlock } from '../components/page/StateBlock'
 import { PageHeader } from '../components/page/PageHeader'
+import { Mascot } from '../components/mascot/Mascot'
 import { createdReadView, createdInviteUrl, createdCanSend, inviteRowStatus, windowDidOpen, clipboardDidCopy, shareDidSend, inviteReadError, type InviteRowStatus } from '../lib/createdStates'
 import { useReveal } from '../hooks/useReveal'
 
@@ -546,6 +547,10 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
         headline={{ lead: trip.name, accent: 'is live.' }}
         lede="Now the engine starts working for you."
       />
+
+      {/* Phase 2 of the mascot plan: the celebration column opens with Chakra, and
+          this page carries no other animated art. */}
+      <Mascot pose="celebrate" size={132} animated center />
 
       {/* The card renders when any read on this page failed, even with no rows.
           A failure that rendered nowhere would read as "nothing to report". */}

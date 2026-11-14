@@ -100,7 +100,7 @@ describe('W10 phone full screen', () => {
     const mapTab = read('src', 'pages', 'trip', 'MapTab.tsx')
     expect(mapTab).toContain('kind: \'bounds\'')
     expect(mapTab).toContain('sheet.addEventListener(\'transitionend\', measure)')
-    expect(mapTab).toContain('bottom: phoneSheet ? phoneSheetHeight : 90')
+    expect(mapTab).toContain('bottom: phoneSheet ? phoneSheetHeight : 0')
     expect(mapTab).toContain("frameStayRing={lens === 'stay' && lenses.stay.base != null && !phoneSheet}")
     expect(mapTab).toContain('mapTarget={localTarget ?? mapTarget ?? phoneStayTarget}')
     expect(mapTab).toContain('inSheet={false}')

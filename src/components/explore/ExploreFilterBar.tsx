@@ -1,22 +1,25 @@
 // ============ Explore — filter bar ============
-// The search field, three selects, then the travel-style chips with counts, the
-// Saved toggle and Clear. The page owns the state and the URL. This bar only
-// shows it and reports taps. The frame, the stacking host and the phone Filters
-// fold come from FilterBar. This file only fills its slots.
+// The length group, the budget and sort selects, then the travel-style chips
+// with counts, the Saved toggle and Clear. The search field lives in the hero
+// and writes the same query, so the page keeps one source of truth. The page
+// owns the state and the URL. This bar only shows it and reports taps. The
+// frame, the stacking host and the phone Filters fold come from FilterBar. This
+// file only fills its slots.
 import { ArrowDownUp, Heart } from 'lucide-react'
 import { Select } from '../Select'
 import { FilterChip } from '../filters/FilterChip'
-import { SearchField } from '../filters/SearchField'
 import { FilterBar } from '../page/FilterBar'
+import { SegmentedTabs } from '../page/SegmentedTabs'
 
 export interface StyleOption { value: string; label: string; count: number }
 
 const DURATION_OPTIONS = [
   { value: 'all', label: 'Any length' },
-  { value: 'short', label: '≤3 days' },
+  { value: 'short', label: '3 days or less' },
   { value: 'medium', label: '4–6 days' },
   { value: 'long', label: '7+ days' },
 ]
+const DURATION_ITEMS = DURATION_OPTIONS.map(option => ({ key: option.value, label: option.label }))
 const BUDGET_OPTIONS = [
   { value: '', label: 'Any budget' },
   { value: '10000', label: 'Under ₹10k' },
@@ -33,14 +36,11 @@ const SORT_OPTIONS = [
 ]
 
 export function ExploreFilterBar({
-  query, onQueryChange,
   styles, style, onAllStyles, onToggleStyle,
   savedOnly, savedCount, onToggleSaved,
   duration, onDuration, maxBudget, onBudget, sortKey, onSort,
   filtersActive, onClear,
 }: {
-  query: string
-  onQueryChange: (next: string) => void
   styles: StyleOption[]
   style: string
   onAllStyles: () => void
@@ -61,16 +61,11 @@ export function ExploreFilterBar({
   return (
     <FilterBar
       label="Filter itineraries"
-      search={
-        <SearchField value={query} onChange={onQueryChange} label="Search by route, place or creator"
-          placeholder="Search a route, place or creator" shortPlaceholder="Search routes" />
-      }
       activeSelectCount={selectCount}
       selects={
         <>
-          <div className="ex-select">
-            <Select value={duration} onChange={onDuration} aria-label="Duration" options={DURATION_OPTIONS} />
-          </div>
+          <SegmentedTabs semantics="toggle" className="ex-seg" label="Duration" value={duration}
+            onChange={onDuration} items={DURATION_ITEMS} />
           <div className="ex-select">
             <Select value={maxBudget} onChange={onBudget} aria-label="Max budget" options={BUDGET_OPTIONS} />
           </div>

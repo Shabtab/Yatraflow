@@ -5,6 +5,7 @@ import { currentUser, updateTrip } from '../store/store'
 import { fetchFirstAvailableThumb, pickTripQueryCandidates, sizedCoverUrl } from '../lib/tripThumb'
 import { COVER_TYPES, coverFileError, uploadCover } from '../lib/coverUpload'
 import { coverPlanFor } from '../lib/regionArt'
+import { artIdFromCoverUrl } from '../lib/artCover'
 import { regionFor } from '../lib/tripsPage'
 import { CoverMedia } from './CoverMedia'
 
@@ -18,9 +19,11 @@ import { CoverMedia } from './CoverMedia'
  *     coverImageUrl, sized through `Special:Redirect` so no row ever holds a
  *     multi-megabyte original.
  *   • A custom URL lets the owner override with any image.
- *   • "Use artwork" clears the image so the cards fall back to the generated
- *     artwork. It clears the URL ONLY: the stored upload object stays, because
- *     a fork or a publication may still reference it.
+ *   • "Use artwork" names the generated scene that fits the trip. On a trip it
+ *     clears the image, so the cards fall back to that scene. On a publication
+ *     it stores the scene's stable https URL, because a share card needs one.
+ *     The stored upload object stays in either case: a fork or a publication
+ *     may still reference it.
  *   • "Upload image" shrinks a picked photo to 1200px, re-encodes it as JPEG
  *     and stores it in our own public bucket (lib/coverUpload.ts), so the
  *     creator is not limited to photos someone else hosts. Replacing one adds
@@ -69,7 +72,7 @@ export function coverUrlError(raw: string | null | undefined): string | null {
   return null
 }
 
-export function CoverImagePicker({ trip, editable, error: externalError }: {
+export function CoverImagePicker({ trip, editable, error: externalError, defaultArt }: {
   trip: Trip
   editable: boolean
   /** #389 — the host form's own validation message for the cover rule. Two of
@@ -78,6 +81,9 @@ export function CoverImagePicker({ trip, editable, error: externalError }: {
    *  was talking about. Rendered in the SAME `role="status"` channel as this
    *  component's own messages, so the two cannot shout over each other. */
   error?: string | null
+  /** The publish form's artwork default. Its absence marks the trip settings
+   *  form, where clearing the cover lets the cards show their own scene. */
+  defaultArt?: { id: string; url: string } | null
 }) {
   // Which of the two long operations is running, not merely that one is. They
   // share both buttons' `disabled`, but a single boolean would make the
@@ -96,8 +102,15 @@ export function CoverImagePicker({ trip, editable, error: externalError }: {
   // a single "no photo on Wikipedia" page doesn't make the cover picker look
   // empty when a perfectly good image exists for the next stop.
   const candidates = pickTripQueryCandidates(trip)
+  // A publication needs a stored address for its cover. The trip's own cards
+  // do not: a cleared cover already shows the generated scene there.
+  const storedArtId = artIdFromCoverUrl(trip.coverImageUrl)
+  const usingArtwork = Boolean(storedArtId) || (!trip.coverImageUrl && Boolean(defaultArt))
+  const previewCover = trip.coverImageUrl
+    ? sizedCoverUrl(trip.coverImageUrl)
+    : (defaultArt?.url ?? '')
   const previewPlan = coverPlanFor({
-    userCover: trip.coverImageUrl ? sizedCoverUrl(trip.coverImageUrl) : '',
+    userCover: previewCover,
     fallbackEmoji: trip.coverEmoji,
     region: regionFor(trip),
     seed: trip.id,
@@ -219,8 +232,9 @@ export function CoverImagePicker({ trip, editable, error: externalError }: {
               cannot stack into a wall of red. The picker's own message wins when
               both are present — it is the more specific one. */}
           {showError && <p id="cover-picker-error" className="err-text" role="status" aria-live="polite">{error}</p>}
-          {trip.coverImageUrl && (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCover(undefined)}>Use artwork</button>
+          {(defaultArt || trip.coverImageUrl) && (
+            <button type="button" className="btn btn-ghost btn-sm" aria-pressed={usingArtwork}
+              onClick={() => setCover(defaultArt ? defaultArt.url : undefined)}>Use artwork</button>
           )}
         </div>
       )}

@@ -36,6 +36,7 @@ import { setTheme, useTheme } from './lib/theme'
 import { hideSplash, registerAndroidBack, setNativeTheme } from './lib/appShell'
 import { sliceState, rowsView, type RowsView } from './lib/readState'
 import { StateBlock } from './components/page/StateBlock'
+import { Mascot } from './components/mascot/Mascot'
 import { LandingPage } from './pages/Landing'
 import { NativeHomePage } from './pages/NativeHome'
 import {
@@ -68,7 +69,7 @@ const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m
 const DMCAPage = lazy(() => import('./pages/DMCAPage').then(m => ({ default: m.DMCAPage })))
 
 /** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. The `page-enter` root gives the block the shared entrance, so it never pops in. */
-const lazyRouteFallback = <div className="container page-enter"><StateBlock kind="loading" titleLevel="h2" icon={<span className="spinner" aria-hidden="true" />} title="Loading…" /></div>
+const lazyRouteFallback = <div className="container page-enter"><StateBlock kind="loading" titleLevel="h2" art={<Mascot pose="loading" size={112} />} title="Loading…" /></div>
 
 export type ProfileLookupState = 'anonymous' | 'reading' | 'failed' | 'missing' | 'ready'
 
@@ -332,12 +333,15 @@ export default function App() {
     // One subscription for every route change: this module's navigate (one
     // pushState on the web), the browser's Back/Forward, and the native
     // shell's hash changes — the seam lives in lib/router.
-    return onRouteChange(() => {
-      setRoute(currentRoute())
+    return onRouteChange((event?: Event) => {
+      const nextRoute = currentRoute()
+      // Fragment history belongs to the page's section links.
+      if (event?.type === 'popstate' && nextRoute === route) return
+      setRoute(nextRoute)
       setMobileNav(false)
       window.scrollTo({ top: 0, behavior: scrollBehavior() })
     })
-  }, [])
+  }, [route])
 
   // Boot the store once: subscribes to Supabase auth changes and hydrates the
   // session's data into the cache. Without this, `me` stays null forever and

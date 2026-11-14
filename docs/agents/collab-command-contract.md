@@ -176,5 +176,7 @@ Apply `20261023a_collab_commands.sql`, deploy clients, then apply
 `20261023b_collab_cutover.sql`. Before cutover, direct writes remain available
 for old clients. After cutover, create, ballot, comment, and activity writes
 must use the RPC. Suggestion and decision workflow updates remain editor-scoped.
-Direct updates cannot replace contribution columns. Activity remains
+Direct updates cannot replace contribution columns. After
+`20261025b_collab_transition_cutover.sql`, direct updates also cannot change
+status, placement or resolution columns. Both cutovers are live. Activity remains
 append-only. Notification reads, updates, and deletes remain recipient-only.

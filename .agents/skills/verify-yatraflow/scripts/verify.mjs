@@ -3,11 +3,15 @@
 //
 //   node .agents/skills/verify-yatraflow/scripts/verify.mjs start
 //   node .agents/skills/verify-yatraflow/scripts/verify.mjs doctor
-//   node .agents/skills/verify-yatraflow/scripts/verify.mjs drive <route> <name> [--click <text>] [--expect <text>] [--width <px>] [--settle <ms>]
+//   node .agents/skills/verify-yatraflow/scripts/verify.mjs signin
+//   node .agents/skills/verify-yatraflow/scripts/verify.mjs trips
+//   node .agents/skills/verify-yatraflow/scripts/verify.mjs drive <route> <name> [--click <text>] [--expect <text>] [--width <px>] [--settle <ms>] [--signin]
 //   node .agents/skills/verify-yatraflow/scripts/verify.mjs stop
 //
 // Overrides: VERIFY_APP_PORT (default 5178), VERIFY_CDP_PORT (default 9333),
 // VERIFY_BROWSER (path to an Edge or Chrome executable).
+// Signed-in checks read VERIFY_TEST_EMAIL and VERIFY_TEST_PASSWORD from .env.local
+// or the process environment. Their values are never printed or saved.
 //
 // Everything this harness starts is recorded under .verify-evidence/run/ and
 // is killed by PID tree on `stop`. It never kills by process name, and it never
@@ -42,6 +46,22 @@ const BROWSERS = [
 
 const env = readEnvFile(join(ROOT, '.env.local'))
 const PROJECT_REF = (env.VITE_SUPABASE_URL ?? '').match(/https:\/\/([a-z0-9]+)\.supabase\.co/)?.[1] ?? ''
+
+// The disposable test account for signed-in checks. The process environment wins
+// over .env.local, and an empty value counts as set. Never print these values.
+const TEST_EMAIL = (process.env.VERIFY_TEST_EMAIL ?? env.VERIFY_TEST_EMAIL ?? '').trim()
+const TEST_PASSWORD = process.env.VERIFY_TEST_PASSWORD ?? env.VERIFY_TEST_PASSWORD ?? ''
+
+// Every message and saved record passes through here, so the test account never
+// reaches a log, a report or a file.
+function scrub(value) {
+  if (typeof value === 'string') {
+    return [TEST_EMAIL, TEST_PASSWORD].reduce((text, secret) => (secret ? text.split(secret).join('[test account]') : text), value)
+  }
+  if (Array.isArray(value)) return value.map(scrub)
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, scrub(item)]))
+  return value
+}
 
 function readEnvFile(path) {
   if (!existsSync(path)) return {}
@@ -211,6 +231,136 @@ class Cdp {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
+// Like waitFor, but returns false on timeout instead of throwing.
+async function pollUntil(check, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await check()) return true
+    await sleep(500)
+  }
+  return false
+}
+
+// Opens a tab on the running app, runs the callback, then closes the tab.
+async function withTab(width, run) {
+  const target = JSON.parse((await httpGet(`http://127.0.0.1:${CDP_PORT}/json/new?${encodeURIComponent('about:blank')}`, 'PUT')).body)
+  const cdp = new Cdp(target.webSocketDebuggerUrl)
+  try {
+    await cdp.open()
+    await cdp.send('Page.enable')
+    await cdp.send('Runtime.enable')
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width < 720 })
+    const evaluate = async expression => (await cdp.send('Runtime.evaluate', { expression, returnByValue: true })).result.value
+    return await run(cdp, evaluate)
+  } finally {
+    cdp.close()
+    await httpGet(`http://127.0.0.1:${CDP_PORT}/json/close/${target.id}`)
+  }
+}
+
+// Loads a URL in the tab and waits for the load event.
+async function loadPage(cdp, url) {
+  let loaded = false
+  cdp.on(message => { if (message.method === 'Page.loadEventFired') loaded = true })
+  await cdp.send('Page.navigate', { url })
+  await waitFor(async () => loaded, 60_000, `load of ${url}`)
+}
+
+// Page-side reads. They return plain values, never the stored token.
+const READ_STORED_SESSION = `(() => {
+  try {
+    const key = Object.keys(localStorage).find(name => name.startsWith('sb-') && name.endsWith('-auth-token'))
+    const session = key ? JSON.parse(localStorage.getItem(key)) : null
+    if (!session || !session.access_token) return null
+    return { email: String(session.user?.email ?? '') }
+  } catch { return null }
+})()`
+const READ_FORM_ALERT = `(() => {
+  const alert = document.querySelector('.auth-submit-error')
+  return alert ? alert.innerText.trim() : null
+})()`
+const TRIP_LINK_COUNT = `document.querySelectorAll('a[href^="/trip/"]').length`
+const TRIP_LINKS = `(() => {
+  const found = new Map()
+  for (const link of document.querySelectorAll('a[href]')) {
+    const route = link.getAttribute('href') || ''
+    const title = (link.innerText || link.getAttribute('aria-label') || '').trim()
+    // Workspace routes only: /trip/<id>, not /trip/<id>/share.
+    if (route.startsWith('/trip/') && route.split('/').length === 3 && title && !found.has(route)) found.set(route, title)
+  }
+  return [...found].map(([route, title]) => ({ title, route }))
+})()`
+
+// Signs the test account in on the running app. It does nothing when the account
+// is already signed in. It stops when another account holds the session, because
+// this harness signs in only the test account.
+async function signIn() {
+  if (!TEST_EMAIL || !TEST_PASSWORD) {
+    const missing = [TEST_EMAIL ? null : 'VERIFY_TEST_EMAIL', TEST_PASSWORD ? null : 'VERIFY_TEST_PASSWORD'].filter(Boolean).join(' and ')
+    throw new Error(`signin needs ${missing}. Set both in .env.local (git-ignored) or the process environment. Values are never printed.`)
+  }
+  if (!(await httpOk(APP_ORIGIN))) throw new Error(`app is not running at ${APP_ORIGIN}; run start first`)
+  await ensureBrowser(1280)
+  return withTab(1280, async (cdp, evaluate) => {
+    await loadPage(cdp, `${APP_ORIGIN}/auth`)
+    const stored = await evaluate(READ_STORED_SESSION)
+    if (stored && stored.email.trim().toLowerCase() !== TEST_EMAIL.toLowerCase()) {
+      throw new Error('another account is signed in on the harness browser. Run stop, then signin again.')
+    }
+    // The app leaves /auth once it accepts a stored session. A rejected session stays on /auth.
+    if (stored && await pollUntil(async () => (await evaluate('location.pathname')) !== '/auth', 20_000)) {
+      return 'already signed in as the test account'
+    }
+    if (!(await pollUntil(() => evaluate(`Boolean(document.querySelector('input[name=email]'))`), 30_000))) {
+      throw new Error('the sign-in form did not render on /auth within 30 s')
+    }
+    for (const [field, value] of [['email', TEST_EMAIL], ['password', TEST_PASSWORD]]) {
+      const focused = await evaluate(`(() => {
+        const el = document.querySelector('input[name=${field}]')
+        if (!el) return false
+        el.focus()
+        return document.activeElement === el
+      })()`)
+      if (!focused) throw new Error(`could not focus the ${field} field on /auth`)
+      // Input.insertText fires the input events that React listens for.
+      await cdp.send('Input.insertText', { text: value })
+    }
+    const submitted = await evaluate(`(() => {
+      const button = document.querySelector('form button[type=submit]')
+      if (!button) return false
+      button.click()
+      return true
+    })()`)
+    if (!submitted) throw new Error('no submit button on /auth')
+    let failure = null
+    const signedIn = await pollUntil(async () => {
+      const now = await evaluate(READ_STORED_SESSION)
+      if (now && now.email.trim().toLowerCase() === TEST_EMAIL.toLowerCase()) return true
+      failure = await evaluate(READ_FORM_ALERT)
+      return Boolean(failure)
+    }, 30_000)
+    if (failure) throw new Error(`sign-in failed: ${scrub(failure)}`)
+    if (!signedIn) throw new Error('sign-in stored no session within 30 s')
+    return 'signed in as the test account'
+  })
+}
+
+// Prints the signed-in account's trips: title, workspace route and Map tab route.
+async function trips() {
+  console.log(await signIn())
+  const rows = await withTab(1280, async (cdp, evaluate) => {
+    await loadPage(cdp, `${APP_ORIGIN}/trips`)
+    // A cold dev server compiles the list page on its first load, which can take a minute.
+    if (!(await pollUntil(async () => (await evaluate(TRIP_LINK_COUNT)) > 0, 90_000))) {
+      throw new Error('no trip links on /trips within 90 s: the account has no trips, or the list did not load')
+    }
+    await sleep(2000) // the list can still fill in after its first link appears
+    return evaluate(TRIP_LINKS)
+  })
+  console.log(JSON.stringify(scrub((rows ?? []).map(row => ({ ...row, map: `${row.route}/map` }))), null, 2))
+}
+
+// ---------- drive ----------
 async function drive(route, name, options) {
   // settle: ms to wait after a click before reading the DOM.
   if (!(await httpOk(APP_ORIGIN))) throw new Error(`app is not running at ${APP_ORIGIN}; run start first`)
@@ -220,6 +370,7 @@ async function drive(route, name, options) {
   // Git Bash rewrites a bare "/" argument into a Windows path. Refuse that here
   // instead of sending the browser to a file:// nonsense URL.
   if (!route.startsWith('/') || route.includes(':')) throw new Error(`route "${route}" is not an app path (Git Bash path conversion? run with MSYS_NO_PATHCONV=1)`)
+  if (options.signin) console.log(await signIn())
   const url = `${APP_ORIGIN}${route}`
   const target = JSON.parse((await httpGet(`http://127.0.0.1:${CDP_PORT}/json/new?${encodeURIComponent('about:blank')}`, 'PUT')).body)
   const cdp = new Cdp(target.webSocketDebuggerUrl)
@@ -256,6 +407,8 @@ async function drive(route, name, options) {
     await sleep(options.settle)
   }
 
+  // Signed-in data can arrive after the fixed wait. Poll for the expected text up to 15 s.
+  if (options.expect) await pollUntil(async () => (await evaluate('document.body.innerText')).includes(options.expect), 15_000)
   const text = await evaluate('document.body.innerText')
   const finalUrl = await evaluate('location.href')
   const title = await evaluate('document.title')
@@ -266,7 +419,7 @@ async function drive(route, name, options) {
   const expectation = options.expect
     ? { expect: options.expect, found: text.includes(options.expect) }
     : null
-  const record = {
+  const record = scrub({
     name,
     route,
     finalUrl,
@@ -278,7 +431,7 @@ async function drive(route, name, options) {
     bodyTextExcerpt: text.slice(0, 600),
     screenshot: shotPath,
     capturedAt: new Date().toISOString(),
-  }
+  })
   writeFileSync(join(EVIDENCE, `${name}.json`), JSON.stringify(record, null, 2))
   cdp.close()
   await httpGet(`http://127.0.0.1:${CDP_PORT}/json/close/${target.id}`)
@@ -291,9 +444,23 @@ async function drive(route, name, options) {
 }
 
 // ---------- stop ----------
+// Edge helper processes can outlive taskkill /T and keep the profile locked.
+// Kill only the processes whose command line names this run's own profile.
+function killProfileStragglers() {
+  if (process.platform !== 'win32') return
+  const script = 'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:VERIFY_PROFILE_DIR) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }'
+  try {
+    execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      stdio: 'ignore',
+      env: { ...process.env, VERIFY_PROFILE_DIR: BROWSER_PROFILE },
+    })
+  } catch { /* nothing left to kill */ }
+}
+
 function stop() {
   killTree(readPid(BROWSER_PID))
   killTree(readPid(DEV_PID))
+  killProfileStragglers()
   // Remove run state (pids, the browser profile, the dev log). Proof artifacts
   // directly under .verify-evidence/ are left in place. Windows keeps profile
   // files locked for a moment after taskkill, so retry instead of failing.
@@ -318,19 +485,25 @@ function removeRunState() {
 const [command, ...args] = process.argv.slice(2)
 const flags = {}
 const positional = []
+// Flags that take no value. Every other --flag takes the next argument.
+const SWITCHES = new Set(['signin'])
 for (let i = 0; i < args.length; i++) {
-  if (args[i].startsWith('--')) flags[args[i].slice(2)] = args[++i]
-  else positional.push(args[i])
+  if (args[i].startsWith('--')) {
+    const name = args[i].slice(2)
+    flags[name] = SWITCHES.has(name) ? true : args[++i]
+  } else positional.push(args[i])
 }
 
 try {
   if (command === 'start') await start()
   else if (command === 'doctor') await doctor()
+  else if (command === 'signin') console.log(await signIn())
+  else if (command === 'trips') await trips()
   else if (command === 'drive') {
-    if (positional.length < 2) throw new Error('usage: drive <route> <name> [--click <text>] [--expect <text>] [--width <px>]')
-    await drive(positional[0], positional[1], { click: flags.click, expect: flags.expect, width: Number(flags.width ?? 1280), settle: Number(flags.settle ?? 3000) })
+    if (positional.length < 2) throw new Error('usage: drive <route> <name> [--click <text>] [--expect <text>] [--width <px>] [--settle <ms>] [--signin]')
+    await drive(positional[0], positional[1], { click: flags.click, expect: flags.expect, width: Number(flags.width ?? 1280), settle: Number(flags.settle ?? 3000), signin: flags.signin === true })
   } else if (command === 'stop') stop()
-  else throw new Error('usage: verify.mjs <start|doctor|drive|stop>')
+  else throw new Error('usage: verify.mjs <start|doctor|signin|trips|drive|stop>')
 } catch (error) {
   console.error(`ERROR: ${error.message}`)
   process.exitCode = 1

@@ -44,6 +44,8 @@ export interface ArtIdEntry {
 
 export interface ArtManifest {
   version: number
+  /** AVIF widths added to landscape scenes for cover-size slots. */
+  coverWidths: number[]
   regions: Record<ArtRegion, string[]>
   fallbacks: Record<ArtFallback, string[]>
   vignettes: Record<string, string>
@@ -56,6 +58,13 @@ export interface ArtManifest {
 }
 
 export const ART_MANIFEST: ArtManifest = manifestJson
+
+/** Every AVIF width this id has a file for, in ascending order. */
+export function avifWidthsFor(id: string, manifest: ArtManifest = ART_MANIFEST): number[] {
+  const entry = artEntryFor(id, manifest)
+  if (!entry) return []
+  return entry.ratio === '3:2' ? [...entry.widths, ...manifest.coverWidths] : entry.widths
+}
 
 // The manifest is the only source of art ids, so this map's key set is exactly
 // the declared ids. A Map also keeps the lookup off the prototype chain, so a

@@ -3,7 +3,7 @@
    declaration is unchanged. Rules the board shares with another family stay
    in the legacy file. */
 
-.board-col { animation: panelIn var(--t-slow) var(--ease-out) backwards; }
+.board-col { animation: panelIn var(--motion-slow) var(--ease-paper) backwards; }
 
 .board-col:nth-child(2) { animation-delay: calc(var(--stagger-step) * 1); }
 
@@ -19,7 +19,7 @@
 
 .board-col:nth-child(8) { animation-delay: calc(var(--stagger-step) * 7); }
 
-.board-stop, .board-col-zone, .board-col--focused { transition: border-color var(--t-med) var(--ease-out), background var(--t-med) var(--ease-out), transform var(--t-fast) var(--ease-out); }
+.board-stop, .board-col-zone, .board-col--focused { transition: border-color var(--motion-slow) var(--ease-paper), background var(--motion-slow) var(--ease-paper), transform var(--motion-fast) var(--ease-paper); }
 
 .board-stop:hover { transform: translateY(-1px); }
 
@@ -27,37 +27,39 @@
 
 .board-col {
   transition:
-    background-color var(--t-slow) var(--ease-out),
-    color var(--t-slow) var(--ease-out),
-    border-color var(--t-slow) var(--ease-out),
-    transform var(--t-slow) var(--ease-glide);
+    background-color var(--motion-slow) var(--ease-paper),
+    color var(--motion-slow) var(--ease-paper),
+    border-color var(--motion-slow) var(--ease-paper),
+    transform var(--motion-slow) var(--ease-glide);
 }
 
 .board--mapfocus .board-col { transform: translateY(88%); }
 
-.board-col:nth-child(2), .board--mapfocus .board-col:nth-child(2) { transition-delay: 40ms; }
+/* Column slide stagger: two thirds of --stagger-step (40ms at 60ms) per
+   column. The token is 0ms under reduced motion, so the delay is too. */
+.board-col:nth-child(2), .board--mapfocus .board-col:nth-child(2) { transition-delay: calc(var(--stagger-step) * 2 / 3 * 1); }
 
-.board-col:nth-child(3), .board--mapfocus .board-col:nth-child(3) { transition-delay: 80ms; }
+.board-col:nth-child(3), .board--mapfocus .board-col:nth-child(3) { transition-delay: calc(var(--stagger-step) * 2 / 3 * 2); }
 
-.board-col:nth-child(4), .board--mapfocus .board-col:nth-child(4) { transition-delay: 120ms; }
+.board-col:nth-child(4), .board--mapfocus .board-col:nth-child(4) { transition-delay: calc(var(--stagger-step) * 2 / 3 * 3); }
 
-.board-col:nth-child(5), .board--mapfocus .board-col:nth-child(5) { transition-delay: 160ms; }
+.board-col:nth-child(5), .board--mapfocus .board-col:nth-child(5) { transition-delay: calc(var(--stagger-step) * 2 / 3 * 4); }
 
-.board-col:nth-child(6), .board--mapfocus .board-col:nth-child(6) { transition-delay: 200ms; }
+.board-col:nth-child(6), .board--mapfocus .board-col:nth-child(6) { transition-delay: calc(var(--stagger-step) * 2 / 3 * 5); }
 
-.board-col:nth-child(7), .board--mapfocus .board-col:nth-child(7) { transition-delay: 240ms; }
+.board-col:nth-child(7), .board--mapfocus .board-col:nth-child(7) { transition-delay: calc(var(--stagger-step) * 2 / 3 * 6); }
 
-.board-col:nth-child(8), .board--mapfocus .board-col:nth-child(8) { transition-delay: 280ms; }
+.board-col:nth-child(8), .board--mapfocus .board-col:nth-child(8) { transition-delay: calc(var(--stagger-step) * 2 / 3 * 7); }
 
 .board--mapfocus .board-topbar { opacity: .35; transform: translateY(-8px); }
 
-.board-topbar { transition: opacity var(--t-slow) var(--ease-out), transform var(--t-slow) var(--ease-out); }
+.board-topbar { transition: opacity var(--motion-slow) var(--ease-paper), transform var(--motion-slow) var(--ease-paper); }
 
 .board-col-stops.is-dragging .board-row { will-change: transform; }
 
 .board-col-stops { position: relative; }
 
-.board-stop { transition: border-color var(--t-med) var(--ease-out), background var(--t-med) var(--ease-out), transform var(--motion-fast) var(--ease-glide); }
+.board-stop { transition: border-color var(--motion-slow) var(--ease-paper), background var(--motion-slow) var(--ease-paper), transform var(--motion-fast) var(--ease-glide); }
 
 .board-stop.dragging {
   opacity: .45; background: transparent; box-shadow: none;
@@ -81,12 +83,14 @@
   }
   .board-map .map-frame { min-height: 0; }
   .board-topbar { position: static; inset: auto; flex-direction: column; margin: 0 0 8px; gap: 8px; }
-  .board-info { max-width: none; }
-  .board-pulse { width: 100%; }
+  .board-info { max-width: none; align-self: stretch; }
+  .board-pulse { width: 100%; max-width: none; }
   /* column-direction topbar: the desktop equal-size flex basis would become a
      560px height here — stack panels at natural size instead */
   .board-topbar .board-info, .board-topbar .board-pulse { flex: 0 0 auto; }
-  .board-cols { position: static; inset: auto; margin-top: 4px; padding-bottom: 10px; }
+  /* No side padding: the first column lines up with the panels above it. */
+  .board-cols { position: static; inset: auto; margin-top: 4px; padding-bottom: 10px; padding-left: 0; padding-right: 0; }
+  .board-stop-actions { margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--line); }
   .board-col { flex: 0 0 264px; height: auto; min-height: 0; }
   .board-col-head { min-height: 52px; }
   .board-col-zone { min-height: 48px; justify-content: center; }
@@ -94,4 +98,16 @@
 
 @media (prefers-reduced-motion: reduce) {
   .board-stop { transition: none; }
+}
+
+/* Coarse pointers: extend the hit area of the two compact Board controls
+   without a visual change. Fit route grows 6px on each side (7px of panel
+   text sits above it). The stop title grows only up and down, so it stays
+   clear of the move and status buttons at its right. */
+@media (pointer: coarse) {
+  .board-fit, .board-stop-title-btn { position: relative; }
+  .board-fit::after, .board-stop-title-btn::after {
+    content: ''; position: absolute; inset: -6px; border-radius: inherit;
+  }
+  .board-stop-title-btn::after { inset: -6px 0; }
 }

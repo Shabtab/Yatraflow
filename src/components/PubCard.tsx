@@ -1,17 +1,22 @@
-// ============ Published-itinerary card — shared by Explore and creator pages ============
-// One card for every place the catalog renders, so a fork/save/creator change
-// lands everywhere at once. Fork + save behavior arrive as callbacks; the
-// creator line links to the creator's public page (#/creator/:id).
-import { Calendar, Camera, GitFork, Heart, MapPin, Sparkles, TvMinimalPlay, Wallet } from 'lucide-react'
-import { InlineIcon, MetaIcon } from './icons'
+// ============ Published-itinerary card for the creator page ============
+// This file no longer draws a card of its own. It composes the one shared
+// publication card (`components/explore/ExploreCard.tsx`) and supplies what a
+// creator page adds:
+//   - the creator row: bio plus channel links, from the profile's own fields,
+//   - the explicit fork label ("Fork this trip") the creator page has always used,
+//   - the cover sizes for the `.explore-grid` column, which is wider than the
+//     Explore grid's,
+//   - an optional entrance slot for a grid that staggers its rows.
+// Every control still arrives as a callback, so fork, save and the creator link
+// keep the behaviour of their page. Nothing here claims a statistic, a follower
+// count, a payout or a date: the row prints only what the profile holds.
+import type { CSSProperties } from 'react'
+import { Camera, TvMinimalPlay } from 'lucide-react'
 import type { PublishedItinerary, CachedUser } from '../data/types'
-import { formatInr } from '../lib/engine'
-import { cap } from '../lib/labels'
 import { staggerDelay } from '../lib/motion'
 import { openExternal } from '../lib/native'
-import { Avatar, Chip } from './ui'
-import { CoverThumb } from './CoverThumb'
-import { appLink } from '../lib/appLink'
+import { ExploreCard } from './explore/ExploreCard'
+import { PUB_GRID_SIZES } from './explore/ExploreCover'
 
 export function PubCard({ pub, creator, saved, onFork, onToggleSave, enterIndex, needsLogin }: {
   pub: PublishedItinerary
@@ -19,66 +24,52 @@ export function PubCard({ pub, creator, saved, onFork, onToggleSave, enterIndex,
   saved: boolean
   onFork: () => void
   onToggleSave: () => void
-  /** Grid position for the shared entrance stagger (Explore); omit for none. */
+  /** Grid position for a staggered entrance. Omit it for no entrance at all. */
   enterIndex?: number
   /** Signed out: Fork navigates to /auth rather than forking in place, so the
    *  button has to say so — a click that silently becomes a login redirect
    *  reads as a broken button. */
   needsLogin?: boolean
 }) {
-  return (
-    /* Double-Bezel: this element is the TRAY, the .card inside it is the PLATE.
-       The entrance stagger rides the tray rather than the plate, so the whole
-       bezel animates as one object instead of an empty tray appearing first and
-       its plate fading in inside it. */
-    <div
-      className={`bezel${enterIndex != null ? ' trip-enter' : ''}`}
-      style={enterIndex != null ? { animationDelay: staggerDelay(enterIndex) } : undefined}
-    >
-      <div className="card itin-card">
-        <button className="save-heart" aria-pressed={saved} aria-label={saved ? 'Remove from saved' : 'Save itinerary'}
-          onClick={onToggleSave}><Heart size={13} aria-hidden fill={saved ? 'currentColor' : 'none'} /></button>
-        <a className="trip-card-hit" {...appLink(`/pub/${pub.id}`)}>
-          <CoverThumb
-            trip={{ name: pub.title, destinations: pub.routeSummary }}
-            explicitUrl={pub.coverImageUrl}
-            emoji="🧭"
-            routeLabel={`${pub.routeSummary[0]} → ${pub.routeSummary[pub.routeSummary.length - 1]}`}
-          />
-          <div className="itin-body">
-            <div className="row-between" style={{ marginTop: 0 }}>
-              <Chip tone="teal">{cap(pub.travelStyle)}</Chip>
-              <span className="small muted"><InlineIcon icon={GitFork} size={12} gap={3} />{pub.copies}</span>
-            </div>
-            <h2 className="card-title">{pub.title}</h2>
-            <p className="small muted" style={{ margin: 0 }}>{pub.tagline}</p>
-            <div className="stop-meta" style={{ marginTop: 2 }}>
-              <span><MetaIcon icon={ Calendar } tone="time" />{pub.durationDays} days</span>
-              <span><MetaIcon icon={ Wallet } tone="money" />~{formatInr(pub.estimatedBudgetPerPersonInr)}/person</span>
-              <span><MetaIcon icon={ MapPin } tone="place" />{pub.routeSummary.length} places</span>
-            </div>
-          </div>
-        </a>
-        <div className="row-between itin-meta">
-          <a className="creator-line" {...appLink(`/creator/${pub.creatorId}`)} aria-label={`View ${creator?.profile.name ?? 'creator'}'s page`}>
-            <Avatar user={creator} />{creator?.profile.name ?? 'Creator'}{creator?.profile.isCreator && <InlineIcon icon={Sparkles} size={12} gap={0} style={{ marginLeft: 2 }} />}
-          </a>
-          <button className="btn btn-primary btn-sm" onClick={onFork}>{needsLogin ? 'Log in to fork' : 'Fork this trip'}</button>
-        </div>
-        {creator?.profile.isCreator && (creator.profile.creatorBio || creator.profile.socialLinks?.youtube || creator.profile.socialLinks?.instagram) && (
-          <div className="row-between itin-foot" style={{ gap: 8 }}>
-            <span className="small muted" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{creator.profile.creatorBio}</span>
-            <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
-              {creator.profile.socialLinks?.youtube && (
-                <a href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer noopener" aria-label={`${creator.profile.name} on YouTube`} className="icon-link" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.youtube!) }}><TvMinimalPlay size={14} aria-hidden /></a>
-              )}
-              {creator.profile.socialLinks?.instagram && (
-                <a href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer noopener" aria-label={`${creator.profile.name} on Instagram`} className="icon-link" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.instagram!) }}><Camera size={14} aria-hidden /></a>
-              )}
-            </span>
-          </div>
+  const creatorName = creator?.profile.name ?? 'Creator'
+  const bio = creator?.profile.creatorBio
+  const youtube = creator?.profile.socialLinks?.youtube
+  const instagram = creator?.profile.socialLinks?.instagram
+  const hasCreatorRow = Boolean(creator?.profile.isCreator && (bio || youtube || instagram))
+  const creatorRow = hasCreatorRow ? (
+    <div className="row-between itin-foot ex-card-creator">
+      {/* Always present, so the channel links stay on the right whether or not
+          the creator wrote a bio. */}
+      <span className="ex-card-bio">{bio ?? ''}</span>
+      <span className="ex-card-channels">
+        {youtube && (
+          <a href={youtube} target="_blank" rel="noreferrer noopener" aria-label={`${creatorName} on YouTube`} className="icon-link"
+            onClick={e => { e.preventDefault(); openExternal(youtube) }}><TvMinimalPlay size={14} aria-hidden /></a>
         )}
-      </div>
+        {instagram && (
+          <a href={instagram} target="_blank" rel="noreferrer noopener" aria-label={`${creatorName} on Instagram`} className="icon-link"
+            onClick={e => { e.preventDefault(); openExternal(instagram) }}><Camera size={14} aria-hidden /></a>
+        )}
+      </span>
     </div>
+  ) : undefined
+
+  const card = (
+    <ExploreCard
+      pub={pub}
+      creator={creator}
+      saved={saved}
+      needsLogin={needsLogin}
+      sizes={PUB_GRID_SIZES}
+      forkLabel={needsLogin ? 'Log in to fork' : 'Fork this trip'}
+      footer={creatorRow}
+      onFork={onFork}
+      onToggleSave={onToggleSave}
+    />
   )
+  if (enterIndex == null) return card
+  // The slot owns the entrance when a caller asks for one, so the card itself
+  // never plays the same arrival twice.
+  const enterDelay: CSSProperties = { animationDelay: staggerDelay(enterIndex) }
+  return <div className="ex-enter" style={enterDelay}>{card}</div>
 }

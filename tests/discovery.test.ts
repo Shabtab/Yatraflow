@@ -285,23 +285,24 @@ describe('the discovery copy', () => {
   })
 
   it('draws nothing for an empty trending list', () => {
-    expect(renderToStaticMarkup(createElement(TrendingShelf, { pubs: [], users: [], isSaved: () => false, onToggleSave: () => {} }))).toBe('')
+    expect(renderToStaticMarkup(createElement(TrendingShelf, { pubs: [], users: [], isSaved: () => false, needsLogin: false, onFork: () => {}, onToggleSave: () => {} }))).toBe('')
   })
 
   it('links each trending card to its plan', () => {
     const html = renderToStaticMarkup(createElement(TrendingShelf, {
-      pubs: [pub('p1', 'c1', { views: 26 })], users: [user('c1', 'Arun')], isSaved: () => false, onToggleSave: () => {},
+      pubs: [pub('p1', 'c1', { views: 26 })], users: [user('c1', 'Arun')], isSaved: () => false, needsLogin: false, onFork: () => {}, onToggleSave: () => {},
     }))
     expect(html).toContain('/pub/p1')
     expect(html).toContain('/creator/c1')
   })
 
-  it('spells the views count in a trending row', () => {
+  it('draws each trending pick as the one publication card, with its four facts', () => {
     const pubs = [pub('p1', 'c1', { views: 26 }), pub('p2', 'c2', { views: 1, copies: 1 })]
     const html = renderToStaticMarkup(createElement(TrendingShelf, {
-      pubs, users: [user('c1', 'Arun'), user('c2', 'Bea')], isSaved: () => false, onToggleSave: () => {},
+      pubs, users: [user('c1', 'Arun'), user('c2', 'Bea')], isSaved: () => false, needsLogin: false, onFork: () => {}, onToggleSave: () => {},
     }))
-    expect(html).toContain('26 views')
-    expect(html).toContain('1 view</p>')
+    expect(html.match(/<article class="ex-card/g)).toHaveLength(2)
+    for (const label of ['Days', 'Budget', 'Places', 'Forks']) expect(html).toContain(`<dt>${label}</dt>`)
+    expect(html).toContain('Fork')
   })
 })

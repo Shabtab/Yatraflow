@@ -291,12 +291,17 @@ const sha256 = buffer => createHash('sha256').update(buffer).digest('hex')
 function expectedFiles(manifest) {
   const expected = []
   for (const [id, entry] of Object.entries(manifest.ids)) {
-    for (const width of entry.widths) {
+    for (const width of widthsFor(entry, manifest.coverWidths)) {
       expected.push({ id, width, format: 'avif', name: `${id}-${width}.avif`, capBytes: avifCapBytes(manifest, width) })
     }
     expected.push({ id, width: entry.webp, format: 'webp', name: `${id}-${entry.webp}.webp`, capBytes: manifest.budget.webpKiB * 1024 })
   }
   return expected
+}
+
+/** The AVIF widths for one id: its declared widths plus cover widths for landscape scenes. */
+function widthsFor(entry, coverWidths) {
+  return entry.ratio === '3:2' ? [...entry.widths, ...coverWidths] : entry.widths
 }
 
 function avifCapBytes(manifest, width) {
@@ -320,7 +325,7 @@ async function encodeAll(manifest, mastersDir, outDir, errors) {
       errors.push(`Master ${id} is ${metadata.width}x${metadata.height}, not ${entry.ratio}.`)
       continue
     }
-    for (const width of entry.widths) {
+    for (const width of widthsFor(entry, manifest.coverWidths)) {
       const name = `${id}-${width}.avif`
       const buffer = await sharp(masterPath).rotate().toColorspace('srgb').resize({ width }).avif(encoderFor(name, 'avif')).toBuffer()
       writeFileSync(path.join(outDir, name), buffer)

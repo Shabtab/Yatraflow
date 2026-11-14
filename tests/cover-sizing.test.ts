@@ -44,10 +44,10 @@ describe('sizedCoverUrl on a stored cover', () => {
 describe('every stored-cover surface is wired to the sizer', () => {
   it('the public itinerary hero sizes the stored cover', () => {
     const page = read('../src/pages/PublicItinerary.tsx')
-    // #360 — the fallback arm is `undefined`, not a live suggestion, so the
-    // hero has exactly ONE source: the stored cover, sized. Every path to
-    // `heroSrc` goes through the sizer, and no unsized arm exists at all.
-    expect(page).toMatch(/const heroSrc = pub\.coverImageUrl \? sizedCoverUrl\(pub\.coverImageUrl\) : undefined/)
+    // #914 — a photo cover goes through the sizer. A stored artwork cover is
+    // drawn by RegionArt instead, so its WebP never becomes the hero photo.
+    expect(page).toMatch(/const heroSrc = pub\.coverImageUrl && !artIdFromCoverUrl\(pub\.coverImageUrl\) \? sizedCoverUrl\(pub\.coverImageUrl\) : undefined/)
+    expect(page).toMatch(/artIdFromCoverUrl\(pub\.coverImageUrl\) \? <RegionArt/)
     expect(page).not.toMatch(/useDestinationCover|heroAuto/)
     // the hero must render the sized value, never the raw column
     expect(page).toMatch(/src=\{heroSrc\}/)
@@ -68,7 +68,7 @@ describe('every stored-cover surface is wired to the sizer', () => {
     const picker = read('../src/components/CoverImagePicker.tsx')
     expect(picker).toMatch(/coverImageUrl: url \? sizedCoverUrl\(url\) : undefined/)
     // and previews it sized, so the control itself is not the heavy view
-    expect(picker).toMatch(/trip\.coverImageUrl \? sizedCoverUrl\(trip\.coverImageUrl\)/)
+    expect(picker).toMatch(/const previewCover = trip\.coverImageUrl\s*\? sizedCoverUrl\(trip\.coverImageUrl\)/)
   })
 
   // The plan is built from the cover URL, so a surface that hands it a RAW

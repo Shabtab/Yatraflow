@@ -178,7 +178,7 @@ export function summariseDay(day: ItineraryDay, travelMinutes: number, flight: F
   const pace = paceOf({ placeCount, travelMinutes, hasFlight, visitMinutes })
   return {
     index: day.index,
-    title: day.title && day.title.trim() ? day.title : `Day ${day.index + 1}`,
+    title: flight !== 'withheld' && day.title?.trim() ? day.title : `Day ${day.index + 1}`,
     placeCount,
     kinds,
     // A withheld flight leaves no evidence either way, so a day with no counted

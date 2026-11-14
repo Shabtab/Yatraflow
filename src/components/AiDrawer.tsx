@@ -8,6 +8,7 @@ import { quickPrompts } from '../lib/ai'
 import { askCompanion, type CompanionSource } from '../lib/aiProvider'
 import { scrollBehavior } from '../lib/motion'
 import { Chip } from './ui'
+import { Mascot } from './mascot/Mascot'
 interface Msg {
   id: number
   role: 'user' | 'bot'
@@ -147,7 +148,13 @@ export function AiDrawer({ trip, open, onOpen, onClose, legCorrections }: {
             </div>
           ))}
           {thinking && (
-            <div className="ai-bubble bot"><span className="sr-only">Companion is thinking…</span><span className="typing-dots"><span /><span /><span /></span></div>
+            // Phase 2 of the mascot plan. Chakra's thinking pose carries the
+            // three pulsing dots itself, so the bubble holds one animated thing
+            // rather than a mascot beside a second spinner.
+            <div className="ai-bubble bot ai-bubble-thinking">
+              <span className="sr-only">Companion is thinking…</span>
+              <Mascot pose="thinking" size={64} animated />
+            </div>
           )}
         </div>
 

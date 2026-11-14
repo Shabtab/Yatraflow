@@ -1,5 +1,9 @@
 # CODING_STANDARDS.md — YatraFlow
 
+Locked day titles can name paid places. Public summaries and renderers must show a day number.
+Never select artwork from a locked title. Free and purchased days keep their creator titles.
+Trip kit views must check the wire lock before simulation. Locked cards must show no time bar or road facts.
+
 Conventions and hard-won pitfalls. Read during **review**, and reach for a
 single rule while implementing when a change touches that area.
 
@@ -1466,6 +1470,8 @@ The editor primitives are the default; a script is the exception.
     made two rows that send two invitations. Compare the name too.
     Pinned in tests/create-crew-fields.test.ts; the entry fails on the
     pre-fix parser (see 6h's break-proof rule).
+
+**Map corridor widths.** Scale translucent wash widths and edge offsets together with zoom. Check tight bends and band visibility above the casing in both themes.
 
 **Map counts and clocks.** Label totals of alternative picks as alternatives. Filled slots read the shared schedule, not search windows.
 

@@ -412,6 +412,34 @@
       "files": [
         "src/styles/components/map-v2-rail.css"
       ]
+    },
+    {
+      "id": "public-itinerary",
+      "file": "src/styles/pages/public-itinerary.css",
+      "owned": [],
+      "configClasses": [],
+      "variables": []
+    },
+    {
+      "id": "explore-redesign",
+      "file": "src/styles/pages/explore-redesign.css",
+      "owned": [],
+      "configClasses": [],
+      "variables": []
+    },
+    {
+      "id": "workspace-timeline",
+      "file": "src/styles/pages/workspace-timeline.css",
+      "owned": [],
+      "configClasses": [],
+      "variables": []
+    },
+    {
+      "id": "overview-route-card",
+      "file": "src/styles/pages/overview-route-card.css",
+      "owned": [],
+      "configClasses": [],
+      "variables": []
     }
   ],
   "legacy": [

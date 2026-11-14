@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "version": "0.86.0",
+  "date": "2026-11-14",
+  "source": "36d4f857b2bd29b79b642cff2af3706b70c6f882",
+  "fragments": [
+    {
+      "id": "17e5f795-3225-4021-a328-b74d16d47f5f",
+      "sha256": "0c2519423c302bd60c02660ac3a35acf339c0c01574215b7b8e8dbc38ed70f35"
+    },
+    {
+      "id": "18a03cd8-049f-4fd8-a05f-3c4dcb989477",
+      "sha256": "1990e466664f2d944a5190057fc7cf2f63f60cf71ce0eaaab6a5bbb2c383da78"
+    },
+    {
+      "id": "676d054f-76e9-4577-9e97-18be911e68ec",
+      "sha256": "6af267db97ada726d12cd31f67a775d291638b0727468ce2bfea38607fbd0d66"
+    },
+    {
+      "id": "8ec9ff44-e3b5-42b6-b78b-e86025028e94",
+      "sha256": "03ffa338d0b85662a7557e534b1b403db73ece51ff0c59728b56cdae29e94417"
+    },
+    {
+      "id": "9477e4da-68a1-4510-9cc4-7bfb24da5a4a",
+      "sha256": "9b78f6cf89c85270871d14311e180571729df2ba7a900267c1aa28c67db239e0"
+    },
+    {
+      "id": "9a7c3e51-4b8d-4f20-9c6a-2d1e8b7f0a35",
+      "sha256": "08d32968af8d06c30e0b838e7b7ee8dbbf04349783b4a0b2333085ff39ae8734"
+    },
+    {
+      "id": "a1597ebd-681e-4256-9181-2fdffd9f54a2",
+      "sha256": "93a7bf3ed4520a370d22653f17f40582f28d8ad968262f73784036169735ac16"
+    },
+    {
+      "id": "ad06611a-cc29-46b0-b494-b3c685d9434f",
+      "sha256": "f8e23bde313ba2a42d3b3ef226fd5f4b051e233cff6d40f42e71db7faea10d18"
+    },
+    {
+      "id": "bd59ac15-57a4-447e-ae76-756ba48fa4cc",
+      "sha256": "57d738355e2ea52b216705b575be39e6529970b54a29639f3ca27aadd0a31861"
+    },
+    {
+      "id": "cc8f83da-56fb-4487-bb71-f09cfd8fd8ec",
+      "sha256": "2b044dfe097b505a8a7066d9c5da342f769a49fdc56b33cf4d7ef874df66839e"
+    },
+    {
+      "id": "fb7b7101-a44d-4f3d-8793-4cb51ca8c4b4",
+      "sha256": "b146865878599bf618def1a4ecaa5dfc25933d4f61556ca3594b342d0ff4b246"
+    }
+  ],
+  "blockHash": "834d8a02d5c16f8666c36aa04801e8e2421cf0c702eb731e5a513797b3f0214c",
+  "changelogHash": "89834cf1c6c7dc1c44a9befc0671440547848cfddc191d8c234526ed93661ee4"
+}

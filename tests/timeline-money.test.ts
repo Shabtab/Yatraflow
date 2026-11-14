@@ -184,15 +184,15 @@ describe('#343 — one non-finite field cannot poison the money', () => {
 describe('#343 — the display half', () => {
   it('the Timeline renders a money field only when it is finite', () => {
     const daySection = readFileSync(new URL('../src/pages/trip/timeline/DaySection.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
-    // The rendered value sits inside its finite guard — a raw interpolation is
+    // The meta line is one " · " string; each money part sits inside its finite guard — a raw interpolation is
     // exactly the "₹undefined" the audit found, so the guard must wrap it.
-    expect(daySection).toMatch(/Number\.isFinite\(s\.entryFeeInrPerPerson\) && <span>/)
-    expect(daySection).toMatch(/Number\.isFinite\(s\.transportCostInrTotal\) && <span>/)
+    expect(daySection).toMatch(/Number\.isFinite\(s\.entryFeeInrPerPerson\) \? /)
+    expect(daySection).toMatch(/Number\.isFinite\(s\.transportCostInrTotal\) && /)
     // Neither field may be interpolated anywhere WITHOUT that guard: one
     // interpolation, one guard — count them rather than trust the eyeball.
-    expect((daySection.match(/₹\{s\.entryFeeInrPerPerson\}/g) ?? []).length)
+    expect((daySection.match(/₹\$?\{s\.entryFeeInrPerPerson\}/g) ?? []).length)
       .toBe((daySection.match(/Number\.isFinite\(s\.entryFeeInrPerPerson\)/g) ?? []).length)
-    expect((daySection.match(/₹\{s\.transportCostInrTotal\}/g) ?? []).length)
+    expect((daySection.match(/₹\$?\{s\.transportCostInrTotal\}/g) ?? []).length)
       .toBe((daySection.match(/Number\.isFinite\(s\.transportCostInrTotal\)/g) ?? []).length)
   })
 })

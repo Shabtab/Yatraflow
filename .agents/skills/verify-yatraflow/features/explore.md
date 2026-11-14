@@ -7,7 +7,7 @@ Explore is the public list of shared multi-day itineraries at `/explore`. Anyone
 - `explore-list` renders the itinerary page with its heading and copy.
 - `explore-nav` opens Explore from the top bar.
 - `explore-hero` opens Explore from the landing hero. It is broken on web; see Gotchas.
-- `explore-fork` copies an itinerary into the user's trips. It needs sign-in and is not drivable yet.
+- `explore-fork` copies an itinerary into the user's trips. It needs sign-in. Drive it with `--signin`. It is not verified yet.
 
 ## How to get to it (user POV)
 
@@ -25,7 +25,7 @@ Preconditions:
 - **Direct render.** Run `MSYS_NO_PATHCONV=1 node .agents/skills/verify-yatraflow/scripts/verify.mjs drive /explore explore --expect "DISCOVER · TRUST · FORK"`. Exit code is `0`. `finalUrl` is `http://localhost:5178/explore`. The body shows "Explore itineraries" as the heading.
 - **Top bar.** Run `... drive / explore-nav --click "Explore" --expect "DISCOVER · TRUST · FORK"`. Exit code is `0`. `finalUrl` is `http://localhost:5178/explore`.
 - **Landing hero (defect).** Run `... drive / explore-hero --click "Explore itineraries" --expect "DISCOVER · TRUST · FORK"`. Expected exit `0`. Current exit is `1`: the page stays on the landing and the URL becomes `/#/explore`.
-- **Fork.** Not drivable. It needs a signed-in test account.
+- **Fork.** Drivable with `drive --signin`. Not verified yet. A fork adds a trip to the test account.
 
 ## Gotchas
 

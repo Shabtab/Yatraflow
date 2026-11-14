@@ -5,7 +5,7 @@ My trips lists the trips a signed-in user owns or joined, at `/trips`. A signed-
 ## Sub-features
 
 - `trips-signed-out` shows the signed-out result of opening `/trips`. It is verified.
-- `trips-list` shows the signed-in trip list. It needs a test account and is not drivable yet.
+- `trips-list` shows the signed-in trip list. Drive it with `--signin`, or run `trips` to list titles and routes.
 
 ## How to get to it (user POV)
 
@@ -20,7 +20,7 @@ Preconditions:
 - Signed out for `trips-signed-out`.
 
 - **Signed-out result.** Run `MSYS_NO_PATHCONV=1 node .agents/skills/verify-yatraflow/scripts/verify.mjs drive /trips my-trips-signed-out --expect "Built for Indian travellers"`. Exit code is `0`. `finalUrl` is `http://localhost:5178/trips`. The record's `title` is "Your trips · YatraFlow". The body is the landing page.
-- **Signed-in list.** Not drivable. It needs a test account. Do not report it as verified.
+- **Signed-in list.** Drivable with `drive --signin` and `trips`. Do not report it as verified until a run passes.
 
 ## Gotchas
 

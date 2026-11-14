@@ -16,6 +16,56 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.86.0] - 2026-11-14
+
+### Added
+
+- **Chakra the koel now appears on the app's state screens.** The art ships in `public/brand/mascot/`. A new `Mascot` component draws one pose at a set size. In the dark theme it takes the night file. Phase 1 of `docs/MASCOT-PLAN.md` covers the loading, failed, empty and not-found screens. The curious head is its own asset now, for the Explore no-results state. Three moments carry it too. The trip-created column and the unlock reveal open with the celebrate pose. The AI drawer shows the thinking pose while it waits.
+
+- **Agents can now check signed-in pages with the browser-verify harness.**
+
+### Changed
+
+- **`docs/MASCOT-PLAN.md` records phase 1 as shipped.** Every state placement in the plan is wired. The plan also records the three phase 2 moments that are wired now.
+
+- **Agents now search code structure with Graphify.** `AGENTS.md` tells agents to use the Graphify MCP tools for definitions, callers, change impact, file dependencies and linked tests. They use `grep` for literal strings, config values and docs.
+
+- **The docs now record the live collab cutovers and the vote-order migration.** The live backend has `20261023b`, `20261025b` and `20261026a`. (#838, #841)
+
+- **The Board tab now shows each stop's place, time and cost in full, and gives each fact one home.** Each stop card shows its kind, its name and its details on separate lines. The details wrap, so they are never cut. They name the place only when it is different from the stop name. The page head holds the Board help line. The panel over the map holds only the road state, Retry road measurement and Fit route. The Board title uses the shared section title style (Plus Jakarta Sans 800 at 18px). Fit route, the stop titles and the add zones use the shared focus ring. On touch screens, Fit route and the stop titles have larger tap areas with no visual change. The column slide delays use the motion stagger token, so they are zero when the system asks for reduced motion. On phones, Trip pulse uses the full width and the day columns line up with the panels above them. When you drag a stop to another day, the card stays visible over that day's column. Before, the stop list of its own day cut it off at the column edge.
+
+- **Explore and the published itinerary pages now move in one calm sequence.** The page blocks of Explore and Look inside only fade, so the hero and the cards no longer rise twice. The Look inside and Ride along panels fade in as one piece. The open day fades while its timeline rows rise. The price bar slides in on `--ease-paper` and leaves on `--ease-exit`. The read progress bar grows on `--motion-slower`. A day that turns read or open now fades in its status line. The take panel links ease their ink. The road height chart draws its line, then the fill fades in. The Ride along side card, "The road, by height", draws heights for readable days only. Locked days supply no coordinates for height measurements. Look inside has no route card. Its "The plan" strip fits the page width and names a town only for an open day. Reduced motion shows the final state at once.
+
+- **Explore now has one search field and one shared publication card.** The hero has Search, Weekend and Under ₹20k controls. Quick picks use the existing filters and address query. The filter bar has a segmented length group. The featured card shows its route trail, real facts, style and price. The side column explains forking and shows place thumbnails and creator ranks. The creator page uses the same publication card. The Trending shelf appears only when at least three plans stay for the grid below it. A Free plans chip filters to plans with no price. Saved plans, failed reads, retry, pagination and paid access keep their existing behavior. Motion uses the shared tokens and respects reduced motion. (#914)
+
+- **The Ride along mosaic no longer repeats one picture.** The first three readable days now show three different scenes. A shared scene steps to the next readable day, then to another scene of its family. Fewer scenes show fewer tiles. (#914)
+
+- **The Look inside day cards now match the reference card.** The state tag sits in the top corner of the picture band. A locked card washes its scene and shows a lock in a glass circle. The day badge is a glass tile. The pace and the driving time share one line. The time bar is three rounded pills with gaps. The locked note is a filled box. A locked card still shows no town and no creator title. (#914)
+
+- **The road height charts now meet their edges exactly.** On Ride along, the line no longer hooks or runs past the plot. A cluster of points inside one pixel caused the hook. On the Overview, the fill and the line now reach both edges. The last label reads "End". The start and end labels sit clear of the line. (#914)
+
+- **The Overview "True shape" inset no longer covers the route.** It moved out of the plot into the card header, beside the title. (#914)
+
+- **The day rail line now runs through the centre of each day ring.** The dashed line sat one pixel to the right on the published itinerary. (#914)
+
+- **A design review against the exported mockups closed six small gaps.** On Explore, each "How forking works" step reads as one sentence again. Place names no longer split inside words. On the published itinerary, the plan strip and the card panels carry their one-pixel border. The day-bar key now says what the bars measure. A Ride along time range stays on one line. The height card keeps its shell while the heights load or fail. The page styles moved out of `src/styles.css` into owner modules. Each module is registered in `docs/css-ownership.json`. (#914)
+
+- **The workspace Timeline now matches the Ride along look.** Each time cell shows the arrival over "to" and the departure. The start and end of a day are flag and moon rows on the rail. The stop details sit on one line, with "free entry" where it applies. A drive leg starts with its car line. The rail is a 28px ring on a dashed line. One lagoon tint fills each icon tile. (#914)
+
+- **README setup and release highlights match the current repository.**
+
+### Fixed
+
+- **Phone map fits now keep the trip large and the pins apart.** Phone side insets use measured covers. The mark margin is added once. Settle passes keep the first open area. A sheet snap or a first mount now frames at once. A user pan is never undone. Pill boxes match the drawn chips, so no two pills touch and none clips at the map edge.
+
+- **Published trip views use server locks.** Locked days show day numbers and category counts only. Times, distances, budgets, photos and place names stay hidden. Owners and buyers get a fresh read before locked content opens. (#774, #914, #917)
+
+- **Settings section links keep their scroll position through browser history.** Trip settings and Profile select the section named by the current fragment. Initial section links align after the section entrance, unless the reader takes control. The app no longer resets the page to the top for a fragment history step. The Profile phone menu reveals its active item without a vertical scroll.
+
+- **Tests protect the existing realtime identity guard.** They reject repeated events after an identity change or channel removal. They also check that the replacement channel accepts current events. (#756)
+
+- **The Drive corridor narrows when the map zooms out.** Dashed edges follow the wash width and hide below zoom 9. The band stays visible at working zooms and reaches 46 px at zoom 14.
+
 ## [0.85.0] - 2026-11-14
 
 **The two enforcement tables in the full agent manual are now one table.** `docs/agents/AGENTS-FULL.md` named each rule's gate in two tables. The merged table has 24 rows and keeps every check from both. It now marks `npm run check:migrations` as manual, because neither `verify` nor CI runs it. Root `AGENTS.md` shows the same status on its §3 row. No code or test changed.

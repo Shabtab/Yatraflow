@@ -7,7 +7,7 @@ Start planning is the signed-out path into trip creation. A visitor chooses a pl
 - `start-header` opens sign-up from the header link, with the sign-up route as the target.
 - `start-hero` opens sign-up from the landing hero link. It is broken on web; see Gotchas.
 - `start-direct` renders the sign-up page from a direct URL with `next=/new`.
-- `start-create` shows the create-trip page to a signed-in user. It is not drivable yet.
+- `start-create` shows the create-trip page to a signed-in user. Drive it with `--signin`.
 
 ## How to get to it (user POV)
 
@@ -25,7 +25,7 @@ Preconditions:
 - **Header entry.** Run `MSYS_NO_PATHCONV=1 node .agents/skills/verify-yatraflow/scripts/verify.mjs drive / start-header --click "Start planning free" --expect "Create your account"`. Exit code is `0`. `finalUrl` is `http://localhost:5178/auth?mode=signup`.
 - **Hero entry (defect).** Run `... drive / start-hero --click "Start a trip plan" --expect "Create your account"`. Expected exit `0`. Current exit is `1`: the page stays on the landing and the URL becomes `/#/auth?mode=signup&next=%2Fnew`.
 - **Direct URL.** Run `... drive "/auth?mode=signup&next=%2Fnew" start-direct --expect "Create your account"`. Exit code is `0`. The body shows "Free to plan. No card needed."
-- **Create page, signed in.** Not drivable. It needs a test account and the harness has no sign-in step yet. Do not report it as verified.
+- **Create page, signed in.** Drivable with `drive --signin`. Do not report it as verified until a run passes. A created trip stays on the test account.
 
 ## Gotchas
 

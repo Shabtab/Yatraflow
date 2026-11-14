@@ -6,7 +6,7 @@
 
 A collaborative travel-planning web app, built India-first. Real multi-day itineraries, transparent cost & time estimates in ₹, group voting on stops, decisions that settle debates, and interactive maps of your whole route.
 
-**Free to use. No API key needed for maps, weather or routing.**
+**Plan trips with your group.** Planning is free. Some published itineraries need a paid unlock. Supabase powers accounts and shared trip data. Optional map provider keys enable Google Places and Routes or Mappls autocomplete.
 
 <br />
 
@@ -67,10 +67,10 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 #### 🗺 Maps & routing
 
-- **Interactive MapLibre maps** — numbered stop pins per day, colour-coded routes, day filters, light/dark basemaps (OpenFreeMap — keyless, no request caps)
-- **Real road routing** (OSRM) with silent offline fallback — planning never blocks
+- **Interactive MapLibre maps** — numbered stop pins per day, colour-coded routes, day filters, light and dark basemaps
+- **Road routing** uses OSRM and can fall back to a distance estimate when routing is unavailable
 - **Nearby POIs** along your route (verified coordinates) plus fatigue-aware stop suggestions for long drives
-- **Weather along the route** — per-day forecast from Open-Meteo (free, keyless) with icon, min/max °C, rain chance
+- **Weather along the route** — per-day forecast from Open-Meteo with icon, minimum and maximum temperature, and rain chance
 - **Expandable map** — filter pills, marker-key chip, full-screen Expand mode
 
 </td>
@@ -91,217 +91,37 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 ---
 
-_Release highlights, newest first — the full record lives in [CHANGELOG.md](CHANGELOG.md)._
+_Recent release highlights, newest first. See [CHANGELOG.md](CHANGELOG.md) for the full release record._
 
 Pending notes live in [change fragments](changelog.d/README.md). The release owner assembles them into the public record.
 
-## The v0.85.0 release
+## The v0.86.0 release
 
-v0.85.0 is deployed to production. It makes the Map tab one lens workspace on one engine schedule.
+The repository is at v0.86.0. See the [release record](CHANGELOG.md) for its full scope.
 
-- **The Map tab has four lenses behind one switch, and each lens shows honest counts.** An unscanned lens shows no count. The Fix lens lists only verified fixes. Preview on map shows a fix before Apply writes it.
-- **Map suggestions use the visit's own day and the clock they show.** Opening hours follow the visit date. A fixed booking reads its own clock. Every clock follows the 12 h or 24 h setting.
-- **Stop marks stay on their places on a crowded trip.** Labels yield instead of stops, so nothing jumps on zoom or pan. Stay and Plan follow the day's own schedule, and the Fix count matches its panel.
-- **Drive picks spread along the whole road, and the map has more room.** The scan keeps the best place of each 60 km stretch. Groups of picks are pins that move aside from stops. The route warning is a dot on the Fix button.
-- **A focused test run selects its tests with git.** `npm run test:changed` fails when a source change has no selected test.
-
-## The v0.84.0 release
-
-v0.84.0 is deployed to production. It closes the paid-plan leak and adds fifty destination scenes.
-
-- **A locked day stays on the server.** A locked day is now a day number and counts. It has no title, place or position. The leak closes when the migration `20261110_paywall_locked_day_boundary.sql` is applied.
-- **Fifty named destinations have their own art.** An exact destination name now picks its own scene before the state scene.
-- **The create flow follows the Plan-a-trip reference.** The Review step adds a Rough bill card with real stay, transport and food costs.
-- **Settings and Profile follow the Linen artboards.** Profile has a section rail and a preview of how you appear.
-
-## The v0.83.0 release
-
-v0.83.0 is deployed to production. It makes the Android app able to learn about its own updates.
-
-- **The update feed is served, not committed.** `/android/manifest.json` answers from the newest release that carries an APK, and `/android/latest.apk` redirects to it. A release cut publishes the feed.
-- **The APK now carries the feed settings.** Before this, every build told its Profile page that update checks were not configured. The CI bundle never received the two keys.
-- **A release cut is the whole flow.** No hand-copied manifest, no fingerprint, no Android SDK on your machine.
-
-## The v0.80.0 release
-
-v0.80.0 is deployed to production. It joins the verified work on `test` with main's dependency security updates.
-
-- **Group actions save one result.** Acceptance and poll resolution save the stop and status together. Same-day repeats need explicit confirmation. A deleted day asks for a current day.
-- **Destination covers match their place names.** Uploaded covers still win. Unknown or mixed destinations use neutral art.
-- **Companion advice reads the shared schedule.** Missing evidence stays unknown. The companion is active in production under #236.
-
-## ✨ The v0.79 release, in plain words
-
-- **The plan-a-trip form now walks you through six steps.** The form asks one question at a time. The questions are where, how you travel, when you leave, who is coming, your budget, and a final check. A laptop shows the step list, the question and a live trip ticket. A phone shows a ticket sheet and a fixed Next bar. Next names the missing answers and moves focus to their control. Review has Change links and a retry after a failed save. A draft you resume reopens on the step you left. The form is behind the `guided` phase of `VITE_CREATE_FUNNEL`; with the flag off, the old long form stays available.
-- **A crew member is named even when the draft holds only a number.** A phone-only entry keeps a safe masked label through resume, autosave, Review and the moment-after screen. Two such entries stay distinct, and no masked label can build an invite link. WhatsApp and SMS stay unavailable on a row with no number; Telegram and the share sheet still work.
-- **A crew number is read in every form people write it.** Brackets, spaces, hyphens, "+91", "91" and a leading "0" all parse again. A free-form entry such as "Team 2 98450 21234" keeps its name and finds its number. A foreign country code such as "+971" is refused instead of being read as an Indian number.
-- **Two people with the same name and different numbers both join the crew.** The duplicate rule compares numbers first, so two numbers are two people and one number twice is still one person.
-- **The guided answers are square boxes.** Who, How, Budget and Mixed use boxed cards. Each one has a check mark, a subtle tint, and motion that respects reduced motion.
-
-## ✨ The v0.78 release, in plain words
-
-- **A public itinerary shows what is inside before you pay.** The first screen holds the cover, the facts and the buy box. A "What is inside" section counts the places by kind and shows one card per day. A locked day keeps its title and road time, and it hides its stop names.
-- **Creator pages and share pages read without JavaScript.** Search visitors see the public bio, the budget per person, the travel tips and the warnings. Private profile fields stay out.
-- **Only the owner can change who owns a trip.** An editor can no longer take ownership. A trip that backs a publication can no longer be deleted directly.
-- **Offline trip edits have conflict recovery.** A saved edit stays with its account and trip. Newer shared changes are never replaced silently. You can retry, download the edit, or choose between the local and shared plan.
-- **The Android app checks for a newer build.** Profile shows the installed build and a Check for updates button. The app installs nothing by itself. The check stays inert until a release feed is approved.
-- **Phone polish.** The trip header is compact, the Map tab takes one-finger drag, and Android screens start below the status bar.
-
-## ✨ The v0.77 release, in plain words
-
-- **Flight trips plan the whole journey.** The travel day runs home → the origin airport → the sector → the destination airport → your stay. Ground legs use car timing and pricing. The sector uses the fare for your whole group.
-- **You can enter the flight you are actually taking.** A flight card takes the airline, the flight number and both airports. It also takes the booking reference, both clocks and the fare you paid.
-- **The Create trip page has a new header.** The page title uses the shared header. Each region template shows its own cover art. On a phone the templates scroll sideways in one row.
-- **Every surface uses the shared page parts.** Profile, Timeline, map, Budget, Share and Group input share titles, cards and state blocks. Settings, the creator hub and the admin console use the same parts.
-- **Failed reads say so instead of looking empty.** The admin console, the creator hub, the trip-created page and notifications report failure with a Try again action. Loaded rows stay on screen.
-
-## ✨ The v0.76 release, in plain words
-
-- **YatraFlow has a new logo, the Ribbon Y.** Two routes fold into one road, and a saffron dot marks the destination. The logo appears in the header, the browser icon and the app icons.
-- **Failed reads say so.** When the forecast or your trips fail to load, the page shows a message and a Try again button. It does not look empty.
-- **The landing page links open their pages.** The planning link, Explore, sign-up, DMCA and Plan Bench links open inside the app.
-- **Profile and trip settings report saves honestly.** "Profile saved" and "Trip settings updated" appear only after the server accepts the change.
-- **The DMCA page and the log-in tabs match the rest of the app.** They use the shared page parts: a title, a short lede and a text panel.
-
-## ✨ The v0.75 release, in plain words
-
-- **Every trip card names the next step to take.** A link on each card opens that task. Dates come first, then the first empty day, then the first stop that needs a booking.
-- **Save days and stops on the Timeline.** A heart beside each day and stop saves it. Your saved items appear in a "Saved for later" list on My trips.
-- **My trips and Explore look the same.** Both pages share fonts, buttons, filters and cards. My trips can show its trips as a grid or as a list.
-- **Shared plans show their free days to search engines.** The share page shows each free day and its stops. A Ladakh bike trip cost calculator is free to use.
-- **Pages enter with motion.** Group input and map panels show failed reads with a retry action.
-
-## ✨ The v0.67–v0.68 run, in plain words
-
-- **One edit now costs one render.** Renaming a day used to re-run the engine's day math for every day on the Timeline; it now re-derives that day and no other. The Board's columns and its embedded map memoize the same way, the Map tab's suggestion stack loads only when the tab opens (the workspace bundle drops from 264 KB to 206 KB, measured), and switching trips aborts the road measurement you left behind instead of finishing it on the next trip.
-- **The Board stopped disagreeing with the rest of the app.** Its mini-map draws the same road the Map tab measured — and while no road has resolved, the line is a dashed amber estimate that says so rather than wearing road paint. Its health dial takes its colour from the same band its word comes from, its pulse reads the engine's own warnings (counting what it names, trip-wide ones included), and a missing amount prints “—” instead of “₹NaN”.
-- **Your plan holds its shape.** Stops stay numbered 1..n through delete, undo, drag and day-moves — including the ones a surface hides; per-day money follows the day's own number, so a skipped day no longer shows a neighbour's total; the optimiser cannot move tomorrow's wake-up point, and applying it over an edit that landed meanwhile refuses rather than silently discarding your drag.
-- **The map rail speaks, and works from the keyboard.** Search results are a real listbox — arrows move the highlight, Enter and Space pin, Escape clears — and both the results and the day plan announce what arrived. The pins gained a thumb-sized hit area, the add modal says when its day is only a guess, and an unmeasured distance is labelled “(est.)” instead of posing as road kilometres.
-- **The create flow keeps what you type.** A stop typed but never picked is no longer thrown away at submit — the form stops, names it, and offers “Add without a map pin” — and the Plan Bench's “Start planning” hand-off is pinned to the one create-route definition, so a route rename cannot strand it again.
-- **And from v0.67:** the public wire stopped over-sharing — no invite code rides along on an anonymous read of a published plan, and a viewer who has not bought one receives no budget breakdown. Unpublishing keeps the row, so a buyer keeps the access they paid for, and the pruner that deletes traffic history became an operator-only action.
-
-## ✨ The v0.66 release, in plain words
-
-- **The creator hub became an operating picture.** It used to open on your settings; it now opens on how your work is doing — one ruled strip of lifetime figures, then a recorded-traffic trend (visits, forks and unlocks over 7, 30 or 90 days) drawn from the *same* derivation the table beneath it reads, so the chart and the rows can never describe different windows. Below that, one row per publication carries its funnel and its actions, and the creator profile moved into a disclosure at the foot of the page where it no longer owns the fold.
-- **The hub says what it doesn't know instead of printing a zero.** Unlocks come from the sales ledger, so an unread ledger leaves that stage *unknown* in the row and in the legend rather than showing "0", which would read as "nobody bought"; a window the log doesn't cover says so too. The trend takes keyboard focus and steps by day, a tap latches its readout instead of losing it on lift, and each row states its window ("in 30 days") and each rate its denominator ("11% of visit-sessions" — both stages count one per browser session, so the rate divides like units).
-- **Map search stopped answering with your own city.** A free-text search carried no spatial constraint, so Google applied its guess from your IP address and a lunch search returned what was near *you* rather than near the trip. Both search surfaces now run as Search-Along-Route over the trip's actual road, and the keyless fallback stack ranks its merged hits by distance to the corridor. The results also draw on the map as selectable teal pins that clear with the search box — the engine's own suggestions keep their dashed gold pin.
-- **The whole app took its high-end visual pass.** One typeface across every surface, one icon weight, and a pill navigation whose active indicator glides as a box instead of stretching as a shape, because the old flip visibly distorted the pill's rounded ends. The landing, the public itinerary and Explore gained the spacing and tray treatment the design plan called for, and the card you see when a link is pasted now renders in the app's own font again.
-
-## ✨ The v0.62–v0.65 run, in plain words
-
-- **Create Trip became a funnel, not a form.** Three numbered questions — Where / When / Who & how — with four curated India templates carrying engine-computed price bands, autosaved drafts you can resume, a readiness checklist that mirrors the submit rules, and a "moment after" screen that sends crew invites over WhatsApp, Telegram or SMS and opens the plan's first warnings.
-- **The app installs and reads offline.** Add it to your home screen or install the Android APK: trips stay readable on a dead connection through a service worker and an on-device snapshot, and edits made offline queue durably and sync when the network returns.
-- **The map gained a travel clock, and the crew gained presence.** The plan's position draws on the road as the day unfolds, collaborators see each other live, and a remote-edit banner plus a stale-update ledger replace silent clobbering. Decision cards carry their own comment threads, and the Balances card names the outstanding total with per-line mark-settled.
-- **Creators upload their own covers.** A publication's share card stopped depending on third-party image hosts: covers upload from the device, are resized before they leave it (a 1.3 MB photo becomes ~78 KB, measured), and auto-suggested covers are backfilled into our own storage.
-- **The AI companion learned to really answer.** Point it at an OpenAI-compatible endpoint (or the fast Jev router) and the drawer answers from it, with the deterministic offline router underneath — it rides behind a launch flag while it readies as the premium perk.
-- **Shared links became crawlable** — robots.txt and a live sitemap list every published itinerary, so search engines can find the gallery.
-
-## ✨ The v0.60–v0.61 run, in plain words
-
-- **You can buy a plan now.** A creator can price a published itinerary and a reader can pay for it. The price is read server-side, so a tampered request cannot change what is charged; the unlock is granted only through a buyer-scoped path or the payment webhook, which is idempotent and also recovers a purchase that was confirmed but never saved — so a click can never charge twice for the same plan. The creator's Earnings tab shows the sales that actually happened, with the amount paid at the time of purchase rather than the current price.
-- **The paywall moved to the wire.** Locked days used to travel to every visitor in full, with the lock being a CSS blur on the public page. A server-side read now stubs the paid days exactly as the free preview shows them, and it decides from your own session whether you are the creator, a buyer, or a visitor.
-- **A plan file says what it is, and an older one is repaired rather than refused.** Exports carry a format version, and the importer walks an older file forward — renumbering stops, re-issuing duplicate ids, reconciling the date range — then tells you what it changed in one readable line. A file written by a newer build is refused, with the reason.
-- **Every screen got a refinement pass.** The phone layouts that pushed controls off-screen, a Timeline reorder that silently did nothing, a calendar that hid under the bottom bar, text that went invisible in dark mode, decorative motion that kept running while scrolled out of view, and controls below the 40px touch floor. None of the colours or spacing tokens were redesigned.
-- **The public pages stopped over-promising.** Fork says it needs an account; a page that fails to load no longer blames the creator; cards in a row finally sit on one line at one height; and the shared hero stays readable over any cover a creator uploads.
-
-## ✨ The v0.56 release, in one line
-
-- **Trip settings became a first-class citizen.** The crew, dates, budget and vehicle controls moved out of Share into their own eighth workspace tab; every choice you set there — drivers, vulnerable passengers, after-dinner driving, the exact tank and economy of your bike or EV — now persists across reloads instead of silently reverting, re-derives every surface that depends on it (map suggestions, budget pacing, day plans) instead of serving stale ones, and matches Create Trip option-for-option. Blank tank or economy fields no longer write car numbers onto a motorcycle or an EV.
-
-
-## ✨ The v0.55 release, in one line
-
-- **The Explore gallery got its supply chain.** A written import contract with a validator that rejects typos, placeholders and broken references; a CI gate that runs every shelf itinerary through the real engine (health ≥ 85, no high-severity warning, budget within ±15 % of the engine's own math); a demand-ranked backlog of the twenty trips India actually searches for; and the first six on the shelf — Coorg, Goa, Kerala, Mewar, Kashmir, Meghalaya — every fee cited to a source, every coordinate geocoded, every budget set by the engine rather than by wishful thinking. Vercel Web Analytics rides along, web-only.
-
-## ✨ The v0.51–v0.54 run, in plain words
-
-- **The suggestions stopped lying about distance.** On a 1,400 km drive every roadside dhaba and petrol pump used to read "50 km off-route" — the detour sum subtracted one routing engine's route total from another's internal legs, and the difference landed on every card. That phantom burned the day's detour budget on the first suggestion and quietly held back most of the rest. Detours are now measured against the same road the search ran along, so a place on the drawn road reads "on route".
-- **The Day Planner came back to life.** On a load-balanced drive (say four days of 350 km) the planner was absorbing its own lunch into every night halt and could never fit a fuel stop — a 1,400 km trip produced **zero** meal and **zero** fuel suggestions, and the night-halt cards had nothing to anchor them at all. Lunch now survives unless it lands within an hour of the halt, fuel follows the tank across the whole corridor, and night halts search for a town at that day's actual road position.
-- **Night halts anchor on real towns.** Google's locality data stops at village level on rural corridors (hamlets with no population to rank by), so the town anchor also consults OpenStreetMap's population-ranked `place=city|town` — the only source out there carrying a town with a bed — and a halt can no longer be anchored to a town hundreds of kilometres away; it reports an honest gap instead.
-- **One road measurement, and honest failure when it fails.** The workspace and the Map tab each measured the same road on every open, doubling the load on the shared routing server that caused the very failures they could not recover from. One measurement now feeds the map, the budget and the suggestions, with a single retry — and since the routing facade quietly falls back to straight-line estimates, a chain that produced *only* estimates now counts as unresolved: the tab says so instead of drawing chords as if they were roads.
-- **Create Trip behaves like its Plan Bench.** The bill's money rolls into place instead of swapping, the printed bill exists on a phone (it used to print into a hidden container), and two dead links are gone — the bench's "turn these numbers into a real trip" CTA landed on the marketing page instead of the Create Trip form, taking its prefill with it. A new test walks every in-app link against the router so that class cannot come back.
-
-## ✨ The v0.50.2 run, in plain words
-
-- **The app finally looks like an app, not a website.** The floating top bar is gone from the signed-in Android app — its controls moved to the Profile page (reachable from the bottom nav): dark/light under Appearance, your notifications with Mark all read, and account actions (Creator hub, Send feedback, Log out). The website is unchanged.
-
-## ✨ The v0.50.1 run, in plain words
-
-- **The app stopped flashing the website on launch.** Opening the installed app used to show the marketing home — top bar and all — while your session restored, then jump into the app home. Now it goes splash → loading → app home; the website's landing only appears for signed-out users, where it doubles as the login page.
-
-## ✨ The v0.50.0 run, in plain words
-
-- **Every trip edit sticks now.** Reordering, arrow moves, drag-and-drop, deletes and cross-day moves used to toast "Change saved" and then silently revert — the save path rebuilt the day grid from the pre-edit plan on every Keep. That defect is fixed and pinned by regression tests; verified live in Board and Timeline, surviving reload.
-
-## ✨ The v0.49.0 run, in plain words
-
-- **The Board is now a full editing surface.** Add, edit and delete stops without leaving it — deletes route through the same impact-preview confirmation as the Timeline, and both views share one stop-form implementation so they can't drift apart again. It also moved to the front of the tab rail: Overview → Board → Map → Timeline.
-- **Drag-reorder actually sticks now.** Three separate realtime bugs used to let a collaborator's stale update snap your accepted reorder back — the last one surviving two prior fixes. All three are closed, with regression tests.
-- **The whole open-issue backlog closed.** Demo trips can no longer pollute a real account on a flaky connection; "Delete forever" asks first; the notification badge and five warning labels now pass WCAG contrast; screen readers get a real name on the cover-image field, a full notification list, one consistent keyboard tablist across every tab surface, and a Profile page without a phantom empty column.
-
-## ✨ The v0.48.0 run, in plain words
-
-- **The Android app got a real bottom navigation bar.** Installed, the shell now has four destinations — Home, My trips, Explore, Profile — in a fixed bar above the gesture area, with a 48px tap target each and the active one marked for screen readers. The website never renders a byte of it. Every page-level bottom layer (toasts, the trip dock, the AI button, settings save bar) now clears it through one shared offset, so nothing hides under the bar any more.
-- **The map stopped fighting the page.** A one-finger drag that started on the trip map used to pan the map and leave the page stuck; on touch, one finger now scrolls the page and two fingers pan the map (MapLibre shows its own hint). The fullscreen map keeps normal gestures — there is no page left to protect.
-- **The keyboard no longer covers the field you're typing in** — the Android shell reflows instead of letting the keyboard float over the layout.
-- **One green, one kicker, four blur tiers.** The design system collapsed primary buttons, focus rings and form accents onto a single teal, everything translucent onto four named blur tiers, and every micro-label onto one recipe — retyped out of literal ALL-CAPS so screen readers stop spelling words out. The stylesheet had also been declaring font weights the font never loaded.
-
-## ✨ The v0.45–v0.47 run, in plain words
-
-- **The create flow got a ticket, invites got codes.** Creating a trip is a Trip Ticket — a live boarding-pass starter that prices your rough bill on demand and seeds the timeline. Invites shrank to short trip-shaped codes (`GOABEACHWE-K7QF`) typed on the home screen, with a join flow that actually completes.
-- **Operators got a console.** A masteradmin route (`#/admin`, never linked) gives the two admins a god-view over every user, trip, invite, publication and audit row, with every destructive action behind an audited, role-rechecking RPC.
-- **Deletes are now reversible.** Deleting a trip moves it to a Trash instead of erasing it — restore within 30 days from a new Trash view in My Trips, or delete it forever. A soft-delete tombstone + restrictive RLS policy keep trashed trips invisible to everyone else, and a scheduled purge sweeps anything older than a month.
-- **The app writes faster.** Bursts of edits (drag-reordering, settings keystrokes, undo/redo) coalesce into a single database write per trip, flushed the moment you switch tabs or close the page.
-- **The Map tab grew a search box and cross-links.** Search any place right on the map and add it in one tap; click a stop pin to jump straight into the Timeline or Board.
-- **Decisions got grounded.** Open decision cards show where the trip stands (road time, cost, health) plus a deterministic, data-grounded "(offline)" recommendation.
-- **A backlog of small wins.** Browser push notifications (Profile opt-in, background-tab only), a "Send feedback" link that pre-fills the app version, and Explore pagination with "Load more".
-
-## ✨ The v0.38–v0.44 run, in plain words
-
-The last stretch of releases gave the Map tab a brain, taught the plan to learn from you, and turned sharing into a superpower:
-
-- **The Map tab now thinks like a road-trip co-pilot.** Long drives are split into fatigue-spaced segments — stretch ~every 150 km, lunch ~every 300 (auto-slid into the 11:30–14:30 window), fuel on your tank's rhythm for self-drive trips, and a real city to sleep in every ~550 km — each matched to the best actual place on your route, with sightseeing suggestions flowing alongside (that column was quietly broken until v0.43 fixed the pipe that fed it). Hover a suggestion to see it glow on the map; hover a pin to find its card. New stops insert in road order — add something between two confirmed stops and the plan reads A → B → C.
-- **The engine learns you.** Accepting or declining an idea teaches Trip DNA, which biases future suggestions across all your trips. Big crews and relaxed styles get earlier breaks; packed itineraries push further. Rainy days hand the spotlight to museums and cafes; ghat sections and city crawls earn their own warnings.
-- **Leave with the plan, any way you like.** The Share tab (a clean tabbed page now) exports a calendar file — one event per day plus timed events for hotels, trains and fixed commitments — prints the whole plan as A4 day cards straight from the browser's print dialog (a real offline PDF, zero dependencies), and keeps the snapshot links and JSON exports.
-- **Creators got a hub.** Publications live in an Overview + Earnings surface: lifetime views, forks, live pages, a payouts-ledger shape the premium launch later filled in (v0.61), and a clearly-labelled projection of what priced pages could earn.
-- **The money and the clock, where you're editing.** The Budget tab answers "what can we still spend today?" with a Safe-to-spend-per-day tile that counts the remaining days honestly (today included, a finished trip at zero) and goes red on overspend — or asks you to set a target instead of inventing a number. Timeline day headers carry two quiet chips: what the day costs (travel vs entries in the tooltip) and how long you'll be at its stops.
-- **Quiet reliability work throughout** — every trip edit now writes through to the database before the UI celebrates, failed saves say so instead of silently vanishing on refresh, an already-open tab reloads itself into a fresh deploy instead of crashing on a stale chunk, public itinerary pages and invite links work for people who aren't members yet, and a corrupted-merge incident (v0.43) was repaired byte-for-byte.
-
-<details>
-<summary><b>See the full tour of features</b></summary>
-
-<br />
-
-The depth below ships in the app today — it is condensed here to keep the front door scannable.
-
-- **Fuel-accurate costs** — car/bike trips state fuel economy (km/L) and optionally local pump price (default ₹105/L national average); legs are priced as `distance ÷ economy × price`, and the return to start is included by default (toggleable).
-- **Travel stops act as real halts** — pure-travel legs render as travelling strips; stay days show "Based in …"; the drive home appears only on the return day, never double-counted.
-- **Fatigue-aware stop planner** — splits long drives into stretch / meal / fuel / overnight segments and matches each to the best real place by purpose (night halts anchored on key cities; vehicle-profile aware for fuel range, EV/CNG queries).
-- **Opening hours auto-fill** from OSM Overpass where relevant (POIs, temples, food, hotels), context-aware.
-- **Location autocomplete** — Google Places when a key is set, otherwise the keyless stack (Mappls · Open-Meteo · Wikipedia · OSM).
-
-</details>
-
----
+- **Chakra the koel meets you at the quiet moments.** The loading, failed, empty and not-found screens carry the mascot, which takes the night art in the dark theme. The trip-created column and the unlock reveal celebrate with it. The AI drawer shows it thinking.
+- **The Board tab shows each stop's place, time and cost in full.** Each fact has one home, and the stop cards wrap instead of cutting their details.
+- **Explore and the published itinerary move in one calm sequence.** Explore has one search field and one shared publication card. The Look inside day cards and the road height charts match the reference design.
+- **Phone map fits keep the trip large and the pins apart.** Side insets use measured covers, and a user pan is never undone.
 
 ## 🚀 Getting started
 
 ```bash
 git clone https://github.com/hasnaina955/Yatraflow.git
 cd Yatraflow
+unset NODE_ENV
 npm install
 
-# Configure Supabase (free project at supabase.com, then:)
-cp .env.example .env.local   # VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
-# Apply the schema (SQL editor in the dashboard, or with PGCONN set):
-#   node scripts/apply-schema.mjs
+cp .env.example .env.local
+# Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.
+# Apply supabase/schema.sql in the Supabase SQL editor, then apply new migrations.
 
 npm run dev        # → http://localhost:5173
 ```
 
-**One-command start (Windows):** `./scripts/start.ps1` boots install-if-needed dev server (`-Test` runs the suite, `-Build` runs the build; `make-dev-shortcut.ps1` adds a desktop shortcut)
+**Windows:** Run `./scripts/start.ps1` to start the development server. Use `-Test` to run the test suite or `-Build` to build the app.
 
-You'll need a free [Supabase](https://supabase.com) project for accounts + data; the maps / weather / geocoding services the app calls are all free and keyless
+You need a [Supabase](https://supabase.com) project for accounts and shared data. See [Deployment & Operations](docs/DEPLOYMENT.md) for setup details and provider configuration.
 
 ## 👤 Accounts & demo content
 
@@ -317,11 +137,11 @@ You'll need a free [Supabase](https://supabase.com) project for accounts + data;
 | Build | [Vite 8](https://vitejs.dev) | Instant dev server, zero-config builds |
 | UI | React 18 + TypeScript (strict) | No router lib or UI kit — real paths on the web, hash in the native shell, hand-rolled components |
 | State | `useSyncExternalStore` over a module store | Tiny reactive cache hydrated from Supabase; every mutation writes through |
-| Maps | [mapcn](https://github.com/AnmolSaini16/mapcn) (MapLibre GL) | [OpenFreeMap](https://openfreemap.org) basemaps tick light/dark — no key, no signup, no caps |
-| Backend | [Supabase](https://supabase.com) (Postgres + Auth + RLS) | Free tier covers the MVP; JSONB keeps trip internals denormalized |
-| Routing / geo | OSRM, Open-Meteo, Wikipedia, Overpass | Free + keyless, India-biasable; optional Google / Mappls keys — the free stack is the default; a Google key makes suggestions Google-only |
+| Maps | [mapcn](https://github.com/AnmolSaini16/mapcn) (MapLibre GL) | OpenFreeMap basemaps |
+| Backend | [Supabase](https://supabase.com) (Postgres + Auth + RLS) | Accounts and shared trip data |
+| Routing / geo | OSRM, Open-Meteo, Wikipedia, Overpass | Optional Google and Mappls keys enable provider-specific features |
 
-The web app routes on real paths (`/trip/<id>`, `/pub/<slug>`, `/creator/<id>`, `/join/<code>`), so a deep link is a real address. The creator share link `/c/<id>` redirects to `/creator/<id>`. The native shell and the file build keep the hash form. One catch-all rewrite in `vercel.json` serves `index.html`, so a static host needs the same fallback.
+The web app routes on real paths (`/trip/<id>`, `/pub/<slug>`, `/creator/<id>`, `/join/<code>`). The creator share link `/c/<id>` redirects to `/creator/<id>`. The native shell and the file build keep the hash form. Hosts must serve `index.html` for app paths and provide equivalent serverless functions.
 
 ## 📁 Project structure
 
@@ -348,16 +168,16 @@ Deep dives: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (data model, engine mat
 
 ## 🗺 Data sources, basemaps & attribution
 
-Every map/data service is **free and keyless** unless the row says otherwise — the app never requires an API key to render a map.
+OSRM, Open-Meteo, Wikipedia, and Overpass run without app keys. Provider terms and availability apply.
 
 | Concern | Provider | Licensing / terms |
 |---|---|---|
-| **Basemap tiles** | [OpenFreeMap](https://openfreemap.org) (OpenMapTiles-schema) | MIT — no request limits; map data © [OSM](https://www.openstreetmap.org/copyright) contributors (ODbL) |
-| Road routing | [OSRM](https://project-osrm.org/) demo server | Free, keyless; haversine fallback works offline |
-| Weather | [Open-Meteo](https://open-meteo.com) | Free, keyless, CC-BY 4.0 |
-| Geocoding / POIs | Open-Meteo, Wikipedia geosearch, [Overpass (OSM)](https://overpass-api.de) | Free / ODbL |
-| Place autocomplete (opt-in) | [Mappls](https://about.mappls.com/api/) when `VITE_MAPPLS_KEY` is set | Free India dev tier, key required |
-| Places & Routes (opt-in) | [Google Maps Platform](https://mapsplatform.google.com) when `VITE_GOOGLE_MAPS_API_KEY` is set | Needs billing; client-side quota guard caps each SKU at 80% of free allowance. With a key, suggestions are Google-only (no free-stack fallback); without one, the free stack serves. One deliberate exception: **night-halt towns** also come from OpenStreetMap's `place=city\|town` (population-ranked) — Google's locality data stops at village level on rural corridors, and a halt needs a town with a bed. |
+| **Basemap tiles** | [OpenFreeMap](https://openfreemap.org) (OpenMapTiles schema) | Map data © [OSM](https://www.openstreetmap.org/copyright) contributors (ODbL) |
+| Road routing | [OSRM](https://project-osrm.org/) | The app can use a haversine estimate when road routing is unavailable |
+| Weather | [Open-Meteo](https://open-meteo.com) | Attribution: CC BY 4.0 |
+| Geocoding and POIs | Open-Meteo, Wikipedia geosearch, [Overpass (OSM)](https://overpass-api.de) | Provider terms apply |
+| Place autocomplete | [Mappls](https://about.mappls.com/api/) when `VITE_MAPPLS_KEY` is set | Key required |
+| Places and Routes | [Google Maps Platform](https://mapsplatform.google.com) when `VITE_GOOGLE_MAPS_API_KEY` is set | Billing and provider terms apply. With a key, suggestions use Google only, except night-halt town anchors. |
 
 MapLibre renders the required OSM/OpenMapTiles credit in every map corner.
 
@@ -365,7 +185,7 @@ MapLibre renders the required OSM/OpenMapTiles credit in every map corner.
 
 ## ☁️ Deployment
 
-Static hosting is enough. The repo auto-deploys to **Vercel** on every push to `main` (`npm run build`, output `dist/`). Any static host works when it serves `index.html` for an unknown path, as `vercel.json` does. Without that fallback, use the hash form.
+The app deploys to **Vercel** with `npm run build` and output `dist/`. Vercel also runs serverless functions for itinerary previews, creator links, Android updates, checkout, payment verification, and webhooks. A static host needs equivalent function routes and a fallback to `index.html` for app paths.
 
 **Preview builds need the Supabase vars too.** Vite inlines `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` at build time and Vercel scopes them per environment — tick **Production, Preview and Development**, then **Redeploy**; the build guard in `vite.config.ts` fails a Vercel deploy if either is missing. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#if-login-fails-on-a-preview-but-works-on-production).
 
@@ -374,11 +194,11 @@ Static hosting is enough. The repo auto-deploys to **Vercel** on every push to `
 ## 📌 MVP constraints (intentional)
 
 - ❌ Hotel/flight **booking** — out of scope. Stops can be flagged *needs booking*, and you add your own confirmations as timed events, but the app never books or links to a booking flow
-- 💳 **Payments for paid itineraries** — live since v0.61 (Razorpay checkout + idempotent webhook); what stays manual is creator payout disbursement, worked from the hub's earnings ledger
+- 💳 **Paid itinerary unlocks** — Razorpay checkout and payment webhooks process purchases. Creator payouts remain manual.
 - ❌ **Live traffic/prices** — all estimates are transparent formulas with stated assumptions
 - ❌ INR is the default and only currency
 
-These are extension points, not oversights — see ARCHITECTURE.md's "Swapping things out".
+See [Architecture](docs/ARCHITECTURE.md) for extension points.
 
 ## Testing the crew shape (opt-in integration gate)
 
@@ -390,7 +210,8 @@ it never gates offline verify:
 # in .env.local (or environment):
 #   TEST_USER1_EMAIL=crew-a@example.com   TEST_USER1_PASS=<password>
 #   TEST_USER2_EMAIL=crew-b@example.com   TEST_USER2_PASS=<password>
-VITE_RUN_INTEGRATION=1 npm run test:integration
+$env:VITE_RUN_INTEGRATION = '1'
+npm run test:integration
 ```
 
 The harness asserts the cross-user row-level behavior two crews actually rely on
@@ -467,7 +288,7 @@ reload without a word from the app. Applying that migration's own one-line
 
 ## 🤝 Contributing
 
-PRs welcome! Keep TypeScript strict clean, match the existing style (plain CSS in `styles.css`, no new UI/router/state libs without discussion), preserve the transparency promise, and respect the MVP constraints. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Keep TypeScript strict clean. Follow the CSS ownership rules in `docs/css-ownership.json`. Discuss new UI, router, or state libraries before you add them. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

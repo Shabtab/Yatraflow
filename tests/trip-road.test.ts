@@ -477,7 +477,7 @@ describe('the Board draws the workspace road, graded (#370)', () => {
     const board = readSrc('../src/components/BoardView.tsx')
     expect(board).toMatch(/road\?\.status === 'failed'/)
     expect(board).toMatch(/isRoadMeasuredMode\(trip\.transportMode\)/)
-    expect(board).toMatch(/Road not measured/)
+    expect(board).toMatch(/Road: not measured/)
   })
 
   it('the map grades every line it draws and shares the chain signature', () => {
