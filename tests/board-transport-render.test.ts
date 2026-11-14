@@ -59,6 +59,19 @@ describe('Board transport rendering', () => {
     expect(html).toContain('Estimated block time')
   })
 
+  it('names the place in the stop meta only when it differs from the stop title', () => {
+    const stop = (title: string, locationName: string) => ({
+      id: title, title, category: 'sightseeing' as const, locationName,
+      lat: 15.5, lng: 73.8, visitMinutes: 45, entryFeeInrPerPerson: 0,
+      transportCostInrTotal: 0, priority: 'must-do' as const, status: 'confirmed' as const, orderInDay: 0,
+    })
+    const html = render('car', {
+      days: [{ id: 'day', index: 0, stops: [stop('Panaji market', 'panaji market '), { ...stop('Night in Panaji', 'Panaji'), orderInDay: 1 }] }],
+    })
+    const metas = [...html.matchAll(/<span class="board-stop-meta">(.*?)<\/span>/g)].map(m => m[1])
+    expect(metas).toEqual(['0h 45m', 'Panaji · 0h 45m'])
+  })
+
   it.each([
     ['flight', 'Flight', 'plane'], ['train', 'Train', 'train-front'], ['bus', 'Bus', 'bus'],
     ['car', 'Drive', 'car'],
