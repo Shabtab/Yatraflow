@@ -1,7 +1,7 @@
 // ============ Explore public itineraries — discover, trust and fork (CTI §6.10) ============
 import { useEffect, useMemo, useState } from 'react'
 import { currentQuery, onRouteChange, replaceRoute } from '../lib/router'
-import { Compass, Search } from 'lucide-react'
+import { Compass } from 'lucide-react'
 import { usePublished, useUsers, useTrips, useSessionUserId, useDb, rereadPublicSlices } from '../store/store'
 import type { PublishedItinerary, CachedUser } from '../data/types'
 import { computeHealth } from '../lib/engine'
@@ -421,7 +421,7 @@ function ExploreEmpty({ kind, onClear, onNavigate }: {
   }
   if (kind === 'no-match') {
     return (
-      <ExploreStateBlock kind="empty" art={<StateVignette name="no-results" fallback={<Search size={36} aria-hidden />} />} title="Nothing matches those filters"
+      <ExploreStateBlock kind="empty" art={<Mascot pose="head-curious" size={120} />} title="Nothing matches those filters"
         body="Try widening the budget or clearing a filter." actions={clearButton} />
     )
   }

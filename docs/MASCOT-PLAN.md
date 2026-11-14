@@ -3,9 +3,9 @@
 Status: phase 1 shipped. The state surfaces in §4 use the mascot through
 `src/components/mascot/Mascot.tsx`. Phases 2 to 4 are still plans.
 
-One placement waits for art that does not exist yet: Explore "no results" asks
-for the curious head, and the twelve heads ship only as the one expression
-sheet, so that surface keeps its vignette.
+Every phase 1 placement is wired. The curious head ships as its own file,
+`chakra-head-curious.svg`, for the Explore no-results state, and it stays
+legible at 24 to 32 px for the inline warnings in §4.
 
 Chakra is an Asian koel. Its tail turns into a route line that ends in a marigold map dot.
 The art is in `public/brand/mascot/`. The concept sheet is [`MASCOT-SHEET.html`](MASCOT-SHEET.html).

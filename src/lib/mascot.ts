@@ -27,6 +27,7 @@ export const MASCOT_FILES = {
   celebrate: { animated: 'animated/chakra-celebrate.svg' },
   chai: { still: 'chakra-chai.svg', animated: 'animated/chakra-chai.svg' },
   flock: { still: 'chakra-flock.svg' },
+  'head-curious': { still: 'chakra-head-curious.svg' },
   hero: { still: 'chakra-hero.svg', night: 'chakra-night-hero.svg' },
   idle: { animated: 'animated/chakra-idle.svg' },
   loading: { animated: 'animated/chakra-loading.svg' },
