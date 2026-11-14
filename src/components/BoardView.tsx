@@ -274,7 +274,7 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
       <div className="row-between board-head">
         <div>
           <h2>Trip board</h2>
-          <p className="muted small">Arrange flexible stops across days while keeping the real route in view.</p>
+          <p className="muted small">{editable ? 'Drag to move · Click a day to focus' : 'Click a day to focus'}</p>
         </div>
         {editable && (
           <div style={{ display: 'flex', gap: 8 }}>
@@ -303,27 +303,28 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
         {/* floating info card (normal-flow top bar above the columns; the map still
             paints behind everything, so nothing can cover a column) */}
         <div className="board-topbar">
+          {/* One home per fact: the page head owns the title and the help
+              line, the add zones own "Impact preview before saving". This
+              panel keeps only the route controls and the road-failed state. */}
           <div className="glass board-info">
-            <b>Plan by day, see the route</b>
-            <span className="small muted" style={{ display: 'block', marginTop: 3 }}>
-              Drag a stop to another day. Its impact previews before saving. Click a column to focus its route.
-            </span>
             {roadUnmeasured && (
-              <span className="small" style={{ display: 'block', marginTop: 3 }}>
+              <span className="small board-road-note">
                 <InlineIcon icon={TriangleAlert} size={12} gap={3} />
                 {roadRetrying
-                  ? 'Measuring the road…. Until it resolves, the line and figures stay estimates.'
-                  : 'Road not measured. The map\'s line and this board\'s figures are estimates.'}
+                  ? <><span>Measuring the road…</span> · <span>Estimates shown</span></>
+                  : <><span>Road: not measured</span> · <span>Estimates shown</span></>}
               </span>
             )}
-            {roadUnmeasured && !roadRetrying && road && (
-              <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 4 }}
-                onClick={road.retry}
-                title="Ask the routing provider again. The first tries may have been rate-limited">
-                <InlineIcon icon={RefreshCw} size={12} gap={4} />Retry road measurement
-              </button>
-            )}
-            <button type="button" className="board-fit" onClick={fitToTrip}><InlineIcon icon={LocateFixed} size={13} gap={4} />Fit route</button>
+            <div className="board-info-actions">
+              {roadUnmeasured && !roadRetrying && road && (
+                <button type="button" className="btn btn-outline btn-sm"
+                  onClick={road.retry}
+                  title="Ask the routing provider again. The first tries may have been rate-limited">
+                  <InlineIcon icon={RefreshCw} size={12} gap={4} />Retry road measurement
+                </button>
+              )}
+              <button type="button" className="board-fit" onClick={fitToTrip}><InlineIcon icon={LocateFixed} size={13} gap={4} />Fit route</button>
+            </div>
           </div>
 
           {/* Trip Pulse — health, decisions, budget (doc §6.4) */}
@@ -557,7 +558,7 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, tr
         aria-pressed={focused} title={focused ? `Show the whole route again` : `Focus the map on Day ${day.index + 1}`}>
         <span className="board-col-day">Day {day.index + 1}</span>
         <span className="board-col-count">{focused ? 'Focused · ' : ''}{totalStops} stop{totalStops === 1 ? '' : 's'}</span>
-        <span className="board-col-subtitle">{day.title || `Day ${day.index + 1}`}</span>
+        <span className="board-col-subtitle" title={day.title || `Day ${day.index + 1}`}>{day.title || `Day ${day.index + 1}`}</span>
         {sev && <span className={`day-warn-pill sev-${sev}`} title={warningLines(warnings)}><InlineIcon icon={TriangleAlert} size={12} gap={3} />{warnings[0].title.replace(/^Day \d+:\s*/, '')}{warnings.length > 1 ? ` · +${warnings.length - 1} more` : ''}</span>}
       </button>
 
@@ -565,8 +566,11 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, tr
         {flightJourney && <BoardFlightJourney journey={flightJourney} flight={flight} />}
         {ordered.map((s, i) => {
           const { kind, label, mode } = stopPresentation(s, transportMode)
+          // The place often equals the stop name ("Panaji market"): show it
+          // only when it adds a fact the title does not already carry.
+          const place = s.locationName.trim()
           const meta = [
-            s.locationName,
+            place.toLowerCase() === s.title.trim().toLowerCase() ? '' : place,
             minutesToHM(s.visitMinutes),
             s.entryFeeInrPerPerson > 0 ? `₹${s.entryFeeInrPerPerson}/person` : '',
           ].filter(Boolean).join(' · ')
@@ -584,7 +588,8 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, tr
                   <span className="board-stop-kicker">{s.departTime ? `${formatHM(s.departTime, timeFormat)} · ` : ''}{mode ? modeIcon(mode, 12) : <KindIcon kind={kind} size={12} />}{label}</span>
                   {editable ? (
                     <button type="button" className="board-stop-title-btn" onClick={() => onEdit(s.id)}
-                      title={`Edit ${s.title}`} aria-label={`Edit ${s.title}`}>
+                      title={meta ? `Edit ${s.title} · ${meta}` : `Edit ${s.title}`}
+                      aria-label={meta ? `Edit ${s.title} · ${meta}` : `Edit ${s.title}`}>
                       <span className="stop-title">{s.title}</span>
                     </button>
                   ) : (

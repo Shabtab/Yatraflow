@@ -3,7 +3,9 @@
    declaration is unchanged. Rules the board shares with another family stay
    in the legacy file. */
 
-.board-stop-actions { margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--line); }
+/* The actions sit beside the stop text on desktop, so they need no divider.
+   The phone block in board-04.css adds it where the actions wrap below. */
+.board-stop-actions { margin-top: 0; }
 
 .board-stop-title-btn {
   border: none; background: none; padding: 0; text-align: inherit; color: inherit;
@@ -19,11 +21,18 @@
   text-underline-offset: 3px;
 }
 
-.board-stop-title-btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+/* One shared focus ring (DESIGN_TOKENS.md): box-shadow does not move layout. */
+.board-stop-title-btn:focus-visible { outline: none; box-shadow: var(--ring); }
 
 .board-col.drag-live { overflow: visible; }
 
 .board-head { margin-bottom: 14px; }
+
+/* R20: section titles are Plus Jakarta Sans 800 at 18px/1.3, as Budget. */
+.board-head h2 {
+  font-family: var(--font-body); font-size: 18px; font-weight: 800;
+  line-height: 1.3; letter-spacing: 0;
+}
 
 .board {
   position: relative; /* a wide 640px letterbox squeezed tall routes into a thin squiggle
@@ -66,14 +75,26 @@
   backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2);
 }
 
-.board-info { flex: 0 1 264px; border-radius: var(--radius); padding: 10px 12px; max-width: 264px; box-shadow: inset 0 1px 0 var(--yf-glass-sheen), var(--shadow-soft); }
+/* align-self: the panel keeps its own height, not the taller Trip pulse's. */
+.board-info { flex: 0 1 auto; align-self: flex-start; border-radius: var(--radius); padding: 10px 12px; max-width: 328px; box-shadow: inset 0 1px 0 var(--yf-glass-sheen), var(--shadow-soft); }
 
 .board-fit {
-  margin-top: 7px; border: none; background: var(--teal-soft); color: var(--teal-deep);
+  margin-top: 0; border: none; background: var(--teal-soft); color: var(--teal-deep);
   border-radius: 999px; font-size: 11px; font-weight: 800; padding: 5px 11px; cursor: pointer;
 }
 
 .board-fit:hover { filter: brightness(.96); }
+
+.board-fit:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* Route controls: Retry and Fit route share one row when they fit. */
+.board-info-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* The road-failed state keeps its own line. Each part stays whole, so a wrap
+   breaks only at the separator. */
+.board-road-note { display: block; margin-bottom: 8px; }
+
+.board-road-note > span { white-space: nowrap; }
 
 .board-pulse { flex: 0 1 264px; border-radius: var(--radius); padding: 10px 12px; max-width: 264px; box-shadow: inset 0 1px 0 var(--yf-glass-sheen), var(--shadow-soft); }
 
@@ -159,6 +180,10 @@
 
 .board-stop { padding: 7px 10px 7px 13px; box-shadow: var(--shadow-soft); }
 
+/* The shared .stop-main is a flex row (Timeline card). On the Board the kicker,
+   title and meta stack, one line each, so the meta keeps the column width. */
+.board-stop .stop-main { flex-direction: column; align-items: stretch; gap: 0; text-align: start; }
+
 .board-stop.stop-card {
   border-color: color-mix(in srgb, var(--kind-c, var(--line)) 25%, var(--line));
   background: linear-gradient(to right,
@@ -186,7 +211,8 @@
   /* Duration and cost share this line — the same data role already uses tabular
      figures in .stop-meta, so the board's columns should line up too. */
   font-variant-numeric: tabular-nums;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  /* Wrap, do not clip: the place, duration and cost must stay readable. */
+  white-space: normal; overflow-wrap: anywhere;
 }
 
 .board-flight .stop-title, .board-flight .board-stop-meta {
@@ -213,6 +239,6 @@ button.board-col-zone--add b { font-weight: 600; }
 
 button.board-col-zone--add:hover { border-color: var(--teal); background: color-mix(in srgb, var(--teal-soft, #e6f4f2) 60%, transparent); }
 
-button.board-col-zone--add:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+button.board-col-zone--add:focus-visible { outline: none; box-shadow: var(--ring); }
 
 button.board-col-zone--add:active { transform: translateY(1px); }
