@@ -171,6 +171,10 @@ Pitfalls, one line each. Full text: docs/agents/AGENTS-FULL.md §6.
 
 `.agents/skills/verify-yatraflow/` starts the dev server and drives a headless browser to a route. Read its `SKILL.md` first.
 
+### Code search
+
+Use the Graphify MCP tools for code structure: definitions, callers, change impact, file dependencies and linked tests. Use `grep` for literal strings, config values and docs. Graphify reads the indexed commit, so read the file when it changed after that commit.
+
 ### Issue tracker
 
 Issues: GitHub, through the `gh` CLI. See `docs/agents/issue-tracker.md`.
