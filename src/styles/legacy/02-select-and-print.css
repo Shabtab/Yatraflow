@@ -231,13 +231,6 @@
   background: var(--pw-lagoon-100); color: var(--pw-sea-700);
 }
 .stop-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.stop-tile.tile-viewpoint { background: var(--pw-lagoon-100); color: var(--pw-sea-700); }
-.stop-tile.tile-activity { background: var(--pw-marigold-100); color: var(--pw-marigold-ink); }
-.stop-tile.tile-food { background: var(--pw-marigold-100); color: var(--pw-marigold-ink); }
-.stop-tile.tile-stay { background: var(--pw-sunken); color: var(--pw-ink-2); }
-.stop-tile.tile-drive { background: var(--pw-sunken); color: var(--pw-ink-2); }
-.stop-tile.tile-fuel { background: var(--pw-sunken); color: var(--pw-ink-2); }
-.stop-tile.tile-rest { background: var(--pw-lagoon-100); color: var(--pw-sea-700); }
 .stop-desc { font-size: 13px; color: var(--pw-ink-2); margin-top: 6px; }
 /* Clamped stop-card descriptions (issue #3): clamp to 2 lines + "Show more" toggle. */
 .clamp-wrap { position: relative; }
@@ -352,14 +345,14 @@
   transform: translate3d(var(--carry-x, 0px), var(--carry-y, 0px), 0);
   will-change: transform;
 }
-.is-carried .stop-card, .is-carried .travel-endpoint {
+.is-carried .stop-card, .is-carried .tl-node-body {
   transform: rotate(calc(var(--warp-tilt, 0) * 1deg))
     scale(calc(1 + var(--warp-x, 0) - var(--warp-y, 0) * 0.55), calc(1 + var(--warp-y, 0) - var(--warp-x, 0) * 0.55));
   transition: transform var(--motion-fast) var(--ease-glide);
   box-shadow: var(--shadow-carry);
 }
 [data-theme='dark'] .is-carried .stop-card,
-[data-theme='dark'] .is-carried .travel-endpoint { box-shadow: var(--shadow-carry-dark); }
+[data-theme='dark'] .is-carried .tl-node-body { box-shadow: var(--shadow-carry-dark); }
 /* The carried row must clear its own day card: the collapse clip normally
    crops everything to the day body, so a row dragged toward another day got
    cut off at the card edge. drag-live unclips the body for the duration of a
@@ -370,7 +363,7 @@
    applies there while a carry is live. */
 
 @media (prefers-reduced-motion: reduce) {
-  .is-carried .stop-card, .is-carried .travel-endpoint { transform: none; transition: none; }
+  .is-carried .stop-card, .is-carried .tl-node-body { transform: none; transition: none; }
 }
 /* drag rows are gesture surfaces, not text selections (a press-drag on the
    card body is a reorder, never a selection) */
@@ -387,17 +380,9 @@
   font-size: 12px; color: var(--text-3); font-weight: 600;
 }
 
-/* Compact route-endpoint marker used in the workspace Timeline (the rich
-   travel summary lives in .travel-panel above the timeline). */
-.travel-endpoint {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--card-soft);
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
-  padding: 8px 12px;
-  font-size: 13px; font-weight: 600; color: var(--text-2);
-  width: 100%;
-}
+/* The day's start and end are node rows on the rail (flag, moon), the way Ride
+   along draws them; the rich travel summary lives in .travel-panel above. Their
+   layout is in the "Workspace Timeline: Ride along look" block of styles.css. */
 
 /* ---------- Travel panel ---------- */
 .travel-panel {
@@ -520,14 +505,14 @@
    so widening the rail meant finding all of them */
 /* 129px = the 98px time cell + 8px clearance + the 23px ring column below,
    so the ring can never reach the time. Grows with the gutter at each rung. */
-.tl-row, .tl-legrow, .tl-end { display: grid; grid-template-columns: 129px 1fr; gap: 12px; }
+.tl-row, .tl-legrow, .tl-end { display: grid; grid-template-columns: 108px 1fr; gap: 12px; }
 .tl-row { margin-bottom: 8px; align-items: center; }
 .tl-legrow { align-items: center; margin-bottom: 8px; }
 .tl-end { min-height: 12px; margin-bottom: 4px; }
 .tl-row .stop-card { margin-bottom: 0; }
 .tl-gutter {
-  display: grid; grid-template-columns: 98px 23px; column-gap: 8px; justify-content: end;
-  align-items: start; padding: 14px 0 10px; min-width: 0;
+  display: grid; grid-template-columns: 72px 28px; column-gap: 8px; justify-content: end;
+  align-items: start; padding: 10px 0; min-width: 0;
 }
 /* 17px, not the artboard's 19px. The artboard prints short 24-hour labels
    ("07:00", 47px); this app defaults to 12-hour, where the widest label —
@@ -536,23 +521,23 @@
    inside a 98px cell: 14px of clearance for every hour of the day in both
    clock formats, and still a full step above the 11.5px departure line. */
 .tl-time {
-  font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--pw-ink);
+  font-family: var(--font-body); font-size: 14px; font-weight: 700; color: var(--pw-ink);
   grid-column: 1; justify-self: end; text-align: end;
   font-variant-numeric: tabular-nums;
   background: none; border: 0;
   border-radius: 0; padding: 0; white-space: nowrap;
   box-shadow: none;
 }
-.tl-time.tl-dep { font-family: var(--font-body); font-size: 11.5px; font-weight: 600; color: var(--pw-ink-3); background: none; border-color: transparent; }
+.tl-time.tl-dep { line-height: 1.3; font-family: var(--font-body); font-size: 11.5px; font-weight: 600; color: var(--pw-ink-3); background: none; border-color: transparent; }
 /* The line sits in the middle of the ring's own column, so the stop rail and
    the travel-leg rail share one x and the ring is centred on both.
    Thickness and dash are the artboard's: 3px wide, a 5px dash with a 4px gap
    (its `linear-gradient(#9FD9CF 55%, transparent 55%)` at `background-size:
    3px 9px`). The dash was 4px with a 5px gap, which read as a finer, busier
    line than the artboard's. */
-.tl-line { grid-column: 2; grid-row: 1 / span 3; justify-self: center; height: 100%; width: 3px; min-height: 12px; border-radius: 2px; background: repeating-linear-gradient(var(--pw-route) 0 5px, transparent 5px 9px); }
+.tl-line { grid-column: 2; grid-row: 1 / span 3; justify-self: center; height: 100%; width: 2px; min-height: 12px; border-radius: 2px; background: repeating-linear-gradient(var(--pw-route) 0 5px, transparent 5px 9px); }
 .tl-gutter-leg { padding: 0; min-height: 26px; }
-.tl-line-leg { grid-column: 2; justify-self: center; flex: none; width: 3px; height: 100%; min-height: 26px; background: repeating-linear-gradient(var(--pw-route) 0 5px, transparent 5px 9px); }
+.tl-line-leg { grid-column: 2; justify-self: center; flex: none; width: 2px; height: 100%; min-height: 26px; background: repeating-linear-gradient(var(--pw-route) 0 5px, transparent 5px 9px); }
 .tl-end { min-height: 12px; margin-bottom: 4px; }
 .tl-drop-line {
   grid-column: 2; color: var(--ink-amber); background: var(--warn-soft);
@@ -3112,30 +3097,27 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
   grid-row: 1;
   justify-self: center;
   align-self: start;
-  width: 23px;
-  height: 23px;
+  width: 28px;
+  height: 28px;
   margin-top: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 3px solid var(--pw-marigold-500);
+  border: 2px solid var(--pw-marigold-500);
   border-radius: var(--radius-pill);
   background: var(--pw-card);
   color: var(--pw-marigold-ink);
   font-family: var(--font-display);
-  /* The artboard sets 10px here, but 11px is this project's type floor (see
-     tests/design-system.test.ts). The ring's STROKE is what the artboard fixes
-     at 3px, and that is matched. */
+  /* 11px is this project's type floor (see tests/design-system.test.ts). The
+     ring is 28px with a 2px stroke, the same dot Ride along draws. */
   font-size: 11px;
   font-weight: 800;
   z-index: 1;
 }
-.tl-rail-num.cat-food { border-color: var(--pw-saffron-600); }
-.tl-rail-num.cat-hotel { border-color: var(--pw-sea-700); color: var(--pw-sea-700); }
 @media (max-width: 720px) {
-  /* 90px matches the widened `.tl-row` track above; the 66px cell clipped a
-     15px 12-hour label ("10:33 AM" needs about 76px). */
-  .tl-gutter { grid-template-columns: 90px 23px; }
+  /* The 58px time cell holds a 12-hour label at the phone's 10px size. The
+     04 file sets the same 58px and 24px ring column at 640px. */
+  .tl-gutter { grid-template-columns: 58px 24px; }
 }
 
 /* PW-08: a drive day keeps its fixed clock visible. The badge counts the

@@ -72,8 +72,8 @@
     "src/pages/PublicItinerary.tsx": {
       "EmptyState": 2,
       "loadingBlock": 2,
-      "inlineStyle": 24,
-      "rawH1": 1
+      "inlineStyle": 3,
+      "rawH1": 0
     },
     "src/pages/Purchases.tsx": {
       "EmptyState": 0,

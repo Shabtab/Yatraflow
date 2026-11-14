@@ -11,9 +11,9 @@ import { Heart } from 'lucide-react'
 import { savedDayId, savedStopId } from '../../../lib/uiPrefs'
 import { confirmedVisitMinutes } from '../../../lib/hoursContext'
 import {
-  ArrowRight, Armchair, BedDouble, Car, ChevronDown, ChevronUp, CircleCheck, CircleHelp, Clock, CloudRain, CloudSun,
+  ArrowRight, Armchair, BedDouble, Car, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CloudRain, CloudSun,
   Copy, Droplets, ExternalLink, Flag, Fuel, Landmark, Lock, MapPin, Mountain,
-  MoveHorizontal, MoreHorizontal, PenLine, Pencil, Pin, PlaneTakeoff, Plus, Route as RouteIcon,   Ticket, Trash2, TriangleAlert, Utensils,
+  MoveHorizontal, MoreHorizontal, Moon, PenLine, Pencil, Pin, PlaneTakeoff, Plus, Route as RouteIcon, Trash2, TriangleAlert, Utensils,
 } from 'lucide-react'
 import type { ChangeEvent } from 'react'
 import type { Trip, ItineraryStop, ItineraryDay } from '../../../data/types'
@@ -226,7 +226,9 @@ function LegSummary({ leg, inrPerKm, mode }: { leg: ScheduledLeg; inrPerKm: numb
   }
   return (
     <>
-      <MetaIcon icon={Car} tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {from} · est ₹{Math.round(leg.distanceKm * (leg.inrPerKm ?? inrPerKm))} ({leg.inrPerKm != null ? 'car' : mode})
+      <MetaIcon icon={Car} tone="money" />
+      <span className="travel-leg-line">~{leg.distanceKm.toFixed(0)} km · {minutesToHM(leg.durationMinutes)}</span>
+      <span className="travel-leg-extra">from {from} · est ₹{Math.round(leg.distanceKm * (leg.inrPerKm ?? inrPerKm))} ({leg.inrPerKm != null ? 'car' : mode})</span>
     </>
   )
 }
@@ -1165,21 +1167,24 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
             if (isStayDay) {
               return (
                 <div key={s.id} data-stop-id={s.id} className="tl-row tl-anchor" style={{ transform: glideOffset(i) != null ? `translateY(${glideOffset(i)}px)` : undefined }} {...(editable ? dndHandlers(i) : {})}>
-                  <div className="tl-gutter" aria-hidden="true" />
-                  <div className="travel-endpoint">
-                    <span className="travel-anchor-ico"><MapPin size={13} aria-hidden /></span>
+                  <div className="tl-gutter">
+                    <span className="tl-rail-num tl-node-dot tl-node-dot--base" aria-hidden="true"><MapPin size={12} aria-hidden /></span>
+                  </div>
+                  <div className="tl-node-body">
                     <span>Based in {cleanName}</span>
                   </div>
                 </div>
               )
             }
+            const nodeKind = isFinal ? 'end' : i === 0 ? 'start' : 'via'
             return (
-              <div key={s.id} data-stop-id={s.id} className="tl-row tl-anchor" style={{ transform: glideOffset(i) != null ? `translateY(${glideOffset(i)}px)` : undefined }} {...(editable ? dndHandlers(i) : {})}>
+              <div key={s.id} data-stop-id={s.id} className={`tl-row tl-anchor tl-node tl-node--${nodeKind}`} style={{ transform: glideOffset(i) != null ? `translateY(${glideOffset(i)}px)` : undefined }} {...(editable ? dndHandlers(i) : {})}>
                 <div className="tl-gutter">
                   <span className="tl-time"><span className="sr-only">{isFinal ? 'Arrival: ' : 'Departure: '}</span>{isFinal ? (row?.arrive ? formatHM(row.arrive, timeFormat) : '--:--') : (row?.depart ? formatHM(row.depart, timeFormat) : '--:--')}</span>
+                  <span className="tl-line tl-line-node" aria-hidden="true" />
+                  <span className={`tl-rail-num tl-node-dot tl-node-dot--${nodeKind}`} aria-hidden="true">{isFinal ? <Moon size={12} aria-hidden /> : i === 0 ? <Flag size={12} aria-hidden /> : <MapPin size={12} aria-hidden />}</span>
                 </div>
-                <div className="travel-endpoint">
-                  <span className="travel-anchor-ico">{i === 0 || isFinal ? <Flag size={13} aria-hidden /> : <MapPin size={13} aria-hidden />}</span>
+                <div className="tl-node-body">
                   <span>
                     {i === 0 ? `Start: ${cleanName}` : isFinal ? `Destination: ${cleanName}` : cleanName}
                   </span>
@@ -1204,8 +1209,8 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                 <div className="tl-gutter">
                   <span className="tl-time tl-arr"><span className="sr-only">Arrival: </span>{row?.arrive ? formatHM(row.arrive, timeFormat) : '--:--'}</span>
                   <span className="tl-line" aria-hidden="true" />
-                  <span className="tl-time tl-dep"><span className="sr-only">Departure: </span>{row?.depart ? formatHM(row.depart, timeFormat) : '--:--'}</span>
-                  <span className={`tl-rail-num cat-${s.category}`} aria-hidden="true">{i + 1}</span>
+                  <span className="tl-time tl-dep"><span className="sr-only">Departure: </span><span aria-hidden="true">to </span>{row?.depart ? formatHM(row.depart, timeFormat) : '--:--'}</span>
+                  <span className="tl-rail-num" aria-hidden="true">{i + 1}</span>
                 </div>
                 <div
                   className={`stop-card kind-${kind} status-${s.status} ${stopFixed ? 'is-fixed' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
@@ -1256,20 +1261,21 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                   {s.priority === 'optional' && <Chip tone="saffron">Optional</Chip>}
                   {s.weatherSensitive && <Chip tone="info"><InlineIcon icon={CloudRain} size={11} gap={3} vAlign="-1px" />weather-sensitive</Chip>}
                 </div>
+                {/* One " · " line, the way Ride along reads: place, time here, fee.
+                    Money fields stay finite-guarded (#343): an absent fee prints
+                    nothing, and a stored 0 is a real "free entry". */}
                 <div className="stop-meta">
-                  <span><MetaIcon icon={ MapPin } tone="place" />{s.locationName}</span>
-                  <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(s.visitMinutes)}</span>
-                  {s.openTime && <span><MetaIcon icon={ Clock } tone="time" />{formatHMRange(s.openTime, s.closeTime, timeFormat)}</span>}
-                  {/* Money fields are finite-guarded, not defaulted (#343): an
-                      absent/non-finite fee renders NO segment ("₹undefined"
-                      told the user a lie, and a forced ₹0 invents a free
-                      ticket). A stored 0 is a real 0 and still renders. */}
-                  {Number.isFinite(s.entryFeeInrPerPerson) && <span><MetaIcon icon={ Ticket } tone="ticket" />₹{s.entryFeeInrPerPerson}/person</span>}
-                  {Number.isFinite(s.transportCostInrTotal) && <span><MetaIcon icon={ Car } tone="money" />₹{s.transportCostInrTotal} transport</span>}
-                  {s.departTime && s.arrivalTime && (
-                    <span><MetaIcon icon={ Clock } tone="time" />dep {formatHM(s.departTime, timeFormat)} · arr {formatHM(s.arrivalTime, timeFormat)}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</span>
-                  )}
+                  {[
+                    s.locationName,
+                    `${minutesToHM(s.visitMinutes)} here`,
+                    Number.isFinite(s.entryFeeInrPerPerson) ? (s.entryFeeInrPerPerson > 0 ? `₹${s.entryFeeInrPerPerson}/person` : 'free entry') : '',
+                    Number.isFinite(s.transportCostInrTotal) && s.transportCostInrTotal > 0 ? `₹${s.transportCostInrTotal} transport` : '',
+                  ].filter(Boolean).join(' · ')}
                 </div>
+                {s.openTime && <div className="stop-meta">Open {formatHMRange(s.openTime, s.closeTime, timeFormat)}</div>}
+                {s.departTime && s.arrivalTime && (
+                  <div className="stop-meta">dep {formatHM(s.departTime, timeFormat)} · arr {formatHM(s.arrivalTime, timeFormat)}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</div>
+                )}
                 {s.description && <ClampedText className="stop-desc">{s.description}</ClampedText>}
                 {s.notes && <ClampedText className="stop-desc muted"><InlineIcon icon={PenLine} size={12} gap={3} />{s.notes}</ClampedText>}
                 {s.sourceUrl && <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="small" onClick={e => { e.preventDefault(); openExternal(s.sourceUrl!) }}>Source <InlineIcon icon={ExternalLink} size={11} gap={0} className="tl-source-gap" /></a>}
@@ -1367,9 +1373,11 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                   </div>
                 </div>
               )}
-              <div className="tl-row tl-anchor">
+              <div className="tl-row tl-anchor tl-node tl-node--end">
                 <div className="tl-gutter">
                   <span className="tl-time tl-arr"><span className="sr-only">Arrival: </span>{last.arrive ? formatHM(last.arrive, timeFormat) : '--:--'}</span>
+                  <span className="tl-line tl-line-node" aria-hidden="true" />
+                  <span className="tl-rail-num tl-node-dot tl-node-dot--end" aria-hidden="true"><Moon size={12} aria-hidden /></span>
                 </div>
                 <div className="travel-endpoint">
                   <span className="travel-anchor-ico"><Flag size={13} aria-hidden /></span>

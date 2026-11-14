@@ -14,7 +14,7 @@ const KOLKATA = { lat: 22.5726, lng: 88.3639 }
 const DELHI = { lat: 28.6139, lng: 77.209 }
 
 const tripMap = readFileSync(new URL('../src/components/TripMap.tsx', import.meta.url), 'utf8')
-const ui = readFileSync(new URL('../src/components/ui.tsx', import.meta.url), 'utf8')
+const heightChart = readFileSync(new URL('../src/components/trips/OverviewElevationProfile.tsx', import.meta.url), 'utf8')
 const overview = readFileSync(new URL('../src/pages/trip/OverviewTab.tsx', import.meta.url), 'utf8')
 const overviewTruth = readFileSync(new URL('../src/lib/overviewTruth.ts', import.meta.url), 'utf8')
 const pubItinerary = readFileSync(new URL('../src/pages/PublicItinerary.tsx', import.meta.url), 'utf8')
@@ -99,25 +99,16 @@ describe('#613 — a driving day with no stored stops still draws its journey', 
   })
 })
 
-describe('#614 — the route snapshot prints one-based day badges', () => {
-  it('prints the index plus one on the shared badge', () => {
-    expect(ui).toContain('{day + 1}</text>')
+describe('#614 — route day badges are one-based', () => {
+  it('the published page uses the Ride along height card, not the old route snapshot', () => {
+    expect(pubItinerary).toContain('<RideElevation ')
+    expect(pubItinerary).not.toContain('RouteGlance')
+    expect(pubItinerary).not.toContain('RouteSnapshot')
   })
 
-  it('keeps the illustrative branch zero-based so it cannot shift twice', () => {
-    expect(ui).toContain('(_, i) => i))')
-    expect(ui).not.toContain('(_, i) => i + 1)')
-  })
-
-  it('gives a point no day owns no badge on the real branch', () => {
-    expect(ui).toContain('day: number | null')
-    expect(ui).toContain('if (k.day == null) continue')
-  })
-
-  it('both callers pass day indexes, never a coerced zero', () => {
+  it('the overview passes day indexes, never a coerced zero', () => {
     expect(overview).toContain('<OverviewRouteCard rows={routeRows}')
     expect(overviewTruth).toContain('dayIndex: chain.ptDay[i] ?? null')
     expect(overviewTruth).not.toContain('chain.ptDay[i] ?? 0')
-    expect(pubItinerary).toContain('lng: trip.startLocationCoords.lng, day: null')
   })
 })

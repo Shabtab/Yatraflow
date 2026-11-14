@@ -41,11 +41,11 @@ describe('integrated id set', () => {
     expect(inherited).toHaveLength(22)
   })
 
-  it('holds 441 derivative files inside the whole-folder budget', () => {
-    expect(files).toHaveLength(441)
+  it('holds 546 derivative files inside the whole-folder budget', () => {
+    expect(files).toHaveLength(546)
     // Pin the exact total. A budget-only check allows 1.6 MiB of drift, so a
     // dropped file or a wrong master would still pass.
-    expect(totalBytes).toBe(9886308)
+    expect(totalBytes).toBe(19203488)
     expect(totalBytes).toBeLessThan(manifest.budget.totalMiB * 1024 * 1024)
   })
 
@@ -202,7 +202,8 @@ describe('build reproducibility', () => {
   it('keeps the override table honest: every entry names a produced file', () => {
     const produced = new Set<string>()
     for (const [id, entry] of Object.entries(manifest.ids)) {
-      for (const width of entry.widths) produced.add(`${id}-${width}.avif`)
+      const widths = entry.ratio === '3:2' ? [...entry.widths, ...manifest.coverWidths] : entry.widths
+      for (const width of widths) produced.add(`${id}-${width}.avif`)
       produced.add(`${id}-${entry.webp}.webp`)
     }
     for (const entry of overrideEntries()) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RouteHeightPoint, RouteHeightStats } from '../src/lib/elevation'
-import { buildRouteHeightPlot, niceRouteHeightTop, smoothRouteHeightPath } from '../src/lib/elevationPlot'
+import { buildRouteHeightPlot, heightLabelY, niceRouteHeightTop, smoothRouteHeightPath } from '../src/lib/elevationPlot'
 
 const point = (distanceKm: number, elevationM: number | null, title = `p${distanceKm}`): RouteHeightPoint => ({
   key: `k${distanceKm}`,
@@ -79,6 +79,52 @@ describe('plot geometry', () => {
     expect(plot.runs).toHaveLength(0)
     expect(plot.marks).toHaveLength(0)
     expect(plot.peak).toBeNull()
+  })
+})
+
+describe('the plot edges', () => {
+  it('starts and ends the line and the area exactly on the plot edges', () => {
+    const points = [point(0, 60), point(10, 80), point(20, 40)]
+    const plot = buildRouteHeightPlot(points, [], statsOf(points), 400, 200, { left: 0, right: 400 })
+    expect(plot.edges).toEqual({ left: 0, right: 400 })
+    const line = plot.runs[0].line
+    expect(line.startsWith('M 0.00 ')).toBe(true)
+    expect(line).toMatch(/C [^C]* 400\.00 /)
+    // The area closes on the same two edges, at the baseline.
+    const area = plot.runs[0].area
+    expect(area).toContain(`L 400.00 ${plot.baseY} L 0.00 ${plot.baseY} Z`)
+  })
+
+  it('collapses a sub-pixel cluster so the stroke opens without a hook', () => {
+    const close = [point(0, 100), point(0.02, 300), point(0.04, 120), point(30, 200)]
+    const plot = buildRouteHeightPlot(close, [], statsOf(close), 400, 200)
+    // The three places at the start share one pixel, so the first kept point is
+    // 30 km away and its curve control is far from x = 0.
+    const control = Number(/^M [\d.]+ [\d.]+ C ([\d.]+)/.exec(plot.runs[0].line)?.[1])
+    expect(control).toBeGreaterThan(1)
+  })
+})
+
+describe('end labels clear the stroke', () => {
+  const falling = [{ points: [{ x: 0, y: 100 }, { x: 100, y: 140 }, { x: 200, y: 60 }] }]
+
+  it('puts an end label on the side with more room, clear of the curve', () => {
+    // At the right end the curve leaves more room below.
+    const y = heightLabelY({ markX: 200, markY: 60, anchor: 'end', labelWidth: 40, runs: falling, padTop: 30, baseY: 170 })
+    // The label's first line clears the lowest of the curve's own height there.
+    expect(y - 12).toBeGreaterThanOrEqual(97.6 + 6 - 1e-9)
+  })
+
+  it('puts a start label above the curve when the curve leaves no room below', () => {
+    const y = heightLabelY({ markX: 0, markY: 0, anchor: 'start', labelWidth: 40, runs: falling, padTop: 30, baseY: 170 })
+    // The label's last line sits 6 px above the curve's highest point at 7..47.
+    expect(y + 16).toBeLessThanOrEqual(102.8 - 6 + 1e-9)
+  })
+
+  it('drops below when the curve runs along the top of the plot', () => {
+    const high = [{ points: [{ x: 0, y: 35 }, { x: 100, y: 35 }] }]
+    const y = heightLabelY({ markX: 0, markY: 35, anchor: 'start', labelWidth: 40, runs: high, padTop: 30, baseY: 170 })
+    expect(y - 12).toBeGreaterThanOrEqual(35 + 6 - 1e-9)
   })
 })
 

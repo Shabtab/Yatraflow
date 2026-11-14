@@ -1,4 +1,6 @@
 // P7 storefront: the "What is inside" section. Words first, then chips, then day cards.
+// P11: every part before the grid is optional, so the page can use this for the
+// ten-days grid alone and draw the intro as its own tiles.
 import type { KindCount, WeekGroup } from '../../lib/publicStorefront'
 import { staggerStep } from '../../lib/motion'
 import { KindChip } from './KindChip'
@@ -26,12 +28,15 @@ export function WhatIsInside(p: {
   return (
     <div className="sf-inside">
       {p.lede ? <p className="sf-inside-lede">{p.lede}</p> : null}
-      <div className="sf-inside-kinds">
-        {p.kinds.map((k) => <KindChip key={k.kind} kind={k.kind} count={k.count} />)}
-      </div>
+      {p.kinds.length > 0 ? (
+        <div className="sf-inside-kinds">
+          {p.kinds.map((k) => <KindChip key={k.kind} kind={k.kind} count={k.count} />)}
+        </div>
+      ) : null}
       {p.lockedLine ? <p className="sf-inside-lock">{p.lockedLine}</p> : null}
-      {p.weeks ? p.weeks.map((w, wi) => (
-        <details key={w.label} className="sf-week" open={wi === 0}>
+      {/* Every week starts open: a folded week hid free days the reader may read. */}
+      {p.weeks ? p.weeks.map((w) => (
+        <details key={w.label} className="sf-week" open>
           <summary className="sf-week-summary">
             <h3 className="sf-week-title">{w.label}</h3>
           </summary>

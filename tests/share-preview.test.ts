@@ -100,12 +100,14 @@ describe('share preview handler in node', () => {
     // #426 slice 3: the browser lands on the app page's real path.
     expect(res.body).toContain(`location.replace("/pub/${publication.id}")`)
     expect(res.body).toContain(`href="/pub/${publication.id}"`)
-    // No cover on this row, so the app's own asset has to carry the card.
-    const fallback = 'https://www.yatraflow.in/og-default.png'
-    expect(res.body).toContain(`og:image" content="${fallback}"`)
-    expect(res.body).toContain(`twitter:image" content="${fallback}"`)
-    expect(res.body).toContain('og:image:width" content="1200"')
-    expect(res.body).toContain('og:image:height" content="630"')
+    // #914 — no stored cover: the generated scene for Kochi and Munnar carries
+    // the card. The brand card is not used while artwork exists.
+    const artwork = 'https://www.yatraflow.in/art/kerala-1.webp'
+    expect(res.body).toContain(`og:image" content="${artwork}"`)
+    expect(res.body).toContain(`twitter:image" content="${artwork}"`)
+    expect(res.body).not.toContain('og-default.png')
+    expect(res.body).not.toContain('og:image:width')
+    expect(res.body).not.toContain('og:image:height')
     expect(res.body).toContain('twitter:card" content="summary_large_image"')
   })
 
@@ -169,6 +171,17 @@ describe('share preview handler in node', () => {
     expect(res.body).not.toContain('upload.wikimedia.org')
   })
 
+  it('serves a chosen artwork cover exactly as stored', async () => {
+    // #914 — a creator can pick generated artwork. The stored URL is a stable
+    // public WebP, so the handler passes it through like any own-host photo.
+    const artwork = 'https://www.yatraflow.in/art/goa-2.webp'
+    respond([{ ...publication, cover_image_url: artwork }])
+    const res = await runHandler()
+    expect(res.body).toContain(`og:image" content="${artwork}"`)
+    expect(res.body).toContain(`twitter:image" content="${artwork}"`)
+    expect(res.body).not.toContain('og-default.png')
+  })
+
   it('leaves an already-sized Wikimedia redirect and other hosts alone', async () => {
     respond([{ ...publication, cover_image_url: 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Chandratal_1.JPG?width=1200' }])
     expect((await runHandler()).body).toContain('og:image" content="https://commons.wikimedia.org/wiki/Special:Redirect/file/Chandratal_1.JPG?width=1200"')
@@ -179,29 +192,30 @@ describe('share preview handler in node', () => {
   })
 
   it.each([undefined, null, '', 'http://images.example.test/cover.jpg'])(
-    'falls back to the default card for a missing or non-https cover (%s)',
+    'serves generated artwork for a missing or non-https cover (%s)',
     async cover => {
       respond([{ ...publication, cover_image_url: cover }])
       const res = await runHandler()
       expect(res.body).not.toContain('http://images.example.test/cover.jpg')
-      expect(res.body).toContain('og:image" content="https://www.yatraflow.in/og-default.png"')
+      expect(res.body).toContain('og:image" content="https://www.yatraflow.in/art/kerala-1.webp"')
+      expect(res.body).not.toContain('og-default.png')
       expect(res.body).toContain('twitter:card" content="summary_large_image"')
     },
   )
 
-  it('points at a default card that is actually shipped, at the declared size', async () => {
+  it('points at the generated scene that is actually shipped', async () => {
     respond([publication])
     const res = await runHandler()
     const url = /og:image" content="([^"]+)"/.exec(res.body)?.[1] ?? ''
     expect(url).toBeTruthy()
     const file = new URL(url).pathname.replace(/^\//, '')
     expect(existsSync(new URL(`../public/${file}`, import.meta.url)), `${file} is referenced but not in public/`).toBe(true)
-    // A declared size that disagrees with the asset renders letterboxed or
-    // cropped on the client, and nothing else in the gate would notice.
-    const png = readFileSync(new URL(`../public/${file}`, import.meta.url))
-    expect(png.subarray(1, 4).toString('ascii')).toBe('PNG')
-    expect(png.readUInt32BE(16)).toBe(1200)
-    expect(png.readUInt32BE(20)).toBe(630)
+    // #914 — the card is the scene's WebP, not the 1200×630 brand PNG. The
+    // header check proves the file is an image the card can actually show.
+    expect(file.endsWith('.webp')).toBe(true)
+    const webp = readFileSync(new URL(`../public/${file}`, import.meta.url))
+    expect(webp.subarray(0, 4).toString('ascii')).toBe('RIFF')
+    expect(webp.subarray(8, 12).toString('ascii')).toBe('WEBP')
   })
 
   it('honors the configured public origin without a trailing slash', async () => {
@@ -645,12 +659,11 @@ describe('public share source wiring', () => {
   })
 })
 
-// The cover is the one field whose absence is invisible from inside the app: a
-// publication with none previews as the brand card, and the creator never sees
-// the link they sent. So the publish form requires one — and its acceptance
-// rule has to be the handler's own, or a creator could satisfy the form with an
-// http:// URL the preview silently refuses.
-describe('publishing requires a cover the handler will actually use', () => {
+// The cover is the one field whose absence is invisible from inside the app.
+// #914 — generated artwork is the default, and the creator can replace it with
+// a photo. Its acceptance rule is still the handler's own, so a creator cannot
+// satisfy the form with an http:// URL that the preview silently refuses.
+describe('publishing uses a cover the handler will actually serve', () => {
   const form = read('../src/pages/trip/ShareTab.tsx')
   /** #354 — the six rules moved into a lib module so `publishItinerary` enforces
    *  the same ones the form does. The pins below follow the RULE rather than
@@ -659,17 +672,22 @@ describe('publishing requires a cover the handler will actually use', () => {
   const rules = read('../src/lib/publishRules.ts')
   const picker = read('../src/components/CoverImagePicker.tsx')
 
-  it('offers the trip cover picker inside the publish form', () => {
+  it('offers the trip cover picker with the artwork default', () => {
     expect(form).toMatch(/import \{ CoverImagePicker \} from '\.\.\/\.\.\/components\/CoverImagePicker'/)
     // The picker takes the form's cover message now (#389) — two of the six
     // rules are about this control and it used to be able to say nothing.
-    expect(form).toMatch(/<CoverImagePicker trip=\{trip\} editable=\{isOwner\} error=\{errs\.cover \?\? null\} \/>/)
+    expect(form).toMatch(/<CoverImagePicker trip=\{trip\} editable=\{isOwner\} error=\{errs\.cover \?\? null\} defaultArt=\{defaultArt\} \/>/)
+    // The default is the scene `pubArtId` picks for the plan.
+    expect(form).toContain('pubArtId({ seed: `${trip.id}:cover`, slotPlaces: [], planPlaces })')
+    expect(form).toContain('artCoverUrl(defaultArtId, artCoverOrigin())')
+    // "Use artwork" stores the URL on a publication and clears the trip cover.
+    expect(picker).toMatch(/setCover\(defaultArt \? defaultArt\.url : undefined\)/)
   })
 
-  it('refuses to publish without a cover', () => {
-    expect(form).toMatch(/const cover = trip\.coverImageUrl\?\.trim\(\)/)
+  it('defaults to artwork and still refuses a URL the handler cannot use', () => {
+    expect(form).toMatch(/const cover = trip\.coverImageUrl\?\.trim\(\) \|\| defaultArt\?\.url/)
     // The refusal itself is the shared derivation, and the writer calls it too.
-    expect(rules).toMatch(/if \(!coverImageUrl\) errs\.cover = 'Add a cover photo/)
+    expect(rules).toMatch(/if \(!coverImageUrl\) errs\.cover = 'Add a cover photo or use the artwork/)
     expect(form).toMatch(/publishValidation\(\{/)
   })
 
@@ -683,12 +701,10 @@ describe('publishing requires a cover the handler will actually use', () => {
     expect(picker).toContain(rule)
   })
 
-  it('publishes the trip cover as the publication cover, still sized by the picker', () => {
-    // The cover still comes from the trip (never re-derived or dropped), but it
-    // is published as the value the rules above VALIDATED — the trimmed one.
-    // Storing the raw field shipped a space-padded URL that this handler's
-    // `^https://\S+$` test rejects, so the link previewed as the brand card
-    // while the form said it was fine (#388/#360).
+  it('publishes the chosen photo or the artwork default, still sized by the picker', () => {
+    // A photo still comes from the trip. When the trip has none, the artwork
+    // URL is the value the rules above check. Both are trimmed before the
+    // write, so the handler never receives a space-padded URL (#388/#360).
     expect(form).toMatch(/coverImageUrl: cover,/)
     expect(form).not.toMatch(/coverImageUrl: trip\.coverImageUrl,/)
     // The picker sizes on the way in, which is what keeps a stored cover from

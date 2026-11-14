@@ -20,6 +20,8 @@ import {
 } from '../../lib/publishRules'
 import { takePublishDraft } from '../../lib/publishDraft'
 import { publishFormKey, publishFormMount } from '../../lib/publishFormKey'
+import { pubArtId } from '../../lib/pubDayArt'
+import { artCoverOrigin, artCoverUrl } from '../../lib/artCover'
 import { sliceState, rowsView, type ReadState, type RowsView } from '../../lib/readState'
 import type { PublicationDraft } from '../../lib/itinerarySpec'
 import { Avatar, Chip, ConfirmDialog, CopyButton, Field, FormErrorSummary, toast, undoToast } from '../../components/ui'
@@ -179,6 +181,13 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   const entirelyFree = price.trim() === '' || priceNum === 0
   const allIndexes = trip.days.map(d => d.index)
   const hasPremiumDay = !entirelyFree && free.size < trip.days.length
+  // The publication's cover defaults to the generated scene that fits the
+  // plan, so a creator never ships a Wikipedia photo the app picked on its own.
+  // The picker can replace this choice with an upload or a pasted URL.
+  const planPlaces = [trip.startLocation, ...trip.destinations]
+  const defaultArtId = pubArtId({ seed: `${trip.id}:cover`, slotPlaces: [], planPlaces })
+  const defaultArtUrl = defaultArtId ? artCoverUrl(defaultArtId, artCoverOrigin()) : null
+  const defaultArt = defaultArtId && defaultArtUrl ? { id: defaultArtId, url: defaultArtUrl } : null
 
   /** #389 — one field's edit clears that field's message and nothing else, so
    *  fixing the price does not wipe a still-true complaint about the CTA. */
@@ -220,11 +229,10 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
     // #704: the same rule as the disabled button, enforced again here.
     if (!publishReady) return
     // The publication's cover IS the link preview: api/i.js serves it as
-    // og:image/twitter:image, and it is copied from the trip here. Publishing
-    // without one — or with a URL the handler's `^https://\S+$` test rejects —
-    // ships a link that silently previews as the brand card instead of this
-    // trip, which is the one thing a creator cannot see from inside the app.
-    const cover = trip.coverImageUrl?.trim()
+    // og:image/twitter:image. A chosen photo wins; otherwise the generated
+    // artwork for the plan is stored, so the link never falls to the brand card.
+    // A URL the handler's `^https://\S+$` test rejects still refuses to publish.
+    const cover = trip.coverImageUrl?.trim() || defaultArt?.url
     // #354 — these six rules are no longer the FORM's alone: `publishItinerary`
     // now refuses the same set, so a direct store caller cannot publish a row
     // the paywall would price but the preview shows fully. The MESSAGES live in
@@ -324,8 +332,8 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
           form so it is not below the fold of a long publication editor. */}
       <FormErrorSummary errors={errs} labels={PUBLISH_FIELD_LABELS} />
       <div className="ts-subhead">
-        <b>Cover photo</b>
-        <span className="small muted">Required. This is the picture every shared link previews with.</span>
+        <b>Cover</b>
+        <span className="small muted">Your artwork shows by default. Upload or paste a photo to replace it.</span>
       </div>
       {/* Two of the six rules are about this control, and it took no `error`
           prop — so a refused publish said "add a cover photo" with nothing
@@ -335,12 +343,13 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
       <div ref={el => (fieldRefs.current.cover = el)} tabIndex={-1}
         aria-invalid={errs.cover ? true : undefined}
         aria-describedby={errs.cover ? 'pub-cover-err' : undefined}>
-        <CoverImagePicker trip={trip} editable={isOwner} error={errs.cover ?? null} />
+        <CoverImagePicker trip={trip} editable={isOwner} error={errs.cover ?? null} defaultArt={defaultArt} />
       </div>
       {!trip.coverImageUrl && (
         <p className="hint-text ts-note">
-          That preview is a suggestion the app found. Nothing is saved yet, and a link cannot show it.
-          Use it or paste your own; publishing needs a saved cover.
+          {defaultArt
+            ? 'This publication will use the generated artwork for your route. Upload or paste a photo to replace it.'
+            : 'The generated artwork for this route is not available here, so publish needs a photo.'}
         </p>
       )}
       {/* The picker's own message wins over the form's, so this is a fallback:

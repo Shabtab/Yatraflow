@@ -1,7 +1,7 @@
 // ============ Explore - the save heart on the trending shelf ============
 //
-// A trending card carries the same save heart as a grid card. One component
-// draws it, one page-level hook owns the saved ids, and the shared `.ex-save`
+// A trending card is the grid card: the shelf composes ExploreCard, so it carries
+// the same save heart. One component draws it, one page-level hook owns the saved ids, and the shared `.ex-save`
 // rules own the look and the motion. These pins read the source and render the
 // shelf to markup (node env, no DOM). They fail when a second heart appears, when
 // the heart loses its name or its pressed state, or when the heart sinks under
@@ -35,7 +35,7 @@ const plan = (id: string): PublishedItinerary => ({
 
 const shelf = (savedIds: string[]) => renderToStaticMarkup(createElement(TrendingShelf, {
   pubs: [plan('p1'), plan('p2')], users: [creator],
-  isSaved: id => savedIds.includes(id), onToggleSave: () => {},
+  isSaved: id => savedIds.includes(id), needsLogin: false, onFork: () => {}, onToggleSave: () => {},
 }))
 
 /** The CSS text of one rule, from its selector to the closing brace. */
@@ -51,7 +51,9 @@ describe('trending save heart: one heart for both cards', () => {
 
   it('draws the heart with one shared component', () => {
     expect(heartSource).toMatch(/export function ExploreSaveHeart/)
-    expect(shelfSource).toMatch(/<ExploreSaveHeart title=\{pub\.title\} saved=\{isSaved\(pub\.id\)\}/)
+    // The shelf draws no heart of its own. It hands the saved state to the card.
+    expect(shelfSource).toMatch(/<ExploreCard[\s\S]*?saved=\{isSaved\(pub\.id\)\}/)
+    expect(shelfSource).not.toMatch(/<ExploreSaveHeart/)
     expect(cardSource).toMatch(/<ExploreSaveHeart title=\{title\} saved=\{saved\}/)
     // Neither card keeps its own copy of the button.
     expect(shelfSource).not.toMatch(/className="ex-save"/)
@@ -61,7 +63,7 @@ describe('trending save heart: one heart for both cards', () => {
 
   it('reads the saved state from the same hook the grid uses', () => {
     expect(explorePage).toMatch(/const \{ saved, isSaved, toggleSaved \} = useSavedPubs\(\)/)
-    expect(explorePage).toMatch(/<TrendingShelf [^>]*isSaved=\{isSaved\} onToggleSave=\{toggleHeart\}/)
+    expect(explorePage).toMatch(/<TrendingShelf [^>]*isSaved=\{isSaved\}[^>]*onToggleSave=\{toggleHeart\}/)
     expect(explorePage).toMatch(/saved=\{isSaved\(p\.id\)\}[\s\S]*?onToggleSave=\{\(\) => onToggleSave\(p\.id\)\}/)
   })
 
@@ -86,25 +88,23 @@ describe('trending save heart: one heart for both cards', () => {
     expect(html.slice(second - 60, second + 40)).toContain('aria-pressed="true"')
   })
 
-  it('keeps the heart inside the cover, beside the rank and clear of the byline', () => {
-    const cover = shelfSource.slice(shelfSource.indexOf('className="ex-trend-cover"'), shelfSource.indexOf('ex-trend-body'))
-    expect(cover).toContain('ex-trend-rank')
+  it('uses the one card, so the heart sits in the cover and the card has no rank badge', () => {
+    expect(shelfSource).toContain('<ExploreCard')
+    expect(shelfSource).not.toContain('ex-trend-rank')
+    const cover = cardSource.slice(cardSource.indexOf('className="ex-cover-wrap"'), cardSource.indexOf('ex-card-main'))
     expect(cover).toContain('<ExploreSaveHeart')
-    expect(cover.indexOf('ex-trend-rank')).toBeLessThan(cover.indexOf('<ExploreSaveHeart'))
   })
 })
 
 describe('trending save heart: layers, corner and motion', () => {
   it('raises the heart above the stretched link, like the byline', () => {
     expect(ruleBody('.ex-save')).toMatch(/z-index: var\(--z-raised\)/)
-    expect(ruleBody('.ex-trend-link::after')).toMatch(/z-index: var\(--z-content\)/)
     expect(css).toMatch(/--z-raised: 2;/)
     expect(css).toMatch(/--z-content: 1;/)
   })
 
-  it('puts the heart top right and the rank top left', () => {
+  it('puts the heart top right', () => {
     expect(ruleBody('.ex-save')).toMatch(/top: 4px; right: 4px/)
-    expect(ruleBody('.ex-trend-rank')).toMatch(/top: 8px; left: 8px/)
   })
 
   it('keeps a 40px target around the 32px dot', () => {
@@ -127,6 +127,8 @@ describe('trending save heart: layers, corner and motion', () => {
 
   it('needs no login to save, same as the grid card', () => {
     expect(heartSource).not.toMatch(/needsLogin|onNavigate|login/i)
-    expect(shelfSource).not.toMatch(/needsLogin/)
+    // The shelf only forwards needsLogin to the card's Fork label. Saving ignores it.
+    expect(shelfSource).not.toMatch(/ExploreSaveHeart[^\n]*needsLogin/)
+    expect(shelfSource).not.toMatch(/onToggleSave\(pub\.id\)[^\n]*needsLogin/)
   })
 })

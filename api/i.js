@@ -6,6 +6,7 @@ import { resolveOrigin } from './_origin.js'
 import { escapeHtml } from './_escape.js'
 import { renderBodyHTML, touristTripJsonLd } from './_publicBody.js'
 import pilotCampaigns from '../src/data/growthCampaigns.json' with { type: 'json' }
+import artManifest from '../src/assets/art/manifest.json' with { type: 'json' }
 
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const DEFAULT_DESCRIPTION = 'Plan realistic India trips together. See the time, distance and cost impact of every stop.'
@@ -25,6 +26,45 @@ const COVER_WIDTH = 1200
 // while it revalidates. Everything else answers no-store.
 const CARD_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalidate=600'
 const WIKIMEDIA_PATH_RE = /^https:\/\/[^/]*wikimedia\.org\/wikipedia\/([^/]+)\/(.+)$/
+
+// The client's region rule. `src/lib/tripsPage.ts` `regionFor` owns the
+// definition, but this handler is plain JS and cannot import client code. A
+// test pins the two lists to each other, as it already does for the origin.
+// The table only has to answer one question: which scene family fits this plan.
+const ART_REGION_KEYWORDS = [
+  ['kerala', ['kochi', 'munnar', 'thekkady', 'alleppey', 'kerala']],
+  ['goa', ['goa']],
+  ['rajasthan', ['jaipur', 'jodhpur', 'udaipur', 'jaisalmer', 'rajasthan']],
+  ['coorg', ['coorg', 'madikeri', 'kushalnagar']],
+  ['meghalaya', ['shillong', 'cherrapunji', 'dawki', 'meghalaya']],
+  ['kashmir', ['srinagar', 'gulmarg', 'pahalgam', 'kashmir']],
+]
+
+/** The generated scene id that fits a publication with no stored cover.
+ *
+ *  `route_summary` holds the start place first, so only the destinations are
+ *  evidence. A route that names no supported region uses the road or city
+ *  family, then the neutral scene. The manifest is the only id list, so a
+ *  renamed or removed scene cannot produce a URL here.
+ */
+function artSceneId(publication) {
+  const route = Array.isArray(publication?.route_summary) ? publication.route_summary : []
+  const destinations = route.length > 1 ? route.slice(1) : route
+  const words = destinations.flatMap(name => String(name).toLowerCase().split(/[^\p{L}]+/u))
+  for (const [region, keywords] of ART_REGION_KEYWORDS) {
+    if (!words.some(word => keywords.includes(word))) continue
+    const ids = artManifest.regions?.[region]
+    if (Array.isArray(ids) && ids.length > 0) return ids[0]
+  }
+  const family = route.length >= 2 ? artManifest.fallbacks?.road : artManifest.fallbacks?.city
+  return (Array.isArray(family) && family[0]) || artManifest.regions?.generic?.[0] || null
+}
+
+/** The stable public WebP for the scene that fits this publication. */
+function artworkCover(origin, publication) {
+  const id = artSceneId(publication)
+  return id ? `${origin}/art/${id}.webp` : null
+}
 
 /** The same Wikimedia file at a sane width.
  *
@@ -137,13 +177,15 @@ function renderPublication(publication, id, buyer = null, ref = null, trip = nul
     : (publication?.tagline || facts.join(' · ') || DEFAULT_DESCRIPTION)
   const cover = typeof publication?.cover_image_url === 'string' && /^https:\/\/\S+$/.test(publication.cover_image_url)
     ? sizedCover(publication.cover_image_url) : ''
-  // A publication with no cover still needs a picture: without one the link
-  // previews as a bare URL rather than a card. The fallback is the app's own
-  // asset, and only in that case are its dimensions known and worth declaring.
-  const image = cover || `${origin}/og-default.png`
+  // A publication with no stored cover shows generated artwork, never a photo
+  // the app picked. The scene files live at stable public paths, so a deploy
+  // cannot break a card that is already indexed. The brand card is the last
+  // resort, and only then are its dimensions known and worth declaring.
+  const generatedCover = cover ? '' : artworkCover(origin, publication)
+  const image = cover || generatedCover || `${origin}/og-default.png`
   const imageTags = [
     `<meta property="og:image" content="${escapeHtml(image)}" />`,
-    ...(cover ? [] : [
+    ...(cover || generatedCover ? [] : [
       '<meta property="og:image:width" content="1200" />',
       '<meta property="og:image:height" content="630" />',
     ]),

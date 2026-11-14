@@ -15,9 +15,10 @@ export function CreatorsPanel({ rows, users }: { rows: CreatorTile[]; users: Cac
     <section className="ex-panel" aria-labelledby={titleId}>
       <h2 className="ex-panel-title" id={titleId}>Creators</h2>
       <ul className="ex-creators">
-        {rows.map(row => (
+        {rows.map((row, index) => (
           <li key={row.id}>
             <a className="ex-creator" {...appLink(`/creator/${row.id}`)}>
+              <span className="ex-creator-rank" aria-hidden="true">{index + 1}</span>
               <Avatar user={users.find(user => user.id === row.id)} />
               <span className="ex-creator-text">
                 <span className="ex-creator-name">

@@ -149,7 +149,7 @@ describe('a stop card carries one menu, not a row of buttons', () => {
 })
 
 describe('a stop card leads with the artboard duotone tile', () => {
-  it('draws one 48px tile per stop, tinted by its kind', () => {
+  it('draws one 48px tile per stop, with a glyph for its kind', () => {
     expect(day).toContain('className={`stop-tile tile-${kind}`}')
     // Seven kinds, seven glyphs: colour alone would fail a greyscale print.
     for (const glyph of ['Utensils', 'BedDouble', 'Fuel', 'Armchair', 'Mountain', 'Car', 'Landmark']) {
@@ -157,11 +157,11 @@ describe('a stop card leads with the artboard duotone tile', () => {
     }
   })
 
-  it('pairs each tint with its own ink, and sizes the tile to the artboard', () => {
+  it('uses one lagoon tint for every kind, as Ride along does', () => {
     expect(css).toMatch(/\.stop-tile \{\s*\n\s*width: 48px; height: 48px;/)
-    // The artboard's exact duotone pairs: #DDF1EE/#0B5F67 and #FBE7C6/#8A4F0E.
-    expect(css).toMatch(/\.tile-viewpoint \{ background: var\(--pw-lagoon-100\); color: var\(--pw-sea-700\); \}/)
-    expect(css).toMatch(/\.tile-activity \{ background: var\(--pw-marigold-100\); color: var\(--pw-marigold-ink\); \}/)
+    // The kind tag and the glyph already name the kind, so colour adds nothing.
+    expect(css).toMatch(/\.stop-tile \{[^}]*background: var\(--pw-lagoon-100\); color: var\(--pw-sea-700\);/)
+    expect(css).not.toMatch(/\.stop-tile\.tile-/)
   })
 })
 

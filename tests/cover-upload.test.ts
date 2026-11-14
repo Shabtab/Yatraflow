@@ -213,32 +213,25 @@ describe('#360 — the publications whose hero and crawler card disagree', () =>
     expect(coverlessPublications(after, MINE)).toEqual([])
   })
 
-  it('the sweep actually covers the coverless list — the selector is not dead code', () => {
+  it('the sweep no longer backfills a null cover with a Wikipedia photo', () => {
     const store = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8')
-    // The sweep's second work-list, resolving the HERO's own candidates
-    // (routeSummary, then title) — not a different query a crawler would not see.
-    expect(store).toMatch(/for \(const pub of coverlessPublications\(cache\.published, userId\)\)/)
-    expect(store).toMatch(/await fetchFirstAvailableThumb\(coverCandidates\(pub\)\)/)
-    // It reuses the existing own-and-store machinery, row persisted first.
-    expect(store).toMatch(/update\(\{ cover_image_url: owned\.url \}\)/)
+    // #914 — the app picked a destination photo for every coverless row and
+    // stored it. That is the behaviour this task removes: a null cover shows
+    // generated artwork, and `api/i.js` serves generated artwork on the card.
+    // Only the sweep that takes ownership of an existing suggestion remains.
+    expect(store).toMatch(/for \(const pub of unclaimedCovers\(cache\.published, userId\)\)/)
+    expect(store).not.toMatch(/coverlessPublications/)
+    expect(store).not.toMatch(/fetchFirstAvailableThumb/)
   })
 
-  it('the hero derives no live cover — only the sweep reads the one definition', () => {
-    // The agreement went one step further (#360 hero half): the page no
-    // longer resolves a live suggestion at all, so there is no second
-    // derivation that could drift from the sweep's. The rule is pinned as a
-    // single home plus readership in exactly one place: the sweep resolves
-    // through it, and the page holds no live-cover derivation of its own.
-    const lib = readFileSync(new URL('../src/lib/coverUpload.ts', import.meta.url), 'utf8')
+  it('the hero derives no live photo cover', () => {
+    // #914 — the page shows the stored cover, a chosen scene or generated art.
+    // It never resolves a live Wikipedia suggestion, so a photo the creator did
+    // not choose cannot reach the hero.
     const page = readFileSync(new URL('../src/pages/PublicItinerary.tsx', import.meta.url), 'utf8')
     const store = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8')
-    expect(lib.match(/export function coverCandidates\b/g)).toHaveLength(1)
-    expect(store).toContain('fetchFirstAvailableThumb(coverCandidates(pub))')
-    expect(page).not.toMatch(/useDestinationCover|heroAuto|coverCandidates/)
-    for (const [name, source] of [['the page', page], ['the sweep', store]] as const) {
-      expect(source, `${name} derives the candidates itself again`)
-        .not.toMatch(/routeSummary\??\.length \?/)
-    }
+    expect(page).not.toMatch(/useDestinationCover|heroAuto|coverCandidates|fetchFirstAvailableThumb/)
+    expect(store).not.toMatch(/fetchFirstAvailableThumb|coverCandidates/)
   })
 
   it('the handler still reads only the stored column — both sides read the one URL', () => {

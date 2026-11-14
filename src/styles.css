@@ -40,6 +40,10 @@
 @import './styles/legacy/17-overview-tiles-and-cover.css';
 @import './styles/components/pill-nav-17.css';
 @import './styles/pages/budget.css';
+@import './styles/pages/public-itinerary.css';
+@import './styles/pages/explore-redesign.css';
+@import './styles/pages/workspace-timeline.css';
+@import './styles/pages/overview-route-card.css';
 @import './styles/components/map-v2-rail.css';
 
 /* Settings controls keep their state legible in both themes. */

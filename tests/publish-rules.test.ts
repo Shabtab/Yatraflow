@@ -17,6 +17,7 @@ import {
   publishValidation, PUBLISH_FIELD_ORDER, PUBLISH_FIELD_LABELS,
   PublishRejected, MAX_PREMIUM_PRICE_INR,
 } from '../src/lib/publishRules'
+import { artCoverUrl } from '../src/lib/artCover'
 
 const src = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8')
 /** Code only — comments removed. Every file here explains itself at length, so
@@ -53,9 +54,17 @@ describe('#354 — the publish rules refuse, and they are ONE set of rules', () 
     expect(publishValidation(ok())).toEqual({})
   })
 
-  it('refuses a coverless row — the link would preview as the brand card', () => {
+  it('refuses a coverless row, and names artwork as the way forward', () => {
     const e = publishValidation(ok({ coverImageUrl: undefined }))
-    expect(e.cover).toBe('Add a cover photo. It is the picture your share link previews with.')
+    expect(e.cover).toBe('Add a cover photo or use the artwork. It is the picture your share link previews with.')
+  })
+
+  it('accepts the artwork cover the picker stores', () => {
+    // #914 — artwork is a creator choice, not a missing value. The picker
+    // stores the scene's stable https URL, and this rule accepts it.
+    const artwork = artCoverUrl('goa-1', 'https://www.yatraflow.in')
+    expect(artwork).toBe('https://www.yatraflow.in/art/goa-1.webp')
+    expect(publishValidation(ok({ coverImageUrl: artwork! }))).toEqual({})
   })
 
   it('refuses a cover the OG handler will not serve', () => {

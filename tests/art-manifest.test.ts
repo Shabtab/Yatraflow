@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import type { ArtManifest } from '../src/lib/regionArt'
 
 const ART_DIR = fileURLToPath(new URL('../src/assets/art/', import.meta.url))
+const PUBLIC_ART_DIR = fileURLToPath(new URL('../public/art/', import.meta.url))
 const manifest = JSON.parse(readFileSync(path.join(ART_DIR, 'manifest.json'), 'utf8')) as ArtManifest
 const places = (manifest as ArtManifest & {
   places: {
@@ -31,8 +32,10 @@ interface Expected {
 function expectedFiles(): Expected[] {
   const files: Expected[] = []
   for (const [id, entry] of Object.entries(manifest.ids)) {
-    for (const width of entry.widths) {
+    const widths = entry.ratio === '3:2' ? [...entry.widths, ...manifest.coverWidths] : entry.widths
+    for (const width of widths) {
       const cap = manifest.budget.avifKiB[String(width)]
+      expect(cap, `no AVIF cap for width ${width}`).toBeGreaterThan(0)
       files.push({ id, format: 'avif', width, ratio: entry.ratio, name: `${id}-${width}.avif`, capBytes: (cap ?? 0) * 1024 })
     }
     files.push({ id, format: 'webp', width: entry.webp, ratio: entry.ratio, name: `${id}-${entry.webp}.webp`, capBytes: manifest.budget.webpKiB * 1024 })
@@ -66,6 +69,18 @@ function readFileBuffer(name: string): Buffer {
 }
 
 describe('art manifest', () => {
+  it('has a stable public copy of every WebP for stored cover URLs', { timeout: 20000 }, () => {
+    // #914 — a publication can store a generated scene as its cover. The URL
+    // must survive a deploy, so it names `public/art/<id>.webp`, not a hashed
+    // build asset. The copy must be the same bytes as the source WebP.
+    for (const [id, entry] of Object.entries(manifest.ids)) {
+      const source = path.join(ART_DIR, `${id}-${entry.webp}.webp`)
+      const stable = path.join(PUBLIC_ART_DIR, `${id}.webp`)
+      expect(existsSync(stable), `missing public/art/${id}.webp`).toBe(true)
+      expect(readFileSync(stable).equals(readFileSync(source)), `public/art/${id}.webp differs from ${id}-${entry.webp}.webp`).toBe(true)
+    }
+  })
+
   it('declares a file for every width and a WebP fallback for every id', () => {
     for (const expected of expectedFiles()) {
       expect(existsSync(path.join(ART_DIR, expected.name)), `missing ${expected.name}`).toBe(true)
@@ -102,6 +117,14 @@ describe('art manifest', () => {
       expect(entry.widths, id).toEqual([320, 640, 960])
       expect(entry.webp, id).toBe(640)
     }
+    expect(manifest.coverWidths).toEqual([1600])
+  })
+
+  it('adds the wide AVIF to landscape scenes only', () => {
+    for (const [id, entry] of Object.entries(manifest.ids)) {
+      const hasWide = existsSync(path.join(ART_DIR, `${id}-1600.avif`))
+      expect(hasWide, `${id} wide AVIF`).toBe(entry.ratio === '3:2')
+    }
   })
 
   it('declares all fifty new destination scenes with their own ids', () => {
@@ -131,6 +154,10 @@ describe('art size budget', () => {
       const size = statSync(path.join(ART_DIR, expected.name)).size
       expect(size, `${expected.name} is ${size} bytes, cap ${expected.capBytes}`).toBeLessThanOrEqual(expected.capBytes)
     }
+  })
+
+  it('keeps the whole illustration set under the 20 MiB budget', () => {
+    expect(manifest.budget.totalMiB).toBe(20)
   })
 
   it('keeps the whole illustration set under the total budget', () => {

@@ -77,8 +77,12 @@ export function publishValidation(input: PublishValidationInput): Partial<Record
   // og:image/twitter:image. Publishing without one — or with a URL the handler's
   // own test rejects — ships a link that previews as the brand card instead of
   // this trip, which is the one thing a creator cannot see from inside the app.
-  if (!coverImageUrl) errs.cover = 'Add a cover photo. It is the picture your share link previews with.'
-  else if (!COVER_URL_PATTERN.test(coverImageUrl)) errs.cover = 'The cover must be an https image URL. Link previews ignore anything else.'
+  // Artwork counts as a cover. The publish form stores the scene's stable
+  // https URL, and `artIdFromCoverUrl` recognises it later. A missing or
+  // non-https value is still refused: the handler and the database need
+  // an https address, so this refusal names the two honest ways forward.
+  if (!coverImageUrl) errs.cover = 'Add a cover photo or use the artwork. It is the picture your share link previews with.'
+  else if (!COVER_URL_PATTERN.test(coverImageUrl)) errs.cover = 'The cover must be an https image URL. Use your artwork or a photo.'
   if (!Number.isFinite(priceNum) || priceNum < 0) errs.price = 'Price must be a number of rupees, 0 or more.'
   else if (!entirelyFree && priceNum > MAX_PREMIUM_PRICE_INR) errs.price = 'The maximum premium price is ₹1,00,000.'
   // #592 — a charged plan at ₹0 does not exist: the gateway floor is ₹1
