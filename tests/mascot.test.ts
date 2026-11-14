@@ -12,7 +12,9 @@ const read = (file: string) => readFileSync(new URL(file, root), 'utf8')
 
 /** Every file a pose can resolve to: still, animated and night. */
 const poseFiles = (pose: MascotPose): string[] =>
-  Object.values(MASCOT_FILES[pose]).filter((f): f is string => !!f)
+  // The map's values are literal string types, so the predicate needs the widened
+  // shape: `tsconfig.tests.json` type-checks this file, and `verify` runs it.
+  (Object.values(MASCOT_FILES[pose]) as (string | undefined)[]).filter((f): f is string => !!f)
 
 describe('mascot pose files', () => {
   it('names at least one file for every pose', () => {
