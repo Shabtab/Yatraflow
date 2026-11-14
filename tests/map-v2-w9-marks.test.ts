@@ -5,6 +5,7 @@ import {
   baseTagText,
   corridorDayForLens,
   corridorEdgeGeoJson,
+  corridorEdgeOffset,
   drawsCorridor,
   showsHotelTag,
 } from '../src/lib/mapStyles/lensMarks'
@@ -77,12 +78,23 @@ describe('corridorEdgeGeoJson', () => {
 
 describe('corridor paint', () => {
   it('holds the board width, opacity and dashed edge', () => {
-    expect(CORRIDOR_PAINT.width).toBeGreaterThanOrEqual(44)
-    expect(CORRIDOR_PAINT.width).toBeLessThanOrEqual(50)
+    expect(CORRIDOR_PAINT.width).toEqual(['interpolate', ['linear'], ['zoom'], 7, 8, 10, 12, 12, 16, 15, 46])
     expect(CORRIDOR_PAINT.opacity).toBeCloseTo(0.15)
     expect(CORRIDOR_PAINT.edgeWidth).toBe(1)
-    expect(CORRIDOR_PAINT.edgeOpacity).toBeCloseTo(0.5)
+    expect(CORRIDOR_PAINT.edgeOpacity).toEqual(['step', ['zoom'], 0, 9, 0.5])
     expect(CORRIDOR_PAINT.edgeDash).toHaveLength(2)
+  })
+
+  it('keeps both offsets at half the wash width at each stop', () => {
+    for (const side of [-1, 1] as const) {
+      const offset = corridorEdgeOffset(side)
+      expect(offset.slice(0, 3)).toEqual(CORRIDOR_PAINT.width.slice(0, 3))
+      for (let i = 3; i < CORRIDOR_PAINT.width.length; i += 2) {
+        expect(offset[i]).toBe(CORRIDOR_PAINT.width[i])
+        expect(offset[i + 1]).toBe(Number(CORRIDOR_PAINT.width[i + 1]) * side / 2)
+      }
+    }
+    expect(CORRIDOR_PAINT.width.at(-1)).toBe(46)
   })
 })
 
@@ -93,7 +105,8 @@ describe('the corridor render', () => {
   })
 
   it('draws two dashed edges with a line offset', () => {
-    expect(map).toMatch(/'line-offset': side \* \(CORRIDOR_PAINT\.width \/ 2\)/)
+    expect(map).toContain("'line-offset': corridorEdgeOffset(side)")
+    expect(map.match(/tolerance=\{CORRIDOR_PAINT\.tolerance\}/g)).toHaveLength(2)
     expect(map).toMatch(/linePaint=\{\{/)
     expect(map).toMatch(/fillPaint=\{false\}/)
   })

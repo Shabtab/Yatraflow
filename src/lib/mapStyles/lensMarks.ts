@@ -1,3 +1,5 @@
+import type { ExpressionSpecification } from 'maplibre-gl'
+
 // Lens marks for the trip map: stay reach rings, empty-part rings and pick bands.
 // These functions are pure, so the map and the tests read the same rules.
 
@@ -199,18 +201,28 @@ export function drawsCorridor(corridorDay: number | null | undefined, dayIndex: 
   return corridorDay != null && corridorDay === dayIndex
 }
 
-/** The corridor band, its dashed edge and their opacities. Values from the Drive board. */
+const CORRIDOR_WIDTH_STOPS = [[7, 8], [10, 12], [12, 16], [15, 46]] as const
+
+function corridorWidth(scale: number): ExpressionSpecification {
+  return ['interpolate', ['linear'], ['zoom'], ...CORRIDOR_WIDTH_STOPS.flatMap(([zoom, width]) => [zoom, width * scale])]
+}
+
+/** Keep each edge at half the wash width at every zoom. */
+export function corridorEdgeOffset(side: -1 | 1): ExpressionSpecification {
+  return corridorWidth(side / 2)
+}
+
+/** Narrow the wash at low zoom so tight bends do not overlap into dark folds. */
 export const CORRIDOR_PAINT: {
-  width: number
+  width: ExpressionSpecification
   opacity: number
   edgeWidth: number
-  edgeOpacity: number
+  edgeOpacity: ExpressionSpecification
   edgeDash: [number, number]
-} = { width: 46, opacity: 0.15, edgeWidth: 1, edgeOpacity: 0.5, edgeDash: [3, 4] }
+  tolerance: number
+} = { width: corridorWidth(1), opacity: 0.15, edgeWidth: 1, edgeOpacity: ['step', ['zoom'], 0, 9, 0.5], edgeDash: [3, 4], tolerance: 1.5 }
 
-/** Drop points closer than `minDegrees` to the last kept point. A dense road
- *  trace under a 46 px wash makes the line joins spike, so the wash draws the
- *  thinned line. The first and last points always stay. */
+/** Remove close points before rounding the wash. MapLibre also simplifies the wash for each zoom. Ends stay fixed. */
 export function thinCorridorLine(
   coordinates: readonly [number, number][],
   minDegrees = 0.004,
@@ -228,8 +240,7 @@ export function thinCorridorLine(
   return out
 }
 
-/** Chaikin corner cutting. The offset edge lines of the corridor spike at sharp
- *  bends, so they draw a rounded copy of the thinned line. Ends stay fixed. */
+/** Round sharp wash corners with Chaikin cuts. Zoom paint limits edge offsets on distant bends. Ends stay fixed. */
 export function smoothCorridorLine(
   coordinates: readonly [number, number][],
   rounds = 2,

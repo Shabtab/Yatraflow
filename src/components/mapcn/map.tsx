@@ -1252,8 +1252,10 @@ type MapRouteProps = {
   coordinates: [number, number][];
   /** Line color as CSS color value (default: "#4285F4") */
   color?: string;
-  /** Line width in pixels (default: 3) */
-  width?: number;
+  /** Line width in pixels or a MapLibre expression (default: 3). */
+  width?: MapLinePaint["line-width"];
+  /** GeoJSON simplification tolerance. Uses the MapLibre default when omitted. */
+  tolerance?: number;
   /** Line opacity from 0 to 1 (default: 0.8) */
   opacity?: number;
   /** Dash pattern [dash length, gap length] for dashed lines */
@@ -1273,6 +1275,7 @@ function MapRoute({
   coordinates,
   color = "#4285F4",
   width = 3,
+  tolerance,
   opacity = 0.8,
   dashArray,
   onClick,
@@ -1300,6 +1303,7 @@ function MapRoute({
 
     map.addSource(sourceId, {
       type: "geojson",
+      ...(tolerance === undefined ? {} : { tolerance }),
       data: {
         type: "Feature",
         properties: {},
@@ -1338,7 +1342,7 @@ function MapRoute({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, map, sourceId, layerId]);
+  }, [isLoaded, map, sourceId, layerId, tolerance]);
 
   // When coordinates change, update the source data. Always applied when the
   // source exists — including clearing it (< 2 points draws nothing) — so a

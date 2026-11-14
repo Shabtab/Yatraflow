@@ -1467,6 +1467,8 @@ The editor primitives are the default; a script is the exception.
     Pinned in tests/create-crew-fields.test.ts; the entry fails on the
     pre-fix parser (see 6h's break-proof rule).
 
+**Map corridor widths.** Scale translucent wash widths and edge offsets together with zoom. Check tight bends in both themes.
+
 **Map counts and clocks.** Label totals of alternative picks as alternatives. Filled slots read the shared schedule, not search windows.
 
 **Planned detour spend.** Alternatives do not spend the day budget. Sum known costs by planned stop ID. Subtract this spend before a pick can fit. Show distinct unknown and empty states.
