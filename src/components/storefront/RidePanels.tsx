@@ -31,7 +31,7 @@ function RideArt(p: RideArtProps & { photo?: string; thumbnail?: boolean }) {
       sizes={p.thumbnail ? '84px' : '(max-width: 720px) 100vw, 880px'}
       fallback={<TripArt region="generic" />}
     />
-    {p.photo && p.photo !== failedPhoto && <img src={p.photo} alt="" loading="lazy" decoding="async" onError={() => setFailedPhoto(p.photo ?? null)} />}
+    {p.photo && p.photo !== failedPhoto && <img src={p.photo} alt="" loading="lazy" decoding="async" onError={() => { setFailedPhoto(p.photo ?? null) }} />}
   </>
 }
 

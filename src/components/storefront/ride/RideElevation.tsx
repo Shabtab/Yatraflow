@@ -52,7 +52,7 @@ export function useRouteHeights(trip: Trip, dayIndexes: readonly number[]) {
     void measureRouteHeights(points, activeElevationTileLoader(), controller.signal).then(value => {
       if (!controller.signal.aborted) setLoaded({ points, result: value })
     }).catch(() => { if (!controller.signal.aborted) setLoaded({ points, result: { kind: 'failed', reason: 'tiles' } }) })
-      .finally(() => window.clearTimeout(timer))
+      .finally(() => { window.clearTimeout(timer) })
     return () => { controller.abort(); window.clearTimeout(timer) }
   }, [points])
   return { result, paidIndexes }

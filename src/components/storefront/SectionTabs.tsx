@@ -39,7 +39,7 @@ export function SectionTabs({ tabs, label }: {
           href={`#${t.id}`}
           className={'pi-section-tab' + (active === t.id ? ' is-active' : '')}
           aria-current={active === t.id ? 'location' : undefined}
-          onFocus={e => e.currentTarget.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest', inline: 'nearest' })}
+          onFocus={e => { e.currentTarget.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest', inline: 'nearest' }) }}
           onClick={e => {
             const el = document.getElementById(t.id)
             if (!el) return

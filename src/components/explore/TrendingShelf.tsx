@@ -32,7 +32,7 @@ export function TrendingShelf({ pubs, users, isSaved, needsLogin, onFork, onTogg
         {pubs.map((pub, index) => (
           <ExploreCard key={pub.id} pub={pub} creator={users.find(user => user.id === pub.creatorId)}
             saved={isSaved(pub.id)} needsLogin={needsLogin} enterIndex={index} eager
-            onFork={() => onFork(pub.id)} onToggleSave={() => onToggleSave(pub.id)} />
+            onFork={() => { onFork(pub.id) }} onToggleSave={() => { onToggleSave(pub.id) }} />
         ))}
       </div>
     </section>

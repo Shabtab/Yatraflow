@@ -44,7 +44,7 @@ export function rideNodeLabels(journey: Journey, p: {
   lockedNames?: readonly string[]
 }): { start: string; end: string } {
   const first = journey.points[0]
-  const last = journey.points[journey.points.length - 1]
+  const last: Journey['points'][number] | undefined = journey.points[journey.points.length - 1]
   const borrowed = (point: Journey['points'][number] | undefined) =>
     !point || point.synthesized || point.stop.auto === true || !p.ownStopIds.has(point.stop.id)
   const locked = (p.lockedNames ?? []).map(placeKey).filter(k => k.length >= 3)
@@ -68,7 +68,7 @@ export function RideTimeline({ journey, timeFormat, creator, labels, children }:
   children: ReactNode
 }) {
   if (journey.points.length === 0) return <>{children}</>
-  const end = journey.points[journey.points.length - 1]
+  const end: Journey['points'][number] | undefined = journey.points[journey.points.length - 1]
   return (
     <ol className="pi-tl pi-ride-timeline">
       <li className="pi-tl-row pi-ride-node">

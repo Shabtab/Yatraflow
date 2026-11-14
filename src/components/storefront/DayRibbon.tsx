@@ -39,13 +39,24 @@ export function ribbonPlaceOf(
   const given = field?.trim()
   if (given) return given
   const title = day.title.trim()
+  const isCapitalised = (word: string): boolean => {
+    const first = word[0]
+    return first !== undefined && first === first.toUpperCase() && first !== first.toLowerCase()
+  }
+  const isNameWord = (word: string): boolean => /^[\p{L}-]+$/u.test(word)
   const town = (text: string | undefined) => {
     const clean = text?.trim().replace(/[.,;:!]+$/, '')
-    return clean && clean.length <= 24 && /^\p{Lu}/u.test(clean) ? clean : undefined
+    return clean && clean.length <= 24 && isCapitalised(clean) ? clean : undefined
   }
   if (title.includes('→')) return town(title.split('→').pop())
-  const toEnd = /\bto ([\p{Lu}][\p{L}-]*(?: [\p{Lu}][\p{L}-]*)?)\s*[.,!]?$/u.exec(title)
-  if (toEnd) return town(toEnd[1])
+  const words = title.replace(/[.,;:!]+$/, '').trim().split(/\s+/)
+  const toIndex = words.lastIndexOf('to')
+  if (toIndex >= 0 && toIndex < words.length - 1) {
+    const candidate = words.slice(toIndex + 1)
+    if (candidate.length <= 2 && candidate.every(word => isCapitalised(word) && isNameWord(word))) {
+      return town(candidate.join(' '))
+    }
+  }
   const lead = /^([^—]{2,24}) — /.exec(title)
   return lead ? town(lead[1]) : undefined
 }
