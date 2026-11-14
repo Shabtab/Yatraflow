@@ -21,6 +21,12 @@ export function TrendingShelf({ pubs, users, isSaved, needsLogin, onFork, onTogg
   onToggleSave: (id: string) => void
 }) {
   const titleId = useId()
+  const forkHandler = (id: string) => () => {
+    onFork(id)
+  }
+  const saveHandler = (id: string) => () => {
+    onToggleSave(id)
+  }
   if (pubs.length === 0) return null
   return (
     <section className="ex-trend" aria-labelledby={titleId}>
@@ -32,12 +38,8 @@ export function TrendingShelf({ pubs, users, isSaved, needsLogin, onFork, onTogg
         {pubs.map((pub, index) => (
           <ExploreCard key={pub.id} pub={pub} creator={users.find(user => user.id === pub.creatorId)}
             saved={isSaved(pub.id)} needsLogin={needsLogin} enterIndex={index} eager
-            onFork={() => {
-              onFork(pub.id)
-            }}
-            onToggleSave={() => {
-              onToggleSave(pub.id)
-            }}
+            onFork={forkHandler(pub.id)}
+            onToggleSave={saveHandler(pub.id)}
           />
         ))}
       </div>
