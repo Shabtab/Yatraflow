@@ -41,7 +41,7 @@ export function ribbonPlaceOf(
   const title = day.title.trim()
   const isCapitalised = (word: string): boolean => {
     const first = word[0]
-    return first !== undefined && first === first.toUpperCase() && first !== first.toLowerCase()
+    return first === first.toUpperCase() && first !== first.toLowerCase()
   }
   const isNameWord = (word: string): boolean => /^[\p{L}-]+$/u.test(word)
   const town = (text: string | undefined) => {
