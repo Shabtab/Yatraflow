@@ -17,6 +17,7 @@ import { apkUpdateCheck } from '../lib/apkUpdateRuntime'
 import { useApkUpdateStatus } from '../lib/useApkUpdate'
 import { feedbackHref } from '../lib/feedback'
 import { setTheme, useTheme } from '../lib/theme'
+import { Mascot } from '../components/mascot/Mascot'
 import {
   browserNotifEnabled, setBrowserNotifEnabled, browserNotifSupported,
   browserNotifPermission, requestBrowserNotifPermission,
@@ -532,7 +533,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                     )}
                   </div>
                   {notifs.length === 0 ? (
-                    <StateBlock kind="empty" size="compact" title="No notifications yet" body="Collaborators writing to you will show up here." />
+                    <StateBlock kind="empty" size="compact" art={<Mascot pose="sleep" size={88} />} title="No notifications yet" body="Collaborators writing to you will show up here." />
                   ) : (
                     <div className="prof-notif-list">
                       {notifs.slice(0, 8).map(n => (

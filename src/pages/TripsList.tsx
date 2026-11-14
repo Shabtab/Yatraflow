@@ -29,7 +29,7 @@ import { LIST_SIZES } from '../components/trips/TripCover'
 import { ViewSwitch, type TripsLayout } from '../components/trips/ViewSwitch'
 import { SectionHead } from '../components/page/SectionHead'
 import { StateBlock } from '../components/page/StateBlock'
-import { StateVignette } from '../components/RegionArt'
+import { Mascot } from '../components/mascot/Mascot'
 
 type SortKey = 'recent' | 'name' | 'budget-asc' | 'budget-desc' | 'length-desc'
 
@@ -276,14 +276,14 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             // The failed branch is checked first, and its Retry re-issues the
             // RPC rather than re-rendering the same empty bin.
             trashRead === 'reading' ? (
-              <StateBlock kind="loading" icon={<span className="spinner" aria-hidden="true" />} title={emptyCopyFor(trashRead, 'trash', retryTrash).title} />
+              <StateBlock kind="loading" art={<Mascot pose="loading" size={96} />} title={emptyCopyFor(trashRead, 'trash', retryTrash).title} />
             ) : (
               <StateBlock kind="failed" icon={<Trash2 size={38} aria-hidden />} title={emptyCopyFor(trashRead, 'trash', retryTrash).title}
                 body={emptyCopyFor(trashRead, 'trash', retryTrash).body}
                 actions={<button className="btn btn-primary" onClick={retryTrash}>Try again</button>} />
             )
           ) : trashed.length === 0 && !trashExiting ? (
-            <StateBlock kind="empty" icon={<Trash2 size={38} aria-hidden />} title="Trash is empty"
+            <StateBlock kind="empty" art={<Mascot pose="sleep" size={112} />} title="Trash is empty"
               body="Trips you delete will show up here so you can restore them within 30 days." />
           ) : (
             trashEntries.map(({ item: t, key, exiting }) => (
@@ -322,11 +322,11 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         // no error branch. The failed branch precedes loading precedes empty,
         // and its Retry re-issues the hydrate rather than re-rendering.
         tripsRead === 'reading' ? (
-          <StateBlock kind="loading" icon={<span className="spinner" aria-hidden="true" />} title={emptyCopyFor(tripsRead, 'trips', retryTrips).title} />
+          <StateBlock kind="loading" art={<Mascot pose="loading" size={96} />} title={emptyCopyFor(tripsRead, 'trips', retryTrips).title} />
         ) : (
           <StateBlock
             kind="failed"
-            art={<StateVignette name="error" fallback={<Compass size={38} aria-hidden />} />}
+            art={<Mascot pose="sad" size={140} />}
             title={emptyCopyFor(tripsRead, 'trips', retryTrips).title}
             body={emptyCopyFor(tripsRead, 'trips', retryTrips).body}
             actions={<button className="btn btn-primary" onClick={retryTrips}>Try again</button>}
@@ -335,7 +335,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
       ) : trips.length === 0 && !hasFilters ? (
         <StateBlock
           kind="empty"
-          art={<StateVignette name="first-trip" fallback={<Compass size={38} aria-hidden />} />}
+          art={<Mascot pose="pin" size={140} />}
           title="No trips yet"
           body="Start from scratch with dates and budget, or copy a public itinerary from Explore."
           actions={

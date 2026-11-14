@@ -20,6 +20,7 @@ import { Avatar, toast, undoToast, useMedia } from '../components/ui'
 import { assignAvatarTones } from '../lib/avatarTone'
 import { useTripPresence } from '../hooks/useTripPresence'
 import { presenceView } from '../lib/presence'
+import { Mascot } from '../components/mascot/Mascot'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 import { useSuggestionCache } from '../hooks/useSuggestionCache'
 import { buildDnaVectorAcrossTrips, loadDnaLog, crewSeedEvents, crewSeedsFromSuggestions, recordDnaEvent } from '../lib/tripDna'
@@ -887,7 +888,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
     return <div className="container page-enter"><StateBlock kind="failed" titleLevel="h1" title="Could not open this trip" actions={<button className="btn btn-outline btn-sm" onClick={() => setReadResult(null)}>Try again</button>} /></div>
   }
   if (!trip && readState === 'unavailable') {
-    return <div className="container page-enter"><StateBlock kind="empty" titleLevel="h1" title="Trip not found" body="This trip may be deleted or private, or the link may be wrong." actions={<button className="btn btn-outline btn-sm" onClick={() => onNavigate('trips')}>Back to my trips</button>} /></div>
+    return <div className="container page-enter"><StateBlock kind="empty" titleLevel="h1" art={<Mascot pose="lost" size={140} />} title="Trip not found" body="This trip may be deleted or private, or the link may be wrong." actions={<button className="btn btn-outline btn-sm" onClick={() => onNavigate('trips')}>Back to my trips</button>} /></div>
   }
   if (!trip) {
     return <div className="container page-enter"><StateBlock kind="loading" titleLevel="h1" title="Loading trip" /></div>

@@ -8,9 +8,9 @@
 // boundary now performs automatically (once, guarded against reload loops).
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
-import { TriangleAlert } from 'lucide-react'
 import { clearLocalAppData, LOCAL_DATA_NOTE } from '../lib/localData'
 import { StateBlock } from './page/StateBlock'
+import { Mascot } from './mascot/Mascot'
 
 const RELOAD_FLAG = 'yf-chunk-reload'
 
@@ -116,7 +116,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <StateBlock
             kind="failed"
             titleLevel="h2"
-            icon={<TriangleAlert size={38} aria-hidden />}
+            art={<Mascot pose="sad" size={140} />}
             title={staleChunk ? 'YatraFlow was just updated' : 'Something went wrong'}
             body={body}
             actions={actions}
