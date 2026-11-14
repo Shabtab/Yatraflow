@@ -20,6 +20,7 @@ import {
 } from '../../lib/publishRules'
 import { takePublishDraft } from '../../lib/publishDraft'
 import { publishFormKey, publishFormMount } from '../../lib/publishFormKey'
+import { Mascot } from '../../components/mascot/Mascot'
 import { pubArtId } from '../../lib/pubDayArt'
 import { artCoverOrigin, artCoverUrl } from '../../lib/artCover'
 import { sliceState, rowsView, type ReadState, type RowsView } from '../../lib/readState'
@@ -592,7 +593,8 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
             {(trip.members ?? []).length === 0 ? (
               <div className="shr-state">
                 <StateBlock kind="empty" size="compact" title="No one is on this trip yet."
-                  body="Share the invite link above and the travellers who join appear here." />
+                  body="Share the invite link above and the travellers who join appear here."
+                  art={<Mascot pose="wave" size={96} />} />
               </div>
             ) : (trip.members ?? []).map(m => {
               const u = userById(m.userId)

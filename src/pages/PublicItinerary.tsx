@@ -20,6 +20,7 @@ import { describePreviewSplit } from '../lib/previewSplit'
 import { buildJourney, simulateDay, scheduleRowsById, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip, hmToMinutes } from '../lib/engine'
 import { cap, titleCase } from '../lib/labels'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
+import { Mascot } from '../components/mascot/Mascot'
 import { scrollBehavior } from '../lib/motion'
 import { useSavedPubs } from '../lib/savedPubs'
 import { fetchMyEntitlements, fetchCreatorSales, fetchCreatorFunnel, purchaseUnlock, type FunnelDailyRow } from '../lib/unlock'
@@ -579,7 +580,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     if (!entitlementsRead) {
       return (
         <div className="container page-enter">
-          <div className="container loading-block"><div className="spinner" />Loading itinerary…</div>
+          <div className="container loading-block"><Mascot pose="loading" size={112} />Loading itinerary…</div>
         </div>
       )
     }
@@ -596,7 +597,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     return (
       <div className="container page-enter">
         {pub && !miss
-          ? <div className="container loading-block"><div className="spinner" />Loading itinerary…</div>
+          ? <div className="container loading-block"><Mascot pose="loading" size={112} />Loading itinerary…</div>
           : /* The fetch returns null for a missing row AND for a failed select, so
                this copy must not pick one cause: it names the real possibilities
                and says plainly that the page cannot tell them apart. */
