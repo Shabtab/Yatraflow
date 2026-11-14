@@ -7,7 +7,7 @@ The auth page at `/auth` lets a visitor log in with an email and password, or sw
 - `auth-login` shows the log-in form by default.
 - `auth-signup` shows the create-account form when `mode=signup` is in the address.
 - `auth-next` keeps the `next` target so a visitor returns to the page they wanted. It is not driven yet.
-- `auth-submit` signs in with real credentials. It needs a disposable test account and is not drivable yet.
+- `auth-submit` signs in with real credentials. The `signin` command drives it with the disposable test account.
 
 ## How to get to it (user POV)
 
@@ -25,7 +25,7 @@ Preconditions:
 - **Log-in form.** Run `MSYS_NO_PATHCONV=1 node .agents/skills/verify-yatraflow/scripts/verify.mjs drive /auth sign-in --expect "Welcome back"`. Exit code is `0`. `finalUrl` is `http://localhost:5178/auth`.
 - **Top bar.** Run `... drive / sign-in-header --click "Log in" --expect "Welcome back"`. Exit code is `0`.
 - **Sign-up form.** Run `... drive "/auth?mode=signup" sign-up --expect "Create your account"`. Exit code is `0`. The body shows "Your name" and "Date of birth".
-- **Real sign-in.** Not drivable. It needs a test account, and the harness has no sign-in step yet.
+- **Real sign-in.** Drivable with `signin`. The account keys are in `.env.local`.
 
 ## Gotchas
 

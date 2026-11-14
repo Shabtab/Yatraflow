@@ -52,6 +52,8 @@ Local payment proof: `.agent-evidence/site-logic/payment-repair-01-probe.mjs` an
 The probe checks both serial orders with actual SQL.
 It does not prove hosted two-connection concurrency.
 
+UI work on signed-in pages must be proven on the signed-in dev server, with `verify-yatraflow` (`signin`, `drive --signin`). `dev/` fixtures are a supplementary check, not acceptance proof.
+
 **Run browser sampling after the test suite finishes.** Parallel test workers can cause test timeouts and missed animation frames. You must keep these checks separate on a busy machine.
 
 The global reduced-motion rule sets transition durations to `.01ms`.

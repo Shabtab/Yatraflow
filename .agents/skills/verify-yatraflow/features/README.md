@@ -16,7 +16,7 @@ This directory is the maintained source for verifying the user-visible behavior 
 | [start-planning.md](start-planning.md) | Entry to trip planning and sign-up | No (create page: yes) | Header verified; hero broken |
 | [explore.md](explore.md) | Public itinerary list at `/explore` | No (fork: yes) | Verified; hero link broken |
 | [sign-in.md](sign-in.md) | Log in and create account at `/auth` | No (real sign-in: test account) | Verified (forms render) |
-| [my-trips.md](my-trips.md) | `/trips` list | Yes | Signed-out gate verified; list not drivable |
+| [my-trips.md](my-trips.md) | `/trips` list | Yes | Signed-out gate verified; list drivable with `--signin`, not yet verified |
 
 ## Driving conventions
 
