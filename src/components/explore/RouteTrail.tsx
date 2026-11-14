@@ -10,9 +10,10 @@ export function RouteTrail({ routeSummary }: { routeSummary: string[] }) {
   const isLoop = routeSummary.length > 1 && routeSummary[0] === routeSummary[routeSummary.length - 1]
   return (
     <div className="ex-route">
-      {/* The heading names the kind only. The trail below lists the stops, so
-          the first and last stop are never printed twice. */}
-      <p className="ex-route-kind">
+      {/* The heading names the kind only, and a screen reader hears it. The look
+          is the trail: a loop's last dot is hollow. The trail lists the stops,
+          so the first and last stop are never printed twice. */}
+      <p className="ex-route-kind sr-only">
         {isLoop ? <Repeat size={14} aria-hidden /> : <Route size={14} aria-hidden />}
         {isLoop ? 'Loop' : 'Route'}
       </p>

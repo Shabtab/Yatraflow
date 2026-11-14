@@ -25,3 +25,15 @@
 @media (prefers-reduced-motion: reduce) {
   .ex-search-input, .ex-search-clear { transition: none; }
 }
+
+/* Explore hero variant. The field sits inside a pill that owns the frame, so the
+   input has no border or background of its own. The pill is `.ex-hero-search`
+   (a page class). Its width comes from `--search-field-flex`. Scoped to the
+   hero, so every other field keeps the base look above. */
+.ex-page .ex-hero-search .ex-search-icon { left: 12px; }
+.ex-page .ex-hero-search .ex-search-input,
+.ex-page .ex-hero-search .ex-search-input:hover,
+.ex-page .ex-hero-search .ex-search-input:focus-visible {
+  min-height: 46px; padding: 0 3rem 0 2.75rem; border: 0; border-radius: var(--radius-pill);
+  background: transparent; box-shadow: none; font-size: 16px;
+}

@@ -83,7 +83,7 @@ describe('FilterBar', () => {
 
   it('owns the frame, the stacking host and the phone fold', () => {
     expect(filterBar).toContain('ex-filterbar filterbar-host')
-    expect(filterBar).toContain('role="search"')
+    expect(filterBar).toContain("role={search ? 'search' : 'group'}")
     expect(filterBar).toContain('ex-filter-row')
     expect(filterBar).toContain('ex-filters-toggle')
     expect(filterBar).toContain('ex-selects')
@@ -104,7 +104,7 @@ describe('ExploreFilterBar', () => {
   it('is a thin caller of FilterBar and fills its slots', () => {
     expect(exploreBar).toContain("from '../page/FilterBar'")
     expect(exploreBar).toContain('<FilterBar')
-    for (const slot of ['search={', 'selects={', 'chips={', 'trailing={', 'onClear={', 'activeSelectCount={']) {
+    for (const slot of ['selects={', 'chips={', 'trailing={', 'onClear={', 'activeSelectCount={']) {
       expect(exploreBar).toContain(slot)
     }
   })
@@ -113,9 +113,29 @@ describe('ExploreFilterBar', () => {
     for (const token of ['ex-select', 'ex-select--sort', 'ex-chips', 'ex-chip-saved', 'ex-chip-count', 'ex-select-icon']) {
       expect(exploreBar).toContain(token)
     }
-    for (const label of ['Filter itineraries', 'Travel style', 'Duration', 'Max budget', 'Sort by', 'Search by route, place or creator']) {
+    for (const label of ['Filter itineraries', 'Travel style', 'Duration', 'Max budget', 'Sort by']) {
       expect(exploreBar).toContain(label)
     }
+  })
+
+  it('leaves the one search field to the hero, so the query has one source', () => {
+    expect(exploreBar).not.toContain('SearchField')
+    expect(source('src/components/explore/ExploreHero.tsx')).toContain('Search by route, place or creator')
+  })
+
+  it('keeps the hero quick picks on values the bar offers, so the two never disagree', () => {
+    const page = source('src/pages/Explore.tsx')
+    // "Under ₹20k" writes the same number the budget select lists. A value the
+    // select lacks would leave its trigger blank while the chip read pressed.
+    const under = page.match(/const UNDER_BUDGET = (\d+)/)
+    expect(under, 'UNDER_BUDGET is declared in Explore').not.toBeNull()
+    expect(exploreBar).toContain(`{ value: '${under?.[1]}', label: 'Under ₹20k' }`)
+    // "Weekend" is the length group's own "short" key, and both pick paths go
+    // through the setters and the URL write the bar uses.
+    expect(exploreBar).toContain("{ value: 'short', label: '3 days or less' }")
+    expect(page).toMatch(/duration === 'short' \? 'all' : 'short'/)
+    expect(page).toMatch(/setDuration\(next\); syncUrl\(\{ dur: next \}\)/)
+    expect(page).toMatch(/setMaxBudget\(next\); syncUrl\(\{ max: String\(next\) \}\)/)
   })
 
   it('does not rebuild the frame the shell owns', () => {

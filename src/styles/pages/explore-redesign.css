@@ -1,0 +1,555 @@
+/* Explore page styles for the PW-10 redesign.
+   Owner module for the .ex-* overrides that sit after legacy/10-explore.css. */
+
+/* ============================================================================
+   PW-10 Explore gallery and the shared publication card.
+   Every selector below is new. The append keeps the duplicate-selector count
+   flat. `.ex-hero` is shared with My trips, so each hero rule names `.ex-page`.
+   `.ex-card[data-id]` names the publication card only. The Fork control keeps
+   the shared button recipe.
+   Reduced-motion coverage for the card and the postcards already sits in
+   `legacy/10-explore.css`, so this block adds no second block.
+   ========================================================================= */
+
+/* The hero sits on the page ground. The warm gradient, the veil and the card
+   frame are removed for Explore only. */
+.ex-page .ex-hero {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 480px);
+  gap: 20px 40px; align-items: center;
+  margin: 0; padding: 8px 0 0; border: 0; border-radius: 0; background: none;
+  overflow: visible;
+}
+.ex-page .ex-hero::before { content: none; }
+
+/* The label above the headline, in the kicker role. */
+.ex-page .ex-hero .ex-kicker {
+  margin: 0 0 12px; color: var(--pw-sea-700);
+  font-family: var(--font-body); font-size: 11.5px; font-weight: 700;
+  letter-spacing: var(--pw-kicker-tracking); line-height: 1.3;
+  text-transform: uppercase;
+}
+/* display-xl from the type roles: Sora 56/700/1.04, tracking -.025em. The
+   accent is a colour, not an italic and not a brush stroke. */
+.ex-page .ex-hero h1 {
+  margin: 0; color: var(--text);
+  font-family: var(--font-display); font-size: clamp(2.25rem, 1.2rem + 2.6vw, 3.5rem);
+  font-weight: 700; line-height: 1.04; letter-spacing: -.025em; text-wrap: balance;
+}
+.ex-page .ex-hero h1 em { font-style: normal; color: var(--pw-lagoon-600); }
+.ex-page .ex-hero h1 em::after { content: none; }
+
+.ex-page .ex-hero-lede {
+  margin: 14px 0 0; max-width: 560px; color: var(--text-2);
+  font-size: 17px; line-height: 1.5; text-wrap: pretty;
+}
+/* The search field, then the quick picks, one under the other. */
+.ex-page .ex-hero-actions { display: flex; flex-direction: column; align-items: stretch; gap: 14px; margin-top: 22px; }
+/* The primary action reads the shared button variables instead of the old
+   52px and 14px page literals. The button owner keeps the recipe. */
+.ex-page .ex-cta {
+  min-height: var(--btn-min-height, 44px);
+  padding: var(--btn-padding, 0 18px);
+  border-radius: var(--btn-radius, 999px);
+  font-size: var(--btn-font-size, 14.5px);
+}
+
+/* The counts: a figure over a label, one row, no dividers. */
+.ex-page .ex-hero .ex-stats { display: flex; flex-wrap: wrap; gap: 8px 32px; margin: 18px 0 0; }
+.ex-page .ex-hero .ex-stat {
+  flex-direction: column-reverse; align-items: flex-start; gap: 2px;
+  padding: 0; border: 0;
+}
+.ex-page .ex-hero .ex-stat dd {
+  margin: 0; color: var(--text);
+  font-family: var(--font-display); font-size: 24px; font-weight: 700;
+  line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+}
+.ex-page .ex-hero .ex-stat dt { color: var(--text-3); font-size: 12.5px; white-space: nowrap; }
+
+/* Postcard surface, ink and tilt come from the reference. The measured
+   geometry stays in the legacy module. */
+.ex-page .ex-postcard {
+  padding: 8px 8px 0; background: var(--card);
+  border-radius: var(--radius); box-shadow: var(--elev-1);
+}
+.ex-page .ex-postcard-art { border-radius: var(--radius-xs); }
+.ex-page .ex-postcard figcaption {
+  padding: 8px 4px 10px; color: var(--text);
+  font-family: var(--font-display); font-size: 13.5px; font-weight: 700;
+  letter-spacing: 0; line-height: 1.25; text-transform: none;
+}
+.ex-page .ex-stamp { width: 22px; height: 26px; border-radius: var(--radius-mark); }
+.ex-page .ex-pc-1 { --ex-rot: -6deg; }
+.ex-page .ex-pc-2 { --ex-rot: 4deg; }
+.ex-page .ex-pc-3 { --ex-rot: -2deg; }
+/* The dashed route line takes the sea ink. */
+.ex-page .ex-route-line path { stroke: var(--teal); }
+.ex-page .ex-route-line circle { fill: var(--pw-sea-700); }
+
+/* The note carries the live fork total, so it prints only above zero. The
+   rung clears the postcard stack, which sits at 3 and 4. */
+.ex-page .ex-forks-note {
+  position: absolute; left: 6%; bottom: 0; z-index: var(--z-frost); margin: 0;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--pw-marigold-50); border: 1px solid var(--pw-marigold-100);
+  box-shadow: var(--elev-1); color: var(--pw-marigold-ink);
+  font-family: var(--font-display); font-size: 13px; font-weight: 700; line-height: 1.2;
+  transform: rotate(-3deg);
+}
+.ex-page .ex-forks-note b { font-size: 15px; font-variant-numeric: tabular-nums; }
+
+/* One card for the Explore grid and the creator page. Padding is zero and the
+   cover is inset. No `overflow: hidden`, so the stretched link keeps its focus
+   ring on all four edges. */
+.ex-card[data-id] {
+  padding: 0;
+  border-radius: var(--radius-lg);
+}
+.ex-card .ex-cover-wrap {
+  margin: 8px 8px 0;
+  border-radius: var(--radius);
+}
+
+/* Cover labels. The blur is functional: the label must hold on any cover, in
+   either theme. The text inset clears the save heart. */
+.ex-card .ex-style-tag {
+  top: 12px; left: 12px; max-width: calc(100% - 72px);
+  padding: 4px 10px; border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--card) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--card) 72%, transparent);
+  -webkit-backdrop-filter: blur(var(--yf-blur-chip));
+  backdrop-filter: blur(var(--yf-blur-chip));
+  color: var(--text); font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+}
+.ex-card .ex-price-tag {
+  position: absolute; left: 12px; bottom: 12px; z-index: var(--z-content);
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: var(--radius-pill);
+  background: var(--pw-lagoon-100); color: var(--pw-sea-700);
+  box-shadow: var(--elev-2); font-size: 12px; font-weight: 800; line-height: 1.3;
+  pointer-events: none;
+}
+.ex-card .ex-price-tag.is-paid { background: var(--pw-marigold-500); color: var(--pw-on-marigold); }
+
+.ex-card .ex-card-body { gap: 6px; padding: 14px 16px 0; }
+/* R20: a card title uses the body face at 800. */
+.ex-card .ex-card-title {
+  font-family: var(--font-body); font-size: 17px; font-weight: 800;
+  line-height: 1.3; letter-spacing: -.01em;
+}
+.ex-card .ex-card-link::after { border-radius: var(--radius-lg); }
+.ex-card .ex-card-desc {
+  font-size: 13.5px; line-height: 1.45; color: var(--text-2);
+  -webkit-line-clamp: 2; line-clamp: 2;
+}
+/* Two facts a row. A four-up layout needs a shorter budget string in
+   `cardColumns()` first. */
+.ex-card .ex-facts {
+  margin: 10px 0 0; padding: 10px 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px;
+  border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line);
+}
+.ex-card .ex-facts dt { color: var(--text-3); font-size: 11px; letter-spacing: .06em; }
+.ex-card .ex-facts dd {
+  color: var(--text); font-family: var(--font-display);
+  font-size: 14px; font-weight: 700; line-height: 1.25;
+}
+
+.ex-card .ex-card-foot { margin-top: auto; padding: 12px 16px 14px; }
+.ex-card .ex-byline { font-size: 13px; font-weight: 700; }
+/* The stretched title link covers the card. The Fork control and the channel
+   links must sit above it on both consumers. The creator page has no
+   `.ex-page` scope. Placement only, so the button and link recipes stay. */
+.ex-card .ex-fork { position: relative; z-index: var(--z-raised); }
+
+/* The creator row is the card's last row. A compound selector outranks the
+   base `.itin-foot` rule, which stays untouched for every other consumer. */
+.ex-card:has(.ex-card-creator) .ex-card-foot { padding-bottom: 6px; }
+.itin-foot.ex-card-creator { margin-top: 0; gap: 8px; }
+.ex-card-bio {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-3); font-size: 12.5px; line-height: 1.4;
+}
+.ex-card-channels { display: inline-flex; flex: none; gap: 6px; }
+/* The channel links are the creator row's only controls. They need the same
+   rung, and they keep their own focus outline. */
+.ex-card-creator .icon-link { position: relative; z-index: var(--z-raised); }
+
+/* Narrow widths. The hero stacks and the note stops floating. */
+@media (max-width: 959px) {
+  .ex-page .ex-hero { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .ex-page .ex-forks-note { position: static; display: inline-block; transform: rotate(-2deg); }
+}
+@media (max-width: 720px) {
+  .ex-card[data-id] { border-radius: var(--radius); }
+  .ex-card .ex-card-link::after { border-radius: var(--radius); }
+  /* The phone keeps the compact counts row and the 16px context line from the
+     legacy module. These rules restore what the scoped desktop rules outrank. */
+  .ex-page .ex-hero .ex-stats { gap: 2px 14px; }
+  .ex-page .ex-hero .ex-stat { flex-direction: row-reverse; align-items: baseline; gap: 4px; }
+  .ex-page .ex-hero .ex-stat dd { font-size: 15px; }
+  .ex-page .ex-hero-lede { font-size: 16px; }
+}
+
+/* ============================================================================
+   PW-10 Explore page parity: hero search, filter bar, featured card, card
+   facts, side column.
+   Appended after the PW-10 gallery block. Hero and bar rules name `.ex-page`
+   because `.ex-hero` and the chip rules are shared with My trips. Titles use
+   the body face at 800 (R20). The Fork button keeps the shared button recipe
+   (R15). Every colour is a token, so both themes follow.
+   ========================================================================= */
+
+/* ---- Layout: the results column and a 330px side column ---- */
+.ex-page .ex-layout { gap: 28px; margin-top: 32px; }
+@media (min-width: 1100px) {
+  .ex-page .ex-layout { grid-template-columns: minmax(0, 1fr) 330px; }
+}
+.ex-page .ex-main { display: flex; flex-direction: column; gap: 18px; }
+/* The column gap spaces the blocks, so their own top and bottom margins go. */
+.ex-page .ex-main > * { margin-top: 0; margin-bottom: 0; }
+.ex-page .ex-aside { gap: 16px; }
+/* The side column is 330px. Two rows of 52px art and a name leave about 77px for
+   the text, and "Chandratal" broke inside the word. One column keeps each name
+   on one line. The legacy module sets two columns, so this names the scope. */
+@media (min-width: 1100px) {
+  .ex-page .ex-places { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 1099px) {
+  .ex-page .ex-forksteps { grid-column: 1 / -1; }
+  .ex-page .ex-forksteps .ex-steps { grid-auto-flow: column; justify-content: start; gap: 12px 28px; }
+  .ex-page .ex-places { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .ex-page .ex-forksteps .ex-steps { grid-auto-flow: row; }
+  .ex-page .ex-places { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.ex-page .ex-section-title { font-size: 30px; }
+.ex-page .ex-result-count { font-size: 13.5px; }
+
+/* ---- Hero: the one search field, then two quick picks ---- */
+.ex-page .ex-hero-search {
+  display: flex; align-items: center; gap: 12px; width: 100%; max-width: 640px; min-height: 62px;
+  padding: 8px; border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  border: 1px solid var(--line); box-shadow: var(--elev-1);
+  /* The field sits inside this pill, which owns the frame. The shared field
+     takes its width from this supported variable. Its borderless look is the
+     `.ex-hero-search` variant in the field's own file (search-field.css). */
+  --search-field-flex: 1 1 0;
+}
+.ex-page .ex-hero-search:focus-within { box-shadow: var(--elev-1), var(--ring); }
+.ex-page .ex-hero-search-go { flex: none; min-height: 46px; padding: 0 22px; border-radius: var(--radius-pill); }
+.ex-page .ex-quick { display: flex; flex-wrap: wrap; gap: 8px; max-width: 660px; }
+.ex-page .ex-quick-chip { min-height: 34px; padding: 0 14px; font-size: 13px; }
+.ex-page .ex-quick-chip:hover { transform: translateY(-1px); background: var(--pw-lagoon-50); }
+
+/* ---- Filter bar: a raised card, a segmented length group, tealed chips ---- */
+.ex-page .ex-filterbar { gap: 12px; padding: 14px 16px; border-radius: var(--radius-lg); box-shadow: var(--elev-1); }
+/* The length group is four equal columns, so a glider slides behind the active
+   button with no measuring (the toggle-glider pattern in docs/MOTION-TOKENS.md).
+   The group sets `data-layout` to the active key: all, short, medium or long.
+   The pressed button keeps no fill, because the glider paints it. */
+.ex-seg {
+  position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+  flex: none; padding: 4px; border-radius: var(--radius-sm); background: var(--pw-sunken);
+}
+.ex-seg::before {
+  content: ''; position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 4px;
+  width: calc((100% - 8px) / 4); border-radius: var(--radius-sm);
+  background: var(--card); box-shadow: var(--elev-press); pointer-events: none;
+  transition: left var(--motion-med) var(--ease-glide);
+}
+.ex-seg[data-layout='short']::before { left: calc(4px + (100% - 8px) / 4); }
+.ex-seg[data-layout='medium']::before { left: calc(4px + (100% - 8px) / 2); }
+.ex-seg[data-layout='long']::before { left: calc(4px + (100% - 8px) * .75); }
+.ex-seg button {
+  position: relative; z-index: 1;
+  height: 34px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent;
+  color: var(--text-2); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+.ex-seg button:hover { color: var(--text); }
+.ex-seg button[aria-pressed='true'] { color: var(--text); font-weight: 700; }
+.ex-seg button:focus-visible { outline: none; box-shadow: var(--ring); }
+@media (min-width: 641px) {
+  .ex-page .ex-select { flex: 0 1 auto; min-width: 160px; }
+  .ex-page .ex-select--sort { margin-left: auto; min-width: 200px; }
+}
+/* The select trigger's 40px, 13.5px look is the `.ex-select` variant in the
+   select's own file (select.css). */
+.ex-page .ex-chip { min-height: 36px; border-color: var(--line); background: var(--card); font-size: 13.5px; }
+.ex-page .ex-chip:hover { background: var(--pw-lagoon-50); }
+.ex-page .ex-chip[aria-pressed='true'] {
+  background: var(--color-primary); border-color: var(--color-primary); color: var(--color-primary-foreground);
+}
+.ex-page .ex-chip-count {
+  padding: 1px 8px; border-radius: var(--radius-pill); background: var(--pw-sunken); color: var(--text-2);
+  font-size: 11.5px;
+}
+.ex-page .ex-chip[aria-pressed='true'] .ex-chip-count { background: rgb(255 255 255 / .2); color: inherit; opacity: 1; }
+.ex-page .ex-chip-saved svg { color: var(--danger); }
+.ex-page .ex-chip-saved[aria-pressed='true'] svg { color: inherit; }
+.ex-page .ex-chip-divider { height: 24px; background: var(--line); }
+@media (max-width: 640px) {
+  /* The open fold holds the length group. Its buttons do not wrap, so without
+     `min-width: 0` they prop the fold open wider than the bar and the page
+     scrolls sideways. The group scrolls inside itself instead. */
+  .ex-page .ex-selects.is-open { min-width: 0; }
+  /* The four columns share the fold's width, so a label may wrap onto a second
+     line. A scroll box would break the glider, which is placed by percentage. */
+  .ex-page .ex-selects.is-open .ex-seg { flex: 1 1 100%; min-width: 0; }
+  .ex-seg button { height: auto; min-height: 44px; padding: 4px 6px; white-space: normal; line-height: 1.2; }
+  .ex-page .ex-hero-search { min-height: 54px; }
+  .ex-page .ex-hero-search-go { padding: 0 16px; }
+}
+@media (max-width: 720px), (pointer: coarse) {
+  .ex-page .ex-chip { min-height: 44px; }
+  .ex-seg button { min-height: 44px; }
+}
+
+/* ---- Featured card: cover left, the route, facts and actions on the right ---- */
+.ex-page .ex-feature {
+  grid-template-areas: "cover" "body"; padding: 0;
+  border-color: var(--line); border-radius: var(--radius-lg); box-shadow: var(--elev-1); overflow: hidden;
+}
+.ex-page .ex-feature-cover { margin: 10px 10px 0; border-radius: var(--radius); }
+.ex-page .ex-feature-body { gap: 10px; padding: 18px 20px 20px; }
+@container ex-main (min-width: 640px) {
+  .ex-page .ex-feature {
+    grid-template-columns: minmax(0, min(420px, 46%)) minmax(0, 1fr);
+    grid-template-areas: "cover body"; align-items: stretch;
+  }
+  .ex-page .ex-feature-cover { aspect-ratio: auto; min-height: 330px; margin: 10px 0 10px 10px; }
+  .ex-page .ex-feature-body { padding: 24px 28px; }
+}
+.ex-feature .ex-style-tag {
+  top: 12px; left: 12px; max-width: calc(100% - 24px);
+  background: color-mix(in srgb, var(--card) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--card) 72%, transparent);
+  -webkit-backdrop-filter: blur(var(--yf-blur-chip)); backdrop-filter: blur(var(--yf-blur-chip));
+  color: var(--text); font-size: 11.5px; letter-spacing: .02em;
+}
+.ex-feature .ex-price-tag {
+  position: absolute; left: 12px; bottom: 12px; z-index: var(--z-content);
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: var(--radius-pill);
+  background: var(--pw-lagoon-100); color: var(--pw-sea-700);
+  box-shadow: var(--elev-2); font-size: 12px; font-weight: 800; line-height: 1.3; pointer-events: none;
+}
+.ex-feature .ex-price-tag.is-paid { background: var(--pw-marigold-500); color: var(--pw-on-marigold); }
+.ex-page .ex-feature .ex-kicker {
+  align-self: flex-start; padding: 4px 10px; border-radius: var(--radius-pill);
+  background: var(--pw-marigold-50); color: var(--pw-marigold-ink);
+  font-size: 12px; letter-spacing: 0; text-transform: none;
+}
+.ex-page .ex-feature-title { font-size: clamp(22px, 1.2rem + .6vw, 28px); font-weight: 800; line-height: 1.15; }
+.ex-page .ex-feature-tagline { font-size: 14.5px; color: var(--text-2); }
+.ex-page .ex-feature .ex-credibility { font-size: 12.5px; }
+.ex-page .ex-feature-foot { padding-top: 0; }
+.ex-page .ex-feature .ex-fork { min-height: 38px; padding: 0 16px; margin-left: 0; }
+.ex-page .ex-feature-save { flex: none; width: 38px; min-height: 38px; height: 38px; padding: 0; border-radius: 50%; }
+.ex-page .ex-feature-save[aria-pressed='true'] { color: var(--danger); }
+/* A phone or a touch screen gets 44px targets. These selectors name `.ex-feature`
+   and so outrank the shared 44px Fork rule in the legacy module. */
+@media (max-width: 720px), (pointer: coarse) {
+  .ex-page .ex-feature .ex-fork { min-height: 44px; }
+  .ex-page .ex-feature-save { width: 44px; min-height: 44px; height: 44px; }
+}
+
+/* The route: dot, line, dot, line, then a larger last dot, with the names under. */
+.ex-feature .ex-route { gap: 0; margin: 4px 0 2px; }
+.ex-feature .ex-trail {
+  display: flex; justify-content: space-between; margin: 0;
+  color: var(--text-2); font-size: 12.5px; font-weight: 700; line-height: 1.3; text-wrap: initial;
+}
+.ex-feature .ex-trail li {
+  position: relative; display: block; flex: 1 1 0; min-width: 0; padding: 20px 6px 0 0;
+  white-space: normal; overflow-wrap: normal;
+}
+.ex-feature .ex-trail li:last-child { flex: none; max-width: 38%; padding-right: 0; text-align: right; }
+.ex-feature .ex-trail li::before {
+  content: ''; position: absolute; top: 0; left: 0; width: 10px; height: 10px; margin: 0;
+  border-radius: 50%; border: 2.5px solid var(--pw-marigold-500); background: var(--card);
+}
+.ex-feature .ex-trail li:first-child::before {
+  width: 12px; height: 12px; top: -1px; border: 0; background: var(--pw-sea-700);
+}
+.ex-feature .ex-trail li:not(:last-child)::after {
+  content: ''; position: absolute; top: 3px; left: 16px; right: 4px; width: auto; height: 3px; margin: 0;
+  border-radius: var(--radius-pill); background: color-mix(in srgb, var(--pw-lagoon-600) 38%, var(--card));
+}
+.ex-feature .ex-trail li:first-child:not(:last-child)::after { left: 18px; }
+.ex-feature .ex-trail li:last-child::before {
+  left: auto; right: 0; width: 13px; height: 13px; top: -1px; border: 0; background: var(--pw-marigold-500);
+}
+.ex-feature .ex-trail li:last-child::after { content: none; }
+/* A loop ends where it began, so its last dot is hollow, like its first. */
+.ex-feature .ex-trail.is-loop li:last-child::before {
+  border: 2.5px solid var(--pw-sea-700); background: var(--card);
+}
+.ex-feature .ex-trail li:only-child::before { left: 0; right: auto; }
+.ex-feature .ex-trail li:only-child { text-align: left; }
+/* Five stops share a phone's width. A smaller size keeps a ten-letter stop name
+   whole in most cases. The break rule stays as the guard against overflow. */
+@media (max-width: 480px) {
+  .ex-feature .ex-trail { font-size: 11.5px; }
+}
+
+/* ---- Facts: four across with dashed rules, on the card and the feature ---- */
+.ex-card[data-id] .ex-facts,
+.ex-page .ex-feature .ex-facts {
+  display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 8px 12px;
+  margin: 10px 0 0; padding: 10px 0;
+  border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line);
+}
+/* One row at every width. A wrapping row left "Forks" alone on a second line
+   at three columns. The budget figure is the only wide fact, so it alone may
+   shrink and break after the slash. The other three keep their size. The
+   order is the one `cardColumns()` returns: days, budget, places, forks. */
+.ex-card[data-id] .ex-facts > div,
+.ex-page .ex-feature .ex-facts > div { flex: none; }
+.ex-card[data-id] .ex-facts > div:nth-child(2),
+.ex-page .ex-feature .ex-facts > div:nth-child(2) { flex: 0 1 auto; }
+.ex-card[data-id] .ex-facts dt,
+.ex-page .ex-feature .ex-facts dt { font-size: 11px; }
+.ex-page .ex-feature .ex-facts dd {
+  color: var(--text); font-family: var(--font-display); font-size: 15px; font-weight: 700; line-height: 1.25;
+}
+
+/* ---- Grid and card: the mockup's gap, lift and creator mark ---- */
+.ex-page .ex-grid { gap: 16px; }
+.ex-card[data-id] .ex-cover-wrap { aspect-ratio: auto; height: 168px; }
+article.ex-card[data-id] { border-color: var(--line); box-shadow: var(--elev-1); }
+article.ex-card[data-id]:hover { transform: translateY(-3px); box-shadow: var(--shadow-card-hover); border-color: var(--line); }
+/* Size only. The shared avatar sets its own 11px type. */
+.ex-card[data-id] .ex-byline .avatar { width: 26px; height: 26px; }
+.ex-card[data-id] .ex-byline svg,
+.ex-feature .ex-byline svg { color: var(--pw-marigold-500); fill: currentColor; }
+
+/* ---- Side column ---- */
+.ex-page .ex-aside .ex-panel {
+  padding: 18px; border-color: var(--line); border-radius: var(--radius-lg); box-shadow: var(--elev-1);
+}
+.ex-page .ex-panel-title { margin: 0 0 12px; font-size: 18px; line-height: 1.3; }
+
+.ex-forksteps .ex-steps { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; counter-reset: ex-step; }
+.ex-forksteps .ex-steps li {
+  display: flex; align-items: center; gap: 10px; counter-increment: ex-step;
+  color: var(--text-2); font-size: 13.5px;
+}
+.ex-forksteps .ex-steps li::before {
+  content: counter(ex-step); display: grid; place-items: center; flex: none; width: 28px; height: 28px;
+  border-radius: 50%; background: var(--color-primary); color: var(--color-primary-foreground);
+  font-size: 13px; font-weight: 700;
+}
+.ex-forksteps .ex-steps b { color: var(--text); }
+.ex-forksteps-note { margin: 12px 0 0; color: var(--text-2); font-size: 12px; line-height: 1.45; }
+
+/* Places: a 52px thumbnail beside the name and count, not an overlay tile. */
+.ex-page .ex-places { gap: 2px; }
+.ex-page .ex-place {
+  display: flex; align-items: center; gap: 10px; aspect-ratio: auto; padding: 6px;
+  border-radius: var(--radius); overflow: visible;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+.ex-page .ex-place:hover { background: var(--pw-lagoon-50); box-shadow: none; transform: none; }
+.ex-page .ex-place-art {
+  position: relative; inset: auto; flex: none; width: 52px; height: 52px;
+  border-radius: var(--radius-sm); overflow: hidden;
+}
+.ex-page .ex-place-label {
+  position: static; display: flex; flex-direction: column; min-width: 0; padding: 0;
+  background: none; color: var(--text); line-height: 1.25;
+}
+.ex-page .ex-place-name { font-size: 13.5px; }
+.ex-page .ex-place-meta { color: var(--text-2); font-weight: 400; }
+
+/* Creators: a rank, the avatar, the name with its counts, a chevron. */
+.ex-page .ex-creator { gap: 10px; padding: 8px; margin-inline: 0; border-radius: var(--radius-sm); }
+.ex-page .ex-creator:hover { background: var(--pw-lagoon-50); }
+.ex-page .ex-creator .avatar { width: 34px; height: 34px; }
+.ex-page .ex-creator-text { flex: 1 1 auto; line-height: 1.3; }
+.ex-page .ex-creator-name { font-size: 13.5px; }
+.ex-page .ex-creator-meta { font-size: 12px; }
+.ex-creator-rank {
+  flex: none; width: 18px; color: var(--text-3); text-align: center;
+  font-family: var(--font-display); font-weight: 700;
+}
+/* The first declaration is the fallback for a browser that rejects the
+   alt-text form. The second marks the chevron as decoration. */
+.ex-page .ex-creator::after { content: '›'; content: '›' / ''; margin-left: auto; color: var(--text-3); }
+
+/* Share: a sea-coloured call-out with one action. */
+.ex-page .ex-aside .ex-share {
+  display: flex; flex-direction: column; gap: 10px; padding: 20px;
+  border-color: transparent; background: var(--color-primary); color: var(--color-primary-foreground);
+  box-shadow: var(--glow-sea);
+}
+.ex-page .ex-share::before { content: none; }
+.ex-share-kicker {
+  margin: 0; font-size: 11.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; opacity: .85;
+}
+.ex-share-title { margin: 0; font-size: 19px; font-weight: 800; line-height: 1.25; letter-spacing: -.01em; }
+.ex-page .ex-share-btn {
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; width: auto; min-height: 40px;
+  padding: 0 16px; border-radius: var(--radius-pill); background: var(--card); color: var(--ink-teal);
+  font-size: 14px; font-weight: 700; text-decoration: none;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+.ex-page .ex-share-btn:hover { background: var(--pw-lagoon-50); }
+.ex-page .ex-share-btn:focus-visible { outline: 2px solid var(--color-primary-foreground); outline-offset: 2px; }
+/* After the base rule, so the 44px target wins on a phone and a touch screen. */
+@media (max-width: 720px), (pointer: coarse) {
+  .ex-page .ex-share-btn { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  article.ex-card[data-id]:hover, .ex-page .ex-quick-chip:hover { transform: none; }
+  .ex-seg::before { transition: none; }
+  .ex-seg button, .ex-page .ex-place, .ex-page .ex-share-btn { transition: none; }
+}
+
+/* ==== PR914 fix: Explore ==== */
+/* The hero visual follows the mockup: a 520 by 400 stage, three tilted
+   postcards of 40, 38 and 42 percent of its width, the dotted route and the
+   fork note. The entrance has no delay, so the postcards are in place when the
+   page is captured as well as when it is read. */
+@media (min-width: 960px) {
+  .ex-page .ex-hero-visual { aspect-ratio: 520 / 400; animation-delay: 0s; }
+  .ex-page .ex-pc-1 { left: 2%; top: 17.5%; width: 40.4%; z-index: 1; }
+  .ex-page .ex-pc-2 { left: 36.5%; top: 2.5%; width: 38.5%; z-index: 2; }
+  .ex-page .ex-pc-3 { left: 53.8%; top: 45%; width: 42.3%; z-index: 3; }
+  .ex-page .ex-forks-note { left: 6.5%; top: 77.5%; bottom: auto; }
+}
+@media (min-width: 1100px) {
+  .ex-page .ex-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 520px); }
+  .ex-page .ex-hero-visual { max-width: 520px; }
+}
+.ex-page .ex-postcards .ex-route-line path { stroke-width: 2.4; stroke-dasharray: 2 8; }
+.ex-page .ex-postcards .ex-route-line circle { stroke: var(--card); stroke-width: 3; }
+.ex-page .ex-postcards .ex-route-line .ex-route-end { fill: var(--pw-marigold-500); }
+
+/* Three card columns once the results column is 760px wide. A shelf or a grid
+   with one or two cards keeps the three-column track, so a card is never
+   stretched across the row. */
+@container ex-main (min-width: 760px) {
+  .ex-page .ex-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.ex-page .ex-trend-cards { margin-top: 0; }
+
+/* Places stay in one column in the side column. The rail is 330px; two
+   columns leave about 70px for the name, which broke real names such as
+   "Chandratal" inside the word. The mockup's two columns hold shorter names. */
+.ex-page .ex-places .ex-place { gap: 8px; }
+.ex-page .ex-places .ex-place-name { overflow-wrap: normal; }
+
+/* The card foot stays on one row at three columns: the creator on the left and
+   the compact Fork pill on the right. The name is never cut. A very long name
+   wraps inside its own space. */
+article.ex-card[data-id] .ex-card-foot { flex-wrap: nowrap; gap: 8px; }
+.ex-card .ex-card-foot .ex-byline { flex: 1 1 auto; min-width: 0; }
+.ex-card .ex-card-foot .ex-byline > span { min-width: 0; overflow-wrap: anywhere; }
+.ex-card .ex-card-foot .ex-byline > .avatar, .ex-card .ex-card-foot .ex-byline > svg { flex: none; }
+.ex-card .ex-card-foot .ex-fork { flex: none; padding-inline: 12px; }
+.ex-page .ex-hero h1 > em { display: block; }

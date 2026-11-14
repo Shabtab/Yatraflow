@@ -221,8 +221,8 @@ describe('the public page renders a locked day from counts', () => {
   it('never puts a stop title inside the locked overlay', () => {
     // The old overlay rendered real titles under a CSS blur. A readable day
     // still prints its titles, so the pin reads the overlay block only.
-    const from = page.indexOf('className="locked-overlay"')
-    const to = page.indexOf('className="locked-cta"', from)
+    const from = page.indexOf('className="pi-lock"')
+    const to = page.indexOf('className="pi-lock-title"', from)
     expect(from).toBeGreaterThan(-1)
     expect(to).toBeGreaterThan(from)
     const overlay = page.slice(from, to)

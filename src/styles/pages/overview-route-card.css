@@ -1,0 +1,19 @@
+/* Overview route-card header: the true-shape inset beside the caption group.
+   Owner module for these .ovw-* rules; they follow legacy/15-overview.css. */
+
+/* ===== #914 true-shape inset in the route-card header ===== */
+/* The inset and the caption/link group share the header's right side. The
+   inset is top-aligned, so it sits beside "Illustrative elevation" and
+   "Open map" without moving either of them. */
+.ovw-head-side {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.ovw-head-side .ovw-head-meta { min-width: 0; }
+/* A header that carries the 88 px square aligns its title with the square's
+   top edge, so the row reads as one line. */
+.ovw2-route .ovw-head:has(.ovw-elev-inset) { align-items: flex-start; }

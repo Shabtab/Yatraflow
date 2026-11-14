@@ -1,24 +1,26 @@
-// ============ Public itinerary page — editorial story + practical evidence (CTI §6.11) ============
-// A shareable travel document, not the private workspace: destination-led hero,
-// creator attribution, "why this route works" story, a practical stat cluster,
-// and curated day highlights ahead of the detailed (and premium-gated) plan.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+// ============ Public itinerary page — the trip kit (PW-11a Look inside, PW-11b Ride along) ============
+// A shareable travel document, not the private workspace. One cover with the
+// buy card, then two views of the same read model: Look inside (the plan in
+// counts and day cards) and Ride along (one day at a time, with its clock).
+// The views are presentation. Every gate below — who may read a day, which
+// price shows, which notice shows — is computed once and handed down.
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  Calendar, Camera, Car, Clock, Flag, GitFork, Heart, Link2, Lock, MapPin,
-  MessageCircle, Route, Sparkles, Ticket, TriangleAlert,
+  Camera, Car, Clock, Flag, GitFork, Heart, Link2, Lock, MapPin,
+  MessageCircle, Sparkles, Ticket, TriangleAlert,
 } from 'lucide-react'
 import { InlineIcon, MetaIcon, modeIcon } from '../components/icons'
-import { openExternal } from '../lib/native'
+import { nativeCopyText, openExternal } from '../lib/native'
 import type { Trip, PublishedItinerary } from '../data/types'
 import type { Entitlement } from '../lib/payments'
 import { useDb, currentUser, tripById, userById, registerPubView, fetchPublicTrip } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
-import { fullPlanRead, hasWireLockedDay, isWireLocked, lockedDayCounts, lockedDayTitle, numberedSummary, planStopCount, readableDayStart, wireLockedSummary } from '../lib/lockedDay'
+import { emptyLockedDay, fullPlanRead, hasWireLockedDay, isWireLocked, lockedDayCounts, lockedDayTitle, numberedSummary, planStopCount, readableDayStart, wireLockedSummary } from '../lib/lockedDay'
 import { describePreviewSplit } from '../lib/previewSplit'
-import { simulateDay, scheduleRowsById, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
+import { buildJourney, simulateDay, scheduleRowsById, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip, hmToMinutes } from '../lib/engine'
 import { cap, titleCase } from '../lib/labels'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
-import { stopPresentation } from '../lib/stopKind'
+import { scrollBehavior } from '../lib/motion'
 import { useSavedPubs } from '../lib/savedPubs'
 import { fetchMyEntitlements, fetchCreatorSales, fetchCreatorFunnel, purchaseUnlock, type FunnelDailyRow } from '../lib/unlock'
 import { UnlockReveal } from '../components/UnlockReveal'
@@ -31,15 +33,39 @@ import { sharePublicationOnWhatsApp } from '../lib/whatsAppShare'
 import { appLink } from '../lib/appLink'
 import { pageTitle } from '../lib/pageTitle'
 import { sizedCoverUrl } from '../lib/tripThumb'
-import { Avatar, Chip, EmptyState, toast, CopyButton, RouteSnapshot } from '../components/ui'
+import { Avatar, Chip, EmptyState, toast, CopyButton } from '../components/ui'
+import { SegmentedTabs } from '../components/page/SegmentedTabs'
 import {
-  chooseCover, countKinds, flightSignalFor, foldWeeks, hasAirLeg, kindOfCategory, lockedRunLine, planLede, summariseDayFromLegs, truncatePitch,
+  chooseCover, countKinds, flightSignalFor, foldWeeks, hasAirLeg, kindOfCategory, lockedRunLine, planLede, roadMinutesOf, summariseDayFromLegs, truncatePitch,
   type KindCount,
 } from '../lib/publicStorefront'
-import { CoverPlate } from '../components/storefront/CoverPlate'
 import { WhatIsInside } from '../components/storefront/WhatIsInside'
 import type { DayCardProps } from '../components/storefront/DayCard'
 import { StickyPriceBar } from '../components/storefront/StickyPriceBar'
+import { TripKitHero, BuyCard, updatedAgo } from '../components/storefront/TripKitHero'
+import { DayRibbon, ribbonPlaceOf, type RibbonDay } from '../components/storefront/DayRibbon'
+import { DayBudgetBar, type DayBudget } from '../components/storefront/DayBudgetBar'
+import { KindTiles } from '../components/storefront/KindTiles'
+import { KindChip } from '../components/storefront/KindChip'
+import { RideDayPanel, RideOtherRow } from '../components/storefront/RidePanels'
+import { SectionTabs, type SectionTab } from '../components/storefront/SectionTabs'
+import { RegionArt } from '../components/RegionArt'
+import { TripArt } from '../components/trips/TripArt'
+import { regionFor } from '../lib/tripsPage'
+import { pubArtFamily, pubArtId } from '../lib/pubDayArt'
+import { pickMosaicPhotos } from '../lib/rideMosaic'
+import { artIdFromCoverUrl } from '../lib/artCover'
+
+/** The words of a day title that may name places: "Jaipur → Jodhpur" gives both. */
+function titlePlaces(title: string): string[] {
+  return title.split(/→|—|–|&|,|\bto\b|\bvia\b/u).map(s => s.trim()).filter(Boolean)
+}
+import { RideTimeline, rideNodeLabels } from '../components/storefront/ride/RideTimeline'
+import { RideLockedPreview } from '../components/storefront/ride/RideLockedPreview'
+import { RideProgress, RideReadMark } from '../components/storefront/ride/RideProgress'
+import { freeDaysRead, useRideProgress } from '../lib/rideProgress'
+import { RideElevation } from '../components/storefront/ride/RideElevation'
+import { ChevronRight, Users } from 'lucide-react'
 
 /** How long the buyer's entitlement read may take before the page stops
  *  waiting and says so. Mirrors the hub's ledger timeout: far longer than the
@@ -167,13 +193,42 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // hero is held in state (a callback ref) because it only mounts after the
   // trip has loaded, and the observer below must wait for it.
   const [heroEl, setHeroEl] = useState<HTMLElement | null>(null)
-  const [heroGone, setHeroGone] = useState(false)
+  const [priceVisibility, setPriceVisibility] = useState<{
+    hero: HTMLElement
+    view: 'inside' | 'ride'
+    coverGone: boolean
+    cardVisible: boolean
+  } | null>(null)
+  // The two views of one read model. `rideDay` is the day index on screen in
+  // Ride along; null until the viewer picks one, which then means the first
+  // day they may read. Neither value grants anything: the cards and the panel
+  // are built from the same `unlocked` flag as before.
+  const [view, setView] = useState<'inside' | 'ride'>('inside')
+  const [rideDay, setRideDay] = useState<number | null>(null)
+  // Free days this visitor opened in Ride along. `slug` is the publication id.
+  const readDays = useRideProgress(slug)
+  const panelEl = useRef<HTMLDivElement>(null)
+  const [now] = useState(() => Date.now())
+  // Keep one persistent price action. Each view observes its own in-page cards.
   useEffect(() => {
     if (!heroEl || typeof IntersectionObserver === 'undefined') return
-    const io = new IntersectionObserver(([entry]) => setHeroGone(!entry.isIntersecting))
-    io.observe(heroEl)
+    // Watch the price and the buttons that carry it, not the whole card. A card
+    // can be on screen while its price sits below the fold.
+    const cards = [...(heroEl.parentElement?.querySelectorAll('.pi-buy-price, .pi-buy-actions, .pi-take-actions') ?? [])]
+    const visible = new Map<Element, boolean>([heroEl, ...cards].map(el => [el, true]))
+    const io = new IntersectionObserver(entries => {
+      if (!heroEl.isConnected) return
+      for (const entry of entries) visible.set(entry.target, entry.isIntersecting)
+      setPriceVisibility({
+        hero: heroEl,
+        view,
+        coverGone: !visible.get(heroEl),
+        cardVisible: cards.some(el => el.isConnected && visible.get(el)),
+      })
+    })
+    for (const el of visible.keys()) io.observe(el)
     return () => io.disconnect()
-  }, [heroEl])
+  }, [heroEl, view])
   // #349 — which of the two wins is settled in the STORE, not here: every
   // fetchPublicTrip REPLACES the cached row for that id, so `cachedTrip` is the
   // wire's row for this viewer as of the last read and cannot shadow a fresher
@@ -314,39 +369,6 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     () => (trip ? [...trip.days].sort((a, b) => a.index - b.index) : []),
     [trip],
   )
-  const routePoints = useMemo(() => {
-    if (!trip) return undefined
-    const pts: Array<{ lat: number; lng: number; day: number | null }> = []
-    // The start belongs to no day: it draws the line but earns no badge (#614).
-    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: null })
-    for (const day of orderedDays) {
-      for (const s of [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)) {
-        if (s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng)) {
-          pts.push({ lat: s.lat, lng: s.lng, day: day.index })
-        }
-      }
-    }
-    return pts.length >= 2 ? pts : undefined
-  }, [trip, orderedDays])
-
-  // Curated highlights: the three meatiest days, back in trip order.
-  const highlights = useMemo(() => {
-    if (!trip) return []
-    // #774 — a day the server locked has no stop to rank. It is never a highlight.
-    const scored = orderedDays.filter(day => !isWireLocked(day)).map(day => {
-      const stops = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
-      const sim = simulateDay(day, trip, readableDayStart(trip.days, day) ?? originOf(trip, day.index), day.index)
-      const lead = stops.find(s => s.auto !== true) ?? stops[0]
-      return {
-        day,
-        stops,
-        score: stops.length + (sim.totalDistanceKm > 1 ? 1 : 0),
-        ...stopPresentation(lead ?? { category: 'travel', title: '' }, trip.transportMode),
-        meta: `${stops.length} stop${stops.length === 1 ? '' : 's'} · ~${minutesToHM(sim.totalTravelMinutes)} travel${sim.totalDistanceKm > 1 ? ` · ${sim.totalDistanceKm.toFixed(0)} km` : ''}`,
-      }
-    })
-    return [...scored].sort((a, b) => b.score - a.score).slice(0, 3).sort((a, b) => a.day.index - b.day.index)
-  }, [trip, orderedDays])
 
   // True when this viewer may read the locked days: the creator, or a buyer
   // with a paid entitlement. Gating here is presentation; the fork path and
@@ -440,12 +462,9 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // ---- "What is inside": the storefront view of the days. Presentation only.
   // The page's own `unlocked` flag and the publication's freeDayIndexes pick the
   // state of each card; nothing here asks a new entitlement question.
-  // #774 — the server decides first. A day it locked arrives as a day number
-  // and two counts, and its card is built from those counts alone. A locked
-  // card names the day by its number: the title is the creator's own text.
-  // The locked run line is built from category counts alone. Never pass a day
-  // title, a stop title, a location name or a coordinate into a locked card
-  // or a locked line.
+  // Locked cards use day numbers and category counts only.
+  // The locked run line uses category counts alone.
+  // Never pass a stop title, location name or coordinate into a locked card or line.
   const storefront = useMemo(() => {
     if (!pub || !trip) return null
     const free = new Set(pub.freeDayIndexes)
@@ -456,7 +475,6 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       // Auto anchors are start, end and night markers. They are not places, so
       // the counts and the place lists both leave them out and always agree.
       const live = day.stops.filter(s => s.status !== 'rejected' && s.auto !== true)
-      const sim = simulateDay(day, trip, readableDayStart(trip.days, day) ?? originOf(trip, day.index), day.index)
       // Null means the server sent this day in full. A day the server locked
       // stays locked here, whatever this page believes about the viewer.
       const wire = lockedDayCounts(day)
@@ -472,11 +490,12 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       // leg for a flight trip anyway. So the signal is the stored flight rows
       // OR the air leg the engine actually planned for this day. It still goes
       // through `flightSignalFor`, so a locked card discloses no flight.
-      const hasFlight = flightDays.has(day.index) || hasAirLeg(sim.legs)
-      const readSummary = summariseDayFromLegs({ ...day, stops: live }, sim.legs, flightSignalFor(hasFlight, isLocked))
+      const sim = isLocked ? null : simulateDay(day, trip, readableDayStart(trip.days, day) ?? originOf(trip, day.index), day.index)
+      const hasFlight = flightDays.has(day.index) || hasAirLeg(sim?.legs ?? [])
+      const readSummary = summariseDayFromLegs({ ...day, stops: live }, sim?.legs ?? [], flightSignalFor(hasFlight, isLocked))
       // A locked card is named by its day number. A day the server locked is
       // built from the server's counts alone.
-      const summary = wire ? wireLockedSummary(day, wire) : isLocked ? numberedSummary(readSummary) : readSummary
+      const summary = wire ? wireLockedSummary(day, wire) : isLocked ? { ...numberedSummary(readSummary), pace: null, travelMinutes: 0, hasFlight: false } : readSummary
       const cats: Array<{ category: string }> = wire ? wire.categories : live.map(s => ({ category: s.category }))
       allCats.push(...cats)
       if (isLocked) {
@@ -510,8 +529,41 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     )
     // The ticket the plate shows if the photo fails to load.
     const coverFallback = chooseCover({ ...coverBase, coverImageUrl: undefined }, kinds, cap(trip.transportMode))
-    return { cards, kinds, lede, lockedLine, weeks: foldWeeks(cards.length), cover, coverFallback: coverFallback.kind === 'ticket' ? coverFallback : undefined, allFree: orderedDays.every(d => free.has(d.index)) }
+    return { cards, kinds, lede, lockedLine, weeks: foldWeeks(cards.length, 14), cover, coverFallback: coverFallback.kind === 'ticket' ? coverFallback : undefined, allFree: orderedDays.every(d => free.has(d.index)) }
   }, [pub, trip, orderedDays, unlocked, mayShowPriceCta])
+
+  // ---- Per-day facts for the trip-kit views. A second memo, so the storefront
+  // memo above keeps the dependencies it is tested with. A day this viewer may
+  // not read yields no distance, budget, photo, name or clock.
+  const dayFacts = useMemo(() => {
+    if (!pub || !trip) return []
+    const free = new Set(pub.freeDayIndexes)
+    const A = getAssumptions(trip)
+    return orderedDays.map(day => {
+      const readable = !isWireLocked(day) && (free.has(day.index) || unlocked)
+      if (!readable) return { km: 0, budget: undefined, readable, photo: undefined, names: [] as string[], startsAt: undefined, endsAt: undefined }
+      const sim = simulateDay(day, trip, readableDayStart(trip.days, day) ?? originOf(trip, day.index), day.index)
+      const window = Math.max(1, hmToMinutes(A.dayEnd) - hmToMinutes(sim.startsAt))
+      const budget: DayBudget = {
+        drive: Math.round(roadMinutesOf(sim.legs)),
+        places: Math.round(sim.dwellMinutes),
+        window,
+      }
+      const km = sim.totalDistanceKm
+      const names = day.stops
+        .filter(s => s.status !== 'rejected' && s.auto !== true)
+        .sort((a, b) => a.orderInDay - b.orderInDay)
+        .filter(s => { const k = kindOfCategory(s.category); return k !== 'stay' && k !== 'travel' })
+        .map(s => s.title)
+      return {
+        km, budget: { ...budget, from: formatHM(sim.startsAt, timeFormat), to: formatHM(A.dayEnd, timeFormat) }, readable,
+        photo: day.coverImageUrl ? sizedCoverUrl(day.coverImageUrl) : undefined,
+        names,
+        startsAt: formatHM(sim.startsAt, timeFormat),
+        endsAt: formatHM(sim.endsAt, timeFormat),
+      }
+    })
+  }, [pub, trip, orderedDays, unlocked, timeFormat])
 
   // ---- Soft-unpublish (#350). The row survives — that is what keeps buyers
   // whole — but the page is no longer public. The creator and anyone holding an
@@ -557,12 +609,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // Past the gate every memo is fully computed — narrowed aliases keep the
   // rest of the body honest without re-checking `trip` everywhere.
   const totalsN = totals!
-  const routePointsN = routePoints
-  const highlightsN = highlights
   // #774 — a viewer with locked days holds the free days only. A road total
   // from them would be a figure for part of the plan, so the page shows none.
   // The stop count stays: the server counts the stops of each locked day.
-  const hasLockedDays = hasWireLockedDay(trip.days)
+  const hasLockedDays = hasWireLockedDay(trip.days) || orderedDays.some(day => !pub.freeDayIndexes.includes(day.index) && !unlocked)
   const stopsInPlan = hasLockedDays ? planStopCount(trip.days) : totalsN.stopCount
 
   const creator = userById(pub.creatorId)
@@ -572,7 +622,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // #360 — a row with NO stored cover renders the branded background, and that
   // is the point rather than a gap: it is what `api/i.js` already serves such
   // a row as its card, so the two agree. `undefined` rather than a suggestion.
-  const heroSrc = pub.coverImageUrl ? sizedCoverUrl(pub.coverImageUrl) : undefined
+  const heroSrc = pub.coverImageUrl && !artIdFromCoverUrl(pub.coverImageUrl) ? sizedCoverUrl(pub.coverImageUrl) : undefined
   // #230 — what leaves through the copy button names the button it left
   // through. Display and copy are the same string: the code box shows exactly
   // what lands on the clipboard.
@@ -665,374 +715,635 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     toast(nowSaved ? 'Saved to this browser.' : 'Removed from saved itineraries.')
   }
 
-  // (totals/routePoints/highlights are computed by the guarded hooks above the
-  //  gate — totalsN/routePointsN/highlightsN.)
+  // (totals/highlights are computed by the guarded hooks above the
+  //  gate — totalsN/highlightsN.)
 
-  // ---- First-screen buy box + sticky bar state. Every condition below is the
-  // SAME one the sidebar and the day overlays already use (price, unlocked,
-  // mayShowPriceCta); the hero adds a placement, not a rule.
+  // ---- First-screen buy card + sticky bar state. Every condition below is the
+  // SAME one the locked days and the take-this-trip card use (price, unlocked,
+  // mayShowPriceCta); the cover adds a placement, not a rule.
   const pitch = pub.subscriberCta ? truncatePitch(pub.subscriberCta, 140) : ''
   const showUnlockCta = price !== undefined && !unlocked && mayShowPriceCta
   const stickyMode: 'unlock' | 'fork' | null = showUnlockCta ? 'unlock' : (price === undefined || unlocked) ? 'fork' : null
   const heroShowsPitch = showUnlockCta || price === undefined || unlocked
   const forkLabel = me ? 'Fork to my trips' : 'Log in to fork'
+  /** A priced plan the viewer does not own, while the access read has no answer. */
+  const gateNotice = price !== undefined && !unlocked && !mayShowPriceCta
+  const purchaseLoadNotice = <PurchaseLoadState onRetry={retryPostPurchaseReads} retrying={postPurchaseRetrying} />
+
+  // ---- Trip-kit view state: plain derivations over the memos above. Nothing
+  // here asks an entitlement question; the cards already carry the answer.
+  const cards = storefront?.cards ?? []
+  const openCount = cards.filter(c => c.state !== 'locked').length
+  const firstOpenPos = cards.findIndex(c => c.state !== 'locked')
+  const ridePos = (() => {
+    const at = rideDay === null ? -1 : cards.findIndex(c => c.summary.index === rideDay)
+    return at >= 0 ? at : Math.max(0, firstOpenPos)
+  })()
+  const placeTotal = storefront ? storefront.kinds.reduce((n, k) => n + k.count, 0) : 0
+  const creatorLinkProps = creator ? appLink(`/creator/${creator.id}`) : undefined
+  const plans = db.published.filter(x => x.creatorId === pub.creatorId && !x.unpublishedAt).length
+  const updated = updatedAgo(pub.refreshedAt ?? pub.publishedAt, now)
+
+  function changeView(next: 'inside' | 'ride') {
+    setView(next)
+    requestAnimationFrame(() => {
+      panelEl.current?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
+    })
+  }
+
+  function openDay(index: number) {
+    setRideDay(index)
+    setView('ride')
+    requestAnimationFrame(() => {
+      panelEl.current?.querySelector<HTMLButtonElement>('[aria-current="true"]')?.focus({ preventScroll: true })
+      panelEl.current?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
+    })
+  }
+
+  const rideIndex = cards[ridePos]?.summary.index ?? null
+  const freeRead = freeDaysRead(readDays, pub.freeDayIndexes)
+  const freeTotal = pub.freeDayIndexes.length
+  const ribbonDays: RibbonDay[] = cards.map(c => {
+    const i = c.summary.index
+    const status = view !== 'ride' || c.state === 'locked' ? undefined
+      : i === rideIndex ? 'now' as const
+      : readDays.has(i) ? 'read' as const
+      : undefined
+    return { index: i, title: c.summary.title, state: c.state, placeCount: c.summary.placeCount, status, place: ribbonPlaceOf({ title: c.summary.title, state: c.state }, undefined) }
+  })
+  // Most plans have no photos. Every image slot then shows a generated scene
+  // for its own places, so no slot is an empty box. Locked days use public
+  // plan places only. Their titles never select a scene.
+  const planPlaces = [trip.startLocation, ...trip.destinations]
+  const artRegion = regionFor(trip)
+  const artFor = (seed: string, slotPlaces: string[], sizes: string, eager = false, sceneId?: string) => (
+    <RegionArt
+      id={sceneId ?? pubArtId({ seed: `${pub.id}:${seed}`, slotPlaces, planPlaces })}
+      ratio="16:10"
+      sizes={sizes}
+      eager={eager}
+      fallback={<TripArt region={artRegion} />}
+    />
+  )
+  const dayArt = (c: (typeof cards)[number]) =>
+    artFor(`day:${c.summary.index}`, c.state === 'locked' ? [] : titlePlaces(c.summary.title), '(max-width: 720px) 100vw, 240px')
+  // The ten-days grid. A readable day gets its photo (or its scene), its places
+  // and an open button; a locked day gets its scene under a lock, and counts.
+  const dayCards: DayCardProps[] = cards.map((c, i) => {
+    const f = dayFacts[i]
+    return c.state === 'locked'
+      ? { ...c, art: dayArt(c), lockedWord: price !== undefined ? 'Paid plan' : 'Preview only', lockedNote: showUnlockCta ? 'Names, times and notes open when you buy' : 'Names, times and notes stay hidden on this page' }
+      : { ...c, photo: f?.photo, art: f?.photo ? undefined : dayArt(c), budget: f?.budget, onOpen: () => openDay(c.summary.index) }
+  })
+
+  // Ride along mosaic. The first readable days, each with a different picture:
+  // a shared first scene steps to the next day, then to another scene of its
+  // family. A tile crops a 16:10 scene to about 400 px high, so it asks for a
+  // cover-size file.
+  const mosaicPhotos = pickMosaicPhotos(dayFacts.flatMap((f, i) => f.readable
+    ? [{
+        index: cards[i].summary.index,
+        title: cards[i].summary.title,
+        photo: f.photo,
+        family: pubArtFamily({ seed: `${pub.id}:day:${cards[i].summary.index}`, slotPlaces: titlePlaces(cards[i].summary.title), planPlaces }),
+      }]
+    : []))
+
+  const kmOf = (km: number) => `${Math.round(km).toLocaleString('en-IN')} km`
+  const driveOf = (min: number) => (min < 5 ? 'no drive' : `${minutesToHM(min)} driving`)
+
+  // ---- Ride along: the day on screen. A readable day carries its timeline,
+  // built from the same simulated schedule the old stop list read; a locked
+  // day carries counts and the way to buy, never a name.
+  const rideCard = cards[ridePos]
+  const rideFacts = dayFacts[ridePos]
+  const rideDayRow = orderedDays[ridePos]
+  const rideArt = (index: number, slotPlaces?: readonly string[]) => ({
+    publicationId: pub.id, index, planPlaces: trip.destinations, slotPlaces,
+  })
+  const paidPreviewPos = rideCard?.state === 'locked' ? -1 : cards.findIndex((card, pos) => pos > ridePos && card.state === 'locked')
+  const paidPreview = cards[paidPreviewPos]
+  let paidRunEnd = paidPreviewPos
+  while (cards[paidRunEnd + 1]?.state === 'locked') paidRunEnd += 1
+  const paidRunLabel = paidPreview ? (paidRunEnd === paidPreviewPos
+    ? `day ${paidPreview.summary.index + 1}`
+    : `days ${paidPreview.summary.index + 1} to ${cards[paidRunEnd].summary.index + 1}`) : ''
+  let ridePanel: ReactNode = null
+  if (rideCard && rideFacts && rideDayRow) {
+    const sum = rideCard.summary
+    const placesText = `${sum.placeCount} ${sum.placeCount === 1 ? 'place' : 'places'}`
+    const stay = sum.travelMinutes < 5 && rideFacts.km < 0.5
+    const meta = [
+      placesText,
+      ...(rideCard.state === 'locked' ? [] : stay ? ['local day, no drive planned'] : [kmOf(rideFacts.km), driveOf(sum.travelMinutes)]),
+      ...(rideCard.state !== 'locked' && rideFacts.startsAt && rideFacts.endsAt ? [`${rideFacts.startsAt} → ${rideFacts.endsAt}`] : []),
+    ].join(' · ')
+    let body: ReactNode
+    let footer: ReactNode
+    if (rideCard.state === 'locked') {
+      body = (
+        <div className="pi-lock">
+          <div className="pi-lock-chips">{sum.kinds.map(k => <KindChip key={k.kind} kind={k.kind} count={k.count} />)}</div>
+          <p className="pi-lock-title"><InlineIcon icon={Lock} size={13} gap={4} />{lockedDayCounts(rideDayRow)?.stopCount === null ? 'This day is locked' : `${lockedDayCounts(rideDayRow)?.stopCount ?? sum.placeCount} more stops on this day`}</p>
+          <p className="small">Stay contacts, timings and the budget breakdown are in the full plan.</p>
+        </div>
+      )
+      // #359 — the price CTA is a CLAIM about what this viewer does not own, so
+      // it renders only on a read that actually answered.
+      const awaitingFullPlan = unlocked && isWireLocked(rideDayRow)
+      footer = awaitingFullPlan ? (
+        <p className="small" role="status">{fullPlan === 'failed' ? 'The full plan did not load. Reload the page to try again.' : 'Loading the full plan…'}</p>
+      ) : showUnlockCta ? (
+        <>
+          <button className="btn btn-saffron" disabled={buying} onClick={unlockThis}>{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}</button>
+          <p className="hint-text">One-time payment. No subscription.</p>
+        </>
+      ) : gateNotice ? (
+        tripReReadFailed
+          ? <p className="small muted">Your purchase went through. The full plan could not load. Use Retry in the box at the top of the page.</p>
+          : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />
+      ) : undefined
+    } else {
+      const readableTrip = { ...trip, days: trip.days.map(day => cards.some(c => c.summary.index === day.index && c.state === 'locked') ? emptyLockedDay(day) : day) }
+      const start = readableDayStart(trip.days, rideDayRow) ?? originOf(readableTrip, rideDayRow.index)
+      const sim = simulateDay(rideDayRow, readableTrip, start, rideDayRow.index)
+      const stops = [...rideDayRow.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
+      const journey = buildJourney(readableTrip, rideDayRow, undefined, start)
+      // The engine names a neighbour place and skips days with no stops, so this
+      // walks the same way. Outside the trip is the public origin or end.
+      const lockedDay = (i: number) => cards.some(c => c.summary.index === i && c.state === 'locked')
+      const hasStops = (i: number) => trip.days.some(d => d.index === i && d.stops.some(s => s.status !== 'rejected'))
+      const lockedReach = (from: number, step: 1 | -1) => {
+        for (let i = from; i >= 0 && i < trip.days.length; i += step) {
+          if (lockedDay(i)) return true
+          if (hasStops(i)) return false
+        }
+        return false
+      }
+      const lockedNames = trip.days.filter(d => lockedDay(d.index))
+        .flatMap(d => [...titlePlaces(d.title ?? ''), ...d.stops.flatMap(s => [s.title, s.locationName ?? ''])])
+      const labels = rideNodeLabels(journey, {
+        dayNumber: rideDayRow.index + 1,
+        ownStopIds: new Set(stops.filter(s => !s.auto).map(s => s.id)),
+        prevLocked: lockedReach(rideDayRow.index - 1, -1),
+        nextLocked: lockedReach(rideDayRow.index + 1, 1),
+        lockedNames,
+      })
+      body = <RideTimeline journey={journey} labels={labels} creator={creator} timeFormat={timeFormat}>
+        <DayStops stops={stops} sim={sim} assumptions={getAssumptions(trip)} timeFormat={timeFormat} stayDay={sim.activeStops.length <= 1 && sim.totalDistanceKm < 0.5} mode={trip.transportMode} />
+      </RideTimeline>
+    }
+    ridePanel = (
+      <RideDayPanel
+        key={sum.index}
+        {...rideArt(sum.index, rideFacts.names)}
+        state={rideCard.state}
+        photo={rideCard.state === 'locked' ? undefined : rideFacts.photo}
+        badge={<div className="pi-badge"><small>Day</small><b>{sum.index + 1}</b></div>}
+        title={rideCard.state === 'locked' ? lockedDayTitle(sum.index) : sum.title}
+        pace={sum.pace?.label}
+        meta={meta}
+        placeCount={sum.placeCount}
+        budget={rideFacts.budget ? <DayBudgetBar budget={rideFacts.budget} label={`Day ${sum.index + 1}`} legend /> : null}
+        footer={footer}
+      >{body}</RideDayPanel>
+    )
+  }
+
+  const kitTabs = (
+    <SegmentedTabs
+      semantics="tablist"
+      label="Plan views"
+      value={view}
+      onChange={k => changeView(k === 'ride' ? 'ride' : 'inside')}
+      items={[
+        { key: 'inside', label: 'Look inside', id: 'pi-tab-inside', controls: 'pi-panel-inside' },
+        { key: 'ride', label: 'Ride along', id: 'pi-tab-ride', controls: 'pi-panel-ride' },
+      ]}
+    />
+  )
+  // The mockup's section links: Overview, What's inside, the days, the creator.
+  // Look inside only; Ride along is one day at a time and has no such parts.
+  const hasDays = !!storefront && storefront.cards.length > 0
+  const sectionTabs: SectionTab[] = view === 'inside' ? [
+    { id: 'pi-sec-overview', label: 'Overview' },
+    ...(hasDays ? [
+      { id: 'pi-sec-inside', label: 'What’s inside' },
+      { id: 'pi-sec-days', label: `The ${cards.length} ${cards.length === 1 ? 'day' : 'days'}` },
+    ] : []),
+    { id: 'pi-sec-creator', label: 'The creator' },
+  ] : []
+  const showStickyPrice = heroEl !== null && heroEl.isConnected
+    && priceVisibility?.hero === heroEl && priceVisibility.view === view
+    && priceVisibility.coverGone && !priceVisibility.cardVisible
+
+  const heroFacts = [
+    previewSplit && price !== undefined && !unlocked ? `${pub.durationDays} days · ${previewSplit.freeCount} free to read` : `${pub.durationDays} days`,
+    !hasLockedDays && totalsN.totalDistanceKm >= 1 ? `${kmOf(totalsN.totalDistanceKm)} by ${trip.transportMode === 'car' ? 'road' : trip.transportMode}` : '',
+    pub.bestSeason ? `Best ${pub.bestSeason}` : '',
+    stopsInPlan !== null && stopsInPlan > 0 ? `${stopsInPlan} stops` : '',
+  ].filter(Boolean)
+
+  const creatorName = creator?.profile.name ?? 'a YatraFlow traveller'
+  const byline = (
+    <a className="pi-creator-pill" {...creatorLinkProps}>
+      <Avatar user={creator} />
+      <span>Planned by <b>{creatorName}</b>{plans > 0 ? ` · ${plans} ${plans === 1 ? 'plan' : 'plans'}` : ''}{updated ? ` · ${updated}` : ''}</span>
+    </a>
+  )
 
   return (
-    <div className="page-enter sf-page">
-      {/* ---- Editorial hero: destination-led, creator-attributed (§6.11) ---- */}
-      <section className={`pub-hero sf-hero${price === undefined ? ' sf-hero--free' : ''}`} ref={setHeroEl}>
-        {heroSrc
-          ? <img className="pub-hero-photo" src={heroSrc} alt="" aria-hidden="true" width={1600} height={900} loading="eager" decoding="async" onError={(e) => { e.currentTarget.hidden = true }} />
-          : null}
-        <div className="pub-hero-bg" aria-hidden="true" />
-        <div className="container sf-hero-grid">
-          <div className="sf-hero-main">
-            <div className="pub-hero-inner">
-              <button className="btn btn-sm btn-ghost pub-hero-back" onClick={() => onNavigate('/explore')}>← Explore</button>
-              <span className="pub-hero-badge">{cap(pub.travelStyle)} itinerary</span>
-              <p className="pub-hero-kicker">
-                {trip.startLocation} → {trip.destinations.join(' → ')}
-                {isRoundTrip(trip) && <> → {trip.startLocation}</>}
-              </p>
-              <h1 className="pub-hero-title">{pub.title}</h1>
-              <p className="pub-hero-story">{pub.tagline}</p>
-              <p className="pub-hero-byline">
-                By {creator?.profile.name ?? 'a YatraFlow traveller'} · {pub.durationDays} days · {trip.travellers} travellers · {cap(trip.transportMode)}
-                {creator?.profile.isCreator && <> · <InlineIcon icon={Sparkles} size={12} gap={2} vAlign="-1px" style={{ marginLeft: 2 }} />Creator</>}
-              </p>
-            </div>
-          </div>
-          {/* "The practical bit" — the facts row, kept from the old hero */}
-          <aside className="pub-hero-stats">
-            <span className="pub-stats-label">The practical bit</span>
-            <b className="pub-stats-figure">{formatInr(pub.estimatedBudgetPerPersonInr)}</b>
-            <span className="pub-stats-sub">estimated per traveller</span>
-            <hr className="pub-stats-divider" />
-            <div className="pub-stats-row">
-              <span><MetaIcon icon={ MapPin } tone="place" />{pub.routeSummary.length} place{pub.routeSummary.length === 1 ? '' : 's'}</span>
-              {!hasLockedDays && <span><InlineIcon icon={Route} size={12} gap={3} />{totalsN.totalDistanceKm.toFixed(0)} km</span>}
-              {!hasLockedDays && <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(totalsN.totalTravelMinutes)} on the road</span>}
-              <span><MetaIcon icon={ Calendar } tone="time" />{pub.durationDays} days</span>
-            </div>
-          </aside>
-          <div className="sf-hero-side">
-            {storefront && <CoverPlate plan={storefront.cover} fallback={storefront.coverFallback} alt={`Cover for ${pub.title}`} />}
-            <div className="sf-buybox">
+    <div className="page-enter pi-page">
+      <div className="container pi-wrap">
+        <div className="pi-navigation" role="region" aria-label="Itinerary navigation">
+          {kitTabs}
+          {view === 'inside'
+            ? <SectionTabs tabs={sectionTabs} label="Parts of this plan" />
+            : <div className="pi-navigation-ride">
+                {rideIndex !== null && <span className="pi-muted">Day {rideIndex + 1} of {cards.length}</span>}
+                <button type="button" className="pi-section-tab" onClick={() => changeView('inside')}>Back to overview</button>
+              </div>}
+        </div>
+        <TripKitHero
+          onCover={setHeroEl}
+          photo={heroSrc
+            ? <img className="pub-hero-photo pi-hero-photo" src={heroSrc} alt="" aria-hidden="true" width={1600} height={900} loading="eager" decoding="async" onError={(e) => { e.currentTarget.hidden = true }} />
+            : null}
+          art={heroSrc ? undefined : artIdFromCoverUrl(pub.coverImageUrl) ? <RegionArt id={artIdFromCoverUrl(pub.coverImageUrl)!} ratio="16:10" sizes="100vw" eager fallback={<TripArt region={artRegion} />} /> : artFor('cover', [], '100vw', true)}
+          back={<button className="btn btn-sm btn-ghost pi-hero-back" onClick={() => onNavigate('/explore')}>← Explore</button>}
+          kicker={`${cap(pub.travelStyle)} itinerary`}
+          title={pub.title}
+          subtitle={pub.tagline}
+          route={`${trip.startLocation} → ${trip.destinations.join(' → ')}${isRoundTrip(trip) ? ` → ${trip.startLocation}` : ''}`}
+          facts={heroFacts}
+          byline={byline}
+          ride={view === 'ride' ? {
+            facts: [
+              { value: String(pub.durationDays), label: 'days' },
+              ...(!hasLockedDays ? [{ value: kmOf(totalsN.totalDistanceKm), label: 'on the route' }] : []),
+              { value: String(placeTotal), label: 'places' },
+              ...(pub.bestSeason ? [{ value: pub.bestSeason, label: 'best season' }] : []),
+            ],
+            // The first three readable days, with three different pictures.
+            photos: mosaicPhotos.map(p => ({
+              index: p.index,
+              src: p.photo,
+              art: p.photo ? undefined : artFor(`day:${p.index}`, titlePlaces(p.title), '(max-width: 720px) 100vw, 640px', false, p.sceneId),
+              title: p.title,
+            })),
+            notice: gateNotice ? (tripReReadFailed
+              ? purchaseLoadNotice
+              : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />) : undefined,
+          } : undefined}
+          asideLabel={price === undefined || unlocked ? 'Take this plan' : 'Buy this plan'}
+          tabs={null}
+          aside={
+            <BuyCard
+              price={showUnlockCta ? formatInr(price) : gateNotice ? undefined : unlocked && price !== undefined ? 'Yours' : 'Free'}
+              note={showUnlockCta ? 'one payment · no subscription'
+                : gateNotice ? ''
+                : unlocked && price !== undefined ? (isMyPub ? 'your own plan' : 'full plan unlocked')
+                : storefront?.allFree === false ? 'free to fork' : 'every day is open to read'}
+              split={showUnlockCta ? orderedDays.map(d => (pub.freeDayIndexes.includes(d.index) ? 'open' : 'locked')) : undefined}
+              splitLabel={previewSplit ? `${previewSplit.freeCount} of ${previewSplit.dayCount} days are free, ${previewSplit.lockedLabel} are in the paid plan` : undefined}
+              splitNote={showUnlockCta && previewSplit
+                ? `${previewSplit.freeCount} ${previewSplit.freeCount === 1 ? 'day opens' : 'days open'} free · ${previewSplit.lockedCount} ${previewSplit.lockedCount === 1 ? 'day opens' : 'days open'} when you buy`
+                : undefined}
+              quote={!gateNotice && pitch ? pitch : undefined}
+              quoteBy={!gateNotice && pitch && creator ? `${creator.profile.name}, who made this plan` : undefined}
+            >
               {showUnlockCta && <>
-                <p className="sf-buybox-price"><b>{formatInr(price)}</b><span>one payment, no subscription</span></p>
-                {pitch && <p className="sf-buybox-pitch">{pitch}</p>}
                 <button className="btn btn-saffron btn-lg" disabled={buying} onClick={unlockThis}>
                   <InlineIcon icon={Lock} size={15} gap={5} />{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}
                 </button>
                 <button className="btn btn-outline" onClick={copyThis}>
                   <InlineIcon icon={GitFork} size={14} gap={4} />{me ? 'Fork the free preview' : 'Log in to fork'}
                 </button>
+                {firstOpenPos >= 0 && (
+                  <button type="button" className="pi-link" onClick={() => openDay(cards[firstOpenPos].summary.index)}>
+                    {openCount === 1 ? 'Read the free day first →' : `Read the ${openCount} free days first →`}
+                  </button>
+                )}
               </>}
-              {price !== undefined && !unlocked && !mayShowPriceCta && (tripReReadFailed
-                ? <p className="small muted">Your purchase went through. The full plan could not load. Use Retry in the box further down.</p>
+              {gateNotice && (tripReReadFailed
+                ? purchaseLoadNotice
                 : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />)}
-              {(price === undefined || unlocked) && <>
-                <p className="sf-buybox-price"><b>{unlocked && price !== undefined ? 'Yours' : 'Free'}</b><span>{unlocked && price !== undefined ? (isMyPub ? 'your own plan' : 'full plan unlocked') : storefront?.allFree === false ? 'free to fork' : 'every day is open to read'}</span></p>
-                {pitch && <p className="sf-buybox-pitch">{pitch}</p>}
+              {(price === undefined || unlocked) && (
                 <button className="btn btn-primary btn-lg" onClick={copyThis}>
                   <InlineIcon icon={GitFork} size={15} gap={5} />{forkLabel}
                 </button>
-              </>}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {stickyMode && (
-        <StickyPriceBar
-          visible={heroGone}
-          priceLabel={stickyMode === 'unlock' ? formatInr(price ?? 0) : unlocked && price !== undefined ? 'Yours' : 'Free'}
-          ctaLabel={stickyMode === 'unlock' ? (buying ? 'Opening payments…' : 'Unlock full plan') : forkLabel}
-          mode={stickyMode}
-          disabled={stickyMode === 'unlock' && buying}
-          onCta={stickyMode === 'unlock' ? unlockThis : copyThis}
+              )}
+            </BuyCard>
+          }
         />
-      )}
 
-      <div className="container pub-body">
-        {/* ---- What is inside: counts for every day, names only where the page
-            already shows them. A locked day card carries no place list. A plan
-            with no days has nothing to show, so the whole section is skipped. ---- */}
-        {storefront && storefront.cards.length > 0 && (
-          <section className="sf-inside-section" aria-labelledby="sf-inside-title">
-            <h2 className="sf-inside-heading" id="sf-inside-title">What is inside</h2>
-            <WhatIsInside
-              lede={storefront.lede}
-              kinds={storefront.kinds}
-              lockedLine={storefront.lockedLine || undefined}
-              days={storefront.cards}
-              weeks={storefront.weeks}
-            />
-          </section>
+        {stickyMode && (
+          <StickyPriceBar
+            visible={showStickyPrice}
+            title={pub.title}
+            sub={`by ${creatorName} · ${pub.durationDays} days`}
+            priceLabel={stickyMode === 'unlock' ? formatInr(price ?? 0) : unlocked && price !== undefined ? 'Yours' : 'Free'}
+            priceNote={stickyMode === 'unlock' ? 'one payment' : undefined}
+            thumb={heroSrc ? <img src={heroSrc} alt="" decoding="async" /> : artFor('cover', [], '48px')}
+            ctaLabel={stickyMode === 'unlock' ? (buying ? 'Opening payments…' : 'Unlock full plan') : forkLabel}
+            mode={stickyMode}
+            disabled={stickyMode === 'unlock' && buying}
+            onCta={stickyMode === 'unlock' ? unlockThis : copyThis}
+          />
         )}
 
-        {/* ---- Paper sheet: the editorial layer over the hero ---- */}
-        <div className="paper-sheet">
-          <div className="pub-actions">
-            <b>Made to be copied, adjusted and made your own.</b>
-            <div className="pub-actions-btns">
-              <button className="btn save-btn" onClick={saveThis} aria-pressed={savedFlag}>
-                <InlineIcon icon={Heart} size={13} gap={4} fill={savedFlag ? 'currentColor' : 'none'} />
-                {savedFlag ? 'Saved' : 'Save itinerary'}
-              </button>
-              <button className="btn fork-btn" onClick={copyThis}><InlineIcon icon={GitFork} size={14} gap={4} />{me ? 'Fork this trip' : 'Log in to fork'}</button>
-            </div>
-          </div>
-
-          <div className="two-col pub-editorial">
-            <div>
-              <span className="editorial-kicker">The journey</span>
-              <h2 className="editorial-title">Why this route works</h2>
-              {hasLockedDays ? (
-                <p className="editorial-body">
-                  A {pub.durationDays}-day route. The free days are open below. Road time, pacing and costs for the locked days are in the full plan.
-                </p>
-              ) : (
-              <p className="editorial-body">
-                Built around {minutesToHM(totalsN.totalTravelMinutes)} of real road time across {pub.durationDays} days. 
-                pacing, breaks and costs are all in the plan below.
-              </p>
-              )}
-            </div>
-            {/* Double-Bezel: this wrapper is the TRAY, the .card inside it is the
-                PLATE. Same pair Explore uses, so there is one bezel recipe. */}
-            <div className="bezel glass">
-              <aside className="card route-snap route-glance">
-                <span className="route-glance-label">The route at a glance</span>
-                <RouteSnapshot
-                  count={trip.days.length}
-                  startLabel={trip.startLocation}
-                  endLabel={trip.destinations[trip.destinations.length - 1]}
-                  roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
-                  points={routePointsN}
-                />
-                <div className="route-glance-list">{pub.routeSummary.join(' · ')}</div>
-                {stopsInPlan !== null && <span className="route-glance-meta">{stopsInPlan} stops in the plan</span>}
-              </aside>
-            </div>
-          </div>
-
-          {highlightsN.length > 0 && (
-            <div className="pub-highlights">
-              <span className="editorial-kicker">Trip highlights</span>
-              <h2 className="editorial-title">The rhythm of {pub.durationDays} days</h2>
-              <div className="day-highlight-row">
-                {highlightsN.map(h => (
-                  <div key={h.day.id} className="day-highlight-card">
-                    <div className="day-highlight-top">
-                      <span className="editorial-kicker">Day {String(h.day.index + 1).padStart(2, '0')} · {h.label}</span>
-                      <span className={`stop-kind-tag kind-${h.kind}`}>{h.label}</span>
-                    </div>
-                    <b className="day-highlight-title">{(pub.freeDayIndexes.includes(h.day.index) || unlocked) ? (h.day.title ?? lockedDayTitle(h.day.index)) : lockedDayTitle(h.day.index)}</b>
-                    <span className="day-highlight-meta">{h.meta}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+        <div className="pi-body" ref={panelEl}>
+          <div id="pi-sec-overview">
+          {cards.length > 0 && (
+            <DayRibbon
+              label={view === 'ride' ? 'Choose a day' : 'Trip ribbon'}
+              head={view === 'ride'
+                ? freeTotal > 0
+                  ? { kicker: 'Riding along', figure: `Day ${(rideIndex ?? 0) + 1} of ${cards.length}`, sub: `${freeRead} of ${freeTotal} free days read`, progress: freeRead / freeTotal }
+                  : { kicker: 'Riding along', figure: `Day ${(rideIndex ?? 0) + 1} of ${cards.length}`, sub: `${openCount} of ${cards.length} days open to read` }
+                : {
+                  kicker: 'The plan',
+                  figure: `${cards.length} days${!hasLockedDays && totalsN.totalDistanceKm >= 1 ? ` · ${kmOf(totalsN.totalDistanceKm)}` : ''}`,
+                  sub: `${placeTotal} ${placeTotal === 1 ? 'place' : 'places'} · by ${trip.transportMode}`,
+                  tag: previewSplit && !unlocked
+                    ? <span className="pi-pill pi-pill--paid"><Lock size={12} aria-hidden />{cap(previewSplit.lockedLabel)} in the paid plan</span>
+                    : undefined,
+                }}
+              days={ribbonDays}
+              current={view === 'ride' ? rideCard?.summary.index ?? null : null}
+              lockedWord={price !== undefined ? 'Paid' : 'Preview'}
+              onPick={openDay}
+            />
           )}
-        </div>
+          </div>
 
-        <div className="two-col">
-          <div>
-            {/* ---- Creator ---- */}
-            <div className="bezel glass">
-              <div className="card">
-                <div className="creator-line">
-                  <Avatar user={creator} size="lg" />
-                  <div>
-                    <b>{creator?.profile.name ?? 'Creator'}</b>{creator?.profile.isCreator && <span className="chip chip-saffron" style={{ marginLeft: 8 }}><InlineIcon icon={Sparkles} size={12} gap={3} />Creator</span>}
-                    {creator?.profile.creatorBio && <p className="small muted" style={{ margin: '5px 0 0' }}>{creator.profile.creatorBio}</p>}
-                    {isMyPub && (
-                      <div className="pub-funnel-glance" role="note" aria-label="How this plan converts, last 7 days">
-                        <b className="pub-fg-title">This link, last 7 days</b>
-                        <span className="pub-fg-line num">
-                          {myReadFailed
-                            ? 'Recorded traffic could not be read just now. The creator hub shows the same numbers when it can.'
-                            : myReadPending
-                            ? 'Reading this link’s traffic…'
-                            : myGlance?.glance
-                            ? myGlance.glance
-                            : 'No recorded traffic for this plan yet.'}
-                        </span>
-                        {myGlance?.preLog && <span className="pub-fg-prelog muted">{myGlance.preLog}</span>}
-                        {/* In-app navigation (onNavigate), not a new appLink anchor —
-                            the anchor-count pin in tests/app-link.test.ts exists so
-                            new route anchors get reviewed, and this one is internal. */}
-                        <button className="btn btn-outline btn-sm" style={{ marginTop: 6, alignSelf: 'flex-start' }} onClick={() => onNavigate('/creator-hub')}>
-                          Open the creator hub →
-                        </button>
+          {view === 'inside' ? (
+            <div key="inside" role="tabpanel" id="pi-panel-inside" aria-labelledby="pi-tab-inside" className="pi-panel">
+              {/* ---- What is inside: counts for every day, names only where the
+                  page already shows them. A locked day carries no place list. A
+                  plan with no days has nothing to show, so the section is skipped. ---- */}
+              {storefront && storefront.cards.length > 0 && (
+                <section className="pi-inside" id="pi-sec-inside" aria-labelledby="pi-inside-title">
+                  <div className="pi-card pi-inside-main">
+                    <span className="pi-kicker">What’s inside</span>
+                    <h2 className="pi-h2" id="pi-inside-title">{storefront.lede ?? pub.title}</h2>
+                    <p className="pi-lede">By {creatorName}, for {trip.travellers} {trip.travellers === 1 ? 'traveller' : 'travellers'} by {trip.transportMode}.</p>
+                    <b className="pi-sub-h">The {placeTotal} {placeTotal === 1 ? 'place' : 'places'}, by kind</b>
+                    <KindTiles kinds={storefront.kinds} />
+                    {storefront.lockedLine && (
+                      <div className="pi-lock-band" role="note">
+                        <Lock size={16} aria-hidden />
+                        <span>{storefront.lockedLine}</span>
+                        {showUnlockCta && (
+                          <button className="btn btn-saffron btn-sm" disabled={buying} onClick={unlockThis}>
+                            {buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
-                </div>
-                {creator?.profile.socialLinks && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                    {creator.profile.socialLinks.youtube && <a className="chip chip-info" href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.youtube!) }}>▶ YouTube</a>}
-                    {creator.profile.socialLinks.instagram && <a className="chip chip-info" href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.instagram!) }}><InlineIcon icon={Camera} size={12} gap={3} />Instagram</a>}
+                  <div className="pi-card pi-get">
+                    <span className="pi-kicker">What you get</span>
+                    <ul className="pi-get-list">
+                      <li><span className="pi-get-icon"><Clock size={18} aria-hidden /></span>A clock time for each of the {placeTotal} places</li>
+                      <li><span className="pi-get-icon"><Car size={18} aria-hidden /></span>Driving time between every place</li>
+                      {pub.travelTips.length > 0 && <li><span className="pi-get-icon"><MessageCircle size={18} aria-hidden /></span>{pub.travelTips.length} {pub.travelTips.length === 1 ? 'tip' : 'tips'} before you go</li>}
+                      <li><span className="pi-get-icon"><GitFork size={18} aria-hidden /></span>A copy in your trips that you can change</li>
+                    </ul>
+                    {showUnlockCta && <p className="pi-get-foot">One payment. The paid days open on this page, and the plan stays in your library.</p>}
                   </div>
-                )}
-                {creator && (
-                  <a className="btn btn-outline btn-sm" style={{ marginTop: 12 }} {...appLink(`/creator/${creator.id}`)}>
-                    More from {creator.profile.name} →
-                  </a>
-                )}
-              </div>
-            </div>
+                </section>
+              )}
 
-            {/* ---- Day-by-day (free vs premium) ---- */}
-            {trip.days.map(day => {
-              const isFree = pub.freeDayIndexes.includes(day.index)
-              // #774 — null means the server sent this day in full. Otherwise
-              // the server locked it, and it holds a day number and two counts.
-              const wire = lockedDayCounts(day)
-              const readable = wire === null && (isFree || unlocked)
-              const sim = simulateDay(day, trip, readableDayStart(trip.days, day) ?? originOf(trip, day.index), day.index)
-              const A = getAssumptions(trip)
-              const stops = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
-              // Unknown stays unknown: a locked day with no count shows no number.
-              const lockedStops = wire ? wire.stopCount : stops.length
-              // The viewer owns the plan and the full days have not arrived.
-              // That is a load, or a failed load. It is never a sale. The
-              // words come from `fullPlan`: a read is in flight, or it failed.
-              const awaitingFullPlan = unlocked && wire !== null
-              return (
-                <div key={day.id} className="day-section" style={{ position: 'relative', overflow: 'hidden' }}>
-                  <div className="day-header">
-                    <div className="day-badge"><small>Day</small><b>{day.index + 1}</b></div>
+              {storefront && storefront.cards.length > 0 && (
+                <section className="pi-days" id="pi-sec-days" aria-labelledby="pi-days-title">
+                  <div className="pi-days-head">
                     <div>
-                      <h2>{readable ? (day.title ?? lockedDayTitle(day.index)) : lockedDayTitle(day.index)}</h2>
-                      <div className="small muted">
-                        {wire
-                          ? (wire.stopCount === null ? 'Locked day' : `${wire.stopCount} stop${wire.stopCount === 1 ? '' : 's'}`)
-                          : sim.activeStops.length <= 1 && sim.totalDistanceKm < 0.5
-                          ? 'Local day. No drive planned'
-                          : `${stops.length} stops · ~${minutesToHM(sim.totalTravelMinutes)} travel`}
-                      </div>
+                      <span className="pi-kicker">The {cards.length} days</span>
+                      <h2 className="pi-h2" id="pi-days-title">
+                        {previewSplit && !unlocked ? `${previewSplit.freeCount} to read now, ${previewSplit.lockedCount} in the paid plan` : 'Day by day'}
+                      </h2>
                     </div>
-                    {(!isFree || wire !== null) && <Chip tone="saffron"><InlineIcon icon={Lock} size={12} gap={3} vAlign="-1px" />Premium</Chip>}
+                    <p className="pi-legend" aria-hidden="true">
+                      <span><i className="pi-budget-dot pi-budget-drive" />Driving</span>
+                      <span><i className="pi-budget-dot pi-budget-places" />At places</span>
+                      <span><i className="pi-budget-dot pi-budget-free" />Free time</span>
+                      <span className="pi-legend-note">Bars run from each day’s start to its planned end</span>
+                    </p>
                   </div>
+                  <WhatIsInside kinds={[]} days={dayCards} weeks={storefront.weeks} />
+                </section>
+              )}
 
-                  {readable ? (
-                    <DayStops stops={stops} sim={sim} assumptions={A} timeFormat={timeFormat} stayDay={sim.activeStops.length <= 1 && sim.totalDistanceKm < 0.5} mode={trip.transportMode} />
-                  ) : (
-                    <>
-                      <div className="locked-overlay">
-                        <div style={{ filter: 'blur(5px)', pointerEvents: 'none', userSelect: 'none' }} aria-hidden="true">
-                          {/* Placeholder rows only. No stop title reaches this markup (#774). */}
-                          {Array.from({ length: Math.min(lockedStops ?? 3, 3) }, (_, i) => (
-                            <div key={i} className="stop-card"><div className="stop-num">{i + 1}</div><div className="stop-main"><div className="stop-title">Stop {i + 1}</div></div></div>
-                          ))}
-                        </div>
-                        <div className="locked-cta">
-                          <b><InlineIcon icon={Lock} size={13} gap={4} />{lockedStops === null ? 'This day is locked' : `${lockedStops} more stops on this day`}</b>
-                          <p className="small">Stay contacts, timings and the budget breakdown are in the full plan.</p>
-                          {/* #359 — the price CTA is a CLAIM about what this viewer
-                              does not own, so it may only render on a read that
-                              actually answered. Over a failed read it would be a
-                              price tag on a plan the buyer already paid for. */}
-                          {awaitingFullPlan && <p className="small" role="status">{fullPlan === 'failed' ? 'The full plan did not load. Reload the page to try again.' : 'Loading the full plan…'}</p>}
-                          {price !== undefined && mayShowPriceCta && !awaitingFullPlan && <>
-                            <button className="btn btn-saffron" disabled={buying} onClick={unlockThis}>{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}</button>
-                            <p className="hint-text" style={{ margin: '6px 0 0' }}>One-time payment. No subscription.</p>
-                          </>}
-                          {price !== undefined && !mayShowPriceCta && !awaitingFullPlan && (tripReReadFailed
-                            ? <PurchaseLoadState onRetry={retryPostPurchaseReads} retrying={postPurchaseRetrying} />
-                            : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />)}
-                        </div>
-                      </div>
-                    </>
+              {/* ---- Before you go: the creator's tips and the plan's assumptions.
+                  The road by height lives in the Ride along side column. An empty
+                  list is left out, not drawn as an empty heading. ---- */}
+              <section className="pi-before" aria-labelledby="pi-before-title">
+                <span className="pi-kicker" id="pi-before-title">Before you go</span>
+                <div className="pi-before-grid">
+                  {(pub.travelTips.length > 0 || pub.warningsAndAssumptions.length > 0) && (
+                    <div className="pi-card pi-before-notes">
+                      {pub.travelTips.length > 0 && <>
+                        <h2 className="pi-h2 pi-h2--s">Travel tips</h2>
+                        <ul className="pi-notelist">
+                          {pub.travelTips.map((t, i) => <li key={i}><MessageCircle size={15} aria-hidden />{t}</li>)}
+                        </ul>
+                      </>}
+                      {pub.warningsAndAssumptions.length > 0 && <>
+                        <h2 className="pi-h2 pi-h2--s">Warnings & assumptions</h2>
+                        <ul className="pi-notelist pi-notelist--warn">
+                          {pub.warningsAndAssumptions.map((t, i) => <li key={i}><TriangleAlert size={15} aria-hidden />{t}</li>)}
+                        </ul>
+                      </>}
+                    </div>
                   )}
                 </div>
-              )
-            })}
+              </section>
 
-            {/* ---- Tips & warnings ---- */}
-            <div className="two-col two-col--even" style={{ marginTop: 16 }}>
-              <div className="bezel glass">
-                <div className="card">
-                  <h2>Travel tips</h2>
-                  <hr className="divider" />
-                  <ul style={{ paddingLeft: 18, lineHeight: 1.9, margin: 0 }}>
-                    {pub.travelTips.map((t, i) => <li key={i}>{t}</li>)}
-                  </ul>
+              <section className="pi-end" id="pi-sec-creator" aria-label="The creator and take this trip">
+                <div className="pi-card pi-creator">
+                  <div className="creator-line">
+                    <Avatar user={creator} size="lg" />
+                    <div>
+                      <span className="pi-kicker">The creator</span>
+                      <p className="pi-creator-name"><b>{creator?.profile.name ?? 'Creator'}</b>{creator?.profile.isCreator && <span className="chip chip-saffron"><InlineIcon icon={Sparkles} size={12} gap={3} />Creator</span>}</p>
+                      {creator?.profile.creatorBio && <p className="small muted">{creator.profile.creatorBio}</p>}
+                      {isMyPub && (
+                        <div className="pub-funnel-glance" role="note" aria-label="How this plan converts, last 7 days">
+                          <b className="pub-fg-title">This link, last 7 days</b>
+                          <span className="pub-fg-line num">
+                            {myReadFailed
+                              ? 'Recorded traffic could not be read just now. The creator hub shows the same numbers when it can.'
+                              : myReadPending
+                              ? 'Reading this link’s traffic…'
+                              : myGlance?.glance
+                              ? myGlance.glance
+                              : 'No recorded traffic for this plan yet.'}
+                          </span>
+                          {myGlance?.preLog && <span className="pub-fg-prelog muted">{myGlance.preLog}</span>}
+                          {/* In-app navigation (onNavigate), not a new appLink anchor —
+                              the anchor-count pin in tests/app-link.test.ts exists so
+                              new route anchors get reviewed, and this one is internal. */}
+                          <button className="btn btn-outline btn-sm pi-glance-btn" onClick={() => onNavigate('/creator-hub')}>
+                            Open the creator hub →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {creator?.profile.socialLinks && (
+                    <div className="pi-socials">
+                      {creator.profile.socialLinks.youtube && <a className="chip chip-info" href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.youtube!) }}>▶ YouTube</a>}
+                      {creator.profile.socialLinks.instagram && <a className="chip chip-info" href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.instagram!) }}><InlineIcon icon={Camera} size={12} gap={3} />Instagram</a>}
+                    </div>
+                  )}
+                  {creator && (
+                    <a className="pi-link pi-more" {...appLink(`/creator/${creator.id}`)}>
+                      {plans > 1 ? `See all ${plans} of ${creator.profile.name}’s plans →` : `More from ${creator.profile.name} →`}
+                    </a>
+                  )}
                 </div>
-              </div>
-              <div className="bezel glass">
-                <div className="card">
-                  <h2>Warnings & assumptions</h2>
-                  <hr className="divider" />
-                  <ul style={{ paddingLeft: 18, lineHeight: 1.9, margin: 0 }}>
-                    {pub.warningsAndAssumptions.map((t, i) => <li key={i}><InlineIcon icon={TriangleAlert} size={12} gap={3} />{t}</li>)}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* ---- Sidebar ---- */}
-          <div>
-            {/* Sticky lives on the TRAY, not the plate. A sticky element sticks
-                within its containing block, so leaving it on the inner card - now
-                the tray's only child, and exactly as tall as the tray - would give
-                it no room to move. */}
-            <div className="bezel glass" style={{ position: 'sticky', top: 80 }}>
-              <div className="card">
-                <h2>Take this trip with you</h2>
-                <p className="hint-text" style={{ margin: '8px 0 14px' }}>
-                  Forks the free preview into your YatraFlow account. Locked days come over as empty days you can fill in yourself.
-                </p>
-                <button className="btn fork-btn btn-lg" style={{ width: '100%' }} onClick={copyThis}>
-                  <InlineIcon icon={GitFork} size={15} gap={5} />{me ? 'Fork this trip' : 'Log in to fork'}
-                </button>
-                {price !== undefined && !unlocked && mayShowPriceCta && <>
-                  <button className="btn btn-saffron btn-lg" style={{ width: '100%', marginTop: 10 }}
-                    disabled={buying} onClick={unlockThis}>
-                    <InlineIcon icon={Lock} size={15} gap={5} />{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}
-                  </button>
-                  <p className="hint-text" style={{ textAlign: 'center', marginTop: 8 }}>One-time payment. No subscription.</p>
-                </>}
-                {/* #359 — the failed/in-flight read replaces the price button
-                    rather than sitting under it. Both placements are covered,
-                    because one is in a day card and one in the sticky sidebar:
-                    a buyer must not meet "Unlock for ₹499" for their own plan
-                    in either. */}
-                {price !== undefined && !unlocked && !mayShowPriceCta && (tripReReadFailed
-                  ? <PurchaseLoadState onRetry={retryPostPurchaseReads} retrying={postPurchaseRetrying} centered />
-                  : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} centered />)}
-                {price !== undefined && unlocked && <p className="hint-text" style={{ textAlign: 'center', marginTop: 10 }}>
-                  ✓ Full plan unlocked. Forking carries every day as a real, editable plan.
-                </p>}
-                {/* Which days stay back is read from the publication's own freeDayIndexes
-                    rather than assumed to be the tail — a live ₹500 publication kept days
-                    9–10 free, so the older sentence contradicted the page. The clause is
-                    appended as the module writes it; capitalising belongs to CSS, not here. */}
-                {previewSplit && !unlocked && <p className="hint-text" style={{ textAlign: 'center', marginTop: 8 }}>
-                  Preview: {previewSplit.claim}.
-                </p>}
-                {/* The first screen shows the pitch cut to 140 characters. Only a
-                    pitch that was cut shows its full text here. Stored text is
-                    never shortened. */}
-                {pub.subscriberCta && !(heroShowsPitch && pitch === pub.subscriberCta) && <p className="hint-text" style={{ textAlign: 'center', marginTop: 8 }}>{pub.subscriberCta}</p>}
-                <hr className="divider" />
-                <div className="share-link-box"><code>{shareLink}</code><CopyButton text={shareLink} label="Copy page link" /></div>
-          <div className="share-link-box">
-            <button className="btn btn-outline btn-sm" disabled={sendingWhatsApp}
-              onClick={() => void sendOnWhatsApp()}>
-              {sendingWhatsApp
-                ? <><span className="spinner" aria-hidden /> Opening WhatsApp…</>
-                : <><MessageCircle size={14} aria-hidden /> Send on WhatsApp</>}
-            </button>
-            <span className="hint-text">Opens the app with the link ready to paste</span>
-          </div>
-                {!me && <p className="hint-text" style={{ marginTop: 10 }}>You’ll need a free account to fork trips.</p>}
-              </div>
+                {/* One clear action, as in the mockup: buy when the plan is for sale,
+                    fork when it is free or owned. Fork-the-preview, save and share
+                    stay, as a quiet row of links under it. */}
+                <div className="pi-card pi-take">
+                  <span className="pi-kicker">Take this trip</span>
+                  <h2 className="pi-h2">Make it yours. Change the dates, the people and the stops.</h2>
+                  <div className="pi-take-actions">
+                    {showUnlockCta ? <>
+                      <button className="btn btn-saffron btn-lg" disabled={buying} onClick={unlockThis}>
+                        <InlineIcon icon={Lock} size={15} gap={5} />{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}
+                      </button>
+                      {firstOpenPos >= 0 && (
+                        <button type="button" className="pi-take-read" onClick={() => openDay(cards[firstOpenPos].summary.index)}>
+                          Read the free {openCount === 1 ? 'day' : 'days'} first
+                        </button>
+                      )}
+                    </> : !gateNotice && (
+                      <button className="btn fork-btn btn-lg" onClick={copyThis}>
+                        <InlineIcon icon={GitFork} size={15} gap={5} />{me ? 'Fork this trip' : 'Log in to fork'}
+                      </button>
+                    )}
+                  </div>
+                  {showUnlockCta && <p className="hint-text">One-time payment. No subscription.</p>}
+                  {/* #359 — the failed/in-flight read replaces the price button
+                      rather than sitting under it, here as in the buy card: a
+                      buyer must not meet "Unlock for ₹499" for their own plan. */}
+                  {gateNotice && (tripReReadFailed
+                    ? <PurchaseLoadState onRetry={retryPostPurchaseReads} retrying={postPurchaseRetrying} centered />
+                    : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} centered />)}
+                  {price !== undefined && unlocked && <p className="hint-text">
+                    ✓ Full plan unlocked. Forking carries every day as a real, editable plan.
+                  </p>}
+                  {/* The first screen shows the pitch cut to 140 characters. Only a
+                      pitch that was cut shows its full text here. Stored text is
+                      never shortened. */}
+                  {pub.subscriberCta && !(heroShowsPitch && pitch === pub.subscriberCta) && <p className="hint-text">{pub.subscriberCta}</p>}
+                  <div className="pi-take-more">
+                    {showUnlockCta && (
+                      <button type="button" className="pi-take-link" onClick={copyThis}>
+                        <GitFork size={14} aria-hidden />{me ? 'Fork the free preview' : 'Log in to fork the free preview'}
+                      </button>
+                    )}
+                    <button type="button" className="pi-take-link" onClick={saveThis} aria-pressed={savedFlag}>
+                      <Heart size={14} aria-hidden fill={savedFlag ? 'currentColor' : 'none'} />{savedFlag ? 'Saved' : 'Save itinerary'}
+                    </button>
+                    <button type="button" className="pi-take-link" onClick={() => { void nativeCopyText(shareLink); toast('Link copied') }}>
+                      <Link2 size={14} aria-hidden />Copy link
+                    </button>
+                    <button type="button" className="pi-take-link" disabled={sendingWhatsApp} onClick={() => void sendOnWhatsApp()}>
+                      <MessageCircle size={14} aria-hidden />{sendingWhatsApp ? 'Opening WhatsApp…' : 'Send on WhatsApp'}
+                    </button>
+                  </div>
+                </div>
+              </section>
             </div>
-          </div>
+          ) : (
+            <div key="ride" role="tabpanel" id="pi-panel-ride" aria-labelledby="pi-tab-ride" className="pi-panel pi-ride-grid">
+              <div className="pi-ride-main">
+                {rideCard && rideCard.state !== 'locked' && <RideReadMark publicationId={pub.id} freeIndexes={pub.freeDayIndexes} index={rideCard.summary.index} />}
+                {ridePanel ?? (
+                  <div className="pi-card"><p className="pi-muted">This plan has no days to ride along yet.</p></div>
+                )}
+                {paidPreview && <RideLockedPreview {...rideArt(paidPreview.summary.index)} card={paidPreview}
+                  lastIndex={cards[paidRunEnd].summary.index}
+                  action={showUnlockCta ? <button type="button" className="btn btn-saffron btn-sm" disabled={buying} onClick={unlockThis}>
+                    <InlineIcon icon={Lock} size={13} gap={4} />{buying ? 'Opening payments…' : `Unlock ${paidRunLabel}`}
+                  </button> : gateNotice && !tripReReadFailed ? <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} /> : null}
+                />}
+                {cards.length > 1 && (
+                  <section className="pi-others" aria-labelledby="pi-others-title">
+                    <div className="pi-others-head">
+                      <h2 className="pi-h2 pi-h2--s" id="pi-others-title">The other days</h2>
+                      <span className="pi-muted">Pick a day to ride along{previewSplit && !unlocked ? ' · marigold days are in the paid plan' : ''}</span>
+                    </div>
+                    <ol className="pi-others-list">
+                      {cards.map((c, i) => {
+                        if (i === ridePos || i === paidPreviewPos) return null
+                        const f = dayFacts[i]
+                        const km = c.state !== 'locked' && f ? kmOf(f.km) : ''
+                        return (
+                          <RideOtherRow
+                            key={c.summary.index}
+                            {...rideArt(c.summary.index, c.state === 'locked' ? undefined : f?.names)}
+                            state={c.state}
+                            index={c.summary.index}
+                            title={c.summary.title}
+                            placeCount={c.summary.placeCount}
+                            photo={c.state === 'locked' ? undefined : f?.photo}
+                            line={c.state === 'locked'
+                              ? `${c.summary.placeCount} ${c.summary.placeCount === 1 ? 'place' : 'places'}`
+                              : f && f.names.length > 0 ? f.names.join(' → ') : 'No places planned'}
+                            km={km}
+                            drive={c.state === 'locked' ? '' : driveOf(c.summary.travelMinutes)}
+                            stagger={i}
+                            onOpen={() => openDay(c.summary.index)}
+                          />
+                        )
+                      })}
+                    </ol>
+                  </section>
+                )}
+              </div>
+              <aside className="pi-ride-aside" aria-label="Take this plan">
+                <div className="pi-card pi-aside-card">
+                  {showUnlockCta && <>
+                    <p className="pi-buy-price"><b>{formatInr(price)}</b><span>one payment · no subscription</span></p>
+                    <div className="pi-split" role="img" aria-label={previewSplit ? `${previewSplit.freeCount} of ${previewSplit.dayCount} days are free` : undefined}>
+                      {orderedDays.map(d => <span key={d.index} className={'pi-split-seg pi-split-' + (pub.freeDayIndexes.includes(d.index) ? 'open' : 'locked')} />)}
+                    </div>
+                    <RideProgress publicationId={pub.id} freeIndexes={pub.freeDayIndexes} />
+                    <button className="btn btn-saffron btn-lg" disabled={buying} onClick={unlockThis}>
+                      <InlineIcon icon={Lock} size={15} gap={5} />{buying ? 'Opening payments…' : <>Unlock all {cards.length} days</>}
+                    </button>
+                  </>}
+                  <ul className="pi-aside-includes">
+                    <li><Clock size={16} aria-hidden />A clock time for each place</li>
+                    <li><Car size={16} aria-hidden />Driving time between places</li>
+                    <li><GitFork size={16} aria-hidden />A copy in your trips to change</li>
+                  </ul>
+                  {gateNotice && !tripReReadFailed && <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />}
+                  {!showUnlockCta && <button className="btn fork-btn btn-lg" onClick={copyThis}>
+                    <InlineIcon icon={GitFork} size={15} gap={5} />{me ? 'Fork this trip' : 'Log in to fork'}
+                  </button>}
+                </div>
+                <RideElevation key={pub.id} trip={trip} freeIndexes={unlocked ? orderedDays.filter(day => !isWireLocked(day)).map(day => day.index) : pub.freeDayIndexes} />
+                {creator && (
+                  <a className="pi-card pi-aside-creator" {...creatorLinkProps}>
+                    <Avatar user={creator} size="lg" />
+                    <span><b>{creator.profile.name} · {plans} {plans === 1 ? 'route' : 'routes'}</b>{creator.profile.creatorBio && <span className="pi-muted">{creator.profile.creatorBio}</span>}</span>
+                    <ChevronRight size={16} aria-hidden />
+                  </a>
+                )}
+                <div className="pi-ride-group">
+                  <Users size={19} aria-hidden />
+                  <p><b>Going as a group?</b> Send the free days to your crew first.</p>
+                  <CopyButton text={withShareRef(currentPublicShareUrl(pub.id), 'copy')} label="Copy link" />
+                </div>
+              </aside>
+            </div>
+          )}
         </div>
 
         {/* ROADMAP I-20: the purchase stops being a toast. Mounted only while a
@@ -1066,10 +1377,11 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   )
 }
 
-/** The day's stop list, shared by free days and unlocked (paid/creator)
+/** The day's timeline, shared by free days and unlocked (paid/creator)
  *  views — one renderer so an unlocked day shows EXACTLY what a free day
- *  shows, including the travelling strips (departure/arrival, distance,
- *  cost) the first cut of the unlock flow silently dropped. */
+ *  shows, including the travelling rows (departure/arrival, distance,
+ *  cost) the first cut of the unlock flow silently dropped. Each row is a
+ *  clock, a rail dot and the row's own facts, read by stop id. */
 function DayStops({ stops, sim, assumptions, timeFormat, stayDay, mode }: {
   stops: ReturnType<typeof simulateDay>['activeStops'] extends never ? never : Array<{
     id: string
@@ -1087,31 +1399,30 @@ function DayStops({ stops, sim, assumptions, timeFormat, stayDay, mode }: {
   assumptions: ReturnType<typeof getAssumptions>
   timeFormat: '12h' | '24h'
   stayDay: boolean
-  /** the trip's transport mode — the travelling strip's glyph follows it. */
+  /** the trip's transport mode — the travelling row's glyph follows it. */
   mode: string
 }) {
   // #555: the schedule keyed by stop id — sim's legs are INTO legs (legIn of
-  // each active stop) and its arrays are per-active-stop, so the strip below
-  // reads this row's own facts instead of a neighbour's position.
+  // each active stop) and its arrays are per-active-stop, so the row below
+  // reads its own facts instead of a neighbour's position.
   const simRows = scheduleRowsById(sim)
   return (
-    <>
+    <ol className="pi-tl">
       {stops.map((s, i) => {
         // Auto anchors are pure travel, not activities — show the
         // drive (times, duration, distance, cost) as a travelling
-        // strip instead of an empty stop-card.
+        // row instead of an empty stop row.
         if (s.auto === true) {
           const cleanName = (s.locationName || s.title).replace(/ \((start|end)\)$/, '')
           // Stay day: the journey never leaves this place — a
-          // plain base marker, not a travelling strip.
+          // plain base marker, not a travelling row.
           if (stayDay) {
             return (
-              <div key={s.id} className="travel-anchor">
-                <div className="travel-anchor-title">
-                  <span className="travel-anchor-ico"><MapPin size={13} aria-hidden /></span>
-                  <span>Based in {cleanName}</span>
-                </div>
-              </div>
+              <li key={s.id} className="pi-tl-row pi-tl-row--base">
+                <span className="pi-tl-time" />
+                <span className="pi-tl-rail"><i className="pi-tl-dot pi-tl-dot--ico"><MapPin size={11} aria-hidden /></i></span>
+                <div className="pi-tl-body"><b>Based in {cleanName}</b></div>
+              </li>
             )
           }
           // The drive that brought you TO this anchor: its own inbound leg
@@ -1127,45 +1438,49 @@ function DayStops({ stops, sim, assumptions, timeFormat, stayDay, mode }: {
           const depHM = dep !== '--:--' ? formatHM(dep, timeFormat) : dep
           const arrHM = arr !== '--:--' ? formatHM(arr, timeFormat) : arr
           return (
-            <div key={s.id} className="travel-anchor">
-              <div className="travel-anchor-title">
-                <span className="travel-anchor-ico">{i === 0 ? <Flag size={13} aria-hidden /> : modeIcon(mode, 13)}</span>
-                <span>{i === 0 ? `Start · ${cleanName}` : `Travelling to ${cleanName}`}</span>
+            <li key={s.id} className="pi-tl-row pi-tl-row--travel">
+              <span className="pi-tl-time">{inbound ? arrHM : depHM}</span>
+              <span className="pi-tl-rail"><i className="pi-tl-dot pi-tl-dot--ico">{i === 0 ? <Flag size={11} aria-hidden /> : modeIcon(mode, 11)}</i></span>
+              <div className="pi-tl-body">
+                <b>{i === 0 ? `Start · ${cleanName}` : `Travelling to ${cleanName}`}</b>
+                <div className="pi-tl-meta">
+                  {inbound ? (
+                    <>
+                      <span><MetaIcon icon={ Clock } tone="time" />Depart {depHM} → arrive {arrHM}</span>
+                      <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(inbound.durationMinutes)}</span>
+                      <span><MetaIcon icon={ MapPin } tone="place" />{inbound.distanceKm.toFixed(0)} km</span>
+                      <span><MetaIcon icon={ Car } tone="money" />est {formatInr(cost)} ({assumptions.mode})</span>
+                    </>
+                  ) : (
+                    <span>Departure {depHM}</span>
+                  )}
+                </div>
               </div>
-              <div className="travel-anchor-meta">
-                {inbound ? (
-                  <>
-                    <span><MetaIcon icon={ Clock } tone="time" />Depart {depHM} → arrive {arrHM}</span>
-                    <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(inbound.durationMinutes)}</span>
-                    <span><MetaIcon icon={ MapPin } tone="place" />{inbound.distanceKm.toFixed(0)} km</span>
-                    <span><MetaIcon icon={ Car } tone="money" />est {formatInr(cost)} ({assumptions.mode})</span>
-                  </>
-                ) : (
-                  <span>Departure {depHM}</span>
-                )}
-              </div>
-            </div>
+            </li>
           )
         }
+        const stopRow = simRows.get(s.id)
+        const stopArrive = stopRow && stopRow.arrive !== '--:--' ? formatHM(stopRow.arrive, timeFormat) : ''
         return (
-          <div key={s.id} className="stop-card">
-            <div className={`stop-num cat-${s.category}`}>{i + 1}</div>
-            <div className="stop-main">
-              <div className="stop-toprow">
-                <span className="stop-title">{s.title}</span>
+          <li key={s.id} className="pi-tl-row pi-tl-row--stop">
+            <span className="pi-tl-time">{stopArrive}</span>
+            <span className="pi-tl-rail"><i className={`pi-tl-dot cat-${s.category}`}>{i + 1}</i></span>
+            <div className="pi-tl-body">
+              <div className="pi-tl-toprow">
+                <b className="pi-tl-title">{s.title}</b>
                 <Chip tone="info">{titleCase(s.category)}</Chip>
                 {s.openTime && <span className="small muted"><MetaIcon icon={ Clock } tone="time" />{formatHMRange(s.openTime, s.closeTime, timeFormat)}</span>}
               </div>
-              <div className="stop-meta">
+              <div className="pi-tl-meta">
                 <span><MetaIcon icon={ MapPin } tone="place" />{s.locationName}</span>
                 <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(s.visitMinutes)}</span>
                 {s.entryFeeInrPerPerson > 0 && <span><MetaIcon icon={ Ticket } tone="ticket" />₹{s.entryFeeInrPerPerson}/person</span>}
               </div>
-              {s.description && <div className="stop-desc">{s.description}</div>}
+              {s.description && <div className="pi-tl-desc">{s.description}</div>}
             </div>
-          </div>
+          </li>
         )
       })}
-    </>
+    </ol>
   )
 }

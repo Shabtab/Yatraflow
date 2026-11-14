@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import ts from 'typescript'
 
 // Wiring guards for the M7 unlock flow. The page's purchase path is a
 // browser-only journey (gateway modal + session JWT), so these pin the
@@ -79,7 +80,8 @@ describe('the public page wires the real unlock flow', () => {
     expect(page).toContain('function DayStops(')
     expect(page).toContain('<DayStops stops={stops}')
     // The two full renderer copies are gone: only the shared one remains.
-    expect((page.match(/travel-anchor-title/g) ?? []).length).toBe(2) // the component's two variants
+    expect((page.match(/<ol className="pi-tl">/g) ?? []).length).toBe(1)
+    expect((page.match(/pi-tl-row--(travel|base|stop)/g) ?? []).length).toBe(3)
   })
 
   it('the creator hub reads real sales through the creator RLS path (I-11)', () => {
@@ -146,13 +148,32 @@ describe('the public page wires the real unlock flow', () => {
     //    second conjunct: a stuck post-purchase trip re-read silences the CTA
     //    too — the buyer owns the plan, so no price tag may render.
     expect(code).toMatch(/const mayShowPriceCta = \(!meId \|\| entitlementRead === 'ready'\) && !tripReReadFailed/)
-    // 3. Every one of the two price buttons sits behind that gate — the day-card
-    //    one and the sticky-sidebar one. A single unguarded site is enough to
-    //    re-open the bug, and a guard that only covers the obvious one is the
-    //    shape this failed in.
-    const priceButtons = code.match(/\{price !== undefined[^}]*<button className="btn btn-saffron/g) ?? []
-    expect(priceButtons).toHaveLength(2)
-    for (const b of priceButtons) expect(b).toContain('mayShowPriceCta')
+    // 3. All six price buttons must use the same fail-closed gate.
+    expect(code).toMatch(/const showUnlockCta = price !== undefined && !unlocked && mayShowPriceCta/)
+    const tree = ts.createSourceFile('page.tsx', code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+    const priceButtons: ts.JsxOpeningElement[] = []
+    const visit = (node: ts.Node) => {
+      if (ts.isJsxOpeningElement(node) && node.tagName.getText(tree) === 'button' &&
+        node.attributes.properties.some(attr => ts.isJsxAttribute(attr) &&
+          attr.name.getText(tree) === 'className' && attr.initializer &&
+          ts.isStringLiteral(attr.initializer) && attr.initializer.text.split(/\s+/).includes('btn-saffron'))) {
+        priceButtons.push(node)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(tree)
+    expect(priceButtons).toHaveLength(6)
+    for (const button of priceButtons) {
+      let gated = false
+      for (let parent: ts.Node | undefined = button.parent; parent; parent = parent.parent) {
+        const branch = ts.isConditionalExpression(parent) && parent.condition.getText(tree) === 'showUnlockCta'
+          ? parent.whenTrue
+          : ts.isBinaryExpression(parent) && parent.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken &&
+            parent.left.getText(tree) === 'showUnlockCta' ? parent.right : undefined
+        if (branch && button.pos >= branch.pos && button.end <= branch.end) gated = true
+      }
+      expect(gated, `Price button at ${button.pos} must be inside the unlock gate`).toBe(true)
+    }
     // 4. The failure is SAYABLE, with a way to ask again, and offers no price.
     expect(code).toContain("Couldn&apos;t check your access.")
     expect(code).toContain('Checking your access…')

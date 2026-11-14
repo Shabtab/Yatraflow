@@ -1,7 +1,7 @@
 // ============ Explore public itineraries — discover, trust and fork (CTI §6.10) ============
 import { useEffect, useMemo, useState } from 'react'
 import { currentQuery, onRouteChange, replaceRoute } from '../lib/router'
-import { Compass, Heart, Lock, Search, TriangleAlert } from 'lucide-react'
+import { Compass, Heart, Search, TriangleAlert } from 'lucide-react'
 import { usePublished, useUsers, useTrips, useSessionUserId, useDb, rereadPublicSlices } from '../store/store'
 import type { PublishedItinerary, CachedUser } from '../data/types'
 import { computeHealth } from '../lib/engine'
@@ -13,7 +13,7 @@ import { scrollBehavior } from '../lib/motion'
 import { toast } from '../components/ui'
 import { TripArtSprite } from '../components/trips/TripArt'
 import { StateVignette } from '../components/RegionArt'
-import { ExploreHero } from '../components/explore/ExploreHero'
+import { ExploreHero, type QuickPick } from '../components/explore/ExploreHero'
 import { ExploreFilterBar, type StyleOption } from '../components/explore/ExploreFilterBar'
 import { ExploreCard } from '../components/explore/ExploreCard'
 import { FeaturedCard } from '../components/explore/FeaturedCard'
@@ -21,6 +21,7 @@ import { ExploreStateBlock } from '../components/explore/ExploreStateBlock'
 import { PlacesPanel } from '../components/explore/PlacesPanel'
 import { CreatorsPanel } from '../components/explore/CreatorsPanel'
 import { SharePanel } from '../components/explore/SharePanel'
+import { ForkSteps } from '../components/explore/ForkSteps'
 import { TrendingShelf } from '../components/explore/TrendingShelf'
 import { livePubs } from '../lib/livePubs'
 import { comparePopularity } from '../lib/discovery'
@@ -31,6 +32,8 @@ type SortKey = 'popular' | 'newest' | 'budget-asc' | 'budget-desc' | 'duration'
 const STYLES = ['relaxed', 'balanced', 'packed', 'adventure', 'luxury', 'budget', 'family', 'spiritual', 'food-focused', 'creator'] as const
 /** P4: the grid renders one page at a time; "Load more" grows the window. */
 const PAGE_SIZE = 12
+/** The hero's "Under ₹20k" quick pick. It is one of the budget select's own values. */
+const UNDER_BUDGET = 20000
 
 // #350 — the gallery's pool lives in lib/livePubs.ts so every public catalog
 // surface shares one predicate copy. Re-exported for the test suite, which
@@ -95,12 +98,15 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   // other filters describe the ITINERARIES (which anyone can see); this one
   // describes the READER, and that is the line the URL must not cross.
   const [savedOnly, setSavedOnly] = useState(false)
+  // "Free plans" quick pick: a plan is free when it has no storefront price. Like
+  // Saved, it stays out of the URL: it is a view of the catalog, not an address.
+  const [freeOnly, setFreeOnly] = useState(false)
   // P4 pagination: show the first page; "Load more" widens the window. Reset
   // to the first page whenever the result set's shape changes (filter/sort
   // edits), but NOT when `published` updates live (realtime insert) — a new
   // row appearing shouldn't yank the user back to the top.
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
-  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [q, style, maxBudget, duration, savedOnly, sortKey])
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [q, style, maxBudget, duration, savedOnly, freeOnly, sortKey])
 
   /** Write the current filters back into the hash query (F-22). replaceState —
       filter fiddling shouldn't spam history or retrigger App's scroll-reset. */
@@ -122,8 +128,9 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
       )
     }
     if (savedOnly) list = list.filter(p => saved.includes(p.id))
+    if (freeOnly) list = list.filter(isFreePlan)
     return sortList(list)
-  }, [published, users, q, style, maxBudget, duration, sortKey, savedOnly, saved])
+  }, [published, users, q, style, maxBudget, duration, sortKey, savedOnly, freeOnly, saved])
 
   function sortList(list: typeof published) {
     switch (sortKey) {
@@ -159,18 +166,24 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
     return counts
   }, [published])
   const liveCount = useMemo(() => livePubs(published).length, [published])
+  // The Free plans pick is drawn only when the catalog holds a free plan, so it
+  // never leads to a list that is empty by construction.
+  const hasFreePlan = useMemo(() => livePubs(published).some(isFreePlan), [published])
   const savedLiveCount = useMemo(() => livePubs(published).filter(p => saved.includes(p.id)).length, [published, saved])
   const places = useMemo(() => placeTiles(published, users), [published, users])
   const creators = useMemo(() => creatorList(published, users), [published, users])
   // The hero counts the whole catalog, not the few tiles the side panels show.
+  // The fork total is its own memo: the hero note prints it too, and both read
+  // the same figure rather than two sums that could drift apart.
+  const forkCount = useMemo(() => livePubs(published).reduce((sum, p) => sum + p.copies, 0), [published])
   const heroStats = useMemo(() => [
     { label: 'itineraries', value: liveCount },
-    { label: 'creators', value: creatorList(published, users, Infinity).length },
     { label: 'places', value: placeTiles(published, users, Infinity).length },
-    { label: 'forks', value: livePubs(published).reduce((sum, p) => sum + p.copies, 0) },
-  ], [published, users, liveCount])
+    { label: 'creators', value: creatorList(published, users, Infinity).length },
+    { label: 'forks', value: forkCount },
+  ], [published, users, liveCount, forkCount])
 
-  /** The hero button: bring the catalog to the top and hand it focus. */
+  /** The hero's Search: bring the catalog to the top and hand it focus. */
   function jumpToResults() {
     const target = document.getElementById('explore-results')
     target?.scrollIntoView({ block: 'start', behavior: scrollBehavior() })
@@ -189,31 +202,67 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   }
 
   function clearFilters() {
-    setQ(''); setStyle('all'); setMaxBudget(''); setDuration('all'); setSavedOnly(false)
+    setQ(''); setStyle('all'); setMaxBudget(''); setDuration('all'); setSavedOnly(false); setFreeOnly(false)
     syncUrl({ q: '', style: 'all', max: '', dur: 'all' })
   }
+
+  /** The hero's quick picks. Each one toggles a filter the filter bar already has,
+   *  through the same setters and the same URL write, so it can never disagree
+   *  with the length group or the budget select. */
+  const quickPicks: QuickPick[] = [
+    {
+      key: 'weekend', label: 'Weekend · 3 days or less', pressed: duration === 'short',
+      onToggle: () => {
+        const next = duration === 'short' ? 'all' : 'short'
+        setDuration(next); syncUrl({ dur: next })
+      },
+    },
+    {
+      key: 'under-20k', label: 'Under ₹20k', pressed: maxBudget === UNDER_BUDGET,
+      onToggle: () => {
+        const next = maxBudget === UNDER_BUDGET ? '' : UNDER_BUDGET
+        setMaxBudget(next); syncUrl({ max: String(next) })
+      },
+    },
+    // Road trips, Hills and Coast need a trip-type tag that no publication
+    // carries, so they are not drawn. A pick that guessed from the title text
+    // would claim a filter the data cannot back.
+    ...(hasFreePlan || freeOnly ? [{
+      key: 'free', label: 'Free plans', pressed: freeOnly, onToggle: () => setFreeOnly(value => !value),
+    }] : []),
+  ]
 
   /** A place tile searches that place and clears every other filter, so the
    *  list starts from the whole catalog. */
   function searchPlace(name: string) {
-    setQ(name); setStyle('all'); setMaxBudget(''); setDuration('all'); setSavedOnly(false)
+    setQ(name); setStyle('all'); setMaxBudget(''); setDuration('all'); setSavedOnly(false); setFreeOnly(false)
     syncUrl({ q: name, style: 'all', max: '', dur: 'all' })
     document.getElementById('explore-results')?.scrollIntoView({ block: 'start' })
   }
 
   const stylesWithCounts = STYLES.filter(s => (styleCounts.get(s) ?? 0) > 0)
   const styleOptions: StyleOption[] = stylesWithCounts.map(s => ({ value: s, label: cap(s), count: styleCounts.get(s) ?? 0 }))
-  const filtersActive = Boolean(q.trim()) || style !== 'all' || maxBudget !== '' || duration !== 'all' || savedOnly
+  const filtersActive = Boolean(q.trim()) || style !== 'all' || maxBudget !== '' || duration !== 'all' || savedOnly || freeOnly
   const emptyKind = savedEmptyKind({
     pubsCount: pubs.length, filtersActive, savedOnly, savedCount: savedLiveCount, signedIn: Boolean(me),
   })
 
   // The trending shelf: the same catalog, the featured pick left out, and drawn
   // only while nothing is filtered and the catalog read is ready (lib/explorePage.ts).
-  const shelfPicks = useMemo(
+  const shelfCandidates = useMemo(
     () => trendingShelfPicks({ pubs: published, featured, filtersActive, ready: pubsRead === 'ready', limit: 3 }),
     [published, featured, filtersActive, pubsRead],
   )
+  // The shelf is a highlight above a catalog, so it shows only when at least three
+  // other plans remain for the grid below it. On a short catalog its picks stay in
+  // the grid, where the cards sit side by side in one set of columns. Without this,
+  // a one-card shelf and a one-card grid stacked in a single column.
+  const shelfPicks = useMemo(() => {
+    const taken = new Set(shelfCandidates.map(p => p.id))
+    if (featured) taken.add(featured.id)
+    const left = pubs.filter(p => !taken.has(p.id)).length
+    return left >= 3 ? shelfCandidates : []
+  }, [shelfCandidates, featured, pubs])
   // The grid leaves out the featured pick and, while the shelf shows, the shelf's
   // plans too, so no itinerary appears twice near the top of the page.
   const gridPubs = useMemo(() => {
@@ -241,7 +290,8 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   return (
     <div className="container ex-page page-enter">
       <TripArtSprite />
-      <ExploreHero stats={heroStats} onExplore={jumpToResults} />
+      <ExploreHero stats={heroStats} forks={forkCount} onSearch={jumpToResults}
+        query={q} onQueryChange={value => { setQ(value); syncUrl({ q: value }) }} quickPicks={quickPicks} />
 
       <div className="ex-layout">
         <div className="ex-main" id="explore-results" tabIndex={-1}>
@@ -252,8 +302,6 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
 
           {/* ---- Filter bar: travel-style chips, Saved, and the three selects ---- */}
           <ExploreFilterBar
-            query={q}
-            onQueryChange={value => { setQ(value); syncUrl({ q: value }) }}
             styles={styleOptions}
             style={style}
             onAllStyles={() => { setStyle('all'); syncUrl({ style: 'all' }) }}
@@ -284,27 +332,6 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
               : pubsRead === 'reading' ? 'Loading the catalog' : 'The catalog could not be loaded'}
           </p>
 
-          {/* "Fork" is the product's own word for copying a plan into your trips and
-              the cards never explain it, so it is said once, here, before anyone
-              meets the button that carries the name. */}
-          <section className="ex-howto" aria-labelledby="explore-how-fork">
-            <h3 id="explore-how-fork">How forking works</h3>
-            <ol>
-              <li><span><b>Pick</b><span className="ex-howto-more"> a plan</span></span></li>
-              <li><span><b>Fork</b><span className="ex-howto-more"> it into your trips</span></span></li>
-              <li><span><b>Change</b><span className="ex-howto-more"> days, stays and stops</span></span></li>
-            </ol>
-            <p className="ex-fork-note">
-              <Lock size={15} aria-hidden />
-              <span>
-                Fork any itinerary to copy it into your own trips. Then change whatever you like.
-                {/* Signed out, that button navigates to /auth — say so before the click,
-                    not in a toast that the redirect swallows. */}
-                {!me && <> You’ll need a free account to fork trips.</>}
-              </span>
-            </p>
-          </section>
-
           {/* ---- Featured itinerary: credibility explained (§6.10) ----
               #395 — gated on the READ, not only on a featured plan existing. A
               failed re-read KEEPS the rows it already had (a dropped connection
@@ -326,7 +353,8 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
             />
           )}
 
-          {shelfPicks.length > 0 && <TrendingShelf pubs={shelfPicks} users={users} isSaved={isSaved} onToggleSave={toggleHeart} />}
+          {shelfPicks.length > 0 && <TrendingShelf pubs={shelfPicks} users={users} isSaved={isSaved} needsLogin={!me}
+            onFork={forkTrip} onToggleSave={toggleHeart} />}
 
           {pubsRead !== 'ready' ? (
             /* #364: a failed catalog read used to render "just getting started" —
@@ -367,6 +395,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
         </div>
 
         <div className="ex-aside">
+          <ForkSteps signedIn={Boolean(me)} />
           {pubsRead === 'ready' && <PlacesPanel tiles={places} onPick={searchPlace} />}
           {pubsRead === 'ready' && <CreatorsPanel rows={creators} users={users} />}
           <SharePanel />
@@ -429,12 +458,17 @@ function ExploreGrid({ entries, attachList, users, isSaved, needsLogin, onFork, 
   return (
     <div className="ex-grid" ref={attachList}>
       {entries.map(({ item: p, key, exiting }, index) => (
-        <ExploreCard key={key} pub={p} creator={userOf(users, p.creatorId)} saved={isSaved(p.id)}
+        <ExploreCard key={key} pub={p} creator={userOf(users, p.creatorId)} saved={isSaved(p.id)} eager={index < 3}
           enterIndex={exiting ? 0 : index % PAGE_SIZE} presence={presenceAttrs({ exiting })}
           onFork={() => onFork(p.id)} onToggleSave={() => onToggleSave(p.id)} needsLogin={needsLogin} />
       ))}
     </div>
   )
+}
+
+/** A plan with no storefront price. The same test the price label uses. */
+function isFreePlan(pub: PublishedItinerary): boolean {
+  return (pub.premiumPriceInr ?? 0) <= 0
 }
 
 function userOf(users: CachedUser[], id: string): CachedUser | undefined {

@@ -27,6 +27,7 @@ Local checks use the merge base with `origin/test` or an explicit `--base`. With
 The direct-entry bridge ends at the next release. Existing Unreleased notes stay in place until that release.
 The promotion agent freezes the release input, reviews the diff, and applies the checked patch with editor primitives.
 Assembly must preserve the preamble and released bytes. The line count must include every inserted line.
+An uncommitted merge can fail the release-source ancestry check. Test the local merge commit before a push.
 See [the fragment guide](../changelog.d/README.md) for commands and receipt checks.
 
 Locate a named unpublished dependency before planning its replacement.

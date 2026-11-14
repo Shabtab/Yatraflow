@@ -101,7 +101,6 @@ describe('Papercut motion foundation', () => {
     const files = [
       'src/components/page/Surface.tsx',
       'src/components/explore/ExploreCard.tsx',
-      'src/components/explore/TrendingShelf.tsx',
       'src/components/PubCard.tsx',
       'src/components/trips/TripCard.tsx',
       'src/components/trips/SavedShelfSection.tsx',

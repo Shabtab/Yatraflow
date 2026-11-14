@@ -29,7 +29,7 @@ describe('the public itinerary page sells what it can deliver', () => {
   it('keeps every section class it styles itself with in the stylesheet', () => {
     const page = read('../src/pages/PublicItinerary.tsx')
     const css = readCssSource('src/styles.css')
-    const used = [...page.matchAll(/className="(pub-[a-z-]+)"/g)].map(m => m[1]).sort()
+    const used = [...page.matchAll(/className="((?:pi|pub)-[a-z-]+)"/g)].map(m => m[1]).sort()
     expect(used.length).toBeGreaterThan(5)
     expect(used.filter(c => !css.includes(`.${c}`))).toEqual([])
   })
@@ -38,9 +38,17 @@ describe('the public itinerary page sells what it can deliver', () => {
 describe('the gallery explains its own vocabulary', () => {
   it('says what Fork means before the first card that offers it', () => {
     const explore = read('../src/pages/Explore.tsx')
-    const gloss = explore.indexOf('Fork any itinerary to copy it into your own trips')
-    expect(gloss).toBeGreaterThan(-1)
-    expect(gloss).toBeLessThan(explore.indexOf('<ExploreCard'))
+    // The hero's lede names the verb above every card, at every width.
+    expect(read('../src/components/explore/ExploreHero.tsx')).toMatch(/Fork one into your trips and change anything/)
+    const hero = explore.indexOf('<ExploreHero')
+    expect(hero).toBeGreaterThan(-1)
+    expect(hero).toBeLessThan(explore.indexOf('<FeaturedCard'))
+    expect(hero).toBeLessThan(explore.indexOf('<ExploreCard'))
+    // The side column then spells the three steps out, once.
+    expect(explore).toMatch(/<ForkSteps signedIn=\{Boolean\(me\)\} \/>/)
+    const steps = read('../src/components/explore/ForkSteps.tsx')
+    for (const word of ['Pick', 'Fork', 'Change']) expect(steps).toContain(`<b>${word}</b>`)
+    expect(steps).toMatch(/The creator’s plan never changes/)
   })
 
   it('does not show the featured plan a second time as a grid card', () => {
@@ -74,8 +82,12 @@ describe('the catalog is honest about the login wall behind Fork', () => {
   it('labels the shared card button for what it does when nobody is signed in', () => {
     const card = read('../src/components/PubCard.tsx')
     expect(card).toMatch(/needsLogin \? 'Log in to fork' : 'Fork this trip'/)
-    // The Explore card carries the same login-wall label on its own Fork button.
-    expect(read('../src/components/explore/ExploreCard.tsx')).toMatch(/needsLogin \? 'Log in to fork' : 'Fork'/)
+    // The Explore card is a compact "Fork" pill for every visitor, as in the
+    // mockup. The login wall stays in its accessible name, and ForkSteps says it
+    // in words.
+    const exploreCard = read('../src/components/explore/ExploreCard.tsx')
+    expect(exploreCard).toMatch(/forkLabel \?\? 'Fork'/)
+    expect(exploreCard).toMatch(/needsLogin && !forkLabel \? ' \(log in first\)'/)
     // Every surface that renders the card has to opt in, or a signed-out click
     // goes back to being a silent redirect.
     expect(read('../src/pages/Explore.tsx')).toMatch(/needsLogin=\{!me\}/)
@@ -83,8 +95,8 @@ describe('the catalog is honest about the login wall behind Fork', () => {
   })
 
   it('says the account requirement before the click, on every fork button', () => {
-    // Explore explains it once, above the cards.
-    expect(read('../src/pages/Explore.tsx')).toMatch(/You’ll need a free account to fork trips/)
+    // Explore explains it once, in the fork steps, and only while signed out.
+    expect(read('../src/components/explore/ForkSteps.tsx')).toMatch(/\{!signedIn && <> You’ll need a free account to fork trips\.<\/>\}/)
     const page = read('../src/pages/PublicItinerary.tsx')
     const forkButtons = [...page.matchAll(/className="btn fork-btn/g)].length
     const labelled = [...page.matchAll(/\{me \? 'Fork this trip' : 'Log in to fork'\}/g)].length
@@ -156,9 +168,11 @@ describe('grid cards are laid out by the grid, not by the stacked-card beat', ()
 
   it('gives two peer cards equal halves instead of a phantom sidebar', () => {
     expect(css).toMatch(/\.two-col--even \{ grid-template-columns: 1fr 1fr; \}/)
-    expect(read('../src/pages/PublicItinerary.tsx')).toMatch(/className="two-col two-col--even"/)
     // …and the pair still collapses with every other two-col on a narrow screen.
     expect(css).toMatch(/@media \(max-width: 980px\) \{ \.two-col, \.two-col--even \{/)
+    // The public itinerary's "Before you go" pair: two even halves, one column on a phone.
+    expect(read('../src/pages/PublicItinerary.tsx')).toMatch(/className="pi-before-grid"/)
+    expect(css).toMatch(/\.pi-before-grid \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/)
   })
 
   it('lets the entrance animation release the transform so hover can lift', () => {

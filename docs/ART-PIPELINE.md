@@ -22,8 +22,9 @@ with a backup.
 ## The current set
 
 One hundred and twelve images are committed: 105 landscape scenes and seven square
-empty-state vignettes. Every landscape id has four files: AVIF at 320, 640 and 960 pixels,
-plus WebP at 640. Every vignette has AVIF at 280 and 560, plus WebP at 560.
+empty-state vignettes. Every landscape id has five files: AVIF at 320, 640, 960 and
+1600 pixels, plus WebP at 640. Every vignette has AVIF at 280 and 560, plus WebP at
+560. The 1600 AVIF serves cover-size slots on a DPR-2 desktop screen.
 
 ### The 55 refreshed live scenes
 
@@ -111,8 +112,9 @@ place table.
 
 ### The seven square vignettes
 
-The vignettes are unchanged. They keep the accepted masters and the 280, 560 and 560 WebP
-widths.
+The vignettes are unchanged. They keep the accepted masters and the 280, 560 and
+560 WebP widths. They get no 1600 AVIF, because a square vignette never fills a
+cover-size slot.
 
 | Id | Used for |
 | --- | --- |
@@ -201,13 +203,14 @@ the pixels need one. An out-of-range, non-finite or unknown value clamps to 50.
 | AVIF, 560 px | 30 KiB |
 | AVIF, 640 px | 24 KiB |
 | AVIF, 960 px | 40 KiB |
+| AVIF, 1600 px | 172 KiB |
 | WebP, any width | 45 KiB |
-| Whole folder | 11 MiB |
+| Whole folder | 20 MiB |
 
 The limits are in `manifest.json` under `budget`. The build and the tests read the same
-values. The total cap rose from 6 MiB to 11 MiB because the set grew from 241 files to 441.
-The per-image caps did not change. The current total is 9,886,308 bytes (9.43 MiB) for 441
-files.
+values. The total cap rose from 11 MiB to 20 MiB, because the set grew from 441 files
+to 546. The 1600 AVIF cap is 172 KiB. The largest 1600 file is 145,940 bytes. The current
+total is 19,203,488 bytes (18.31 MiB) for 546 files.
 
 ## Encoder settings
 
@@ -240,6 +243,10 @@ pass. One staging root serves every id:
 <staging>\es-first-trip-v3.png  the square first-trip vignette
 <staging>\batch1\        the six other square empty-state vignettes
 ```
+
+The `coverWidths` key in `manifest.json` lists the extra AVIF widths for landscape
+scenes. The build adds them to each id whose ratio is `3:2`. It does not add them
+to square vignettes. `src/lib/regionArt.ts` reads the same key for the srcset.
 
 The approved staging root for this batch is
 `E:\T3\evidence\art-balanced-final-staging-20261108`. It holds hard links to the selected

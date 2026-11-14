@@ -4,7 +4,7 @@
 // claims the ground between them.
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { RouteHeightCurveRun, RouteHeightPoint, RouteHeightStats } from '../../lib/elevation'
-import { buildRouteHeightPlot } from '../../lib/elevationPlot'
+import { buildRouteHeightPlot, heightLabelY } from '../../lib/elevationPlot'
 import { overviewPinText } from '../../lib/overviewRouteMap'
 
 /** The SVG fills the CONTENT box of its frame, so measure that box only. */
@@ -36,24 +36,24 @@ export function OverviewElevationProfile({
   runs,
   stats,
   compact,
-  insetPath,
 }: {
   points: readonly RouteHeightPoint[]
   runs: readonly RouteHeightCurveRun[]
   stats: RouteHeightStats
   compact: boolean
-  /** The trip's true shape, drawn small in the corner. Null hides it. */
-  insetPath?: string | null
 }) {
   const { ref, width } = useDrawableWidth(compact ? 420 : 720)
   const height = Math.max(compact ? 150 : 170, Math.min(280, Math.round(width * 0.45)))
+  // The plot is the card's whole drawing box, so the curve's x scale runs from
+  // its left edge to its right edge: no bleed-in gap at either end.
   const plot = useMemo(
-    () => buildRouteHeightPlot(points, runs, stats, width, height),
+    () => buildRouteHeightPlot(points, runs, stats, width, height, { left: 0, right: width }),
     [points, runs, stats, width, height],
   )
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '')
   const skyId = `ovw-sky-${uid}`
   const landId = `ovw-land-${uid}`
+  const plotId = `ovw-plot-${uid}`
 
   // Only the two ends of the trip carry a label on the curve, each with its
   // real place name and real height. The stop list names every other place.
@@ -71,8 +71,6 @@ export function OverviewElevationProfile({
   )
   const peakBoxX = Math.max(6, width - peakBoxW - 10)
   const peakBoxY = 8
-  // The first point of the true-shape path, where the inset's start dot sits.
-  const insetStart = insetPath?.match(/^M\s*(-?[\d.]+)[ ,]+(-?[\d.]+)/)
 
   return (
     <div ref={ref} className="ovw-elev">
@@ -95,6 +93,11 @@ export function OverviewElevationProfile({
             <stop offset="0" className="ovw-elev-land-top" />
             <stop offset="1" className="ovw-elev-land-bottom" />
           </linearGradient>
+          {/* One clip for the line and every fill: the plot rect at the card's
+              own corner radius. The curve stops on the plot edge. */}
+          <clipPath id={plotId}>
+            <rect x="0" y="0" width={width} height={height} rx="18" />
+          </clipPath>
         </defs>
 
         <rect x="0" y="0" width={width} height={height} fill={`url(#${skyId})`} />
@@ -104,17 +107,19 @@ export function OverviewElevationProfile({
 
         {/* Two far ranges are the same plotted curve scaled up from the baseline.
             They add depth behind the route and carry no height of their own. */}
-        {plot.runs.map((run, index) => (
-          <g key={`run-${index}`}>
-            <path className="ovw-elev-hill-far" d={run.area} transform={`translate(0 ${plot.baseY}) scale(1 1.12) translate(0 ${-plot.baseY})`} aria-hidden="true" />
-            <path className="ovw-elev-hill-near" d={run.area} transform={`translate(0 ${plot.baseY}) scale(1 1.04) translate(0 ${-plot.baseY})`} aria-hidden="true" />
-            <path className="ovw-elev-area" d={run.area} fill={`url(#${landId})`} />
-            {/* `pathLength={1}` lets the CSS dash draw run the whole curve once,
-                instead of leaving it dotted at its real length. */}
-            <path className="ovw-elev-line" d={run.line} pathLength={1} />
-            <path className="ovw-elev-line-centre" d={run.line} aria-hidden="true" />
-          </g>
-        ))}
+        <g clipPath={`url(#${plotId})`}>
+          {plot.runs.map((run, index) => (
+            <g key={`run-${index}`}>
+              <path className="ovw-elev-hill-far" d={run.area} transform={`translate(0 ${plot.baseY}) scale(1 1.12) translate(0 ${-plot.baseY})`} aria-hidden="true" />
+              <path className="ovw-elev-hill-near" d={run.area} transform={`translate(0 ${plot.baseY}) scale(1 1.04) translate(0 ${-plot.baseY})`} aria-hidden="true" />
+              <path className="ovw-elev-area" d={run.area} fill={`url(#${landId})`} />
+              {/* `pathLength={1}` lets the CSS dash draw run the whole curve once,
+                  instead of leaving it dotted at its real length. */}
+              <path className="ovw-elev-line" d={run.line} pathLength={1} />
+              <path className="ovw-elev-line-centre" d={run.line} aria-hidden="true" />
+            </g>
+          ))}
+        </g>
 
         {/* One group, so the marks arrive as one beat in the CSS cascade. */}
         <g className="ovw-elev-marks">
@@ -133,14 +138,27 @@ export function OverviewElevationProfile({
           {labelled.map(mark => {
             const anchor = mark.x > width * 0.72 ? 'end' : 'start'
             const dx = anchor === 'end' ? -7 : 7
-            const nameY = Math.max(plot.pad.top + 8, mark.y - 24)
+            const name = overviewPinText(mark.title, compact ? 14 : 20)
+            const heightText = `${Math.round(mark.elevationM).toLocaleString('en-IN')} m`
+            // The label's own box decides its side: above the stroke or below
+            // it, on whichever side holds more room, so the line never crosses
+            // the words at either end of the curve.
+            const nameY = heightLabelY({
+              markX: mark.x,
+              markY: mark.y,
+              anchor,
+              labelWidth: Math.max(name.length, heightText.length) * 6.2,
+              runs: plot.runs,
+              padTop: plot.pad.top,
+              baseY: plot.baseY,
+            })
             return (
               <g key={`label-${mark.title}-${mark.distanceKm}`}>
                 <text className="ovw-elev-name" x={mark.x + dx} y={nameY} textAnchor={anchor}>
-                  {overviewPinText(mark.title, compact ? 14 : 20)}
+                  {name}
                 </text>
                 <text className="ovw-elev-height" x={mark.x + dx} y={nameY + 13} textAnchor={anchor}>
-                  {Math.round(mark.elevationM).toLocaleString('en-IN')} m
+                  {heightText}
                 </text>
               </g>
             )
@@ -181,27 +199,6 @@ export function OverviewElevationProfile({
           ))}
         </g>
       </svg>
-
-      {insetPath && (
-        <div className="ovw-elev-inset">
-          <svg className="ovw-elev-inset-svg" viewBox="0 0 112 96" width="112" height="96" aria-hidden="true" focusable="false">
-            <g className="ovw-elev-inset-grid">
-              <path d="M0 24 Q56 22 112 24" />
-              <path d="M0 48 Q56 46 112 48" />
-              <path d="M0 72 Q56 70 112 72" />
-              <path d="M28 0 Q26 48 28 96" />
-              <path d="M56 0 Q54 48 56 96" />
-              <path d="M84 0 Q82 48 84 96" />
-            </g>
-            <path className="ovw-elev-inset-case" d={insetPath} />
-            <path className="ovw-elev-inset-line" d={insetPath} />
-            {insetStart && <circle className="ovw-elev-inset-start" cx={+insetStart[1]} cy={+insetStart[2]} r={3.6} />}
-            <circle className="ovw-elev-inset-n" cx={104} cy={8} r={7} />
-            <text className="ovw-elev-inset-n-text" x={104} y={11.2} textAnchor="middle">N</text>
-          </svg>
-          <span>True shape · north up</span>
-        </div>
-      )}
     </div>
   )
 }

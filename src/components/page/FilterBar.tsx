@@ -59,7 +59,7 @@ export function FilterBar({
   const hasChipRow = Boolean(chips) || hasTrailing || onClear !== undefined || clearEntries.length > 0
   const barClassName = className ? `ex-filterbar filterbar-host ${className}` : 'ex-filterbar filterbar-host'
   return (
-    <div className={barClassName} role="search" aria-label={label}>
+    <div className={barClassName} role={search ? 'search' : 'group'} aria-label={label}>
       <div className="ex-filter-row">
         {search}
         {hasSelects ? (

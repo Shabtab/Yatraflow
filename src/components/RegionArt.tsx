@@ -9,7 +9,7 @@
 // Selection stays in lib/regionArt.ts. This component only draws.
 import { useState, type ReactNode } from 'react'
 import { artUrl, srcsetFor } from '../lib/artUrls'
-import { artEntryFor, focalXFor, focalYFor, vignetteArtFor } from '../lib/regionArt'
+import { artEntryFor, avifWidthsFor, focalXFor, focalYFor, vignetteArtFor } from '../lib/regionArt'
 
 /**
  * The generated scene for one slot, with the SVG motif underneath.
@@ -44,13 +44,14 @@ export function RegionArt({ id, ratio, sizes, fallback, eager = false, scrim = t
   }
 
   const entry = id ? artEntryFor(id) : undefined
-  const avif = id && entry ? srcsetFor(id, entry.widths, 'avif') : ''
+  const widths = id ? avifWidthsFor(id) : []
+  const avif = id && entry ? srcsetFor(id, widths, 'avif') : ''
   // No id, no manifest entry, or no AVIF file in the build: the motif is the
   // answer. This is the missing-file case, and it draws no broken image.
   if (!id || !entry || !avif || failedId === id) return <>{fallback}</>
 
   const webp = artUrl(id, entry.webp, 'webp')
-  const largest = entry.widths[entry.widths.length - 1]
+  const largest = widths[widths.length - 1]
   // `src` is the last resort for a browser that ignores <source type>. WebP is
   // the wider-supported of the two, so it leads when the build has it.
   const src = webp ?? artUrl(id, largest, 'avif')

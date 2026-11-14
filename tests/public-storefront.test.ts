@@ -10,11 +10,30 @@ import {
   paceOf, planLede, roadMinutesOf, summariseDay, summariseDayFromLegs, truncatePitch,
   type DaySummary, type KindCount,
 } from '../src/lib/publicStorefront'
-import { originOf, simulateDay } from '../src/lib/engine'
-import { lockedDayCounts, numberedSummary, readableDayStart, wireLockedSummary } from '../src/lib/lockedDay'
+import { getAssumptions, hmToMinutes, originOf, simulateDay } from '../src/lib/engine'
+import { isWireLocked, lockedDayCounts, numberedSummary, readableDayStart, wireLockedSummary } from '../src/lib/lockedDay'
+import { formatHM } from '../src/lib/timefmt'
 import { DayCard } from '../src/components/storefront/DayCard'
+import { DayBudgetBar } from '../src/components/storefront/DayBudgetBar'
 import { WhatIsInside } from '../src/components/storefront/WhatIsInside'
 import { readCssSource } from '../scripts/css-source-graph.mjs'
+
+describe('day budget clock privacy', () => {
+  it('renders aggregate minutes without clocks for a locked day', () => {
+    const html = renderToStaticMarkup(createElement(DayBudgetBar, {
+      label: 'Day 4', legend: true, budget: { drive: 60, places: 120, window: 480 },
+    }))
+    expect(html).toContain('Day 4 time budget: driving')
+    expect(html).not.toMatch(/undefined|AM|PM/)
+  })
+
+  it('keeps formatted clock edges for readable days', () => {
+    const html = renderToStaticMarkup(createElement(DayBudgetBar, {
+      label: 'Day 4', budget: { drive: 60, places: 120, window: 480, from: '9:00 AM', to: '5:00 PM' },
+    }))
+    expect(html).toContain('Day 4 time budget, 9:00 AM to 5:00 PM: driving')
+  })
+})
 
 /** A stand-in stop that carries secret data everywhere a name must never leak. */
 function secretStop(category: string, visitMinutes = 60): ItineraryStop {
@@ -144,12 +163,14 @@ describe('a locked day never invents a pace', () => {
     expect(summary.hasFlight).toBe(false)
   })
 
-  it('keeps the day title and the road minutes visible while locked', () => {
+  it('hides the day title and road minutes while locked', () => {
     const day: ItineraryDay = { id: 'day', index: 2, title: 'Munnar hills', stops: [] }
     const summary = summariseDay(day, 200, flightSignalFor(true, true))
     const html = renderToStaticMarkup(createElement(DayCard, { state: 'locked', summary }))
-    expect(html).toContain('Munnar hills')
-    expect(html).toContain('3 h 20 m on the road')
+    expect(summary.title).toBe('Day 3')
+    expect(html).not.toContain('Munnar hills')
+    expect(html).not.toContain('3h 20m driving')
+    expect(html).not.toContain('sf-day-meta')
   })
 
   it('renders no stop name, location or coordinate on a locked card', () => {
@@ -159,6 +180,36 @@ describe('a locked day never invents a pace', () => {
     for (const secret of ['SECRET-TITLE', 'SECRET-LOCATION', '12.345678', '78.987654']) {
       expect(html).not.toContain(secret)
     }
+  })
+})
+
+describe('#914 the state tag answers to the band, not the head row', () => {
+  const open = () => summariseDay({ id: 'open', index: 0, stops: [] }, 90, false)
+  const card = (town?: string) => renderToStaticMarkup(createElement(DayCard, {
+    state: 'free', summary: open(), places: [], town,
+  }))
+  const head = (html: string) => /<div class="sf-day-head">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? ''
+
+  it('renders the tag before the body, so the band owns it', () => {
+    const html = card()
+    const tagAt = html.indexOf('sf-day-tag')
+    expect(tagAt).toBeGreaterThan(-1)
+    expect(tagAt).toBeLessThan(html.indexOf('sf-day-body'))
+    expect(head(html)).not.toContain('sf-day-tag')
+  })
+
+  it('keeps the same words and the same accessible name', () => {
+    expect(card()).toContain('>Free to read</span>')
+    const locked = renderToStaticMarkup(createElement(DayCard, {
+      state: 'locked', summary: open(), lockedWord: 'Paid plan',
+    }))
+    expect(locked).toContain('>Paid plan</span>')
+  })
+
+  it('shows the town on a readable card and never on a locked one', () => {
+    expect(card('Kaza')).toContain('<span class="sf-day-town">Kaza</span>')
+    const locked = renderToStaticMarkup(createElement(DayCard, { state: 'locked', summary: open() }))
+    expect(locked).not.toContain('sf-day-town')
   })
 })
 
@@ -315,7 +366,7 @@ describe('page lock safety (source scan)', () => {
     // The card says "on the road". The engine's total also counts the air
     // sector, so the page must read the ground legs instead.
     const call = page.match(/summariseDayFromLegs\([\s\S]*?\)\n/)?.[0] ?? ''
-    expect(call).toContain('sim.legs')
+    expect(call).toContain('sim?.legs ?? []')
     expect(call).toContain('flightSignalFor(')
     expect(call).not.toContain('sim.totalTravelMinutes')
   })
@@ -397,10 +448,11 @@ describe('road minutes (F1)', () => {
     const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
     // The old defect: the engine total counted the 135-minute air sector and
     // the card read it as "2 h 47 m on the road".
-    expect(text).not.toContain('2 h 47 m on the road')
-    expect(text).not.toContain('167 m on the road')
-    // The real ground transfer time is still there.
-    expect(text).toContain('32 m on the road')
+    expect(text).not.toContain('2h 47m driving')
+    expect(text).not.toContain('167m driving')
+    // Locked cards withhold ground time too.
+    expect(text).not.toContain('32m driving')
+    expect(text).not.toMatch(/driving|on the road/)
   })
 
   it('a readable card keeps the flight pace and still shows the ground time', () => {
@@ -409,8 +461,8 @@ describe('road minutes (F1)', () => {
     const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
     expect(summary.pace).toEqual({ key: 'flight', label: 'Flight day' })
     expect(text).toContain('Flight day')
-    expect(text).not.toContain('2 h 47 m on the road')
-    expect(text).toContain('32 m on the road')
+    expect(text).not.toContain('2h 47m driving')
+    expect(text).toContain('32m driving')
   })
 
   it('a day without a flight keeps every minute on the road', () => {
@@ -470,11 +522,11 @@ describe('unbroken text (F2)', () => {
  * page's dependencies only: the real engine, the real storefront helpers and
  * the page's own closure variables.
  */
-function pageStorefrontCallback(source: string): string {
+function pageStorefrontCallback(source: string, memo = 'storefront'): string {
   const ast = ts.createSourceFile('PublicItinerary.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
   let found: string | undefined
   const visit = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) && node.name.getText(ast) === 'storefront') {
+    if (ts.isVariableDeclaration(node) && node.name.getText(ast) === memo) {
       const init = node.initializer
       if (init && ts.isCallExpression(init) && ts.isIdentifier(init.expression) && init.expression.text === 'useMemo') {
         found = init.arguments[0]?.getText(ast)
@@ -548,6 +600,46 @@ describe('page storefront dataflow (the actual page callback)', () => {
     expect(result.cards[0].state).toBe('free')
   })
 
+  it('a wire lock wins over free indexes and owner or buyer access', () => {
+    const day: ItineraryDay = {
+      id: 'locked', index: 0, locked: true, title: 'SECRET-TITLE',
+      stops: [secretStop('temple')],
+      lockedPreview: { stopCount: 3, categories: { nature: 2 } },
+    }
+    for (const unlocked of [false, true]) {
+      const card = runStorefront({ ...synthTrip, days: [day] }, [0], unlocked).cards[0]
+      expect(card.state).toBe('locked')
+      expect(card.summary.title).toBe('Day 1')
+      expect(card.summary.kinds).toEqual([{ kind: 'nature', count: 2 }])
+      expect(card.summary.pace).toBeNull()
+      expect(card.summary.travelMinutes).toBe(0)
+      expect(JSON.stringify(card)).not.toMatch(/SECRET|12\.345678|78\.987654/)
+    }
+  })
+
+  it('Ride along facts never simulate locked rows or give them budgets and pictures', () => {
+    const callback = pageStorefrontCallback(pageSource, 'dayFacts')
+    const day: ItineraryDay = {
+      id: 'locked', index: 0, locked: true, title: 'SECRET-TITLE',
+      stops: [secretStop('temple')], coverImageUrl: 'https://example.test/SECRET-PHOTO',
+    }
+    for (const unlocked of [false, true]) {
+      const trip = { ...synthTrip, days: [day] }
+      const scope = {
+        pub: { freeDayIndexes: [0] }, trip, orderedDays: trip.days, unlocked,
+        isWireLocked, getAssumptions, hmToMinutes, originOf, readableDayStart,
+        simulateDay: () => { throw new Error('a locked day must not be simulated') },
+        roadMinutesOf, kindOfCategory, formatHM, timeFormat: '12h',
+      }
+      const names = Object.keys(scope)
+      const run = new Function(...names, callback) as (...args: unknown[]) => unknown
+      expect(run(...Object.values(scope))).toEqual([{
+        km: 0, budget: undefined, readable: false, photo: undefined,
+        names: [], startsAt: undefined, endsAt: undefined,
+      }])
+    }
+  })
+
   it('a free estimated-flight day says "Flight day", not "Nothing planned"', () => {
     // The defect: the page read the flight only from the stored flight rows,
     // so a flight trip the traveller has not detailed yet called a planned
@@ -555,7 +647,7 @@ describe('page storefront dataflow (the actual page callback)', () => {
     const result = runStorefront(synthTrip, [0])
     const card = result.cards[0]
     expect(card.summary.pace).toEqual({ key: 'flight', label: 'Flight day' })
-    expect(textOf(card)).toBe('Day 1 Free Travel day Flight day 32 m on the road')
+    expect(textOf(card)).toBe('Free to read Day 1 Travel day Flight day · 32m driving')
     expect(textOf(card)).not.toContain('Nothing planned')
   })
 
@@ -566,7 +658,7 @@ describe('page storefront dataflow (the actual page callback)', () => {
     const card = result.cards[0]
     expect(card.state).toBe('yours')
     expect(card.summary.pace).toEqual({ key: 'flight', label: 'Flight day' })
-    expect(textOf(card)).toBe('Day 1 Yours Travel day Flight day 32 m on the road')
+    expect(textOf(card)).toBe('Yours Day 1 Travel day Flight day · 32m driving')
     expect(textOf(card)).not.toContain('Nothing planned')
   })
 
@@ -587,13 +679,14 @@ describe('page storefront dataflow (the actual page callback)', () => {
       expect(card.state).toBe('locked')
       expect(card.summary.pace).toBeNull()
       expect(card.summary.hasFlight).toBe(false)
-      expect(card.summary.travelMinutes).toBe(32)
+      expect(card.summary.travelMinutes).toBe(0)
       // No places key, no names, no coordinates, no flight word.
       expect(Object.hasOwn(card, 'places')).toBe(false)
       const text = textOf(card)
       // #774 — the card names the day by number. "Travel day" is the creator's
       // own title, and a locked card never prints it.
-      expect(text).toBe('Day 1 Locked Day 1 32 m on the road')
+      expect(text).toBe('Locked Day 1 Day 1')
+      expect(text).not.toMatch(/driving|on the road|32/)
       expect(text).not.toContain('Travel day')
       expect(text).not.toContain('Flight day')
       expect(text).not.toContain('Nothing planned')

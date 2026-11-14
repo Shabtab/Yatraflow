@@ -90,6 +90,33 @@ function legAnimationStyle(index: number): CSSProperties {
   return { '--i': staggerStep(index) } as CSSProperties
 }
 
+/** The trip's true shape, small, in the card header beside the title block.
+ *  It stays out of the plot: a corner inside a mountain profile covers the
+ *  route line, and this is the line's own shape. */
+function TrueShapeInset({ path }: { path: string }) {
+  const start = path.match(/^M\s*(-?[\d.]+)[ ,]+(-?[\d.]+)/)
+  return (
+    <div className="ovw-elev-inset" title="True shape · north up">
+      <svg className="ovw-elev-inset-svg" viewBox="0 0 112 96" aria-hidden="true" focusable="false">
+        <g className="ovw-elev-inset-grid">
+          <path d="M0 24 Q56 22 112 24" />
+          <path d="M0 48 Q56 46 112 48" />
+          <path d="M0 72 Q56 70 112 72" />
+          <path d="M28 0 Q26 48 28 96" />
+          <path d="M56 0 Q54 48 56 96" />
+          <path d="M84 0 Q82 48 84 96" />
+        </g>
+        <path className="ovw-elev-inset-case" d={path} />
+        <path className="ovw-elev-inset-line" d={path} />
+        {start ? <circle className="ovw-elev-inset-start" cx={+start[1]} cy={+start[2]} r={3.6} /> : null}
+        <circle className="ovw-elev-inset-n" cx={104} cy={8} r={7} />
+        <text className="ovw-elev-inset-n-text" x={104} y={11.2} textAnchor="middle">N</text>
+      </svg>
+      <span className="sr-only">True shape · north up</span>
+    </div>
+  )
+}
+
 export function OverviewRouteCard({
   rows,
   road,
@@ -126,9 +153,11 @@ export function OverviewRouteCard({
     }
     return out
   }, [elevation])
-  // The corner inset keeps the route's true shape visible while the main plate
-  // shows height. It is its own small projection, drawn with the same bounded
-  // curve as the plate, so a short hop between two stops never becomes a kink.
+  // The true-shape inset keeps the route's own shape visible beside the height
+  // plate. It rides in the card HEADER, not in the plot: a corner inside a
+  // mountain profile always covers part of the route line. It is its own small
+  // projection, drawn with the same bounded curve as the plate, so a short hop
+  // between two stops never becomes a kink.
   const insetPath = useMemo(() => {
     if (!showElevation || rows.length < 2) return null
     const points = projectOverviewRoute(rows, 112, 96, 10)
@@ -216,11 +245,14 @@ export function OverviewRouteCard({
     <>
       <div className="ovw-head">
         <h2 className="ovw-title" id="ovw-route-title">{showElevation ? 'The road, by height' : 'Route'}</h2>
-        <div className="ovw-head-meta">
-          <span className={`ovw-route-caption ${showElevation ? 'is-elevation' : `is-${summary.state}`}`}>
-            {showElevation ? 'Illustrative elevation' : summary.caption}
-          </span>
-          {onOpenMap && <button type="button" className="ovw-link" onClick={openGenericMap}>Open map <span aria-hidden="true">→</span></button>}
+        <div className="ovw-head-side">
+          {showElevation && insetPath ? <TrueShapeInset path={insetPath} /> : null}
+          <div className="ovw-head-meta">
+            <span className={`ovw-route-caption ${showElevation ? 'is-elevation' : `is-${summary.state}`}`}>
+              {showElevation ? 'Illustrative elevation' : summary.caption}
+            </span>
+            {onOpenMap && <button type="button" className="ovw-link" onClick={openGenericMap}>Open map <span aria-hidden="true">→</span></button>}
+          </div>
         </div>
       </div>
 
@@ -230,7 +262,6 @@ export function OverviewRouteCard({
           runs={measured.runs}
           stats={measured.stats}
           compact={compact}
-          insetPath={insetPath}
         />
       ) : (
       <div ref={plateRef} className={`ovw-map${summary.state === 'schematic' ? ' is-neutral' : ''}`}>

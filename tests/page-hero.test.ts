@@ -44,7 +44,7 @@ describe('PageHero callers', () => {
     const source = await read(EXPLORE_HERO)
     expect(source).toMatch(/import \{ PageHero \} from '\.\.\/page\/PageHero'/)
     expect(source).toContain('<PageHero')
-    expect(source).toContain('statsPlacement="inline"')
+    expect(source).toContain('statsPlacement="below"')
   })
 
   it('TripsHero goes through PageHero', async () => {
@@ -58,7 +58,9 @@ describe('PageHero callers', () => {
     for (const path of [EXPLORE_HERO, TRIPS_HERO]) {
       const source = await read(path)
       expect(source, path).not.toMatch(/<section[\s>]/)
-      expect(source, path).not.toMatch(/className="ex-hero/)
+      // The `.ex-hero` section itself. A child class such as `ex-hero-search` is
+      // fine: the Explore hero passes its search form in through a slot.
+      expect(source, path).not.toMatch(/className="ex-hero(?![\w-])/)
     }
   })
 

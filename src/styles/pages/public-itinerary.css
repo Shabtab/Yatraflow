@@ -1,0 +1,1079 @@
+/* Public itinerary ("Look inside" and "Ride along") page styles.
+   Owner module for the .pi-* family and the .pi-page-scoped storefront parts.
+   Moved verbatim from src/styles.css; cascade position is preserved by the
+   import order at the end of the entry file. */
+
+/* ==========================================================================
+   P11 public itinerary: the trip kit ("Look inside" and "Ride along").
+   One owner for the public plan page. Every selector below starts with a
+   pi-* class, or is an sf-day / sf-sticky part the storefront already owns.
+   No rule restyles a shared control class (btn, card, chip, avatar, container).
+   Colour comes from the --pw-* tokens, so the dark theme follows without a
+   second set of values. The cover itself stays dark in both themes, as photo
+   covers do on Explore.
+   ========================================================================== */
+.pi-page { padding-bottom: var(--space-14); }
+.pi-wrap { display: flex; flex-direction: column; gap: var(--space-10); min-width: 0; }
+.pi-body, .pi-panel { display: flex; flex-direction: column; gap: var(--space-8); min-width: 0; }
+
+.pi-kicker {
+  margin: 0; font: var(--pw-kicker); letter-spacing: var(--pw-kicker-tracking);
+  text-transform: uppercase; color: var(--pw-ink-3);
+}
+.pi-h2 {
+  margin: 0; font: var(--pw-display-s); letter-spacing: var(--pw-display-s-tracking);
+  color: var(--pw-ink); text-wrap: balance;
+}
+.pi-h2--s { font: var(--pw-title); letter-spacing: var(--pw-title-tracking); }
+.pi-lede { margin: 0; font: var(--pw-body-l); color: var(--pw-ink-2); }
+.pi-sub-h { font: var(--pw-ui); color: var(--pw-ink); }
+.pi-muted { font: var(--pw-meta); color: var(--pw-ink-3); }
+.pi-card {
+  display: flex; flex-direction: column; gap: var(--space-6); min-width: 0;
+  padding: var(--space-10); border: 1px solid var(--pw-line); border-radius: var(--radius-lg);
+  background: var(--pw-card); color: var(--pw-ink); box-shadow: var(--elev-1);
+}
+
+/* ---- pills and small marks ---- */
+.pi-pill {
+  display: inline-flex; align-items: center; gap: var(--space-2); min-height: 24px;
+  padding: 0 10px; border-radius: var(--radius-pill);
+  background: var(--pw-lagoon-100); color: var(--pw-sea-700);
+  font: var(--pw-caption); white-space: nowrap;
+}
+.pi-pill--paid { background: var(--pw-marigold-100); color: var(--pw-marigold-ink); }
+.pi-pill--sand { background: var(--pw-sunken); color: var(--pw-ink-2); }
+.pi-pill--ok { background: var(--pw-lagoon-100); color: var(--pw-sea-700); }
+.pi-badge {
+  display: grid; flex: none; place-items: center; align-content: center; gap: 0;
+  width: 56px; height: 56px; border-radius: var(--radius-sm);
+  background: var(--pw-sea-700); color: var(--pw-on-cover); line-height: 1;
+}
+.pi-badge small { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .85; }
+.pi-badge b { font: var(--pw-figure); letter-spacing: var(--pw-figure-tracking); }
+.pi-link {
+  align-self: flex-start; min-height: 44px; padding: 0; border: 0; background: none;
+  color: var(--ink-teal); font: var(--pw-ui); text-align: left; cursor: pointer;
+}
+.pi-link:hover { text-decoration: underline; }
+
+/* ---- the cover ---- */
+.pi-hero {
+  position: relative; isolation: isolate; display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+  grid-template-areas: "copy aside" "tabs tabs";
+  align-items: end; gap: var(--space-8); min-height: 480px;
+  padding: var(--space-13) var(--space-13) var(--space-8);
+  border-radius: var(--radius-xl); overflow: hidden;
+  background: linear-gradient(135deg, var(--pw-sea-900), var(--pw-sea-700));
+  color: var(--pw-on-cover); box-shadow: var(--elev-2);
+}
+.pi-hero .pi-hero-photo {
+  position: absolute; inset: 0; z-index: var(--z-under);
+  width: 100%; height: 100%; object-fit: cover; border-radius: 0;
+}
+.pi-hero-scrim {
+  position: absolute; inset: 0; z-index: var(--z-under);
+  background: linear-gradient(180deg, rgba(8, 22, 26, .22) 0%, rgba(8, 22, 26, .78) 100%);
+}
+.pi-hero-copy {
+  grid-area: copy; position: relative; z-index: var(--z-content);
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-5); min-width: 0;
+}
+.pi-hero .pi-hero-back {
+  align-self: flex-start; background: rgba(8, 22, 26, .4); color: var(--pw-on-cover);
+  border-color: transparent;
+}
+.pi-hero .pi-hero-kicker { color: var(--pw-on-cover); opacity: .9; }
+.pi-hero-title {
+  margin: 0; font-family: var(--font-display); font-weight: 700;
+  font-size: clamp(30px, 4vw, 48px); line-height: 1.08; letter-spacing: var(--pw-display-xl-tracking);
+  color: var(--pw-on-cover); text-wrap: balance; overflow-wrap: anywhere;
+}
+.pi-hero-sub { margin: 0; max-width: 58ch; font: var(--pw-body-l); color: var(--pw-on-cover); opacity: .94; }
+.pi-hero-route { margin: 0; font: var(--pw-ui); color: var(--pw-on-cover); opacity: .88; overflow-wrap: anywhere; }
+.pi-hero-facts { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.pi-hero-facts li {
+  min-height: 32px; display: inline-flex; align-items: center; padding: 0 var(--space-6);
+  border-radius: var(--radius-pill); background: rgba(8, 22, 26, .46); color: var(--pw-on-cover);
+  font: var(--pw-caption);
+}
+.pi-creator-pill {
+  display: inline-flex; align-items: center; gap: var(--space-4); min-height: 44px;
+  padding: var(--space-2) var(--space-7) var(--space-2) var(--space-2);
+  border-radius: var(--radius-pill); background: rgba(8, 22, 26, .46);
+  color: var(--pw-on-cover); font: var(--pw-meta); text-decoration: none;
+  transition: background-color var(--motion-fast) var(--ease-paper);
+}
+.pi-creator-pill:hover { background: rgba(8, 22, 26, .66); }
+.pi-creator-pill b { font-weight: 800; }
+
+.pi-hero-aside {
+  grid-area: aside; position: relative; z-index: var(--z-content);
+  padding: var(--space-8); border-radius: var(--radius-lg);
+  background: var(--pw-glass); border: 1px solid var(--pw-glass-edge);
+  color: var(--pw-ink); box-shadow: var(--elev-3); min-width: 0;
+}
+.pi-hero-tabs {
+  grid-area: tabs; position: relative; z-index: var(--z-content);
+  width: fit-content; max-width: 100%;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5);
+}
+.pi-hero .pi-hero-tabs .tab-btn { min-height: 44px; }
+
+/* ---- the buy card ---- */
+.pi-buy { display: flex; flex-direction: column; gap: var(--space-6); }
+.pi-buy-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); margin: 0; }
+.pi-buy-price b { font: var(--pw-display-m); letter-spacing: var(--pw-display-m-tracking); color: var(--pw-ink); }
+.pi-buy-price span { font: var(--pw-meta); color: var(--pw-ink-3); }
+.pi-split { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; height: 8px; border-radius: var(--radius-pill); overflow: hidden; }
+.pi-split-seg { display: block; }
+.pi-split-open { background: var(--pw-lagoon-600); }
+.pi-split-locked { background: var(--pw-marigold-500); }
+.pi-buy-note { margin: 0; font: var(--pw-meta); color: var(--pw-ink-2); }
+.pi-buy-quote {
+  margin: 0; padding-left: var(--space-6); border-left: 3px solid var(--pw-marigold-500);
+  font: var(--pw-meta); font-style: italic; color: var(--pw-ink-2);
+}
+.pi-buy-quote cite { display: block; margin-top: var(--space-2); font-style: normal; font-weight: 700; color: var(--pw-ink-3); }
+.pi-buy-actions { display: flex; flex-direction: column; gap: var(--space-4); }
+.pi-buy-actions > button, .pi-buy-actions > a { width: 100%; }
+
+/* ---- the day ribbon ---- */
+.pi-ribbon {
+  display: flex; flex-direction: column; gap: var(--space-6); min-width: 0;
+  padding: var(--space-8); border: 1px solid var(--pw-line); border-radius: var(--radius-lg);
+  background: var(--pw-card); box-shadow: var(--elev-1);
+}
+.pi-ribbon-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-6); }
+.pi-ribbon-figure { font: var(--pw-figure); letter-spacing: var(--pw-figure-tracking); color: var(--pw-ink); white-space: nowrap; }
+.pi-ribbon-sub { font: var(--pw-meta); color: var(--pw-ink-3); }
+.pi-ribbon-track { display: grid; grid-template-columns: minmax(100%, max-content); overflow-x: auto; padding-bottom: var(--space-2); }
+.pi-ribbon-line { grid-area: 1 / 1; align-self: start; height: 6px; margin-top: 6px; border-radius: var(--radius-pill); background: var(--pi-line, var(--pw-route)); }
+.pi-ribbon-end {
+  grid-area: 1 / 1; justify-self: end; align-self: start; width: 14px; height: 14px; margin-top: 2px;
+  border-radius: 50%; background: var(--pw-lagoon-600); border: 3px solid var(--pw-card);
+}
+.pi-ribbon-days {
+  grid-area: 1 / 1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(124px, 1fr);
+  gap: var(--space-4); margin: 0; padding: 22px 0 0; list-style: none;
+}
+.pi-ribbon-days > li { min-width: 0; animation: sf-rise var(--motion-med) var(--ease-paper) backwards; animation-delay: calc(var(--i, 0) * var(--stagger-step)); }
+.pi-rib {
+  display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2); width: 100%; height: 100%; min-height: 44px;
+  padding: var(--space-4) var(--space-5); border: 1px solid var(--pw-line); border-radius: var(--radius-sm);
+  background: var(--pw-card); color: var(--pw-ink); text-align: left; cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-paper), box-shadow var(--motion-fast) var(--ease-paper);
+}
+.pi-rib:hover { background: var(--pw-lagoon-50); }
+.pi-rib--locked { background: var(--pw-marigold-50); border-color: var(--pw-marigold-300); }
+.pi-rib--locked:hover { background: var(--pw-marigold-100); }
+.pi-rib[aria-current='true'] { border-color: var(--pw-lagoon-600); box-shadow: 0 0 0 2px var(--pw-lagoon-600); }
+.pi-rib-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.pi-rib-day { font: var(--pw-kicker); letter-spacing: var(--pw-kicker-tracking); text-transform: uppercase; color: var(--pw-ink-3); }
+.pi-rib-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--pw-lagoon-600); }
+.pi-rib-lock { display: inline-flex; color: var(--pw-marigold-ink); }
+.pi-rib-title {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+  font: var(--pw-ui); font-weight: 700; line-height: 1.3;
+}
+.pi-rib-sub { font: var(--pw-caption); color: var(--pw-ink-3); }
+
+/* ---- Look inside ---- */
+.pi-inside { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--space-8); align-items: stretch; }
+.pi-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: var(--space-4a, 10px); margin: 0; padding: 0; list-style: none; }
+.pi-tile {
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-sm); background: var(--sf-c-bg); color: var(--pw-ink);
+  animation: sf-rise var(--motion-med) var(--ease-paper) backwards; animation-delay: calc(var(--i, 0) * var(--stagger-step));
+}
+.pi-tile-icon { display: inline-flex; color: var(--sf-c); }
+.pi-tile-count { font: var(--pw-figure); letter-spacing: var(--pw-figure-tracking); }
+.pi-tile-label { font: var(--pw-caption); color: var(--pw-ink-2); }
+.pi-lock-band {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4) var(--space-6);
+  padding: var(--space-6) var(--space-7); border-radius: var(--radius-sm);
+  background: var(--pw-marigold-50); color: var(--pw-marigold-ink); font: var(--pw-ui);
+}
+.pi-lock-band > span { flex: 1 1 200px; min-width: 0; }
+.pi-get-list { display: grid; gap: var(--space-6); margin: 0; padding: 0; list-style: none; }
+.pi-get-list li { display: flex; align-items: center; gap: var(--space-5); font: var(--pw-ui); color: var(--pw-ink); }
+.pi-get-icon {
+  display: grid; flex: none; place-items: center; width: 36px; height: 36px; border-radius: 50%;
+  background: var(--pw-lagoon-100); color: var(--pw-sea-700);
+}
+.pi-get-foot { margin: 0; font: var(--pw-meta); color: var(--pw-ink-3); }
+
+.pi-days { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+.pi-days-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-5); }
+.pi-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); margin: 0; font: var(--pw-caption); color: var(--pw-ink-2); }
+.pi-legend span { display: inline-flex; align-items: center; }
+.pi-legend .pi-legend-note { color: var(--pw-ink-3); }
+
+/* the day grid: the storefront's cards, dressed for the trip kit */
+.pi-page .sf-daygrid { grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); align-items: stretch; gap: var(--space-5); }
+.pi-page .sf-day { background: var(--pw-card); border-color: var(--pw-line); color: var(--pw-ink); box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 4px rgba(20,56,66,.05), 0 18px 36px -20px rgba(20,56,66,.24); }
+.pi-page .sf-day--locked { background: #FFF8EC; border-color: #F3DDB4; box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 4px rgba(20,56,66,.05), 0 18px 36px -20px rgba(20,56,66,.24); outline: none; }
+.pi-page .sf-day--yours { background: var(--pw-card); }
+.pi-page .sf-day-title { font: 700 15px/1.3 var(--font-display); letter-spacing: -0.01em; }
+.pi-page .sf-day-photo {
+  position: relative; display: block; flex: none; height: 104px; margin: 0;
+  overflow: hidden; background: var(--pw-lagoon-100);
+}
+.pi-page .sf-day-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.sf-day-open {
+  align-self: flex-start; min-height: 44px; margin-top: auto; padding: 4px 0 0; border: 0; background: none;
+  color: var(--ink-teal); font: 700 13px/1.3 var(--font-body); text-align: left; cursor: pointer;
+}
+.sf-day-open:hover { text-decoration: none; color: var(--pw-sea-700); }
+
+/* ---- the day's time budget ---- */
+.pi-budget { display: flex; flex-direction: column; gap: var(--space-3); }
+.pi-budget-bar {
+  display: grid; gap: 4px; height: 7px;
+  border-radius: 0; overflow: visible; background: none;
+}
+.pi-budget-seg { display: block; border-radius: 999px; transform-origin: left center; animation: pi-grow var(--motion-slow) var(--ease-paper) backwards; animation-delay: calc(var(--i, 0) * var(--stagger-step)); }
+.pi-budget-drive { background: var(--pw-time-drive); }
+.pi-budget-places { background: var(--pw-time-stop); }
+.pi-budget-free { background: var(--pw-time-free); }
+.pi-budget-key { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); font: var(--pw-caption); color: var(--pw-ink-2); }
+.pi-budget-key span { display: inline-flex; align-items: center; }
+.pi-budget-dot { display: inline-block; flex: none; width: 10px; height: 10px; margin-right: var(--space-3); border-radius: 50%; }
+@keyframes pi-grow { from { transform: scaleX(0); } }
+
+/* ---- shared page blocks below the days ---- */
+.pi-plainlist { display: grid; gap: var(--space-4); margin: 0; padding-left: 18px; color: var(--pw-ink-2); }
+.pi-plainlist li { text-wrap: pretty; }
+.pi-end { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-8); align-items: start; }
+.pi-creator-name { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin: 0; font: var(--pw-title); }
+.pi-socials { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.pi-more { align-self: flex-start; }
+.pi-glance-btn { margin-top: var(--space-3); }
+.pi-take > button { width: 100%; }
+.pi-share { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* ---- Ride along ---- */
+.pi-ride-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--space-8); align-items: start; }
+.pi-ride-main { display: flex; flex-direction: column; gap: var(--space-10); min-width: 0; }
+.pi-ride { display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-lg); background: var(--pw-card); box-shadow: var(--elev-1); }
+.pi-ride--locked { background: var(--pw-marigold-50); outline: 1px solid var(--pw-marigold-300); outline-offset: -1px; box-shadow: none; }
+.pi-ride-band { position: relative; height: 112px; background: linear-gradient(120deg, var(--pw-lagoon-100), var(--pw-lagoon-50)); }
+.pi-ride--locked .pi-ride-band { background: linear-gradient(120deg, var(--pw-marigold-100), var(--pw-marigold-50)); }
+.pi-ride-band img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+.pi-ride-tag { position: absolute; left: 20px; top: 16px; background: var(--pw-card); color: var(--pw-ink); }
+.pi-ride-head { position: relative; z-index: var(--z-content); display: flex; align-items: flex-start; gap: var(--space-7); padding: var(--space-8) var(--space-10) 0; }
+.pi-ride-head .pi-badge { margin-top: -40px; box-shadow: var(--elev-2); }
+.pi-ride-titles { min-width: 0; }
+.pi-ride-titleline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+.pi-ride-title { margin: 0; font: var(--pw-display-s); letter-spacing: var(--pw-display-s-tracking); color: var(--pw-ink); text-wrap: balance; overflow-wrap: anywhere; }
+.pi-ride-meta { margin: var(--space-2) 0 0; font: var(--pw-meta); color: var(--pw-ink-2); }
+.pi-ride-budget { padding: var(--space-6) var(--space-10) 0; }
+.pi-ride-body { padding: var(--space-8) var(--space-10) var(--space-10); }
+.pi-ride-foot { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4); padding: 0 var(--space-10) var(--space-10); }
+.pi-lock { display: flex; flex-direction: column; gap: var(--space-5); padding: var(--space-7); border-radius: var(--radius-sm); background: var(--pw-marigold-100); color: var(--pw-marigold-ink); }
+.pi-lock-chips { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.pi-lock-title { display: flex; align-items: center; margin: 0; font-weight: 800; }
+
+/* the day's timeline */
+.pi-tl { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.pi-tl-row { display: grid; grid-template-columns: 64px 28px minmax(0, 1fr); gap: 0 var(--space-5); align-items: start; }
+.pi-tl-time { padding-top: var(--space-2); text-align: right; font: var(--pw-caption); font-variant-numeric: tabular-nums; color: var(--pw-ink-2); }
+.pi-tl-rail { position: relative; display: flex; justify-content: center; align-self: stretch; }
+.pi-tl-rail::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: var(--pw-line); transform: translateX(-50%); }
+.pi-tl-row:first-child .pi-tl-rail::before { top: 14px; }
+.pi-tl-row:last-child .pi-tl-rail::before { bottom: calc(100% - 14px); }
+.pi-tl-dot {
+  position: relative; z-index: var(--z-content); display: grid; flex: none; place-items: center; width: 28px; height: 28px;
+  border-radius: 50%; background: var(--pw-sea-700); color: var(--pw-on-cover); font: var(--pw-caption); font-style: normal;
+}
+.pi-tl-dot--ico { background: var(--pw-lagoon-100); color: var(--pw-sea-700); }
+.pi-tl-body { min-width: 0; padding-bottom: var(--space-8); }
+.pi-tl-row--travel .pi-tl-body { color: var(--pw-ink-2); }
+.pi-tl-toprow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+.pi-tl-title { font: var(--pw-title); letter-spacing: var(--pw-title-tracking); color: var(--pw-ink); overflow-wrap: anywhere; }
+.pi-tl-meta { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); margin-top: var(--space-2); font: var(--pw-meta); color: var(--pw-ink-2); }
+.pi-tl-meta > span { display: inline-flex; align-items: center; }
+.pi-tl-desc { margin-top: var(--space-3); font: var(--pw-meta); color: var(--pw-ink-2); text-wrap: pretty; }
+
+/* the other days */
+.pi-others { display: flex; flex-direction: column; gap: var(--space-6); }
+.pi-others-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-3) var(--space-6); }
+.pi-others-list { display: flex; flex-direction: column; gap: var(--space-4a, 10px); margin: 0; padding: 0; list-style: none; }
+.pi-other {
+  display: grid; grid-template-columns: 72px 48px minmax(0, 1fr) auto 44px; align-items: center; gap: var(--space-5);
+  padding: var(--space-4a, 10px) var(--space-5); border-radius: var(--radius); background: var(--pw-card); box-shadow: var(--elev-1);
+  animation: sf-rise var(--motion-med) var(--ease-paper) backwards; animation-delay: calc(var(--i, 0) * var(--stagger-step));
+}
+.pi-other--locked { background: var(--pw-marigold-50); box-shadow: none; outline: 1px solid var(--pw-marigold-300); outline-offset: -1px; }
+.pi-other-thumb { display: block; width: 72px; height: 56px; overflow: hidden; border-radius: var(--radius-xs); background: var(--pw-lagoon-100); }
+.pi-other--locked .pi-other-thumb { background: var(--pw-marigold-100); }
+.pi-other-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pi-other-num { display: grid; justify-items: center; line-height: 1; color: var(--pw-ink); }
+.pi-other-num small { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--pw-ink-3); }
+.pi-other-num b { font: var(--pw-figure); letter-spacing: var(--pw-figure-tracking); }
+.pi-other-main { display: grid; gap: var(--space-2); min-width: 0; }
+.pi-other-titleline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+.pi-other-title { font: var(--pw-ui); font-weight: 700; color: var(--pw-ink); overflow-wrap: anywhere; }
+.pi-other-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--pw-meta); color: var(--pw-ink-2); }
+.pi-other-road { display: grid; justify-items: end; text-align: right; font: var(--pw-caption); color: var(--pw-ink-3); }
+.pi-other-road b { font: var(--pw-ui); color: var(--pw-ink); }
+.pi-other-open {
+  display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%;
+  background: var(--pw-lagoon-100); color: var(--pw-sea-700); cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-paper), transform var(--motion-fast) var(--ease-paper);
+}
+.pi-other-open:hover { background: var(--pw-lagoon-300); transform: translateX(2px); }
+.pi-other--locked .pi-other-open { background: var(--pw-marigold-100); color: var(--pw-marigold-ink); }
+
+.pi-ride-aside { position: sticky; top: calc(var(--shell-nav-h, 64px) + var(--space-7)); display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+.pi-aside-card { gap: var(--space-5); padding: var(--space-8); }
+.pi-aside-card > button { width: 100%; }
+.pi-aside-creator { flex-direction: row; align-items: center; gap: var(--space-5); min-height: 44px; padding: var(--space-6) var(--space-8); text-decoration: none; color: var(--pw-ink); }
+.pi-aside-creator > span { display: grid; gap: var(--space-2); min-width: 0; }
+
+/* ---- the fixed bar names the plan ---- */
+.sf-sticky-name { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
+.sf-sticky-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--pw-ui); font-weight: 800; }
+.sf-sticky-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--pw-caption); color: var(--pw-ink-3); }
+
+/* ---- focus, on every control this page draws ---- */
+.pi-page :is(.pi-rib, .pi-link, .sf-day-open, .pi-other-open, .pi-creator-pill, .pi-aside-creator):focus-visible {
+  outline: 2px solid var(--pw-lagoon-600); outline-offset: 2px;
+}
+.pi-hero :is(.pi-creator-pill, .pi-hero-back):focus-visible { outline-color: var(--pw-on-cover); }
+
+/* ---- tablet and phone ---- */
+@media (max-width: 980px) {
+  .pi-inside, .pi-end, .pi-ride-grid { grid-template-columns: minmax(0, 1fr); }
+  .pi-ride-aside { position: static; }
+  .pi-hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "copy" "aside" "tabs"; min-height: 0; padding: var(--space-10) var(--space-8) var(--space-8); }
+}
+@media (max-width: 720px) {
+  .pi-wrap { gap: var(--space-8); }
+  .pi-card, .pi-ribbon { padding: var(--space-7); }
+  .pi-hero { padding: var(--space-8) var(--space-7) var(--space-7); border-radius: var(--radius-lg); }
+  .pi-hero-title { font-size: clamp(28px, 8vw, 36px); }
+  .pi-hero-aside { padding: var(--space-7); }
+  .pi-hero-tabs { width: 100%; }
+  .pi-hero-tabs button { flex: 1 1 0; }
+  .pi-ribbon-days { grid-auto-columns: minmax(112px, 1fr); }
+  .pi-ride-head { padding: var(--space-7) var(--space-7) 0; gap: var(--space-5); }
+  .pi-ride-budget { padding: var(--space-5) var(--space-7) 0; }
+  .pi-ride-body { padding: var(--space-7) var(--space-7) var(--space-8); }
+  .pi-ride-foot { padding: 0 var(--space-7) var(--space-8); }
+  .pi-tl-row { grid-template-columns: 52px 24px minmax(0, 1fr); gap: 0 var(--space-4); }
+  .pi-tl-dot { width: 24px; height: 24px; }
+  .pi-other { grid-template-columns: 44px minmax(0, 1fr) 44px; }
+  .pi-other-thumb { display: none; }
+  .pi-other-num { grid-column: 1; grid-row: 1 / span 2; }
+  .pi-other-road { grid-column: 2; grid-row: 2; display: flex; gap: var(--space-4); justify-items: start; text-align: left; }
+  .pi-other-open { grid-column: 3; grid-row: 1 / span 2; }
+  .pi-other-line { white-space: normal; }
+  .sf-sticky-name span { display: none; }
+}
+@media (max-width: 720px), (pointer: coarse) {
+  .pi-rib, .pi-link, .sf-day-open, .pi-creator-pill { min-height: 44px; }
+  .pi-socials > a { display: inline-flex; align-items: center; min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pi-ribbon-days > li, .pi-tile, .pi-other, .pi-budget-seg { animation: none; }
+  .pi-rib, .pi-other-open, .pi-creator-pill { transition: none; }
+  .pi-other-open:hover { transform: none; }
+}
+
+/* ==========================================================================
+   A1 — public itinerary sticky price bar: keep the action on one line
+   (HY4, 2026-11-08). Page-scoped and append-only; the legacy storefront rules
+   and the shared action recipe stay untouched. Layout only, no forced cascade.
+   ========================================================================== */
+/* Reserve the CTA's intrinsic width: no shrink, no wrap, at every width. The
+   plan name then takes the remaining space and truncates earlier; the separate
+   price stays visible and stable beside the action. */
+.pi-page .sf-sticky-cta { flex: 0 0 auto; white-space: nowrap; }
+.pi-page .sf-sticky-price { flex: 0 0 auto; display: inline-flex; align-items: baseline; gap: var(--space-3); font: var(--pw-title); }
+@media (max-width: 720px) {
+  /* Clear the fixed bottom bar (68px + safe area) so the last content is
+     reachable and never sits behind it. Mirrors the legacy .sf-page clearance. */
+  .pi-page { padding-bottom: calc(80px + var(--bottom-ui-offset)); }
+}
+
+/* PW-11: compact route, distinct ride introduction and trip-kit details. */
+@media (min-width: 721px) {
+  .pi-page .pi-ribbon { flex-direction: row; align-items: stretch; gap: var(--space-9); }
+  .pi-page .pi-ribbon-head {
+    flex: 0 0 calc(var(--space-17) * 2 + var(--space-13) + var(--space-9)); flex-direction: column;
+    align-items: flex-start; justify-content: center; gap: var(--space-2);
+    padding-inline-end: var(--space-7a); border-inline-end: 1px dashed var(--pw-line);
+  }
+  .pi-page .pi-ribbon-track { flex: 1 1 auto; min-width: 0; }
+  .pi-page .pi-ribbon-days { grid-auto-columns: 140px; justify-content: start; }
+}
+.pi-page .pi-ribbon-track { grid-template-columns: max-content; align-content: center; padding: var(--space-2); scroll-padding-inline: var(--space-2); }
+.pi-page .pi-ribbon-days { padding-top: 0; padding-inline-end: var(--space-9); }
+.pi-page .pi-ribbon-line { align-self: center; margin-top: 0; }
+.pi-page .pi-ribbon-end { align-self: center; margin-top: 0; background: var(--pw-marigold-500); }
+.pi-page .pi-rib {
+  background: var(--pw-lagoon-50);
+  transition: background-color var(--motion-fast) var(--ease-paper), box-shadow var(--motion-fast) var(--ease-paper), transform var(--motion-fast) var(--ease-paper);
+}
+.pi-page .pi-rib:hover { transform: translateY(-2px); background: var(--pw-lagoon-100); }
+.pi-page .pi-rib--locked:hover { background: var(--pw-marigold-100); }
+.pi-page .pi-rib:focus-visible { transform: none; }
+.pi-page .pi-rib--locked { background: var(--pw-marigold-50); border-style: dashed; }
+.pi-page .pi-rib[aria-current='true'] { background: var(--pw-lagoon-100); }
+.pi-ribbon-head .pi-pill { max-width: 100%; white-space: normal; }
+
+.pi-page .pi-hero { align-items: start; }
+.pi-page .pi-hero-photo { opacity: 1; animation: pi-cover-settle calc(var(--motion-slower) * 3) var(--ease-glide) backwards; }
+.pi-page .pi-hero-scrim { background: linear-gradient(90deg, rgba(8, 24, 34, .86), rgba(8, 24, 34, .68) 65%, rgba(8, 24, 34, .16)); }
+.pi-page .pi-hero-facts li { background: var(--pw-glass); color: var(--pw-ink); }
+.pi-hero-aside .pi-buy-quote {
+  padding: var(--space-5); border: 0; border-radius: var(--radius-sm);
+  background: var(--pw-marigold-50); color: var(--pw-ink-2); font-style: normal;
+}
+.pi-page .pi-hero-copy > * { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
+.pi-page .pi-hero-copy > :nth-child(2) { animation-delay: var(--stagger-step); }
+.pi-page .pi-hero-copy > :nth-child(3) { animation-delay: calc(var(--stagger-step) * 2); }
+.pi-page .pi-hero-copy > :nth-child(4) { animation-delay: calc(var(--stagger-step) * 3); }
+.pi-page .pi-hero-copy > :nth-child(5) { animation-delay: calc(var(--stagger-step) * 4); }
+.pi-page .pi-hero-copy > :nth-child(6) { animation-delay: calc(var(--stagger-step) * 5); }
+.pi-page .pi-hero-copy > :nth-child(n+7) { animation-delay: calc(var(--stagger-step) * 6); }
+.pi-page .pi-hero-aside, .pi-page .pi-ride-aside > * {
+  animation: pi-card-drop var(--motion-slow) var(--ease-paper) backwards;
+  animation-delay: calc(var(--stagger-step) * 4);
+}
+.pi-page .pi-hero-tabs { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; animation-delay: calc(var(--stagger-step) * 6); }
+@keyframes pi-cover-settle { from { transform: scale(1.035); } }
+@keyframes pi-card-drop { from { opacity: 0; transform: translateY(-14px); } }
+
+.pi-ride-intro {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-8) var(--space-13);
+  align-items: center; min-width: 0; padding: var(--space-5) 0;
+}
+.pi-ride-intro--photos { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.pi-ride-intro > .pi-hero-copy { grid-area: auto; grid-column: 1; grid-row: 1; }
+.pi-ride-intro .pi-hero-title { color: var(--pw-ink); }
+.pi-ride-intro .pi-hero-sub, .pi-ride-intro .pi-hero-route { color: var(--pw-ink-2); opacity: 1; }
+.pi-ride-intro .pi-hero-kicker { color: var(--pw-sea-700); }
+.pi-ride-intro .pi-hero-facts li { background: var(--pw-lagoon-100); color: var(--pw-sea-700); }
+.pi-ride-intro .pi-creator-pill { background: var(--pw-card); color: var(--pw-ink); box-shadow: var(--elev-1); }
+.pi-ride-facts { display: flex; flex-wrap: wrap; gap: var(--space-7) var(--space-10); margin: var(--space-2) 0 0; }
+.pi-ride-facts dt { font: var(--pw-title); color: var(--pw-ink); }
+.pi-ride-facts dd { margin: var(--space-2) 0 0; font: var(--pw-caption); color: var(--pw-ink-3); }
+.pi-page .pi-buy-price b { font: var(--pw-display-l); }
+.pi-ride-intro .pi-hero-tabs { grid-area: auto; }
+.pi-ride-intro .pi-hero-tabs button { min-height: 44px; }
+.pi-ride-intro--photos .pi-hero-tabs { grid-column: 1; }
+.pi-ride-mosaic {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4); min-width: 0; height: 400px; grid-column: 2; grid-row: 1 / span 2;
+}
+.pi-ride-photo {
+  position: relative; min-width: 0; margin: 0; overflow: hidden; border-radius: var(--radius);
+  background: var(--pw-lagoon-100); box-shadow: var(--elev-1);
+  animation: pageRise var(--motion-slow) var(--ease-paper) backwards;
+}
+.pi-ride-photo:first-child { grid-row: 1 / span 2; border-radius: var(--radius-lg) var(--radius-xs) var(--radius-xs) var(--radius-lg); }
+.pi-ride-photo:nth-child(2) { animation-delay: var(--stagger-step); }
+.pi-ride-photo:nth-child(2):last-child { grid-row: 1 / span 2; }
+.pi-ride-photo:nth-child(3) { animation-delay: calc(var(--stagger-step) * 2); }
+.pi-ride-photo:only-child { grid-column: 1 / -1; border-radius: var(--radius-lg); }
+.pi-ride-photo img { width: 100%; height: 100%; object-fit: cover; animation: pi-cover-settle calc(var(--motion-slower) * 3) var(--ease-glide) backwards; }
+.pi-ride-photo figcaption {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; align-items: end; gap: var(--space-3);
+}
+.pi-ride-photo figcaption > span:last-child {
+  min-width: 0; padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm);
+  background: var(--pw-card); color: var(--pw-ink); font: var(--pw-caption); overflow-wrap: anywhere;
+}
+.pi-ride-notice { grid-column: 1 / -1; }
+
+.pi-page .pi-tile { background: var(--pw-lagoon-50); }
+.pi-page .pi-tile-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--radius-xs); background: var(--sf-c-bg); }
+.pi-page .pi-get-foot { margin-top: auto; padding-top: var(--space-6); border-top: 1px dashed var(--pw-line); }
+.pi-page .sf-day-strip { position: relative; height: 104px; opacity: 1; }
+.sf-day-lock-mark { position: absolute; inset: 0; display: grid; place-items: center; background: var(--pw-marigold-100); color: var(--pw-marigold-ink); }
+.pi-page .sf-day-head { position: relative; display: flex; align-items: flex-end; gap: 10px; margin-top: 0; }
+.pi-page .sf-day-num {
+  display: flex; flex-direction: column; align-items: center; width: 54px; padding: 6px 0 8px;
+  border-radius: 18px; background: linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(236,231,222,.9) 100%);
+  color: var(--pw-ink);
+}
+.pi-page .sf-day-num small { font-size: 11px; font-weight: 700; letter-spacing: .1em; line-height: 1.2; color: #0B5F67; }
+.pi-page .sf-day-num b { font-family: var(--font-display); font-size: 24px; font-weight: 700; line-height: 1; color: var(--pw-ink); }
+.pi-page .sf-day-tag { position: absolute; top: 10px; right: 10px; display: inline-flex; align-items: center; gap: 6px; background: rgba(254,253,251,.82); color: #0B5F67; }
+.pi-page .sf-day--locked .sf-day-tag { background: #FBE7C6; color: #8A4F0E; }
+.pi-page .sf-day:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgba(20,56,66,.06), 0 16px 30px -14px rgba(20,56,66,.34); }
+
+.pi-page .pi-ride { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
+.pi-page .pi-ride-band { height: calc(var(--space-17) * 2); }
+.pi-ride-band--photo::after { content: ''; position: absolute; inset: 50% 0 0; background: linear-gradient(transparent, var(--pw-card)); }
+.pi-page .pi-badge { background: var(--pw-card); color: var(--pw-sea-700); box-shadow: var(--elev-2); }
+.pi-page .pi-other-num { width: 48px; height: 56px; border-radius: var(--radius-sm); background: var(--pw-card); color: var(--pw-ink); box-shadow: var(--elev-2); }
+.pi-page .pi-other-num small { color: var(--pw-sea-700); }
+.pi-page .pi-tl-row { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
+.pi-page .pi-tl-row:nth-child(2) { animation-delay: var(--stagger-step); }
+.pi-page .pi-tl-row:nth-child(3) { animation-delay: calc(var(--stagger-step) * 2); }
+.pi-page .pi-tl-row:nth-child(4) { animation-delay: calc(var(--stagger-step) * 3); }
+.pi-page .pi-tl-row:nth-child(5) { animation-delay: calc(var(--stagger-step) * 4); }
+.pi-page .pi-tl-row:nth-child(6) { animation-delay: calc(var(--stagger-step) * 5); }
+.pi-page .pi-tl-row:nth-child(n+7) { animation-delay: calc(var(--stagger-step) * 6); }
+.pi-page .pi-tl-rail::before {
+  left: calc(50% - 1px);
+  width: 0;
+  background: none;
+  border-left: 2px dashed var(--pw-route);
+  transform: none;
+}
+.pi-page .pi-tl-row--stop .pi-tl-body { margin-bottom: var(--space-7); padding: var(--space-7); border-radius: var(--radius); background: var(--pw-raised); box-shadow: var(--elev-1); }
+.pi-page .pi-tl-row--stop .pi-tl-dot { background: var(--pw-card); color: var(--pw-marigold-ink); border: 2px solid var(--pw-marigold-500); }
+.pi-page .pi-tl-title { font: var(--pw-ui); font-weight: 700; }
+.pi-aside-includes { display: grid; gap: var(--space-5); margin: 0; padding: 0; list-style: none; font: var(--pw-meta); color: var(--pw-ink-2); }
+.pi-aside-includes li { display: flex; align-items: center; gap: var(--space-4); }
+.pi-aside-includes svg { flex: none; color: var(--pw-sea-700); }
+.pi-page .pi-take { border-color: transparent; background: var(--pw-sea-700); color: var(--pw-on-sea); }
+.pi-take .pi-h2, .pi-take .pi-kicker, .pi-take > .hint-text { color: inherit; }
+
+@media (max-width: 980px) {
+  .pi-ride-intro--photos { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: var(--space-7); }
+  .pi-ride-mosaic { height: 360px; }
+  .pi-page .pi-hero-scrim { background: linear-gradient(180deg, rgba(8, 24, 34, .7), rgba(8, 24, 34, .86)); }
+}
+@media (max-width: 720px) {
+  .pi-ride-intro--photos { grid-template-columns: minmax(0, 1fr); }
+  .pi-ride-intro .pi-hero-title { font-size: clamp(28px, 8vw, 36px); }
+  .pi-ride-intro .pi-hero-tabs { grid-column: 1; grid-row: 2; }
+  .pi-page .pi-ribbon-days { grid-auto-columns: 112px; }
+  .pi-page .pi-other-num { width: 44px; }
+  .pi-ride-mosaic { grid-column: 1; grid-row: 3; height: 240px; }
+  .pi-ride-photo figcaption { left: 8px; right: 8px; bottom: 8px; flex-wrap: wrap; }
+  .pi-ride-photo figcaption .pi-badge { width: 44px; height: 44px; }
+  .pi-page .pi-tl-row { grid-template-columns: 48px 24px minmax(0, 1fr); gap: 0 var(--space-3); }
+  .pi-page .pi-tl-row--stop .pi-tl-body { padding: var(--space-5); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pi-page .pi-hero-photo, .pi-page .pi-hero-copy > *, .pi-page .pi-hero-aside,
+  .pi-page .pi-hero-tabs, .pi-page .pi-ribbon-line, .pi-page .pi-ribbon-end,
+  .pi-ride-photo, .pi-ride-photo img, .pi-page .pi-ride, .pi-page .pi-tl-row,
+  .pi-page .pi-ride-aside > * { animation: none; }
+  .pi-page .sf-day:hover { transform: none; }
+  .pi-page .pi-rib { transition: none; }
+  .pi-page .pi-rib:hover { transform: none; }
+}
+/* ==== PR914 fix: Look inside and shared chrome ==== */
+/* Region art fills every image slot that has no photo: the cover, the day
+   cards and the ride-along mosaic. The art and its motif fill the slot. */
+.pi-hero--art { background: var(--pw-sea-900); }
+.pi-hero-art { position: absolute; inset: 0; z-index: var(--z-under); overflow: hidden; }
+.pi-page .sf-day-art { position: relative; height: 104px; background: var(--pw-lagoon-100); }
+.pi-page .sf-day--locked .sf-day-art { background: #FFF8EC; }
+.pi-page .sf-day--locked .sf-day-art .yf-art-picture { opacity: 1; filter: saturate(.6) blur(1.5px); transform: scale(1.06); }
+.pi-page .sf-day-locknote {
+  display: flex; align-items: flex-start; gap: 8px; margin: auto 0 0; padding: 10px;
+  border-radius: 12px; background: #FBEFD9; color: #8A4F0E;
+  font-size: 12px; font-weight: 600; line-height: 1.35; text-align: left; text-wrap: pretty;
+}
+.pi-page .sf-day-locknote svg { flex: none; margin-top: 2px; }
+.pi-page .sf-day--locked .sf-day-chips { margin-bottom: var(--space-5); }
+.pi-ride-photo--art { position: relative; background: var(--pw-lagoon-100); }
+
+/* Section links share the pinned navigation with the view switch. */
+.pi-sections {
+  display: flex; gap: 2px; padding: var(--space-2); border-radius: var(--radius-pill);
+  background: var(--pw-glass); border: 1px solid var(--pw-glass-edge); box-shadow: var(--elev-1);
+}
+.pi-section-tab {
+  display: inline-flex; align-items: center; min-height: 38px; padding: 0 var(--space-7); border-radius: var(--radius-pill);
+  color: var(--pw-ink-2); font: var(--pw-ui); font-weight: 600; text-decoration: none; white-space: nowrap;
+  transition: background-color var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper);
+}
+.pi-section-tab:hover { background: var(--pw-lagoon-100); color: var(--pw-ink); }
+.pi-section-tab.is-active { background: var(--pw-sea-700); color: var(--pw-on-sea); font-weight: 700; }
+.pi-section-tab:focus-visible { outline: 2px solid var(--pw-sea-700); outline-offset: 2px; }
+.pi-page :is(.pi-body, #pi-sec-overview, #pi-sec-inside, #pi-sec-days, #pi-sec-creator) { scroll-margin-top: calc(var(--pi-nav-clearance) + var(--space-7) + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))); }
+
+/* The fixed bar: a full-width pill at the bottom of the screen, shown only
+   after the cover has left the screen. It replaces the old top-centre bar,
+   which sat behind the app's own top bar. */
+.pi-page .sf-sticky {
+  display: grid; grid-template-columns: 42px minmax(0, 1fr) max-content max-content;
+  top: auto; bottom: var(--space-6); gap: var(--space-7); width: min(100% - 32px, 1120px); height: 64px;
+  padding: 0 var(--space-4) 0 var(--space-5); border-radius: var(--radius-pill);
+  background: var(--pw-glass); border: 1px solid var(--pw-glass-edge); color: var(--pw-ink);
+  -webkit-backdrop-filter: blur(var(--yf-blur-panel)); backdrop-filter: blur(var(--yf-blur-panel)); box-shadow: var(--elev-2);
+  transform: translate(-50%, calc(100% + var(--space-8)));
+  transition: transform var(--motion-med) var(--ease-exit), visibility 0s linear var(--motion-med);
+}
+.pi-page .sf-sticky.is-visible { transform: translate(-50%, 0); transition: transform var(--motion-med) var(--ease-paper), visibility 0s; }
+.pi-page .sf-sticky-thumb { position: relative; flex: none; width: 42px; height: 42px; overflow: hidden; border-radius: var(--radius-pill); background: var(--pw-lagoon-100); }
+.pi-page .sf-sticky-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.pi-page .sf-sticky-name { min-width: 0; }
+.pi-page .sf-sticky-price small { font: var(--pw-caption); color: var(--pw-ink-3); }
+@media (max-width: 720px) {
+  .pi-page .sf-sticky {
+    grid-template-columns: minmax(0, 1fr) max-content max-content; gap: var(--space-4);
+    bottom: 0; width: 100%; height: auto; padding: var(--space-5) var(--space-6) calc(var(--space-5) + var(--bottom-ui-offset));
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0; transform: translate(-50%, 110%);
+  }
+  .pi-page .sf-sticky-thumb { display: none; }
+}
+
+/* Before you go: the route and the notes, two even cards. */
+.pi-before { display: flex; flex-direction: column; gap: var(--space-5); }
+.pi-before-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-8); align-items: stretch; }
+.pi-before-notes { display: flex; flex-direction: column; gap: var(--space-5); }
+.pi-before-notes .pi-h2 + .pi-notelist { margin-top: calc(var(--space-3) * -1); }
+.pi-notelist { display: grid; gap: var(--space-4); margin: 0 0 var(--space-4); padding: 0; list-style: none; color: var(--pw-ink-2); }
+.pi-notelist li { display: flex; align-items: flex-start; gap: var(--space-4); text-wrap: pretty; }
+.pi-notelist svg { flex: none; margin-top: 3px; color: var(--pw-sea-700); }
+.pi-notelist--warn svg { color: var(--pw-marigold-ink); }
+@media (max-width: 860px) { .pi-before-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* The creator and Take this trip: two cards of one height, one action each. */
+.pi-page .pi-end { align-items: stretch; }
+.pi-page .pi-creator { justify-content: flex-start; }
+.pi-page .pi-more { min-height: 44px; display: inline-flex; align-items: center; font-weight: 700; }
+.pi-take-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5) var(--space-8); margin-top: auto; }
+.pi-take-actions > .btn { width: auto; }
+.pi-take-read {
+  min-height: 44px; padding: 0; border: 0; background: none; color: inherit;
+  font: var(--pw-ui); font-weight: 700; cursor: pointer; opacity: .9;
+}
+.pi-take-read:hover { text-decoration: underline; }
+.pi-take-more {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-6);
+  padding-top: var(--space-6); border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+.pi-take-link {
+  display: inline-flex; align-items: center; gap: var(--space-3); min-height: 36px; padding: 0; border: 0; background: none;
+  color: inherit; opacity: .85; font: var(--pw-caption); font-weight: 700; cursor: pointer;
+}
+.pi-take-link:hover { opacity: 1; text-decoration: underline; }
+.pi-take-link[aria-pressed="true"] { opacity: 1; }
+.pi-take :is(.pi-take-read, .pi-take-link):focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@media (max-width: 720px), (pointer: coarse) {
+  .pi-take-link { min-height: 44px; }
+}
+
+/* Ride along: read and current days on the ribbon, and the read progress bar. */
+.pi-rib--read .pi-rib-sub { color: var(--pw-sea-700); font-weight: 700; }
+.pi-rib--now .pi-rib-sub { color: var(--pw-sea-700); font-weight: 800; }
+.pi-ribbon-progress { display: block; width: 100%; max-width: 160px; height: 6px; margin-top: var(--space-3); border-radius: var(--radius-pill); background: var(--pw-lagoon-100); overflow: hidden; }
+.pi-ribbon-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--pw-sea-700); transform-origin: left; transform: scaleX(var(--pi-progress, 0)); transition: transform var(--motion-slower) var(--ease-paper); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pi-section-tab, .pi-ribbon-progress > span { transition: none; }
+}
+/* ==== PR914 fix: Ride along ==== */
+.pi-read-summary { font: var(--pw-caption); color: var(--pw-ink-2); }
+.pi-ride-main .pi-ride { border: 1px solid var(--pw-route); }
+.pi-ride-main .pi-ride--locked { border: 1px dashed var(--pw-marigold-300); outline: none; }
+.pi-ride-band .yf-art-picture { position: absolute; inset: 0; }
+.pi-ride--locked .pi-ride-band--photo::after { background: linear-gradient(transparent, var(--pw-marigold-50)); }
+.pi-ride-band .pi-ride-tag { left: auto; right: var(--space-6); top: var(--space-6); }
+.pi-ride-main .pi-ride-head { margin-top: calc(var(--space-15) * -1); padding-top: 0; align-items: center; }
+.pi-ride-main .pi-ride-head .pi-badge { margin-top: 0; flex: none; }
+.pi-ride-main .pi-ride-title { font: var(--pw-title); }
+.pi-ride-main .pi-ride-budget { padding-left: calc(var(--space-17) + var(--space-12)); padding-top: var(--space-5); }
+.pi-ride-main .pi-ride-body { padding: var(--space-7) var(--space-10) var(--space-7) var(--space-4); }
+.pi-ride-timeline .pi-tl-row { grid-template-columns: var(--space-17) var(--space-12) minmax(0, 1fr); gap: 0; }
+.pi-ride-timeline .pi-tl-time { padding: var(--space-5) 0 0; font: var(--pw-caption); }
+.pi-ride-timeline .pi-tl-time b { font: var(--pw-ui); font-variant-numeric: tabular-nums; color: var(--pw-ink); }
+.pi-ride-timeline .pi-tl-time small { display: block; font: var(--pw-caption); color: var(--pw-ink-3); white-space: nowrap; }
+.pi-ride-timeline .pi-tl-dot { margin-top: var(--space-5); }
+.pi-ride-timeline .pi-tl-rail::before {
+  left: calc(50% - 1px);
+  width: 0;
+  background: none;
+  border-left: 2px dashed var(--pw-route);
+  transform: none;
+}
+.pi-ride-timeline .pi-ride-node { min-height: var(--space-15); }
+.pi-ride-timeline .pi-ride-node .pi-tl-body { padding: var(--space-5) 0; font: var(--pw-ui); }
+.pi-ride-timeline .pi-ride-node-dot { background: var(--pw-sea-700); border-color: var(--pw-card); color: var(--pw-on-sea); }
+.pi-ride-timeline .pi-ride-node--end .pi-ride-node-dot { background: var(--pw-marigold-500); color: var(--pw-on-marigold); }
+.pi-ride-leg { min-height: var(--space-13); }
+.pi-ride-leg > div { display: flex; align-items: center; gap: var(--space-4); color: var(--pw-ink-3); font: var(--pw-meta); padding-bottom: var(--space-4); }
+.pi-page .pi-ride-timeline .pi-tl-row--stop .pi-ride-stop { display: grid; grid-template-columns: var(--space-14) minmax(0, 1fr); gap: var(--space-4a); margin-bottom: var(--space-5); padding: var(--space-6); border: 1px solid var(--pw-line-soft); border-radius: var(--radius-lg); }
+.pi-ride-stop-icon { display: grid; place-items: center; width: var(--space-14); height: var(--space-14); border-radius: var(--radius); background: var(--pw-lagoon-100); color: var(--pw-sea-700); }
+.pi-ride-stop-icon svg { width: var(--space-10); height: var(--space-10); }
+.pi-ride-stop-copy { min-width: 0; }
+.pi-ride-stop .pi-tl-desc { margin: var(--space-2) 0 0; }
+.pi-ride-note { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: var(--space-5); padding: var(--space-5); border-radius: var(--radius); background: var(--pw-lagoon-50); color: var(--pw-sea-900); border: 1px solid var(--pw-route); }
+.pi-ride-note p { margin: 0; font: var(--pw-meta); }
+.pi-ride-note .avatar { flex: none; }
+.pi-ride-skeletons { display: grid; gap: var(--space-7); margin: 0 0 0 calc(var(--space-17) + var(--space-12)); padding: 0; list-style: none; }
+.pi-ride-skeletons li { display: flex; align-items: center; gap: var(--space-5); padding: var(--space-6); border: 1px dashed var(--pw-marigold-300); border-radius: var(--radius-lg); background: var(--pw-card); }
+.pi-ride-skeletons .pi-ride-stop-icon { flex: none; background: var(--pw-marigold-100); color: var(--pw-marigold-ink); }
+.pi-ride-skeleton-lines { display: grid; gap: var(--space-4); flex: 1; min-width: 0; }
+.pi-ride-skeleton-lines i { height: var(--space-4a); width: 70%; background: var(--pw-marigold-100); border-radius: var(--radius-pill); }
+.pi-ride-skeleton-lines i:last-child { width: 100%; }
+.pi-ride-skeletons .pi-pill { flex: none; }
+.pi-ride-paid-foot { display: flex; align-items: center; gap: var(--space-5); width: 100%; padding: var(--space-5); background: var(--pw-marigold-100); color: var(--pw-marigold-ink); border-radius: var(--radius); }
+.pi-ride-paid-foot > svg { flex: none; }
+.pi-ride-paid-foot p { margin: 0; font: var(--pw-meta); flex: 1; }
+.pi-ride-paid-foot button { flex: none; }
+.pi-other .pi-other-thumb { position: relative; width: var(--space-17); height: var(--space-15); }
+.pi-other-thumb .yf-art-picture { position: absolute; inset: 0; }
+.pi-other-thumb .pi-other-art-lock { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--pw-marigold-ink); }
+.pi-other--locked .pi-other-thumb .yf-art-picture { opacity: .55; }
+.pi-other-titleline .pi-other-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.pi-other .pi-other-titleline { flex-wrap: nowrap; }
+.pi-other-titleline .pi-pill { flex: none; }
+.pi-ride-aside .pi-buy-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); }
+.pi-ride-aside .pi-buy-price b { font: var(--pw-display-l); }
+.pi-ride-aside .pi-buy-price span { font: var(--pw-caption); }
+.pi-ride-aside .pi-aside-creator > svg { flex: none; margin-left: auto; color: var(--pw-ink-3); }
+.pi-ride-aside .pi-aside-creator b { font: var(--pw-ui); }
+.pi-ride-aside .pi-aside-creator .pi-muted { font: var(--pw-meta); }
+.pi-ride-group { display: flex; align-items: center; gap: var(--space-5); padding: var(--space-5) var(--space-6); background: var(--pw-lagoon-50); color: var(--pw-sea-900); border: 1px solid var(--pw-route); border-radius: var(--radius); }
+.pi-ride-group > svg, .pi-ride-group button { flex: none; }
+.pi-ride-group p { margin: 0; font: var(--pw-meta); }
+.pi-ride-height { padding: var(--space-7); gap: var(--space-4); }
+.pi-height-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); }
+.pi-height-heading h3 { margin: 0; font: var(--pw-ui); }
+.pi-height-heading > span, .pi-ride-height details { font: var(--pw-caption); color: var(--pw-ink-3); }
+.pi-ride-height p { margin: 0; font: var(--pw-caption); color: var(--pw-ink-3); }
+.pi-ride-height details summary { cursor: pointer; min-height: var(--space-11); }
+.pi-ride-height details a { color: var(--pw-sea-700); }
+.pi-height-state { padding: var(--space-4) var(--space-7); margin: 0; font: var(--pw-caption); color: var(--pw-ink-3); }
+@media (max-width: 720px) {
+  .pi-ride-main .pi-ride-head { padding-inline: var(--space-5); gap: var(--space-4); }
+  .pi-ride-main .pi-ride-title { font: var(--pw-title); }
+  .pi-ride-main .pi-ride-budget { padding-inline: var(--space-5); }
+  .pi-ride-main .pi-ride-body { padding: var(--space-5) var(--space-5) var(--space-5) var(--space-2); }
+  .pi-ride-timeline .pi-tl-row { grid-template-columns: var(--space-17) var(--space-10) minmax(0, 1fr); }
+  .pi-ride-timeline .pi-tl-time { font: var(--pw-caption); }
+  .pi-ride-timeline .pi-tl-time b { font: var(--pw-caption); white-space: nowrap; }
+  .pi-page .pi-ride-timeline .pi-tl-row--stop .pi-ride-stop { grid-template-columns: minmax(0, 1fr); padding: var(--space-5); }
+  .pi-ride-stop > .pi-ride-stop-icon { display: none; }
+  .pi-ride-note { gap: var(--space-4); padding: var(--space-4); }
+  .pi-ride-note .avatar { display: none; }
+  .pi-ride-main .pi-ride-foot { padding-inline: var(--space-5); }
+  .pi-ride-skeletons { margin-left: calc(var(--space-17) + var(--space-10) - var(--space-4)); }
+  .pi-ride-skeletons li { flex-wrap: wrap; padding: var(--space-5); }
+  .pi-ride-skeletons .pi-ride-stop-icon { width: var(--space-12); height: var(--space-12); }
+  .pi-ride-skeletons .pi-pill { margin-left: auto; }
+  .pi-ride-paid-foot { flex-wrap: wrap; }
+  .pi-ride-paid-foot > svg { display: none; }
+  .pi-ride-paid-foot p { flex-basis: 100%; }
+  .pi-ride-paid-foot button { margin-left: auto; }
+  .pi-other { grid-template-columns: var(--space-14) var(--space-12) minmax(0, 1fr) var(--space-14); gap: var(--space-4); }
+  .pi-other .pi-other-thumb { display: block; grid-column: 1; grid-row: 1; width: var(--space-14); height: var(--space-15); }
+  .pi-other .pi-other-num { grid-column: 2; grid-row: 1; width: var(--space-12); }
+  .pi-other .pi-other-main { grid-column: 3; grid-row: 1; }
+  .pi-other .pi-other-open { grid-column: 4; grid-row: 1; }
+  .pi-other .pi-other-line { white-space: nowrap; }
+  .pi-other .pi-other-titleline { flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+  .pi-other-titleline .pi-other-title { flex-basis: 100%; }
+  .pi-other .pi-other-road { display: none; }
+  .pi-ride-group { gap: var(--space-4); }
+}
+.pi-page .pi-ride--locked .pi-ride-band { background: var(--pw-marigold-100); }
+.pi-page .pi-ride--locked .pi-ride-band .yf-art-picture { opacity: .55; filter: saturate(.55) sepia(.25); }
+/* Explore h1: the coloured phrase is the second line, as in the mockup. Balance alone moved "it," down. */
+
+/* ==== PR914 motion polish ==== */
+/* One entrance per layer. The route and the page cascade already lift the page,
+   so the three page blocks below only fade. Their own children keep the rise
+   and the stagger. */
+.page-enter > :is(.pi-wrap, .ex-hero, .ex-layout) { animation-name: sf-fade; }
+
+/* A panel that swaps in (Look inside or Ride along) fades in as one piece. The
+   open day of Ride along fades while its timeline rows rise one by one. */
+.pi-page .pi-panel { animation: sf-fade var(--motion-slow) var(--ease-paper) backwards; }
+.pi-page .pi-ride-main > article.pi-ride { animation-name: sf-fade; }
+
+/* A day that turns "read" or "open now" fades its status line in. */
+.pi-page :is(.pi-rib--read, .pi-rib--now) .pi-rib-sub { animation: sf-fade var(--motion-med) var(--ease-paper) backwards; }
+
+/* The take panel links ease their ink instead of snapping. */
+.pi-take :is(.pi-take-read, .pi-take-link) { transition: opacity var(--motion-fast) var(--ease-paper); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pi-page .pi-panel, .pi-page .pi-ride-main > article.pi-ride,
+  .pi-page :is(.pi-rib--read, .pi-rib--now) .pi-rib-sub { animation: none; }
+  .pi-take :is(.pi-take-read, .pi-take-link),
+  .pi-page .sf-sticky, .pi-page .sf-sticky.is-visible { transition: none; }
+}
+
+/* ==== PR914 ride polish ==== */
+/* The day ribbon scrolls sideways. The mockup shows no heavy bar, so the bar is
+   thin and quiet. It still shows, because it is the only cue that more days wait. */
+.pi-ribbon .pi-ribbon-track { scrollbar-width: thin; scrollbar-color: var(--pw-line) transparent; overscroll-behavior-inline: contain; }
+
+/* ==== PR914 nav: one navigation ==== */
+.pi-page:has(.pi-navigation) {
+  --pi-nav-top: calc(var(--nav-h) + var(--space-10) + 2px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
+  --pi-nav-clearance: 64px;
+}
+.pi-navigation {
+  position: sticky; top: var(--pi-nav-top); z-index: var(--z-strip);
+  display: flex; align-items: center; gap: var(--space-5); min-width: 0; min-height: 56px;
+  padding: var(--space-2); border: 1px solid var(--pw-line-soft); border-radius: var(--radius-lg);
+  background: var(--pw-card); color: var(--pw-ink); box-shadow: var(--elev-1);
+}
+.pi-navigation > .tabbar { flex: none; margin: 0; }
+.pi-navigation [role="tab"] { min-height: 44px; }
+.pi-navigation .pi-sections {
+  min-width: 0; overflow-x: auto; margin-inline-start: auto; padding: 0;
+  border: 0; background: none; box-shadow: none;
+}
+.pi-navigation .pi-section-tab { flex: none; min-height: 44px; }
+.pi-navigation-ride { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); margin-inline-start: auto; }
+.pi-navigation-ride > button { border: 0; background: none; cursor: pointer; }
+.pi-page .pi-ride-aside { top: calc(var(--pi-nav-top) + var(--pi-nav-clearance) + var(--space-7)); }
+.pi-page .sf-sticky > .sf-sticky-price { display: flex; white-space: nowrap; }
+@media (max-width: 720px) {
+  .pi-page:has(.pi-navigation) { --pi-nav-clearance: 72px; }
+  .pi-navigation { gap: var(--space-2); overflow-x: auto; scrollbar-width: thin; }
+  .pi-navigation > .tabbar { flex: none; }
+  .pi-navigation [role="tab"] { flex: none; padding-inline: var(--space-5); }
+  .pi-navigation .pi-sections { flex: none; overflow: visible; margin-inline-start: 0; }
+  .pi-navigation-ride { flex: none; margin-inline-start: auto; padding-inline-start: var(--space-5); }
+  .pi-navigation-ride > .pi-muted { white-space: nowrap; }
+  .pi-page .sf-sticky > .sf-sticky-price { flex-direction: column; align-items: flex-start; gap: 0; }
+}
+
+/* ==== PR914 road by height, Ride along side card ==== */
+/* The side card paints the Overview height chart. The teal base band of the
+   Overview becomes a plain axis row, and paid days get a marigold band. */
+.pi-ride-height .ovw-elev--side { border: 0; border-radius: var(--radius-sm); background: transparent; }
+.ovw-elev--side .ovw-elev-band { fill: transparent; }
+.ovw-elev--side .ovw-elev-axis.is-x { fill: var(--pw-ink-3); font-size: 11px; font-weight: 700; }
+.ovw-elev-paid-band { fill: var(--pw-marigold-100); stroke: var(--pw-marigold-300); stroke-width: 1; stroke-dasharray: 3 3; }
+.ovw-elev-paid-label { fill: var(--pw-marigold-ink); font-family: inherit; font-size: 11px; font-weight: 700; }
+.ovw-elev-paid { animation: sf-fade var(--motion-slow) var(--ease-paper) backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .ovw-elev-paid { animation: none; }
+}
+
+/* ==== PR914 · The road, by height (Ride along side card) ==== */
+/* One line runs the whole trip, paid days included. The paid runs are a tinted
+   band only: no gap, no box, no border. Every colour is a variable here, so the
+   dark theme swaps the six values and nothing else. */
+.pi-height-card {
+  --hc-sky-top: #FBE3D2;
+  --hc-sky-bottom: var(--pw-paper);
+  --hc-band: #FFF4E0;
+  --hc-free: #6CCAB3;
+  --hc-paid: #F6CF8E;
+  --hc-line: #0B5F67;
+  --hc-label: #556972;
+  --hc-band-text: #8A4F0E;
+  --hc-muted: #556972;
+  --hc-label-size: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+}
+:root:where([data-theme='dark']) .pi-height-card {
+  --hc-sky-top: #1B2A33;
+  --hc-sky-bottom: #14232B;
+  --hc-band: #3A2E1C;
+  --hc-free: #2F8F7E;
+  --hc-paid: #B98A43;
+  --hc-line: #7FD3C2;
+  --hc-label: #A9B8BE;
+  --hc-band-text: #2A1B08;
+  --hc-muted: #A9B8BE;
+}
+.pi-height-card .pi-height-heading h3 { font-size: 16px; }
+.pi-height-card .pi-height-heading > span { font: var(--pw-caption); color: var(--hc-muted); }
+.pi-height-card .pi-height-chart { display: block; width: 100%; height: auto; }
+.pi-height-sky-top { stop-color: var(--hc-sky-top); }
+.pi-height-sky-bottom { stop-color: var(--hc-sky-bottom); }
+.pi-height-paid-band { fill: var(--hc-band); }
+.pi-height-area.is-free { fill: var(--hc-free); opacity: .85; }
+.pi-height-area.is-paid { fill: var(--hc-paid); }
+.pi-height-line { stroke: var(--hc-line); stroke-width: 2.4; stroke-linecap: butt; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: pi-height-draw var(--motion-slower) var(--ease-paper) forwards; }
+.pi-height-baseline { stroke: var(--hc-line); stroke-width: 4; }
+.pi-height-day { fill: var(--hc-label); font-family: inherit; font-size: var(--hc-label-size); font-weight: 700; }
+.pi-height-band-label { fill: var(--hc-band-text); font-family: inherit; font-size: var(--hc-label-size); font-weight: 700; }
+.pi-height-card .pi-height-caption { color: var(--hc-muted); }
+@keyframes pi-height-draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .pi-height-line { animation: none; stroke-dasharray: none; stroke-dashoffset: 0; }
+}
+
+/* ---- P11 day ribbon: short tiles, one row ----
+   Every tile shares the row width, so the strip never scrolls sideways at
+   1440 px. A hex that matches a pw token uses the token instead.
+   The `--short` marker class keeps each selector distinct from the older
+   ribbon rules, so the stylesheet has one definition per selector. */
+.pi-ribbon-track--short .pi-ribbon-days {
+  display: flex; grid-auto-flow: initial; grid-auto-columns: initial;
+  gap: var(--space-4); padding: 22px 0 0;
+}
+.pi-ribbon-track--short .pi-ribbon-days > li { flex: 1 1 0; min-width: 0; }
+.pi-ribbon-track.pi-ribbon-track--short { grid-template-columns: minmax(0, 1fr); }
+.pi-ribbon-track--short .pi-rib {
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  min-width: 0; padding: 10px 12px; border: 1.5px solid transparent;
+  border-radius: var(--radius-sm); background: var(--pw-sunken); color: #142329;
+  text-align: start;
+  transition: background-color var(--motion-fast) var(--ease-paper),
+    border-color var(--motion-fast) var(--ease-paper),
+    transform var(--motion-fast) var(--ease-paper),
+    box-shadow var(--motion-fast) var(--ease-paper);
+}
+.pi-ribbon-track--short .pi-rib:hover { background: var(--pw-sunken); border-color: #CDD8D6; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .pi-ribbon-track--short .pi-rib:hover { transform: translateY(-2px); }
+}
+.pi-ribbon-track--short .pi-rib[aria-current='true'] {
+  background: var(--pw-lagoon-100); border-color: #0D8D82; box-shadow: none;
+}
+.pi-ribbon-track--short .pi-rib--locked {
+  background: var(--pw-marigold-50); border-color: #F6D59E; border-style: dashed;
+}
+.pi-ribbon-track--short .pi-rib--locked:hover { background: var(--pw-marigold-100); border-color: #F6D59E; }
+.pi-ribbon-track--short .pi-rib-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.pi-ribbon-track--short .pi-rib-day {
+  font-size: 12px; font-weight: 700; line-height: 1.2; letter-spacing: 0;
+  text-transform: none; white-space: nowrap; color: #556972;
+}
+.pi-ribbon-track--short .pi-rib[aria-current='true'] .pi-rib-day { color: var(--pw-sea-700); }
+.pi-ribbon-track--short .pi-rib--locked .pi-rib-day { color: #8A4F0E; }
+.pi-ribbon-track--short .pi-rib-dot { width: 8px; height: 8px; border-radius: 50%; background: #0D8D82; }
+.pi-ribbon-track--short .pi-rib-lock { color: #8A4F0E; }
+.pi-ribbon-track--short .pi-rib-title {
+  display: block; -webkit-box-orient: initial; -webkit-line-clamp: unset; line-clamp: unset;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 13.5px; font-weight: 700; line-height: 1.25; color: #142329;
+}
+.pi-ribbon-track--short .pi-rib-sub { font-size: 11.5px; line-height: 1.25; color: #45565D; }
+
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib {
+  background: var(--pw-lagoon-50); color: var(--pw-ink);
+}
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib:hover {
+  background: var(--pw-lagoon-50); border-color: var(--pw-line);
+}
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib[aria-current='true'] {
+  background: var(--pw-lagoon-100); border-color: var(--pw-sea-700);
+}
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib--locked,
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib--locked:hover {
+  background: var(--pw-marigold-50); border-color: var(--pw-marigold-300);
+}
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib--locked:hover { background: var(--pw-marigold-100); }
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib-day { color: var(--pw-ink-3); }
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib--locked .pi-rib-day { color: var(--pw-marigold-ink); }
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib-dot { background: var(--pw-route-line); }
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib-lock { color: var(--pw-marigold-ink); }
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib-title { color: var(--pw-ink); }
+:root:where([data-theme='dark']) .pi-ribbon-track--short .pi-rib-sub { color: var(--pw-ink-3); }
+
+/* ===== #914 day card mockup match ===== */
+/* The body pulls up over the band, exactly as the Look inside mockup does. */
+.sf-day-body {
+  position: relative;
+  z-index: var(--z-content);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  margin-top: calc((var(--space-8) + 10px) * -1);
+  padding: 0 14px 14px;
+}
+
+/* The band veil fades the picture, or the art, into the card fill. */
+.sf-day-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 35%, var(--pw-card) 100%);
+}
+.sf-day--locked .sf-day-veil {
+  background: linear-gradient(180deg, rgba(242,163,58,.38) 0%, rgba(255,248,236,.2) 40%, #FFF8EC 100%);
+}
+
+/* The glass lock over a locked band. */
+.sf-day-lockcircle {
+  position: absolute;
+  left: 50%;
+  top: 30px;
+  margin-left: -20px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.8);
+  background: rgba(254,253,251,.84);
+  backdrop-filter: blur(var(--yf-blur-panel));
+  color: #8A4F0E;
+}
+
+/* The town beside the day badge. A locked card never renders it. */
+.sf-day-town {
+  padding-bottom: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0B5F67;
+}
+/* A locked card's day label takes the paid ink. */
+.sf-day--locked .sf-day-num small { color: #8A4F0E; }
+
+.sf-day-meta-icon { display: inline-flex; flex: none; color: #0B5F67; }
+.sf-day-meta b { font-weight: 700; color: #2C3B42; }
+.sf-day-meta-drive { color: #556972; }
+
+/* The chip icon sits in a disc of its own ink. */
+.sf-day-chips .sf-chip-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--sf-c);
+  color: var(--sf-c-bg);
+}
+/* The mockup's three chip pairs. */
+.sf-day-chips .sf-kind--temple { --sf-c: #6E4A7E; --sf-c-bg: #EFE4F1; }
+.sf-day-chips .sf-kind--nature { --sf-c: #2F6B3A; --sf-c-bg: #E3EFDC; }
+.sf-day-chips .sf-kind--sight { --sf-c: #0B5F67; --sf-c-bg: #DDF1EE; }
+
+/* Dark theme. Each new light value gets its own dark value. */
+:root:where([data-theme='dark']) .sf-day {
+  background: var(--pw-card);
+  border-color: var(--pw-line);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 2px 4px rgba(0,0,0,.24), 0 18px 36px -20px rgba(0,0,0,.6);
+}
+:root:where([data-theme='dark']) .sf-day--locked { background: #241C12; border-color: #4A3A22; }
+:root:where([data-theme='dark']) .sf-day--yours { background: var(--pw-card); }
+:root:where([data-theme='dark']) .sf-day-tag {
+  background: rgba(22,35,58,.82);
+  border-color: rgba(255,255,255,.14);
+  color: var(--pw-sea-700);
+}
+:root:where([data-theme='dark']) .sf-day--locked .sf-day-tag { background: #3A2A12; border-color: transparent; color: #F2C98B; }
+:root:where([data-theme='dark']) .sf-day-num {
+  background: linear-gradient(180deg, rgba(22,35,58,.96) 0%, rgba(16,27,43,.9) 100%);
+  border-color: rgba(255,255,255,.14);
+}
+:root:where([data-theme='dark']) .sf-day-num small { color: var(--pw-sea-700); }
+:root:where([data-theme='dark']) .sf-day--locked .sf-day-num small { color: #F2C98B; }
+:root:where([data-theme='dark']) .sf-day-town,
+:root:where([data-theme='dark']) .sf-day-meta-icon { color: var(--pw-sea-700); }
+:root:where([data-theme='dark']) .sf-day-meta { color: #C9D6E2; }
+:root:where([data-theme='dark']) .sf-day-meta b { color: #E6EEF6; }
+:root:where([data-theme='dark']) .sf-day-meta-drive { color: #93A6B3; }
+:root:where([data-theme='dark']) .sf-day-locknote { background: #2C2214; color: #F2C98B; }
+:root:where([data-theme='dark']) .sf-day-veil { background: linear-gradient(180deg, transparent 35%, var(--pw-card) 100%); }
+:root:where([data-theme='dark']) .sf-day--locked .sf-day-veil {
+  background: linear-gradient(180deg, rgba(242,163,58,.28) 0%, rgba(36,28,18,.35) 40%, #241C12 100%);
+}
+:root:where([data-theme='dark']) .sf-day-lockcircle {
+  background: rgba(22,35,58,.84);
+  border-color: rgba(255,255,255,.14);
+  color: #F2C98B;
+}
+:root:where([data-theme='dark']) .sf-day-chips .sf-kind--temple { --sf-c: #D6BCE2; --sf-c-bg: #2A2030; }
+:root:where([data-theme='dark']) .sf-day-chips .sf-kind--nature { --sf-c: #B5D8B9; --sf-c-bg: #1D2B20; }
+:root:where([data-theme='dark']) .sf-day-chips .sf-kind--sight { --sf-c: #7FD9CE; --sf-c-bg: #13302C; }

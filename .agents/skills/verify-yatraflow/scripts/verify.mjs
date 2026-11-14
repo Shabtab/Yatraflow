@@ -444,9 +444,23 @@ async function drive(route, name, options) {
 }
 
 // ---------- stop ----------
+// Edge helper processes can outlive taskkill /T and keep the profile locked.
+// Kill only the processes whose command line names this run's own profile.
+function killProfileStragglers() {
+  if (process.platform !== 'win32') return
+  const script = 'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:VERIFY_PROFILE_DIR) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }'
+  try {
+    execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      stdio: 'ignore',
+      env: { ...process.env, VERIFY_PROFILE_DIR: BROWSER_PROFILE },
+    })
+  } catch { /* nothing left to kill */ }
+}
+
 function stop() {
   killTree(readPid(BROWSER_PID))
   killTree(readPid(DEV_PID))
+  killProfileStragglers()
   // Remove run state (pids, the browser profile, the dev log). Proof artifacts
   // directly under .verify-evidence/ are left in place. Windows keeps profile
   // files locked for a moment after taskkill, so retry instead of failing.

@@ -99,7 +99,8 @@
   fill: none;
   stroke: var(--pw-ink);
   stroke-width: 3px;
-  stroke-linecap: round;
+  /* The line is clipped to the plot, so its ends sit flush on the edge. */
+  stroke-linecap: butt;
   stroke-linejoin: round;
   stroke-dasharray: 1;
 }
@@ -172,32 +173,26 @@
 }
 
 /* The true-shape inset. Its path is the real route projected into a small box,
-   so the shape is real and the inset carries no height. Linen: a 124 px card
-   with 6 px padding, a 112 x 96 drawing and a north-up caption. */
+   so the shape is real and the inset carries no height. It rides in the card
+   HEADER beside the title block as a compact 88 px square: a corner inside a
+   mountain profile always covers part of the route line, and this drawing is
+   the line's own shape. */
 .ovw-elev-inset {
-  position: absolute;
-  top: 10px;
-  left: 39%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
+  flex: none;
   box-sizing: border-box;
-  width: 124px;
+  width: 88px;
+  height: 88px;
   padding: 6px;
   border: 1px solid var(--pw-line-soft);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--pw-card) 90%, transparent);
-  backdrop-filter: blur(var(--yf-blur-chip));
-  -webkit-backdrop-filter: blur(var(--yf-blur-chip));
-  box-shadow: var(--elev-2);
-  pointer-events: none;
+  box-shadow: var(--elev-1);
 }
 
 .ovw-elev-inset-svg {
   display: block;
-  width: 112px;
-  height: 96px;
+  width: 100%;
+  height: 100%;
 }
 
 .ovw-elev-inset-grid { fill: none; stroke: var(--pw-line); stroke-width: .8px; }
@@ -216,7 +211,6 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-
 .ovw-elev-inset-line {
   fill: none;
   stroke: var(--pw-sea-700);
@@ -255,8 +249,6 @@
   }
 
   .ovw2-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-
-  .ovw-elev-inset { display: none; }
 
   .ovw-elev-name { font-size: 11px; }
 
@@ -1036,4 +1028,10 @@ div[role="tabpanel"]:has(> .ovw2) { animation: none; }
   .ovw-weather .ovw-wx-cell,
   .ovw-matrix .mx .mx-row:not(.is-head),
   .ovw-matrix .mx-compact > .mx-crow { animation: none; }
+}
+
+/* The 88 px header square needs room beside the caption and the link. A 390
+   phone header has none, so the square is dropped there. */
+@media (max-width: 480px) {
+  .ovw-elev-inset { display: none; }
 }
