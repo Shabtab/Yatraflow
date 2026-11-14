@@ -2002,6 +2002,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
       fixed={lens === 'fix' ? (lenses.fix.phase === 'ready' && lenses.fix.problem != null ? FIX_SOURCE_LINE : '') : null} />
     <button type="button" className="btn btn-ghost btn-sm" onClick={retryScan} disabled={loadingPois} title="Refresh suggestions"><RotateCcw size={14} aria-hidden />Refresh</button>
   </footer>
+  // Phone floors stay 0: TripMap measures the covers from the overlay rects,
+  // and the mark margin joins once. The sheet height is the only floor the
+  // DOM cannot re-derive, because the sheet is the map's sibling. Desktop
+  // keeps its panel widths: the itinerary sits beside the canvas, so no
+  // cover measurement sees it.
   return (
     <div className={`mv2-workspace${railPresence.mounted ? '' : ' is-day-folded'}${deckPresence.mounted ? '' : ' is-deck-folded'}`} data-snap={snap} data-role={editable ? 'editor' : 'viewer'}>
       {(poisFailed || quotaOut) && !deckOpen && <p className="mv2-provider-status" role="status">{quotaOut ? 'Google search · Limit reached' : 'Route picks · Unavailable · Refresh to retry'}</p>}
@@ -2470,7 +2475,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
               workspaceChrome
               instantTarget={!!localTarget && targetRequest?.instant === true}
               journeyCursor={scrubCursor?.contextKey === scrubContext ? { coordinate: scrubCursor.coordinate, label: formatHM(clockHM(scrubCursor.minute), timeFormat) } : null}
-              overlayInsets={{ left: itineraryOpen && !phoneSheet ? (compactMap ? 298 : 404) : 24, right: deckOpen && !phoneSheet ? (compactMap ? 306 : 396) : 70, top: 90, bottom: phoneSheet ? phoneSheetHeight : 90 }}
+              overlayInsets={{ left: itineraryOpen && !phoneSheet ? (compactMap ? 298 : 404) : 0, right: deckOpen && !phoneSheet ? (compactMap ? 306 : 396) : 0, top: 0, bottom: phoneSheet ? phoneSheetHeight : 0 }}
               enableMapViewModes
               mainRouteGeometry={routeGeometry}
               returnRouteGeometry={returnRouteGeometry}

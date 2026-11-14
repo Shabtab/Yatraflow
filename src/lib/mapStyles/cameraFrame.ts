@@ -4,8 +4,9 @@
 export interface FrameRect { left: number; top: number; right: number; bottom: number }
 export interface FrameInsets { top: number; bottom: number; left: number; right: number }
 
-/** Room a mark needs beyond its coordinate: the badge above, the clock pill below. */
-export const MARK_FRAME_MARGIN: FrameInsets = { top: 22, bottom: 46, left: 48, right: 48 }
+/** Room a mark needs beyond its coordinate: the pin body draws upward, the
+ *  badge hangs below, and the pills need side room. */
+export const MARK_FRAME_MARGIN: FrameInsets = { top: 40, bottom: 46, left: 48, right: 48 }
 
 const ZERO: FrameInsets = { top: 0, bottom: 0, left: 0, right: 0 }
 
@@ -54,10 +55,12 @@ export function addInsets(a: FrameInsets, b: FrameInsets): FrameInsets {
   return { top: a.top + b.top, bottom: a.bottom + b.bottom, left: a.left + b.left, right: a.right + b.right }
 }
 
-/** Keep at least `minOpen` px of open canvas. Shrink all four edges by one shared ratio. */
-export function clampInsets(size: { width: number; height: number }, insets: FrameInsets, minOpen = 120): FrameInsets {
-  const horizontal = Math.min(1, Math.max(0, size.width - minOpen) / Math.max(1, insets.left + insets.right))
-  const vertical = Math.min(1, Math.max(0, size.height - minOpen) / Math.max(1, insets.top + insets.bottom))
+/** Keep the open canvas at least `minOpen` wide and high. Shrink all edges by one shared ratio. */
+export function clampInsets(size: { width: number; height: number }, insets: FrameInsets, minOpen: number | { width: number; height: number } = 120): FrameInsets {
+  const minWidth = typeof minOpen === 'number' ? minOpen : minOpen.width
+  const minHeight = typeof minOpen === 'number' ? minOpen : minOpen.height
+  const horizontal = Math.min(1, Math.max(0, size.width - minWidth) / Math.max(1, insets.left + insets.right))
+  const vertical = Math.min(1, Math.max(0, size.height - minHeight) / Math.max(1, insets.top + insets.bottom))
   return {
     top: Math.floor(insets.top * vertical),
     bottom: Math.floor(insets.bottom * vertical),
@@ -66,9 +69,40 @@ export function clampInsets(size: { width: number; height: number }, insets: Fra
   }
 }
 
+/** The padding the first route fit uses: the measured insets plus the room the marks need, once. */
+export function firstFitPadding(size: { width: number; height: number }, insets: FrameInsets): FrameInsets {
+  return clampInsets(size, addInsets(insets, MARK_FRAME_MARGIN))
+}
+
+/** Keep the first open area when a settle pass grows the padding. */
+export function settlePadding(size: { width: number; height: number }, insets: FrameInsets, extra: FrameInsets): FrameInsets {
+  const base = firstFitPadding(size, insets)
+  const minOpen = {
+    width: Math.max(0, size.width - base.left - base.right),
+    height: Math.max(0, size.height - base.top - base.bottom),
+  }
+  return clampInsets(size, addInsets(base, extra), minOpen)
+}
+
+/**
+ * One settle pass. Boxes use the covered rect, not the mark margin.
+ * The first fit margin already leaves room for a stop badge.
+ */
+export function settleStep(size: { width: number; height: number }, insets: FrameInsets, extra: FrameInsets, boxes: FrameBox[]): FrameInsets | null {
+  const overflow = frameOverflow(boxes, safeRect(size, insets))
+  if (!hasOverflow(overflow)) return null
+  return addInsets(extra, overflow)
+}
+
 /** The open rectangle in canvas pixels, after the insets. */
 export function safeRect(size: { width: number; height: number }, insets: FrameInsets): FrameRect {
   return { left: insets.left, top: insets.top, right: size.width - insets.right, bottom: size.height - insets.bottom }
+}
+
+/** The open canvas area in square pixels. */
+export function openArea(size: { width: number; height: number }, insets: FrameInsets): number {
+  const open = safeRect(size, insets)
+  return Math.max(0, open.right - open.left) * Math.max(0, open.bottom - open.top)
 }
 
 export interface FrameBox { x: number; y: number; w: number; h: number }
