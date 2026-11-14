@@ -40,7 +40,7 @@ import { dayRoadSlices, ROUTE_PAINT } from '../lib/mapStyles/routeTreatment'
 import { DayRouteLayers } from './map/DayRouteLayers'
 import { PlaceSubtypeMark, WarningDiamond } from './map/MapWorkspaceMarks'
 import { ghostInk, ghostLegPaint, layoutMarks, pickLetter, placeSubtype, type GhostLeg, type GhostRoad, type LayoutMark, type MarkBounds, type MarkSpot } from '../lib/mapStyles/placeMarks'
-import { BASE_TAG_GAP, CORRIDOR_PAINT, STAY_RING_CANVAS_FRACTION, NUMBER_TAG_GAP, baseTagBox, baseTagText, clampBoundsWithin, corridorEdgeGeoJson, drawsCorridor, smoothCorridorLine, thinCorridorLine, pickBandClass, ringCaptionMode, ringCaptionPoint, showsHotelTag, showsStopTag, stayFrameBounds, stayRingsFillGeoJson, stayRingsGeoJson, stopTagBox } from '../lib/mapStyles/lensMarks'
+import { BASE_TAG_GAP, CORRIDOR_PAINT, STAY_RING_CANVAS_FRACTION, NUMBER_TAG_GAP, baseTagBox, baseTagText, clampBoundsWithin, corridorEdgeGeoJson, corridorEdgeOffset, drawsCorridor, smoothCorridorLine, thinCorridorLine, pickBandClass, ringCaptionMode, ringCaptionPoint, showsHotelTag, showsStopTag, stayFrameBounds, stayRingsFillGeoJson, stayRingsGeoJson, stopTagBox } from '../lib/mapStyles/lensMarks'
 import { firstFitPadding, mergeInsets, coverInsets, settleStep, settlePadding, safeRect, type FrameBox, type FrameInsets } from '../lib/mapStyles/cameraFrame'
 import {
   applyViewModeOnMap, HERO_3D_CAMERA, MAP_VIEW_MODES, MAP_VIEW_MODE_META,
@@ -2168,7 +2168,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                 <>
                   {focused.length > 0 ? <>
                     {corridorDay != null && focused.filter(slice => slice.selected && slice.dayIndex === corridorDay).map(slice => (
-                      <MapRoute key={`yf-all-corridor-${slice.dayIndex}`} id={`yf-all-corridor-${slice.dayIndex}`} coordinates={slice.coordinates} color={colorForDay(slice.dayIndex)} width={CORRIDOR_PAINT.width} opacity={CORRIDOR_PAINT.opacity} interactive={false} />
+                      <MapRoute key={`yf-all-corridor-${slice.dayIndex}`} id={`yf-all-corridor-${slice.dayIndex}`} coordinates={slice.coordinates} color={colorForDay(slice.dayIndex)} width={CORRIDOR_PAINT.width} tolerance={CORRIDOR_PAINT.tolerance} opacity={CORRIDOR_PAINT.opacity} interactive={false} />
                     ))}
                     <DayRouteLayers slices={focused} dark={dark} colorFor={colorForDay} />
                     {focused.filter(slice => slice.selected).map(slice => <RouteArrows key={slice.dayIndex} coordinates={slice.coordinates} dark={dark} />)}
@@ -2217,12 +2217,11 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                       interactive={false}
                     />
                     {!rough && drawsCorridor(corridorDay, d.index) && (() => {
-                      // The Drive board: a 46 px day-colour wash at 0.15, with a
-                      // 1 px dashed edge at 0.5 on each side of the band.
+                      // The wash narrows at low zoom. Dashed edges appear from zoom 9.
                       const wash = smoothCorridorLine(thinCorridorLine(coords), 3)
                       const edges = corridorEdgeGeoJson(wash)
                       return <>
-                        <MapRoute id={`yf-day-corridor-${d.index}`} coordinates={wash} color={colorForDay(d.index)} width={CORRIDOR_PAINT.width} opacity={CORRIDOR_PAINT.opacity} interactive={false} />
+                        <MapRoute id={`yf-day-corridor-${d.index}`} coordinates={wash} color={colorForDay(d.index)} width={CORRIDOR_PAINT.width} tolerance={CORRIDOR_PAINT.tolerance} opacity={CORRIDOR_PAINT.opacity} interactive={false} />
                         {([-1, 1] as const).map(side => (
                           <MapGeoJSON
                             key={`yf-day-edge-${d.index}-${side}`}
@@ -2234,7 +2233,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                               'line-width': CORRIDOR_PAINT.edgeWidth,
                               'line-opacity': CORRIDOR_PAINT.edgeOpacity,
                               'line-dasharray': CORRIDOR_PAINT.edgeDash,
-                              'line-offset': side * (CORRIDOR_PAINT.width / 2),
+                              'line-offset': corridorEdgeOffset(side),
                             }}
                           />
                         ))}

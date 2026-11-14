@@ -45,10 +45,9 @@ describe('stopTagBox', () => {
 describe('the corridor wash', () => {
   it('is a wide, faint day-colour band with a dashed edge', () => {
     expect(CORRIDOR_PAINT.opacity).toBeCloseTo(0.15)
-    expect(CORRIDOR_PAINT.width).toBeGreaterThanOrEqual(44)
-    expect(CORRIDOR_PAINT.width).toBeLessThanOrEqual(50)
+    expect(CORRIDOR_PAINT.width.at(-1)).toBe(46)
     expect(CORRIDOR_PAINT.edgeWidth).toBe(1)
-    expect(CORRIDOR_PAINT.edgeOpacity).toBeCloseTo(0.5)
+    expect(CORRIDOR_PAINT.edgeOpacity).toEqual(['step', ['zoom'], 0, 9, 0.5])
   })
 
   it('draws over the casing and under the route line', () => {
