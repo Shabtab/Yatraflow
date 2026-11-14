@@ -78,7 +78,7 @@ describe('corridorEdgeGeoJson', () => {
 
 describe('corridor paint', () => {
   it('holds the board width, opacity and dashed edge', () => {
-    expect(CORRIDOR_PAINT.width).toEqual(['interpolate', ['linear'], ['zoom'], 7, 8, 10, 12, 12, 16, 15, 46])
+    expect(CORRIDOR_PAINT.width).toEqual(['interpolate', ['linear'], ['zoom'], 7, 8, 10, 18, 12, 28, 14, 46])
     expect(CORRIDOR_PAINT.opacity).toBeCloseTo(0.15)
     expect(CORRIDOR_PAINT.edgeWidth).toBe(1)
     expect(CORRIDOR_PAINT.edgeOpacity).toEqual(['step', ['zoom'], 0, 9, 0.5])

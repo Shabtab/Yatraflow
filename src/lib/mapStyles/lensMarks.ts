@@ -201,7 +201,7 @@ export function drawsCorridor(corridorDay: number | null | undefined, dayIndex: 
   return corridorDay != null && corridorDay === dayIndex
 }
 
-const CORRIDOR_WIDTH_STOPS = [[7, 8], [10, 12], [12, 16], [15, 46]] as const
+const CORRIDOR_WIDTH_STOPS = [[7, 8], [10, 18], [12, 28], [14, 46]] as const
 
 function corridorWidth(scale: number): ExpressionSpecification {
   return ['interpolate', ['linear'], ['zoom'], ...CORRIDOR_WIDTH_STOPS.flatMap(([zoom, width]) => [zoom, width * scale])]
