@@ -98,6 +98,8 @@ Every PR targets `test`. Check its diff for unrelated work first.
 
 **Profile travel-style grid (2026-11-04):** The ten styles now use two columns of rows, as Trip Settings Pace does. Several styles stay selected at once. Selected rows keep sea ink. The clock-format pills and Trip Settings do not change.
 
+**Settings section navigation (local, 2026-11-14):** Trip Settings and Profile follow section fragments on initial load and browser history steps. A fragment history step keeps the page scroll. The Profile phone menu reveals its active item on the horizontal axis only. The page layouts and form paths do not change.
+
 The page and component slices remain pending. After PW-04, independent page slices may proceed in parallel.
 Assign disjoint page files. The single styles owner integrates shared CSS in sequence.
 PW-14 may wait without blocking the compact Overview. Record its source decision before work.

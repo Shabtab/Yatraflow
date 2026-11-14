@@ -36,6 +36,7 @@ import { regionFor } from '../../lib/tripsPage'
 import { RemoteEditBanner } from '../../components/RemoteEditBanner'
 import { Surface } from '../../components/page/Surface'
 import { StateBlock } from '../../components/page/StateBlock'
+import { watchSectionHash } from '../../lib/sectionNavigation'
 
 /** The allowance the "drive after dinner" toggle turns on when a trip has none
  *  (#122's dhaba case: dinner at X, two more hours to Y). */
@@ -814,8 +815,13 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
     window.addEventListener('scroll', mark, { passive: true })
     window.addEventListener('resize', mark)
     for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) window.addEventListener(type, release, { passive: true })
-    mark()
+    const unwatchHash = watchSectionHash(sections.map(section => section.id), id => {
+      railClick.current = id !== null
+      if (id) setActiveSection(id.replace('tset-', ''))
+      else mark()
+    })
     return () => {
+      unwatchHash()
       io.disconnect()
       window.removeEventListener('scroll', mark)
       window.removeEventListener('resize', mark)

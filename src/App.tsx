@@ -332,12 +332,15 @@ export default function App() {
     // One subscription for every route change: this module's navigate (one
     // pushState on the web), the browser's Back/Forward, and the native
     // shell's hash changes — the seam lives in lib/router.
-    return onRouteChange(() => {
-      setRoute(currentRoute())
+    return onRouteChange((event?: Event) => {
+      const nextRoute = currentRoute()
+      // Fragment history belongs to the page's section links.
+      if (event?.type === 'popstate' && nextRoute === route) return
+      setRoute(nextRoute)
       setMobileNav(false)
       window.scrollTo({ top: 0, behavior: scrollBehavior() })
     })
-  }, [])
+  }, [route])
 
   // Boot the store once: subscribes to Supabase auth changes and hydrates the
   // session's data into the cache. Without this, `me` stays null forever and
