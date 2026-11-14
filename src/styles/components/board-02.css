@@ -24,7 +24,11 @@
 /* One shared focus ring (DESIGN_TOKENS.md): box-shadow does not move layout. */
 .board-stop-title-btn:focus-visible { outline: none; box-shadow: var(--ring); }
 
-.board-col.drag-live { overflow: visible; }
+/* A live carry must cross into the next day. The stops list scrolls
+   (overflow-y: auto), and that also clips x, so the carried card was cut at its
+   own column edge and looked as if it went under the next column. Unclip both
+   layers only while a carry is live. */
+.board-col.drag-live, .board-col.drag-live .board-col-stops { overflow: visible; }
 
 .board-head { margin-bottom: 14px; }
 
