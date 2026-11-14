@@ -129,12 +129,11 @@ function groupSize(count: number): 's' | 'm' | 'l' {
 /** The workspace chrome hands the cluster layer no point, so no canvas badge can
  *  stand under a stop pin. One object, so the layer's data effect does not churn. */
 
-// How long the map's ready gate waits for the style's 'load' event before
-// opening anyway (see the mapLoaded effect). The fit behind that gate is a
-// camera operation — resize + fitBounds need the instance and its container,
-// not a resolved style — so a stalled style must never leave it permanently
-// dead. The stall is real: a hidden webview can hold a style mid-load forever.
-const STYLE_LOAD_WATCHDOG_MS = 4000
+// The map's ready gate (mapLoaded) is a camera latch. Every effect behind it
+// runs camera work: fitBounds, resize, project, DOM listeners. None of that
+// needs a resolved style. The style-sensitive layers (the road line, the
+// clusterer) gate on mapcn's own isLoaded instead. So the latch opens the
+// moment the instance exists, and the first fit runs while tiles load.
 // Overlays that cover the map in the workspace. The camera keeps marks clear of them.
 const WORKSPACE_COVER_SELECTOR = '.mv2-itinerary, .poi-col, .mv2-detail, .mv2-ribbon, .mv2-omnibar, .mv2-lenses, .mv2-phone-day, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left'
 // Drawn size of the marks the camera must keep inside the open map area.
@@ -1337,9 +1336,10 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   }, [workspaceChrome, mapLoaded])
 
   // The map mounts lazily inside a Suspense boundary, so mapRef may be null on
-  // the first render(s). Poll until the instance exists, then attach to its real
-  // 'load' event (checking isStyleLoaded in case it already fired) so mapLoaded
-  // reflects the map actually being ready — not just the ref existing.
+  // the first render(s). Poll until the instance exists, then open the camera
+  // latch. The fit is a camera operation: it needs the instance and its
+  // container, not a resolved style. The style-sensitive layers gate on
+  // mapcn's isLoaded, so a stalled style cannot leave the camera dead.
   const pointsKey = useMemo(
     () => allPoints.map(p => `${p.dayIndex}:${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('|'),
     [allPoints],
@@ -1347,29 +1347,11 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   useEffect(() => {
     if (!canDrawRoute) { setMapLoaded(false); return }
     let cancelled = false
-    let attached = false
-    let watchdog = 0
     const tick = setInterval(() => {
       if (cancelled) return
-      const m = mapRef.current
-      if (!m) return
-      if (!attached) {
-        attached = true
-        const onLoad = () => { if (!cancelled) setMapLoaded(true) }
-        if (m.isStyleLoaded()) onLoad()
-        else {
-          m.once('load', onLoad)
-          // Watchdog: a style that never reports 'load' (a hidden tab holding
-          // it mid-load, a stalled or blocked tile host) must not leave the
-          // auto-fit permanently dead behind this gate — the fit is a camera
-          // operation and does not need the style. A late 'load' changes
-          // nothing: opening the gate is idempotent.
-          watchdog = window.setTimeout(onLoad, STYLE_LOAD_WATCHDOG_MS)
-        }
-        clearInterval(tick)
-      }
-    }, 120)
-    return () => { cancelled = true; clearInterval(tick); window.clearTimeout(watchdog) }
+      if (mapRef.current) { setMapLoaded(true); clearInterval(tick) }
+    }, 60)
+    return () => { cancelled = true; clearInterval(tick) }
   }, [pointsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Real road geometry from OSRM. In "all days" mode a single connected chain —
@@ -1483,16 +1465,23 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     if (frameKey.current !== `${dayFilter}|${fitPointsKey}`) { frameKey.current = `${dayFilter}|${fitPointsKey}`; frameReleased.current = false }
     else if (frameReleased.current) return
     const timers: number[] = []
-    // Frame, then check the marks as drawn. A mark in the covered strip adds padding and frames again.
-    const settle = (attempt: number, extra: FrameInsets) => {
+    // Frame, then check the marks as drawn. A mark in the covered strip adds
+    // padding and frames again. The bounds argument hides pills that land
+    // outside the clear area, so a crowded phone view cannot grow the padding
+    // run after run (the zoom death spiral at 390px). Each pass passes the
+    // padding it used, so overflow adds on top instead of re-measuring from a
+    // base the previous pass already grew.
+    const settle = (attempt: number, used: FrameInsets) => {
       if (frameReleased.current || targetCameraActive.current) return
       const { size, insets } = measureFrame()
-      const overflow = frameOverflow(layoutOnMap(m).boxes, safeRect(size, insets))
+      const base = clampInsets(size, addInsets(insets, MARK_FRAME_MARGIN))
+      const safe = safeRect(size, addInsets(base, used))
+      const overflow = frameOverflow(layoutOnMap(m, { left: safe.left, top: safe.top, right: safe.right, bottom: safe.bottom }).boxes, safe)
       if (!hasOverflow(overflow) || attempt >= 3) return
-      const grown = addInsets(extra, overflow)
+      const grown = addInsets(used, overflow)
       // The correction glides too. A snap at the end of the day glide read as a jerk.
       const nudge = prefersReducedMotion() ? 0 : motionTiming('--motion-med').duration
-      m.fitBounds(bounds, { padding: clampInsets(size, addInsets(addInsets(insets, MARK_FRAME_MARGIN), grown)), maxZoom: 12, duration: nudge, easing: easeInOutCubic })
+      m.fitBounds(bounds, { padding: addInsets(base, grown), maxZoom: 12, duration: nudge, easing: easeInOutCubic })
       if (nudge === 0) settle(attempt + 1, grown)
       else m.once('moveend', () => settle(attempt + 1, grown))
     }
@@ -1500,12 +1489,13 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       m.resize()
       // A new day is a long move across the map. It takes the slower glide, with a soft start and end.
       const duration = prefersReducedMotion() ? 0 : motionTiming('--motion-slower').duration
-      m.fitBounds(bounds, { padding: cameraPadding(), maxZoom: 12, duration, easing: easeInOutCubic })
+      const used = cameraPadding()
+      m.fitBounds(bounds, { padding: used, maxZoom: 12, duration, easing: easeInOutCubic })
       if (!workspaceChrome) return
-      if (duration === 0) settle(0, { top: 0, bottom: 0, left: 0, right: 0 })
-      else m.once('moveend', () => settle(0, { top: 0, bottom: 0, left: 0, right: 0 }))
+      if (duration === 0) settle(0, used)
+      else m.once('moveend', () => settle(0, used))
       // The journey bar and the panels can mount after the first fit. Check again.
-      timers.push(window.setTimeout(() => settle(0, { top: 0, bottom: 0, left: 0, right: 0 }), 1500))
+      timers.push(window.setTimeout(() => settle(0, used), 1500))
     }
     const frame = requestAnimationFrame(run)
     return () => { cancelAnimationFrame(frame); timers.forEach(window.clearTimeout) }
