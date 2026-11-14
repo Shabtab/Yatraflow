@@ -41,7 +41,7 @@ import { DayRouteLayers } from './map/DayRouteLayers'
 import { PlaceSubtypeMark, WarningDiamond } from './map/MapWorkspaceMarks'
 import { ghostInk, ghostLegPaint, layoutMarks, pickLetter, placeSubtype, type GhostLeg, type GhostRoad, type LayoutMark, type MarkBounds, type MarkSpot } from '../lib/mapStyles/placeMarks'
 import { BASE_TAG_GAP, CORRIDOR_PAINT, STAY_RING_CANVAS_FRACTION, NUMBER_TAG_GAP, baseTagBox, baseTagText, clampBoundsWithin, corridorEdgeGeoJson, drawsCorridor, smoothCorridorLine, thinCorridorLine, pickBandClass, ringCaptionMode, ringCaptionPoint, showsHotelTag, showsStopTag, stayFrameBounds, stayRingsFillGeoJson, stayRingsGeoJson, stopTagBox } from '../lib/mapStyles/lensMarks'
-import { MARK_FRAME_MARGIN, addInsets, clampInsets, coverInsets, frameOverflow, hasOverflow, mergeInsets, safeRect, type FrameBox, type FrameInsets } from '../lib/mapStyles/cameraFrame'
+import { firstFitPadding, mergeInsets, coverInsets, settleStep, settlePadding, safeRect, type FrameBox, type FrameInsets } from '../lib/mapStyles/cameraFrame'
 import {
   applyViewModeOnMap, HERO_3D_CAMERA, MAP_VIEW_MODES, MAP_VIEW_MODE_META,
   heroBearingForRoute, heroCameraMove,
@@ -907,6 +907,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   )
   const basemapStatus = useWorkspaceBasemapStatus(theme)
   const mapRef = useRef<MapRef | null>(null)
+  // A host can pass 0 when measured covers own an edge. The fallback keeps
+  // maps without workspace chrome clear of the attribution and controls.
   const { top = 70, bottom = 70, left = 70, right = 70 } = overlayInsets ?? {}
   // The workspace panels, the journey bar and the attribution sit over the map.
   // The camera reads their live size, so a late layout change cannot hide a mark.
@@ -948,7 +950,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   }, [top, bottom, left, right, workspaceChrome])
   const cameraPadding = useCallback(() => {
     const { size, insets } = measureFrame()
-    return workspaceChrome ? clampInsets(size, addInsets(insets, MARK_FRAME_MARGIN)) : visibleMapPadding(size, insets)
+    return workspaceChrome ? firstFitPadding(size, insets) : visibleMapPadding(size, insets)
   }, [measureFrame, workspaceChrome])
   const [mapLoaded, setMapLoaded] = useState(false)
   // A target camera stays authoritative for its day until the user moves the
@@ -1256,12 +1258,13 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       }
     })
     const spots = layoutMarks(marks, { bounds })
-    // Only stops and pills steer the camera. A far pick must not pull the frame out.
-    const boxes: FrameBox[] = marks.filter(m => m.layer === 'stop' || (m.layer === 'clock' && m.follows?.startsWith('stop:'))).flatMap(m => {
+    // The boxes carry their layer. The settle pass uses stop badges alone.
+    // A pill that slid or hid adds no padding.
+    const boxes: (FrameBox & { layer: string })[] = marks.filter(m => m.layer === 'stop' || (m.layer === 'clock' && m.follows?.startsWith('stop:'))).flatMap(m => {
       const spot = spots.get(m.id)
       if (!spot || spot.hidden) return []
       const anchor = m.follows ? spots.get(m.follows) : undefined
-      return [{ x: m.x + spot.dx + (anchor?.dx ?? 0), y: m.y + spot.dy + (anchor?.dy ?? 0), w: m.w, h: m.h }]
+      return [{ layer: m.layer, x: m.x + spot.dx + (anchor?.dx ?? 0), y: m.y + spot.dy + (anchor?.dy ?? 0), w: m.w, h: m.h }]
     })
     return { spots, boxes }
   }, [])
@@ -1465,23 +1468,18 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     if (frameKey.current !== `${dayFilter}|${fitPointsKey}`) { frameKey.current = `${dayFilter}|${fitPointsKey}`; frameReleased.current = false }
     else if (frameReleased.current) return
     const timers: number[] = []
-    // Frame, then check the marks as drawn. A mark in the covered strip adds
-    // padding and frames again. The bounds argument hides pills that land
-    // outside the clear area, so a crowded phone view cannot grow the padding
-    // run after run (the zoom death spiral at 390px). Each pass passes the
-    // padding it used, so overflow adds on top instead of re-measuring from a
-    // base the previous pass already grew.
-    const settle = (attempt: number, used: FrameInsets) => {
+    // Frame, then check stop boxes against the covered rect. A settle pass
+    // keeps the first open area. Pills that slide or hide add no padding.
+    const settle = (attempt: number, extra: FrameInsets) => {
       if (frameReleased.current || targetCameraActive.current) return
       const { size, insets } = measureFrame()
-      const base = clampInsets(size, addInsets(insets, MARK_FRAME_MARGIN))
-      const safe = safeRect(size, addInsets(base, used))
-      const overflow = frameOverflow(layoutOnMap(m, { left: safe.left, top: safe.top, right: safe.right, bottom: safe.bottom }).boxes, safe)
-      if (!hasOverflow(overflow) || attempt >= 3) return
-      const grown = addInsets(used, overflow)
+      const currentPadding = settlePadding(size, insets, extra)
+      const { boxes } = layoutOnMap(m, safeRect(size, currentPadding))
+      const grown = settleStep(size, insets, extra, boxes.filter(box => box.layer === 'stop'))
+      if (!grown || attempt >= 3) return
       // The correction glides too. A snap at the end of the day glide read as a jerk.
       const nudge = prefersReducedMotion() ? 0 : motionTiming('--motion-med').duration
-      m.fitBounds(bounds, { padding: addInsets(base, grown), maxZoom: 12, duration: nudge, easing: easeInOutCubic })
+      m.fitBounds(bounds, { padding: settlePadding(size, insets, grown), maxZoom: 12, duration: nudge, easing: easeInOutCubic })
       if (nudge === 0) settle(attempt + 1, grown)
       else m.once('moveend', () => settle(attempt + 1, grown))
     }
@@ -1489,17 +1487,31 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       m.resize()
       // A new day is a long move across the map. It takes the slower glide, with a soft start and end.
       const duration = prefersReducedMotion() ? 0 : motionTiming('--motion-slower').duration
-      const used = cameraPadding()
-      m.fitBounds(bounds, { padding: used, maxZoom: 12, duration, easing: easeInOutCubic })
+      const base = cameraPadding()
+      m.fitBounds(bounds, { padding: base, maxZoom: 12, duration, easing: easeInOutCubic })
       if (!workspaceChrome) return
-      if (duration === 0) settle(0, used)
-      else m.once('moveend', () => settle(0, used))
+      if (duration === 0) settle(0, { top: 0, bottom: 0, left: 0, right: 0 })
+      else m.once('moveend', () => settle(0, { top: 0, bottom: 0, left: 0, right: 0 }))
       // The journey bar and the panels can mount after the first fit. Check again.
-      timers.push(window.setTimeout(() => settle(0, used), 1500))
+      timers.push(window.setTimeout(() => settle(0, { top: 0, bottom: 0, left: 0, right: 0 }), 1500))
     }
     const frame = requestAnimationFrame(run)
     return () => { cancelAnimationFrame(frame); timers.forEach(window.clearTimeout) }
   }, [fitPointsKey, mapLoaded, mapTarget, dayFilter, frameTick, stayOwnsCamera]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A stored inset that changes after mount (the phone sheet snap animates)
+  // re-frames the route, unless the user moved the map. The first values
+  // arm the baseline; the fit effect above already ran with them.
+  const lastInsets = useRef('')
+  useEffect(() => {
+    const key = `${top}|${bottom}|${left}|${right}`
+    if (!lastInsets.current) { lastInsets.current = key; return }
+    if (lastInsets.current === key) return
+    lastInsets.current = key
+    if (!workspaceChrome || !mapLoaded) return
+    const t = window.setTimeout(() => setFrameTick(n => n + 1), 260)
+    return () => window.clearTimeout(t)
+  }, [top, bottom, left, right, workspaceChrome, mapLoaded])
 
   // A new container size frames the route again, unless the user moved the map.
   useEffect(() => {
