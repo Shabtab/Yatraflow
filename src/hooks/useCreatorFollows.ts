@@ -24,7 +24,7 @@ export function useCreatorFollows(creator: string, viewer: string | null, api: C
   const identity = `${viewer ?? ''}:${creator}`
   const [settled, setSettled] = useState<{ identity: string; api: CreatorFollowApi; attempt: number; read: CreatorValue<boolean> } | null>(null)
   const [writing, setWriting] = useState<string | null>(null)
-  const [failure, setFailure] = useState<{ identity: string; text: string } | null>(null)
+  const [failure, setFailure] = useState<{ identity: string; intended: boolean; text: string } | null>(null)
   const inFlight = useRef(false)
   const liveIdentity = useRef(identity)
   useEffect(() => { liveIdentity.current = identity }, [identity])
@@ -34,7 +34,10 @@ export function useCreatorFollows(creator: string, viewer: string | null, api: C
     const ac = new AbortController()
     const timer = setTimeout(() => { ac.abort(); if (alive) setSettled({ identity, api, attempt, read: { kind: 'failed' } }) }, 10_000)
     void api.isFollowing(creator, ac.signal).then(value => {
-      if (alive && !ac.signal.aborted) setSettled({ identity, api, attempt, read: { kind: 'ready', value } })
+      if (alive && !ac.signal.aborted) {
+        setSettled({ identity, api, attempt, read: { kind: 'ready', value } })
+        setFailure(current => current?.identity === identity && current.intended === value ? null : current)
+      }
     }).catch(() => { if (alive) setSettled({ identity, api, attempt, read: { kind: 'failed' } }) })
       .finally(() => clearTimeout(timer))
     return () => { alive = false; clearTimeout(timer); ac.abort() }
@@ -54,7 +57,7 @@ export function useCreatorFollows(creator: string, viewer: string | null, api: C
       refresh()
     } catch {
       if (liveIdentity.current === identity) {
-        setFailure({ identity, text: 'Follow change not saved. Try again.' })
+        setFailure({ identity, intended: !following.value, text: 'Follow change not saved. Try again.' })
         refresh()
       }
     } finally {

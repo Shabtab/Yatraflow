@@ -1,7 +1,7 @@
 ## Store & persistence
 
 - Check optional profile facts per row. Drop invalid planning notes so one row cannot stop a public or admin profile read.
-- After a follow write fails, read the server state again. A timeout can occur after the server accepts the write.
+- After a follow write fails, read the server state again. Clear the error only when the read confirms the intended value. A timeout can occur after the server accepts the write.
 
 Writes, Supabase, RLS, covers, offline, import. Extracted from
 `CODING_STANDARDS.md` §2 on 2026-10-05; entries are verbatim. The root
