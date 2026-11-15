@@ -107,8 +107,13 @@ export async function bumpCreatorPageView(creatorId: string, source: string | nu
     // G8: name the post only for a post-tagged visit. Every other visit sends the
     // two older arguments, so it still works before the G8 SQL is applied.
     const tagged = safeSource === 'post' && isPostId(postId)
-    const { error } = await supabase.rpc('bump_creator_page_view',
+    let { error } = await supabase.rpc('bump_creator_page_view',
       tagged ? { p_creator: creatorId, p_source: safeSource, p_post: postId } : { p_creator: creatorId, p_source: safeSource })
+    if (tagged && (error?.code === 'PGRST202' || error?.code === '42883')) {
+      // The session claim still covers this visit when G8 is not yet applied.
+      const fallback = await supabase.rpc('bump_creator_page_view', { p_creator: creatorId, p_source: safeSource })
+      error = fallback.error
+    }
     if (error) console.error('[yatraflow] creator page visit failed', error)
   } catch (error) { console.error('[yatraflow] creator page visit failed', error) }
 }

@@ -1255,10 +1255,12 @@ end $$;
 --   17110000-0000-4000-8000-000000000002  another active creator
 --   17110000-0000-4000-8000-000000000003  disabled account
 --   routes of the owner: g8-pub-live (3 days, live), g8-pub-down (unpublished)
---   one route of the other creator: g8-pub-other (live)
+--   routes of the other creator: g8-pub-other (live), g8-pub-other-down (unpublished)
 --   posts: 17110000-0000-4000-8000-0000000000a1 on g8-pub-live (owner),
---          17110000-0000-4000-8000-0000000000a2 on g8-pub-down (owner)
--- No fixture script ships with this draft. Nothing here was run against a database.
+--          17110000-0000-4000-8000-0000000000a2 on g8-pub-down (owner),
+--          17110000-0000-4000-8000-0000000000b1 on g8-pub-other (other creator),
+--          17110000-0000-4000-8000-0000000000b2 on g8-pub-other-down (other creator)
+-- Run locally with node scripts/integration/creator-g8-db.mjs. Hosted execution stays manual.
 do $$
 declare
   v_role text;
@@ -1341,8 +1343,8 @@ begin
   -- Anonymous visitors: only posts on live routes of an active creator, read only.
   perform set_config('request.jwt.claim.sub', '', true);
   set local role anon;
-  if (select count(*) from public.creator_posts) <> 1
-    or exists (select 1 from public.creator_posts where pub_id = 'g8-pub-down') then
+  if (select count(*) from public.creator_posts) <> 2
+    or exists (select 1 from public.creator_posts where pub_id in ('g8-pub-down', 'g8-pub-other-down')) then
     raise exception 'G8: anonymous visitors must read only posts on live routes';
   end if;
   begin
@@ -1355,18 +1357,27 @@ begin
   perform public.bump_creator_page_view('17110000-0000-4000-8000-000000000001', 'post',
     '17110000-0000-4000-8000-0000000000a1');
   perform public.bump_creator_page_view('17110000-0000-4000-8000-000000000001', 'post',
-    '17110000-0000-4000-8000-0000000000ff');
+    '17110000-0000-4000-8000-0000000000b1');
   reset role;
+  if (select count(*) from public.creator_page_events
+      where creator_id = '17110000-0000-4000-8000-000000000001') <> 2
+    or (select count(*) from public.creator_page_events
+      where creator_id = '17110000-0000-4000-8000-000000000001' and post_id is null) <> 1
+    or (select count(*) from public.creator_page_events
+      where creator_id = '17110000-0000-4000-8000-000000000001'
+        and post_id = '17110000-0000-4000-8000-0000000000a1') <> 1 then
+    raise exception 'G8: own posts need attribution and real foreign posts must store NULL';
+  end if;
 
   -- Another creator: no write on the owner's posts, and their own routes only.
   perform set_config('request.jwt.claim.sub', '17110000-0000-4000-8000-000000000002', true);
   set local role authenticated;
-  if (select count(*) from public.creator_posts) <> 1 then
-    raise exception 'G8: another creator must read only the public post';
+  if (select count(*) from public.creator_posts) <> 3 then
+    raise exception 'G8: another creator must read own posts and the public owner post';
   end if;
-  delete from public.creator_posts;
+  delete from public.creator_posts where creator = '17110000-0000-4000-8000-000000000001';
   get diagnostics v_count = row_count;
-  update public.creator_posts set caption = 'x';
+  update public.creator_posts set caption = 'x' where creator = '17110000-0000-4000-8000-000000000001';
   get diagnostics v_n = row_count;
   if v_count <> 0 or v_n <> 0 then raise exception 'G8: another creator changed an owner post'; end if;
   begin
@@ -1397,8 +1408,8 @@ begin
   -- The owner: own rows, valid and invalid inserts, caption-only update, the cap.
   perform set_config('request.jwt.claim.sub', '17110000-0000-4000-8000-000000000001', true);
   set local role authenticated;
-  if (select count(*) from public.creator_posts) <> 2 then
-    raise exception 'G8: the owner must read both own posts';
+  if (select count(*) from public.creator_posts) <> 3 then
+    raise exception 'G8: the owner must read both own posts and the public foreign post';
   end if;
   if (select coalesce(sum(visits), 0) from public.get_creator_post_visits(30)) <> 1 then
     raise exception 'G8: only the real post may carry a visit';

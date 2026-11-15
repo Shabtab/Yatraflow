@@ -2,9 +2,8 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { POST_CAPTION_MAX, POST_LIMIT, POST_URL_MAX, POST_URL_RE } from '../src/lib/creatorPosts'
 
-// The G8 SQL is a draft that no test executes. This file is the one automated
-// link between it and the client: the same hosts, the same path class and the
-// same limits. A change on one side fails here until the other side follows.
+// The local G8 runner executes the SQL. These checks compare it with the client.
+// Both sides must use the same hosts, path class and limits.
 const sql = readFileSync(new URL('../supabase/migrations/20261117_creator_post_links.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
 const hostsOf = (pattern: string) => {
