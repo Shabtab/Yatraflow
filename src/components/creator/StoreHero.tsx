@@ -4,14 +4,14 @@
 // library; this component owns the cover band, the identity card and the
 // track-record tiles. Styling lives with the page CSS owner (`cr-store-*`).
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
-import { Camera, Eye, GitFork, Route, TvMinimalPlay } from 'lucide-react'
-import { InlineIcon } from '../icons'
+import { Eye, GitFork, Route } from 'lucide-react'
 import type { CachedUser, PublishedItinerary } from '../../data/types'
 import { appLinkHref, shouldHandleAppLink } from '../../lib/appLink'
 import { openExternal } from '../../lib/native'
 import { ExploreCover } from '../explore/ExploreCover'
 import { Avatar, Chip, CopyButton } from '../ui'
 import { CrStatTile } from './CrStatTile'
+import { SocialIcon } from './SocialIcon'
 
 /** The hero band's real width. The band spans the container; below 1440 it is
  *  the viewport less the container's inline padding. */
@@ -70,12 +70,12 @@ export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, 
   heading: ReactNode
 }) {
   const name = creator.profile.name
-  const channels: { key: 'youtube' | 'instagram'; href: string; label: string; icon: typeof Camera }[] = []
+  const channels: { key: 'youtube' | 'instagram'; href: string; label: string }[] = []
   if (creator.profile.socialLinks?.youtube) {
-    channels.push({ key: 'youtube', href: creator.profile.socialLinks.youtube, label: `${name} on YouTube`, icon: TvMinimalPlay })
+    channels.push({ key: 'youtube', href: creator.profile.socialLinks.youtube, label: `${name} on YouTube` })
   }
   if (creator.profile.socialLinks?.instagram) {
-    channels.push({ key: 'instagram', href: creator.profile.socialLinks.instagram, label: `${name} on Instagram`, icon: Camera })
+    channels.push({ key: 'instagram', href: creator.profile.socialLinks.instagram, label: `${name} on Instagram` })
   }
   const libraryHref = `${appLinkHref(`/creator/${creator.id}`)}#creator-library`
   return (
@@ -110,11 +110,11 @@ export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, 
                   )}
                   <CopyButton text={shareUrl} label="Share" />
                   {channels.length > 0 && <span className="cr-store-divider" aria-hidden="true" />}
-                  {channels.map(({ key, href, label, icon }) => (
+                  {channels.map(({ key, href, label }) => (
                     <a key={key} className="btn btn-ghost" href={href} target="_blank" rel="noreferrer noopener"
                       aria-label={label}
                       onClick={e => { e.preventDefault(); openExternal(href) }}>
-                      <InlineIcon icon={icon} size={14} gap={4} />{key === 'youtube' ? 'YouTube' : 'Instagram'}
+                      <SocialIcon kind={key} size={14} />{key === 'youtube' ? 'YouTube' : 'Instagram'}
                     </a>
                   ))}
                 </div>
