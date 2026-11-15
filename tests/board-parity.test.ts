@@ -90,3 +90,23 @@ describe('#372 — a Board mutation is guarded like its siblings', () => {
     expect(board).not.toMatch(/onToggleFocus=\{\(/)
   })
 })
+
+describe('a carried stop stays visible and stays on the pointer', () => {
+  const css = page('../src/styles/components/board-02.css')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+
+  it('lifts the live column above the transformed map-focus columns', () => {
+    expect(css).toMatch(/\.board-col\.drag-live \{ z-index: var\(--z-raised\); \}/)
+  })
+
+  it('unclips a short stop list but keeps the clip on a list that scrolls', () => {
+    expect(css).toMatch(/\.board-col\.drag-live \.board-col-stops:not\(\.keeps-scroll\) \{ overflow: visible; \}/)
+    expect(css).not.toMatch(/\.board-col\.drag-live \.board-col-stops \{ overflow: visible; \}/)
+  })
+
+  it('measures the list on press, before the drag render removes the clip', () => {
+    expect(board).toMatch(/onPointerDownCapture=\{measureListScroll\}/)
+    expect(board).toMatch(/setKeepsScroll\(\(stopsRef\.current\?\.scrollTop \?\? 0\) > 0\)/)
+    expect(board).toMatch(/dragging !== null && keepsScroll \? ' keeps-scroll' : ''/)
+  })
+})
