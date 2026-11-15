@@ -316,7 +316,8 @@
 
 /* R21: Native home keeps a Sora h1. The shared header sets its title in the
    serif, so this page scopes the title back to the display family. */
-.app-home .yf-header-title { font-family: var(--font-body); font-weight: 800; letter-spacing: -.01em; }
+.app-home .yf-header-title,
+.app-home .yf-header-title em { font-family: var(--font-body); font-weight: 800; letter-spacing: -.01em; }
 
 /* The greeting row holds the bell and the avatar. The shared header puts its
    actions there, so this row only needs to lay them out. */
