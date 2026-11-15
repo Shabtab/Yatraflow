@@ -4,9 +4,11 @@
 // original path: a rounded screen with a cut-out play triangle, and a camera
 // square with a lens ring. The current colour of the surrounding text drives
 // both, so no palette value lives in this file.
+import { INLINE_ICON_VERTICAL_ALIGN } from '../icons'
+
 /** `gap` is the space before a text label; pass 0 for an icon-only link. */
 export function SocialIcon({ kind, size = 14, gap = 4 }: { kind: 'youtube' | 'instagram'; size?: number; gap?: number }) {
-  const style = { display: 'inline-block', verticalAlign: '-2px', marginRight: gap, flexShrink: 0 } as const
+  const style = { display: 'inline-block', verticalAlign: INLINE_ICON_VERTICAL_ALIGN, marginRight: gap, flexShrink: 0 } as const
   if (kind === 'youtube') {
     return (
       <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" focusable="false" fill="currentColor" style={style}>
