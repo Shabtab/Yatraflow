@@ -98,9 +98,9 @@ const pubCount = CASE_KEY in LIVE_COUNT ? LIVE_COUNT[CASE_KEY as keyof typeof LI
 const WITH_UNPUB = CASE_KEY === 'unpub'
 
 // ---- Rankings fixture: small lists or 15 ranked creators, one disabled account ----
-const RANK_COUNTS: Record<string, number> = { 'rank-0': 0, 'rank-1': 1, 'rank-2': 2, 'rank-3': 3, 'rank-4': 4, 'rank-15': 15 }
-const RANK_CASE = CASE in RANK_COUNTS ? CASE : undefined
-const rankCount = RANK_CASE ? RANK_COUNTS[CASE] : 0
+const RANK_COUNTS = new Map<string, number>([['rank-0', 0], ['rank-1', 1], ['rank-2', 2], ['rank-3', 3], ['rank-4', 4], ['rank-15', 15]])
+const RANK_CASE = RANK_COUNTS.has(CASE) ? CASE : undefined
+const rankCount = RANK_COUNTS.get(CASE) ?? 0
 const rankStyleFor = (index: number) => (
   ['adventure', 'balanced', 'food-focused', 'family', 'budget', 'relaxed', 'packed'][
     index % 7

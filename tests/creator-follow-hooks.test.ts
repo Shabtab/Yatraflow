@@ -5,7 +5,7 @@ const runtime = vi.hoisted(() => ({
   slots: [] as unknown[], cursor: 0,
   deps: [] as unknown[][],
   pending: [] as (() => void)[],
-  cleanups: [] as (void | (() => void))[],
+  cleanups: new Map<number, void | (() => void)>(),
   updates: vi.fn(),
 }))
 vi.mock('react', () => ({
@@ -27,9 +27,9 @@ vi.mock('react', () => ({
     if (!runtime.deps[index] || deps.some((value, key) => !Object.is(value, runtime.deps[index][key]))) {
       runtime.deps[index] = deps
       runtime.pending.push(() => {
-        const previousCleanup = runtime.cleanups[index]
+        const previousCleanup = runtime.cleanups.get(index)
         if (previousCleanup) previousCleanup()
-        runtime.cleanups[index] = effect()
+        runtime.cleanups.set(index, effect())
       })
     }
   },
@@ -47,7 +47,7 @@ function render(api: CreatorFollowApi) {
 const settle = () => new Promise(resolve => setImmediate(resolve))
 
 beforeEach(() => {
-  runtime.slots = []; runtime.deps = []; runtime.cleanups = []; runtime.pending = []
+  runtime.slots = []; runtime.deps = []; runtime.cleanups = new Map(); runtime.pending = []
   runtime.updates.mockClear()
 })
 afterEach(() => {
@@ -136,7 +136,7 @@ describe('follow read lifecycle', () => {
       follow: vi.fn(), unfollow: vi.fn(),
     }
     render(api)
-    runtime.cleanups.splice(0).forEach(cleanup => cleanup?.())
+    const cleanups = [...runtime.cleanups.values()]; runtime.cleanups.clear(); cleanups.forEach(cleanup => cleanup?.())
     expect(vi.mocked(api.count).mock.calls[0][1].aborted).toBe(true)
     expect(vi.mocked(api.isFollowing).mock.calls[0][1].aborted).toBe(true)
     runtime.updates.mockClear()

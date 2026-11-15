@@ -9,8 +9,9 @@ export function RankPodium({ rows, users, leadRouteFor }: {
   users: CachedUser[]
   leadRouteFor?: (id: string) => PublishedItinerary | undefined
 }) {
-  const podiumRows = [rows[1], rows[0], rows[2]]
-    .filter((row): row is CreatorRankRow => row !== undefined)
+  // Second, first, third: the winner stands in the middle.
+  const top = rows.slice(0, 3)
+  const podiumRows = top.length > 1 ? [top[1], top[0], ...top.slice(2)] : top
   return (
     <div className="cr-rk-podium__grid">
       {podiumRows.map(row => {
