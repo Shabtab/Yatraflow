@@ -36,7 +36,6 @@
   font-weight: 700; line-height: 1.04; letter-spacing: -.025em; text-wrap: balance;
 }
 .ex-page .ex-hero h1 em { font-family: var(--font-serif); font-style: italic; color: var(--pw-lagoon-600); }
-.ex-page .ex-hero h1 em::after { content: none; }
 
 .ex-page .ex-hero-lede {
   margin: 14px 0 0; max-width: 560px; color: var(--text-2);
