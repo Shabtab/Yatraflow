@@ -43,6 +43,7 @@ import { CrMeterRow } from '../src/components/creator/CrMeterRow'
 import { Chip } from '../src/components/ui'
 import { Eye } from 'lucide-react'
 import type { OwnerRead, OwnerReads } from '../src/lib/creatorOwnerReads'
+import type { CreatorFollowApi } from '../src/lib/creatorFollows'
 
 const params = new URLSearchParams(location.search)
 const THEME = params.get('theme') === 'dark' ? 'dark' : 'light'
@@ -52,6 +53,14 @@ const READ = params.get('read') ?? 'ok'
 const VIEWER = params.get('viewer') ?? 'owner'
 const OWNER = params.get('owner') ?? 'ready'
 const PICKS = params.get('picks') === 'on'
+const FOLLOW = params.get('follow') ?? 'none'
+let fixtureFollowing = FOLLOW === 'following'
+const fixtureFollows: CreatorFollowApi = {
+  count: async () => { if (FOLLOW === 'failed') throw new Error('Fixture count failed'); return fixtureFollowing ? 43 : 42 },
+  isFollowing: async () => { if (FOLLOW === 'failed') throw new Error('Fixture follow read failed'); return fixtureFollowing },
+  follow: async () => { if (FOLLOW === 'write-failed') throw new Error('Fixture write failed'); fixtureFollowing = true },
+  unfollow: async () => { if (FOLLOW === 'write-failed') throw new Error('Fixture write failed'); fixtureFollowing = false },
+}
 const PAGE = params.get('page')
 
 const CREATOR_ID = 'fixture-creator-0001'
@@ -338,6 +347,9 @@ document.documentElement.dataset.theme = THEME
 const INDEX_CASES: { label: string; query: string }[] = [
   { label: 'cr- kit gallery (every shared component)', query: '?case=kit' },
   { label: 'cr- kit gallery, dark theme', query: '?case=kit&theme=dark' },
+  { label: 'Creator picks and facts', query: '?picks=on&viewer=nonowner' },
+  { label: 'Following a creator', query: '?follow=following&viewer=nonowner' },
+  { label: 'Follow reads failed', query: '?follow=failed&viewer=nonowner' },
   { label: '0 live routes', query: '?case=live-0' },
   { label: '1 live route', query: '?case=live-1' },
   { label: '3 live routes', query: '?case=live-3' },
@@ -560,7 +572,7 @@ function FixtureCreatorPage() {
     visits: ownerRead([{ day: OWNER_DAY, source: 'Direct link', visits: 100 }], mode),
   }
   return <CreatorPage creatorId={CREATOR_ID} onNavigate={navigate} ownerReads={reads}
-    onOwnerRetry={() => setMode('ready')} onPageVisit={fixturePageVisit} />
+    onOwnerRetry={() => setMode('ready')} onPageVisit={fixturePageVisit} followsApi={fixtureFollows} />
 }
 
 const root = document.getElementById('root')
@@ -574,10 +586,10 @@ ReactDOM.createRoot(root).render(
         </Suspense>
       ) : CASE === 'kit' ? (
         <KitGallery />
-      ) : params.has('case') || params.has('viewer') || params.has('read') || params.has('links') || params.has('owner') || params.has('picks') ? (
+      ) : params.has('case') || params.has('viewer') || params.has('read') || params.has('links') || params.has('owner') || params.has('picks') || params.has('follow') ? (
         <>
           <FixtureCreatorPage />
-          <CreatorHubPage onNavigate={navigate} />
+          <CreatorHubPage onNavigate={navigate} followsApi={fixtureFollows} />
         </>
       ) : (
         <FixtureIndex />

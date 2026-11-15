@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { PostgrestError } from '@supabase/supabase-js'
 vi.mock('../src/lib/supabase', () => ({ supabase: { rpc: vi.fn() } }))
 import { supabase } from '../src/lib/supabase'
 import {
@@ -33,8 +34,8 @@ describe('owner read boundaries', () => {
     expect(() => mapCreatorPageViews([{ day: '2026-02-30', source: null, visits: 1 }], null)).toThrow()
   })
   it('propagates missing RPC failures rather than returning empty rows', async () => {
-    const response = { data: null, error: { code: 'PGRST202', message: 'Missing function', details: '', hint: '' },
-      count: null, status: 404, statusText: 'Not Found' }
+    const response = { success: false, data: null, error: new PostgrestError({ code: 'PGRST202', message: 'Missing function', details: '', hint: '' }),
+      count: null, status: 404, statusText: 'Not Found' } satisfies Awaited<ReturnType<typeof supabase.rpc>>
     vi.mocked(supabase.rpc).mockResolvedValueOnce(response)
     await expect(fetchCreatorShareSources(30)).rejects.toEqual(response.error)
     vi.mocked(supabase.rpc).mockResolvedValueOnce(response)
@@ -77,7 +78,7 @@ describe('visitor attribution and session claims', () => {
     vi.mocked(supabase.rpc).mockClear()
     await bumpCreatorPageView('owner', 'ig', 'owner')
     expect(supabase.rpc).not.toHaveBeenCalled()
-    vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null, count: null, status: 204, statusText: 'No Content' })
+    vi.mocked(supabase.rpc).mockResolvedValue({ success: true, data: null, error: null, count: null, status: 204, statusText: 'No Content' })
     await bumpCreatorPageView('visitor-page', 'ig-reel', null)
     await bumpCreatorPageView('visitor-page', 'ig', null)
     expect(supabase.rpc).toHaveBeenCalledExactlyOnceWith('bump_creator_page_view', { p_creator: 'visitor-page', p_source: null })

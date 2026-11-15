@@ -50,10 +50,12 @@ function scrollToLibrary(event: ReactMouseEvent<HTMLAnchorElement>): void {
   library.focus({ preventScroll: true })
 }
 
-export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, routeCount, showBrowse, tabs, heading }: {
+export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, routeCount, showBrowse, tabs, heading, follow, followerCount }: {
   /** A public row, or the account's own row when the viewer is the creator.
    *  Only `profile`'s public fields are read. */
   creator: CachedUser
+  follow?: ReactNode
+  followerCount?: ReactNode
   /** The route whose cover leads the band. Omitted: the token band shows. */
   cover?: PublishedItinerary
   /** Earliest live `publishedAt`, from the read model. Omitted: no chip. */
@@ -103,12 +105,14 @@ export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, 
                 {publishingSince !== undefined && (
                   <p className="cr-store-chips"><Chip>Publishing since {monthYear(publishingSince)}</Chip></p>
                 )}
+                <p className="cr-store-followers"><Chip>YatraFlow followers: {followerCount ?? 'Loading…'}</Chip></p>
                 <div className="cr-store-actions">
                   {showBrowse && (
                     <a className="btn btn-primary cr-store-browse" href={libraryHref} onClick={scrollToLibrary}>
                       Browse {countNoun(routeCount, 'route')}
                     </a>
                   )}
+                  {follow}
                   <CopyButton text={shareUrl} label="Share" />
                   {channels.length > 0 && <span className="cr-store-divider" aria-hidden="true" />}
                   {channels.map(({ key, href, label }) => (

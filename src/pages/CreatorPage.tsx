@@ -6,6 +6,8 @@
 // this page keeps every data read, every state decision and the shared card
 // behaviour the guards pin.
 import { countNoun } from '../lib/creatorCopy'
+import { useCreatorFollows } from '../hooks/useCreatorFollows'
+import type { CreatorFollowApi } from '../lib/creatorFollows'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link2 } from 'lucide-react'
 import { useSessionUserId, usePublished, userById, useDb, rereadPublicSlices } from '../store/store'
@@ -63,14 +65,16 @@ function useOwnerRows<T>(identity: string, enabled: boolean, attempt: number, lo
   return settled.read
 }
 
-export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, onPageVisit = bumpCreatorPageView }: {
+export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, onPageVisit = bumpCreatorPageView, followsApi }: {
   creatorId: string
+  followsApi?: CreatorFollowApi
   onNavigate: (r: string) => void
   ownerReads?: OwnerReads
   onOwnerRetry?: () => void
   onPageVisit?: typeof bumpCreatorPageView
 }) {
   const me = useSessionUserId()
+  const follows = useCreatorFollows(creatorId, me, followsApi)
   const published = usePublished()
   const { sliceReads } = useDb()
   const { isSaved, toggleSaved } = useSavedPubs()
@@ -181,12 +185,26 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
         cover={lead}
         publishingSince={since}
         shareUrl={shareLink}
+        followerCount={follows.count.kind === 'ready' ? follows.count.value.toLocaleString('en-IN') : follows.count.kind === 'failed' ? 'Unavailable' : 'Loading…'}
+        follow={!isOwner && creator.profile.isCreator ? <div className="cr-store-follow">
+          <button type="button" className="btn btn-outline cr-store-follow-button"
+            disabled={follows.busy || follows.following.kind === 'reading'}
+            aria-pressed={follows.following.kind === 'ready' ? follows.following.value : undefined}
+            onClick={() => { if (!me) onNavigate('/auth'); else if (follows.following.kind === 'failed') follows.refresh(); else void follows.toggle() }}>
+            {follows.busy ? 'Saving…' : follows.following.kind === 'failed' ? 'Retry follow status' : follows.following.kind === 'reading' ? 'Loading…' : follows.following.value ? 'Following' : 'Follow'}
+          </button>
+          {follows.following.kind === 'failed' && <span role="status">Follow status: Unavailable</span>}
+          {follows.error && <span role="status">{follows.error}</span>}
+        </div> : undefined}
         figures={{ liveRoutes: figures.liveRoutes, views: figures.views, forks: figures.forks }}
         routeCount={pubs.length}
         showBrowse={pubs.length > 0}
         tabs={sections?.coverTabs === true && sections.pubsView !== 'empty'}
       />
 
+      {follows.count.kind === 'failed' && <p className="container cr-store-follow-retry" role="status">
+        YatraFlow followers: Unavailable. <button type="button" className="btn btn-ghost btn-sm" onClick={follows.refresh}>Retry follower count</button>
+      </p>}
       {featured && (
         <section className="container cr-store-featured" aria-label="Featured route">
           <FeaturedCard

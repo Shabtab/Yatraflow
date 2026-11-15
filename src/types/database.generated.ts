@@ -18,6 +18,15 @@ export type Database = {
   }
   public: {
     Tables: {
+      creator_follows: {
+        Row: { follower: string; creator: string; at: string }
+        Insert: { follower: string; creator: string; at?: string }
+        Update: { follower?: string; creator?: string; at?: string }
+        Relationships: [
+          { foreignKeyName: "creator_follows_follower_fkey"; columns: ["follower"]; isOneToOne: false; referencedRelation: "profiles"; referencedColumns: ["id"] },
+          { foreignKeyName: "creator_follows_creator_fkey"; columns: ["creator"]; isOneToOne: false; referencedRelation: "profiles"; referencedColumns: ["id"] },
+        ]
+      }
       activity: {
         Row: {
           actor_id: string
@@ -1115,6 +1124,14 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      get_creator_follower_count: {
+        Args: { p_creator: string }
+        Returns: number
+      }
+      valid_planning_notes: {
+        Args: { p_notes: Json }
+        Returns: boolean
       }
       get_public_profile_cards: {
         Args: { p_ids?: string[] }
