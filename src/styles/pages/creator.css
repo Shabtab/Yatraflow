@@ -665,9 +665,6 @@ p.cr-store-planning {
   --cr-cols: 5;
   gap: var(--space-6);
 }
-.hub-strip.cr-hub-kpis {
-  grid-template-columns: repeat(var(--cr-cols), minmax(0, 1fr));
-}
 .cr-hub-followers .btn {
   justify-self: start;
   align-self: start;
@@ -740,6 +737,7 @@ p.cr-store-planning {
 /* The legacy strip paints a navy band with white figures. The kit tile is a
    light card, so the strip gives its paint back. */
 .hub-strip.cr-hub-kpis {
+  grid-template-columns: repeat(var(--cr-cols), minmax(0, 1fr));
   background: transparent;
   box-shadow: none;
   overflow: visible;
