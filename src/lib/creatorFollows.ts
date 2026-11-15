@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { currentUser } from '../store/store'
+import type { Database } from '../types/database.generated'
 
 function followerId(creator: string): string {
   const id = currentUser()?.id
@@ -34,8 +35,9 @@ export async function isFollowing(creator: string, signal: AbortSignal): Promise
 
 export async function followCreator(creator: string, signal: AbortSignal): Promise<void> {
   const follower = followerId(creator)
-  const { data, error } = await supabase.from('creator_follows').insert({ follower, creator })
+  const { data, error } = await supabase.from('creator_follows').insert({ follower, creator } satisfies Database['public']['Tables']['creator_follows']['Insert'])
     .select('follower, creator').abortSignal(signal).single()
+  if (error?.code === '23505') return
   if (error) throw error
   if (!data || data.follower !== follower || data.creator !== creator) throw new Error('Follow was not saved')
 }
@@ -50,3 +52,7 @@ export async function unfollowCreator(creator: string, signal: AbortSignal): Pro
 export const creatorFollowApi = { count: getCreatorFollowerCount, isFollowing, follow: followCreator, unfollow: unfollowCreator }
 export type CreatorFollowApi = typeof creatorFollowApi
 export type CreatorValue<T> = { kind: 'reading' } | { kind: 'failed' } | { kind: 'ready'; value: T }
+
+export function creatorFollowerCountLabel(count: CreatorValue<number>): string {
+  return count.kind === 'ready' ? count.value.toLocaleString('en-IN') : count.kind === 'failed' ? 'Unavailable' : 'Loading…'
+}

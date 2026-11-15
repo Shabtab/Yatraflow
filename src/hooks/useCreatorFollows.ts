@@ -53,7 +53,10 @@ export function useCreatorFollows(creator: string, viewer: string | null, api: C
       setSettled({ identity, api, attempt, read: { kind: 'ready', value: !following.value } })
       refresh()
     } catch {
-      if (liveIdentity.current === identity) setFailure({ identity, text: 'Follow change not saved. Try again.' })
+      if (liveIdentity.current === identity) {
+        setFailure({ identity, text: 'Follow change not saved. Try again.' })
+        refresh()
+      }
     } finally {
       inFlight.current = false
       setWriting(null)

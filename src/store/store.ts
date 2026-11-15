@@ -56,7 +56,8 @@ import {
   buildCatalog, type AccessScope, type CatalogReads, type CatalogResult, type PreviousCatalog, type SliceRead,
 } from './profileCatalog'
 import { toPublicUser, reviewedSocialLinks } from '../lib/publicProfile'
-import { planningNotes, publicationFacts, validPlanningNotes } from '../lib/creatorFacts'
+import { publicationFacts, validPlanningNotes } from '../lib/creatorFacts'
+import type { Database } from '../types/database.generated'
 import {
   correlateSession, nextIncarnation, nextOperationId, sameSession,
   type Credentials, type ObservedSession, type Owner, type ReadTicket,
@@ -495,7 +496,7 @@ export function rowToPublicUser(row: unknown): PublicUser {
       socialLinks: r.social_links ?? undefined,
       creatorAvailable: r.creator_available !== false,
       featuredPubId: r.featured_pub_id ?? undefined,
-      planningNotes: planningNotes(r.planning_notes),
+      planningNotes: validPlanningNotes(r.planning_notes) ? r.planning_notes : undefined,
     },
   }
 }
@@ -2325,7 +2326,7 @@ export async function updateProfile(patchFields: Partial<PrivateUserProfile>): P
       travel_styles: patchFields.travelStyles, is_creator: patchFields.isCreator,
       creator_bio: patchFields.creatorBio, social_links: patchFields.socialLinks,
       featured_pub_id: patchFields.featuredPubId, planning_notes: patchFields.planningNotes,
-    }).eq('id', u.id)
+    } satisfies Database['public']['Tables']['profiles']['Update']).eq('id', u.id)
     if (!error) { settleOwnedFields(owned, applied, 'accepted'); return { ok: true } }
     console.error('[yatraflow] profiles write failed', error)
     settleOwnedFields(owned, applied, 'failed')
@@ -7756,11 +7757,11 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
     cover_image_url: p.coverImageUrl, route_summary: p.routeSummary, duration_days: p.durationDays,
     estimated_budget_per_person_inr: p.estimatedBudgetPerPersonInr, travel_style: p.travelStyle,
     best_season: p.bestSeason, travel_tips: p.travelTips, warnings_and_assumptions: p.warningsAndAssumptions,
-    planned_km: p.plannedKm, best_months: p.bestMonths, reviewed_scope: p.reviewedScope,
+    planned_km: p.plannedKm ?? null, best_months: p.bestMonths, reviewed_scope: p.reviewedScope,
     free_day_indexes: p.freeDayIndexes, premium_price_inr: p.premiumPriceInr || undefined, subscriber_cta: p.subscriberCta,
     ...(hasRefreshedCol ? { refreshed_at: p.refreshedAt } : {}),
     ...(hasUnpublishedCol ? { unpublished_at: null } : {}),
-  })
+  } satisfies Database['public']['Tables']['published_itineraries']['Insert'])
   if (error) {
     console.error('[yatraflow] publish persist failed', error)
     const idx = cache.published.findIndex(x => x.id === p.id)
