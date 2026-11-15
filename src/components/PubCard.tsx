@@ -10,7 +10,7 @@
 // Every control still arrives as a callback, so fork, save and the creator link
 // keep the behaviour of their page. Nothing here claims a statistic, a follower
 // count, a payout or a date: the row prints only what the profile holds.
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { PublishedItinerary, CachedUser } from '../data/types'
 import { staggerDelay } from '../lib/motion'
 import { openExternal } from '../lib/native'
@@ -18,8 +18,9 @@ import { SocialIcon } from './creator/SocialIcon'
 import { ExploreCard } from './explore/ExploreCard'
 import { PUB_GRID_SIZES } from './explore/ExploreCover'
 
-export function PubCard({ pub, creator, saved, onFork, onToggleSave, enterIndex, needsLogin }: {
+export function PubCard({ pub, creator, saved, onFork, onToggleSave, enterIndex, needsLogin, footer }: {
   pub: PublishedItinerary
+  footer?: ReactNode
   creator?: CachedUser
   saved: boolean
   onFork: () => void
@@ -62,7 +63,7 @@ export function PubCard({ pub, creator, saved, onFork, onToggleSave, enterIndex,
       needsLogin={needsLogin}
       sizes={PUB_GRID_SIZES}
       forkLabel={needsLogin ? 'Log in to fork' : 'Fork this trip'}
-      footer={creatorRow}
+      footer={<>{creatorRow}{footer}</>}
       onFork={onFork}
       onToggleSave={onToggleSave}
     />

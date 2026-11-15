@@ -6,6 +6,8 @@
 // this page keeps every data read, every state decision and the shared card
 // behaviour the guards pin.
 import { countNoun } from '../lib/creatorCopy'
+import { useCreatorFollows } from '../hooks/useCreatorFollows'
+import type { CreatorFollowApi } from '../lib/creatorFollows'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link2 } from 'lucide-react'
 import { useSessionUserId, usePublished, userById, useDb, rereadPublicSlices } from '../store/store'
@@ -18,7 +20,10 @@ import {
   storefrontFigures, publishingSince, leadRoute, storefrontSections,
 } from '../lib/creatorStorefront'
 import { FeaturedCard } from '../components/explore/FeaturedCard'
-import { StoreHero, dayStamp } from '../components/creator/StoreHero'
+import { StoreHero } from '../components/creator/StoreHero'
+import { StoreRouteStamp } from '../components/creator/StoreRouteStamp'
+import { creatorPick, plannedKilometres } from '../lib/creatorFacts'
+import { CrStatTile } from '../components/creator/CrStatTile'
 import { StoreLibrary } from '../components/creator/StoreLibrary'
 import { StoreBand } from '../components/creator/StoreBand'
 import { StateBlock } from '../components/page/StateBlock'
@@ -60,14 +65,16 @@ function useOwnerRows<T>(identity: string, enabled: boolean, attempt: number, lo
   return settled.read
 }
 
-export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, onPageVisit = bumpCreatorPageView }: {
+export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, onPageVisit = bumpCreatorPageView, followsApi }: {
   creatorId: string
+  followsApi?: CreatorFollowApi
   onNavigate: (r: string) => void
   ownerReads?: OwnerReads
   onOwnerRetry?: () => void
   onPageVisit?: typeof bumpCreatorPageView
 }) {
   const me = useSessionUserId()
+  const follows = useCreatorFollows(creatorId, me, followsApi)
   const published = usePublished()
   const { sliceReads } = useDb()
   const { isSaved, toggleSaved } = useSavedPubs()
@@ -102,7 +109,9 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
   // featured pick and the section layout (the P2 read model).
   const figures = useMemo(() => storefrontFigures(pubs, pubsRead), [pubs, pubsRead])
   const since = useMemo(() => publishingSince(pubs), [pubs])
-  const featured = useMemo(() => leadRoute(pubs, 3), [pubs])
+  const pick = creatorPick(pubs, creatorId, creator?.profile.featuredPubId)
+  const featured = pick ?? leadRoute(pubs, 3)
+  const km = plannedKilometres(pubs)
   const sections = useMemo(
     // The read model takes the public shape. When the viewer IS the creator the
     // cached row is the account's own private row, so the page hands over a
@@ -166,7 +175,7 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
   // browser, so sharing it unfurled as the app shell.
   const shareLink = currentCreatorShareUrl(creatorId)
   const lead = featured ?? pubs[0]
-  const featuredKicker = featured ? `Most forked of ${countNoun(pubs.length, 'route')}` : undefined
+  const featuredKicker = pick ? `Featured by ${creator.profile.name}` : featured ? `Most forked of ${countNoun(pubs.length, 'route')}` : undefined
 
   return (
     <div className="page-enter cr-store-page">
@@ -176,18 +185,33 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
         cover={lead}
         publishingSince={since}
         shareUrl={shareLink}
+        followerCount={follows.count.kind === 'ready' ? follows.count.value.toLocaleString('en-IN') : follows.count.kind === 'failed' ? 'Unavailable' : 'Loading…'}
+        follow={!isOwner && creator.profile.isCreator ? <div className="cr-store-follow">
+          <button type="button" className="btn btn-outline cr-store-follow-button"
+            disabled={follows.busy || follows.following.kind === 'reading'}
+            aria-pressed={follows.following.kind === 'ready' ? follows.following.value : undefined}
+            onClick={() => { if (!me) onNavigate('/auth'); else if (follows.following.kind === 'failed') follows.refresh(); else void follows.toggle() }}>
+            {follows.busy ? 'Saving…' : follows.following.kind === 'failed' ? 'Retry follow status' : follows.following.kind === 'reading' ? 'Loading…' : follows.following.value ? 'Following' : 'Follow'}
+          </button>
+          {follows.following.kind === 'failed' && <span role="status">Follow status: Unavailable</span>}
+          {follows.error && <span role="status">{follows.error}</span>}
+        </div> : undefined}
         figures={{ liveRoutes: figures.liveRoutes, views: figures.views, forks: figures.forks }}
         routeCount={pubs.length}
         showBrowse={pubs.length > 0}
         tabs={sections?.coverTabs === true && sections.pubsView !== 'empty'}
       />
 
+      {follows.count.kind === 'failed' && <p className="container cr-store-follow-retry" role="status">
+        YatraFlow followers: Unavailable. <button type="button" className="btn btn-ghost btn-sm" onClick={follows.refresh}>Retry follower count</button>
+      </p>}
       {featured && (
         <section className="container cr-store-featured" aria-label="Featured route">
           <FeaturedCard
             pub={featured}
             creator={creator}
             kicker={featuredKicker}
+            reason={pick ? `Selected by ${creator.profile.name}` : undefined}
             saved={isSaved(featured.id)}
             needsLogin={!me}
             onFork={() => { void forkPublication(featured, me, onNavigate, undefined, 'creator') }}
@@ -198,10 +222,18 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
 
       {featured && featured.bestSeason && <p className="cr-store-season">{featured.bestSeason}</p>}
       {featured && (
-        <p className="cr-store-updated">
-          Updated {dayStamp(featured.refreshedAt ?? featured.publishedAt)}
-        </p>
+        <StoreRouteStamp pub={featured} />
       )}
+
+      {pubsRead === 'failed' ? <p className="cr-store-facts" role="status">Route facts: Unavailable</p>
+        : pubsRead === 'ready' && km !== undefined && <div className="container cr-store-facts">
+            <CrStatTile value={km.toLocaleString('en-IN')} label="Km planned" note="Live routes with distance data." />
+          </div>}
+      {profileRead === 'failed' ? <p className="cr-store-planning" role="status">Planning notes: Unavailable</p>
+        : profileRead === 'ready' && !!creator.profile.planningNotes?.length && <section className="container cr-store-planning" aria-label="Planning notes">
+            <h2>How {creator.profile.name} plans</h2>
+            <ul>{creator.profile.planningNotes.map((note, index) => <li key={index}>{note}</li>)}</ul>
+          </section>}
 
       <StoreLibrary
         name={creator.profile.name}

@@ -43,7 +43,7 @@ function privateUser(id: string): CachedUser {
     kind: 'private',
     email: `${id}@example.com`,
     createdAt: NOW,
-    profile: { name: `Private ${id}`, isCreator: true, creatorAvailable: true, travelStyles: [] },
+    profile: { name: `Private ${id}`, isCreator: true, creatorAvailable: true, languages: [], travelStyles: [] },
   }
 }
 

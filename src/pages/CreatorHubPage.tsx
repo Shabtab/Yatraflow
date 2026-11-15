@@ -14,6 +14,9 @@
 // (`now` is computed once and handed to both builders), so the chart can never
 // describe a different window from the numbers beneath it.
 import { useCallback, useEffect, useState } from 'react'
+import { CreatorPicksEditor } from '../components/creator/CreatorPicksEditor'
+import { useCreatorFollowerCount } from '../hooks/useCreatorFollows'
+import type { CreatorFollowApi, CreatorValue } from '../lib/creatorFollows'
 import { InlineIcon } from '../components/icons'
 import { ExternalLink, Pencil } from 'lucide-react'
 import { PillNav } from '../components/PillNav'
@@ -98,9 +101,11 @@ const HUB_TABS = [
   { key: 'profile', label: 'Profile', id: 'hub-tab-profile', controls: 'hub-panel-profile' },
 ]
 
-export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void }) {
+export function CreatorHubPage({ onNavigate, followsApi }: { onNavigate: (r: string) => void; followsApi?: CreatorFollowApi }) {
   const db = useDb()
   const me = currentUser(db)
+  const [followerAttempt, setFollowerAttempt] = useState(0)
+  const followerCount = useCreatorFollowerCount(me?.id ?? null, followsApi, followerAttempt)
   const myPubs = me ? db.published.filter(p => p.creatorId === me.id) : []
   // #704: the publication list is a read like any other. An empty list means
   // "nothing published" only after a read that succeeded. Until then the zero
@@ -312,7 +317,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
 
           {hubTab === 'overview' ? (
             <section role="tabpanel" id="hub-panel-overview" aria-labelledby="hub-tab-overview">
-              <HubOverview myPubs={myPubs} onUnpublish={setUnpubTarget} onNavigate={onNavigate}
+              <HubOverview followerCount={followerCount} onRetryFollowers={() => setFollowerAttempt(value => value + 1)} myPubs={myPubs} onUnpublish={setUnpubTarget} onNavigate={onNavigate}
               daily={daily} dailyAt={dailyAt} salesRows={sales?.rows ?? []} funnelError={funnelError}
               onRetry={() => { setFunnelRetry(n => n + 1) }} days={funnelDays} onDays={setFunnelDays}
               funnelReading={funnelReading}
@@ -349,6 +354,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               <Field label="YouTube link" error={socialErrors.youtube}><input className="input" type="url" inputMode="url" value={youtube} onChange={e => { setYoutube(e.target.value); if (socialErrors.youtube) setSocialErrors(s => ({ ...s, youtube: undefined })) }} placeholder="https://youtube.com/@…" /></Field>
               <Field label="Instagram link" error={socialErrors.instagram}><input className="input" type="url" inputMode="url" value={instagram} onChange={e => { setInstagram(e.target.value); if (socialErrors.instagram) setSocialErrors(s => ({ ...s, instagram: undefined })) }} placeholder="https://instagram.com/…" /></Field>
             </div>
+            <CreatorPicksEditor key={me.id} me={me} pubs={myPubs} read={publishedRead} />
             <div className="hub-profile-actions">
               <button className="btn btn-primary btn-sm" disabled={savingCreator} onClick={async () => {
                 const yt = youtube.trim()
@@ -552,7 +558,9 @@ function PubsUnread({ view, retrying, onRetry, need }: {
 /** Overview: the KPI strip, the recorded-traffic trend, and the publication
  *  manager rows — the trend and the rows built from one derivation over one
  *  clock, so the picture and the table describe the same window. */
-export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, salesRows, funnelError, onRetry, days, onDays, unlockRead, salesError, salesAt, salesReading, funnelReading, onRetrySales, publishedView, publishedRetrying, onRetryPublished, tripsView, tripsRetrying, onRetryTrips }: {
+export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollowers, myPubs, onUnpublish, onNavigate, daily, dailyAt, salesRows, funnelError, onRetry, days, onDays, unlockRead, salesError, salesAt, salesReading, funnelReading, onRetrySales, publishedView, publishedRetrying, onRetryPublished, tripsView, tripsRetrying, onRetryTrips }: {
+  followerCount?: CreatorValue<number>
+  onRetryFollowers?: () => void
   myPubs: PublishedItinerary[]
   onUnpublish: (p: PublishedItinerary) => void
   onNavigate: (r: string) => void
@@ -701,6 +709,12 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
             </div>
           )
         })}
+        <div className="hub-cell cr-tile cr-hub-followers">
+          <span className="stat-label cr-tile__label">YatraFlow followers</span>
+          <span className="stat-value hub-cell-value cr-tile__value">{followerCount.kind === 'ready' ? followerCount.value.toLocaleString('en-IN') : followerCount.kind === 'failed' ? 'Unavailable' : 'Loading…'}</span>
+          <span className="cr-tile__note">All time</span>
+          {followerCount.kind === 'failed' && onRetryFollowers && <button type="button" className="btn btn-ghost btn-sm" onClick={onRetryFollowers}>Retry follower count</button>}
+        </div>
       </div>
       <details className="cr-hub-totals">
       <summary>Publication totals</summary>

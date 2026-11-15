@@ -1213,7 +1213,9 @@ G1 and G2 have SQL migrations dated 2026-11-15. Share-source and page-view contr
 The operator applied both migrations by hand on 2026-11-15. Client work remains separate.
 
 G3 and G4 have SQL migrations dated 2026-11-16. The operator applied both migrations by hand on 2026-11-15.
-Their client parts are in progress on the creator branches.
+G3 client reads show route facts, review stamps, creator picks, and planning notes. The hub can save picks and notes.
+State codes remain in G3b. The applied G3 schema has no state field.
+G4 clients can follow and unfollow creators. Public pages and the hub show counts or an unavailable state.
 
 | # | Idea | Blocked on | Note |
 |---|---|---|---|

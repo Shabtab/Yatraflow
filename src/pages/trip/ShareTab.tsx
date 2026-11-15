@@ -13,7 +13,7 @@ import { currentPublicShareUrl, withShareRef } from '../../lib/shareUrl'
 import { downloadTripIcs } from '../../lib/ics'
 import { nativeCopyText } from '../../lib/native'
 import { useTablist } from '../../hooks/useTablist'
-import { formatInr, type LegEstimate } from '../../lib/engine'
+import { computeTotals, formatInr, type LegEstimate } from '../../lib/engine'
 import { netOfFeeInr, PLATFORM_FEE_SUMMARY } from '../../lib/earnings'
 import {
   publishValidation, PUBLISH_FIELD_ORDER, PUBLISH_FIELD_LABELS, PublishRejected, type PublishField,
@@ -115,7 +115,8 @@ const DEFAULT_WARNINGS = ['All costs are estimates based on typical prices. Veri
  *  now chooses which days are the free preview, whether the itinerary is
  *  premium at all (empty/₹0 price = entirely free), and the reader-facing
  *  copy — pre-filled from the live publication when updating. */
-function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone, onWriting, saveErr, setSaveErr, publishRead }: {
+function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone, onWriting, saveErr, setSaveErr, publishRead, legCorrections }: {
+  legCorrections?: Record<string, LegEstimate>
   trip: Trip
   pub: PublishedItinerary | undefined
   /** An imported file's publish block, taken once from the stash. The draft
@@ -282,6 +283,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         tagline: tagline.trim() || defaultTagline,
         routeSummary: [trip.startLocation, ...trip.destinations],
         durationDays: trip.days.length,
+        plannedKm: computeTotals(trip, legCorrections).totalDistanceKm,
         estimatedBudgetPerPersonInr: trip.budgetPerPersonInr,
         travelStyle: trip.travelStyle,
         bestSeason: bestSeason.trim() || undefined,
@@ -691,7 +693,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
               status has loaded, stays open through a later refresh, and remounts
               when the publication changes (#704). */}
           {mount.mounted && (
-            <PublicationForm key={formKey} trip={trip} pub={pub} draft={draft} live={pubLive} isOwner={isOwner} creatorId={me.id}
+            <PublicationForm key={formKey} legCorrections={legCorrections} trip={trip} pub={pub} draft={draft} live={pubLive} isOwner={isOwner} creatorId={me.id}
               publishRead={publishRead}
               onDone={wasPublished => {
                 // A published draft is spent. A later remount must not seed the form from it again.
