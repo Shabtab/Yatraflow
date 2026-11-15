@@ -8,31 +8,36 @@
 // page. The page now leads with performance — one ruled KPI strip, then the
 // recorded-traffic trend for the selected window — because "how are my
 // publications doing" is the question a creator arrives with. The creator
-// profile (bio, socials, the disable switch) moved into a disclosure at the
-// foot: it is a thing you set once, and it used to hold the entire fold.
+// profile (bio, socials, the disable switch) now has its own Profile tab.
 //
 // The trend and the per-publication rows are ONE derivation over ONE clock
 // (`now` is computed once and handed to both builders), so the chart can never
 // describe a different window from the numbers beneath it.
 import { useCallback, useEffect, useState } from 'react'
 import { InlineIcon } from '../components/icons'
-import { ChevronDown, ExternalLink, Pencil } from 'lucide-react'
+import { ExternalLink, Pencil } from 'lucide-react'
 import { PillNav } from '../components/PillNav'
 import { TrendChart, type UnlockRead } from '../components/TrendChart'
 import type { PublishedItinerary } from '../data/types'
 import { useDb, currentUser, updateProfile, unpublishItinerary, tripById, rereadPublicSlices, rereadTrips, PROFILE_NOT_SAVED } from '../store/store'
 import {
   projectEarnings, deriveActualSales, deriveLedgerRead, salesLedgerView, payoutStatus, payoutWalk, payoutPeriodStatus,
-  PAYOUT_MINIMUM_INR, PLATFORM_FEE_SUMMARY, type ActualSales,
+  PAYOUT_MINIMUM_INR, PLATFORM_FEE_SUMMARY, type ActualSales, type SaleRow,
 } from '../lib/earnings'
 import { fetchCreatorSales, fetchCreatorFunnel, type FunnelDailyRow } from '../lib/unlock'
 import {
   buildDailySeries, buildPubFunnels, describePreLog, formatPct, funnelBarPos, funnelBarScale, FUNNEL_WINDOWS,
-  type FunnelSale, type FunnelWindowDays, type PubFunnel,
+  type FunnelWindowDays, type PubFunnel,
 } from '../lib/pubFunnel'
 import { formatInr } from '../lib/engine'
 import { formatHM, useTimeFormat } from '../lib/timefmt'
-import { Chip, ConfirmDialog, Field, toast } from '../components/ui'
+import { Chip, ConfirmDialog, CopyButton, Field, toast } from '../components/ui'
+import { activityFeed, grossByMonth, kpiWindows, readiness } from '../lib/creatorHub'
+import { CrDelta } from '../components/creator/CrDelta'
+import { CrMeterRow } from '../components/creator/CrMeterRow'
+import { CrSectionHead } from '../components/creator/CrSectionHead'
+import { HubActivity } from '../components/creator/HubActivity'
+import { HubReadiness } from '../components/creator/HubReadiness'
 import { PageHeader } from '../components/page/PageHeader'
 import { SegmentedTabs } from '../components/page/SegmentedTabs'
 import { StateBlock } from '../components/page/StateBlock'
@@ -85,11 +90,12 @@ function useStableNow(): [number, () => void] {
   return [now, refresh]
 }
 
-/** The hub's two sections, as tablist tabs. Each id pairs its tab with the
+/** The hub's three sections, as tablist tabs. Each id pairs its tab with the
  *  panel the tab controls. */
 const HUB_TABS = [
   { key: 'overview', label: 'Overview', id: 'hub-tab-overview', controls: 'hub-panel-overview' },
   { key: 'earnings', label: 'Earnings', id: 'hub-tab-earnings', controls: 'hub-panel-earnings' },
+  { key: 'profile', label: 'Profile', id: 'hub-tab-profile', controls: 'hub-panel-profile' },
 ]
 
 export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -126,7 +132,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
   const [socialErrors, setSocialErrors] = useState<{ youtube?: string; instagram?: string }>({})
   const [confirmDisable, setConfirmDisable] = useState(false)
   const [unpubTarget, setUnpubTarget] = useState<PublishedItinerary | null>(null)
-  const [hubTab, setHubTab] = useState<'overview' | 'earnings'>('overview')
+  const [hubTab, setHubTab] = useState<'overview' | 'earnings' | 'profile'>('overview')
   const [earningsView, setEarningsView] = useState<'actual' | 'projection'>('actual')
   /** null until the reader picks one. The tiles and pills have always SHOWN gross
    *  by default, and still do (`shownBasis`); what null tracks is that nobody has
@@ -234,20 +240,28 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
     return () => { alive = false; clearTimeout(timer); ac.abort() }
   }, [me?.id, funnelRetry])
 
+  const [headerNow] = useStableNow()
   const loggedIn = Boolean(me)
   useEffect(() => { if (!loggedIn) onNavigate('/auth') })
   if (!me) return null
+  const hour = new Date(headerNow).getHours()
+  const greeting = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'
+  const nextPayout = sales === null ? null : payoutStatus(payoutWalk(sales.rows, headerNow).balanceInr, headerNow)
 
   return (
     <div className="container yf-page hub-page page-enter">
       <PageHeader
         kicker="For creators"
         headline={{ lead: 'Creator', accent: 'hub' }}
-        meta={<p className="muted small">{me.email}</p>}
+        meta={<p className="muted small">Good {greeting}, {me.profile.name}{nextPayout && nextPayout.clearsInr > 0 ? ` · Next payout run ${longDate(nextPayout.dueAt)}` : ''}</p>}
         actions={me.profile.isCreator ? (
+          <>
           <a className="btn btn-outline btn-sm" {...appLink(`/creator/${me.id}`)}>
             <InlineIcon icon={ExternalLink} size={13} gap={5} />View public page
           </a>
+          <CopyButton text={`${window.location.origin}/creator/${me.id}`} />
+          <a className="btn btn-primary btn-sm" {...appLink('/trips')}>Publish a route</a>
+          </>
         ) : undefined}
       />
 
@@ -266,7 +280,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
           {/* One view switch for the page, sitting above everything it controls
               so the tabs read as the page's axis rather than a decoration on a
               card. */}
-          <SegmentedTabs semantics="tablist" className="tabbar hub-tabs" label="Creator hub sections" items={HUB_TABS} value={hubTab} onChange={(key) => { setHubTab(key === 'earnings' ? 'earnings' : 'overview') }} />
+          <SegmentedTabs semantics="tablist" className="tabbar hub-tabs" label="Creator hub sections" items={HUB_TABS} value={hubTab} onChange={(key) => { setHubTab(key === 'profile' ? 'profile' : key === 'earnings' ? 'earnings' : 'overview') }} />
 
           {/* ONE status and ONE control for the page's reads, on BOTH tabs. This
               row used to live inside the Earnings ledger, so Overview — whose
@@ -308,7 +322,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               publishedView={publishedView} publishedRetrying={publishedRetrying} onRetryPublished={retryPublished}
               tripsView={tripsView} tripsRetrying={tripsRetrying} onRetryTrips={retryTrips} />
             </section>
-          ) : (
+          ) : hubTab === 'earnings' ? (
             <section role="tabpanel" id="hub-panel-earnings" aria-labelledby="hub-tab-earnings">
             <EarningsTab myPubs={myPubs} sales={sales} salesError={salesError} salesAt={salesAt}
               salesReading={salesReading}
@@ -316,18 +330,16 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               basis={earningsBasis} onBasis={setEarningsBasis}
               publishedView={publishedView} publishedRetrying={publishedRetrying} onRetryPublished={retryPublished} />
             </section>
-          )}
+          ) : null}
 
-          {/* The profile is a thing you set once. It used to own the fold and
-              push every number below it; it now closes the page instead. */}
-          <Surface as="details" className="hub-profile">
-            <summary className="hub-profile-summary">
+          {/* Keep the profile draft mounted when switching tabs. */}
+          <section role="tabpanel" id="hub-panel-profile" aria-labelledby="hub-tab-profile" hidden={hubTab !== 'profile'}>
+          <Surface className="cr-card cr-hub-profile">
+            <div className="hub-profile-summary">
               <h2 className="hub-card-title">Creator profile</h2>
               <Chip tone="ok">Enabled</Chip>
-              <ChevronDown className="hub-chev" size={16} aria-hidden />
-            </summary>
-            {/* Off-ladder 10px: stays inline until the page redesign (R13). */}
-            <p className="hint-text" style={{ margin: '10px 0 12px' }}>
+            </div>
+            <p className="hint-text cr-hub-profile-note">
               Publishing to Explore is open to everyone. Do it from any trip&apos;s Share tab.
               Creator mode is a branding badge: your bio and social links appear
               on the itineraries you publish.
@@ -361,6 +373,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               <button className="btn btn-ghost btn-sm" onClick={() => { setConfirmDisable(true) }}>Disable creator mode</button>
             </div>
           </Surface>
+          </section>
         </>
       )}
 
@@ -548,7 +561,7 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
   /** When `daily` was read. Non-null alongside a non-null `daily`. */
   dailyAt: number | null
   /** The sales ledger's own rows — the unlock stage's only source. */
-  salesRows: readonly FunnelSale[]
+  salesRows: readonly SaleRow[]
   funnelError: boolean
   onRetry: () => void
   days: FunnelWindowDays
@@ -606,6 +619,9 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
     now,
   })
   const series = buildDailySeries({ daily: daily ?? [], sales: salesRows, days, now })
+  const windows = kpiWindows(daily ?? [], salesRows, days, now)
+  const activity = activityFeed(salesRows, daily ?? [], myPubs, now)
+  const pageReadiness = readiness(myPubs, now)
   const funnelOf = new Map(funnels.map(f => [f.pubId, f]))
   /** The rows' traffic state, derived by the same function the ledger uses — the
    *  three truths are identical (figures, in flight, nothing to read) and a kept log
@@ -643,8 +659,8 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
   const framingNote = daily === null
     ? null
     : recordingSince
-      ? 'The four figures above are all-time counters. The chart and the rows below count only recorded events, and most of a counter predates the log.'
-      : 'The four figures above are all-time counters. Nothing has been recorded yet, so the trend starts with the first visit.'
+      ? 'Publication totals are all-time counters. The chart and window figures count recorded events only; counters can predate the log.'
+      : 'Publication totals are all-time counters. Nothing has been recorded yet, so the trend starts with the first visit.'
 
   // The list decides whether these figures are measurements. While it is unread
   // it is empty, and a "0" over an empty list states a count nobody made (#704).
@@ -660,12 +676,42 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
 
   return (
     <>
+      <CrSectionHead title={`Last ${days} days`} actions={
+        <PillNav className="filter-pillbar hub-pills-quiet" role="group" aria-label="Funnel window" activeKey={String(days)}>
+          {FUNNEL_WINDOWS.map(w => (
+            <button key={w.days} type="button" data-pill-key={String(w.days)}
+              className={`clickable-chip chip${days === w.days ? ' on-teal' : ''}`}
+              onClick={() => { onDays(w.days) }} aria-pressed={days === w.days}>{w.label}</button>
+          ))}
+        </PillNav>
+      } />
+      <div className="hub-strip cr-tilegrid cr-hub-kpis">
+        {([
+          ['views', 'Route views'], ['forks', 'Forks'], ['unlocks', 'Unlocks'], ['net', 'Earned net'],
+        ] as const).map(([key, label]) => {
+          const read = key === 'views' || key === 'forks' ? trafficRead : unlockRead
+          const delta = windows.delta?.[key]
+          return (
+            <div className="hub-cell cr-tile" key={key}>
+              <span className="stat-label cr-tile__label">{label}</span>
+              {read === 'ready' ? <>
+                <span className="stat-value hub-cell-value cr-tile__value">{key === 'net' ? formatInr(windows.current[key]) : windows.current[key].toLocaleString('en-IN')}</span>
+                {delta === undefined ? <span className="cr-tile__note">No earlier data</span> : <CrDelta value={delta} unit={key === 'net' ? 'INR' : undefined} />}
+              </> : <UnreadFigure view={read} />}
+            </div>
+          )
+        })}
+      </div>
+      <details className="cr-hub-totals">
+      <summary>Publication totals</summary>
       <div className="hub-strip">
         <div className="hub-cell"><span className="stat-label">Views (all time)</span>{unknownPubs ? <UnreadFigure view={publishedView} /> : <span className="stat-value hub-cell-value">{totalViews.toLocaleString('en-IN')}</span>}</div>
         <div className="hub-cell"><span className="stat-label">Forks (all time)</span>{unknownPubs ? <UnreadFigure view={publishedView} /> : <span className="stat-value hub-cell-value">{totalForks.toLocaleString('en-IN')}</span>}</div>
         <div className="hub-cell"><span className="stat-label">Live</span>{unknownPubs ? <UnreadFigure view={publishedView} /> : tripsKnown ? <span className="stat-value hub-cell-value">{liveCount}</span> : <UnreadFigure view={tripsView} />}</div>
         <div className="hub-cell"><span className="stat-label">Behind</span>{unknownPubs ? <UnreadFigure view={publishedView} /> : tripsKnown ? <span className="stat-value hub-cell-value">{staleCount > 0 ? <span className="metric-warn">{staleCount}</span> : 0}</span> : <UnreadFigure view={tripsView} />}</div>
       </div>
+
+      </details>
 
       {/* The trips behind the counts failed or are still reading: the figures
           above are unknown, and only a failed read offers the way back. */}
@@ -713,28 +759,11 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
         </div>
       )}
 
-      {/* Two columns on a wide screen, one below: the trend and the publication
-          list answer two halves of the same question, and stacking them as
-          full-width banners made the page a scroll of equal-weight bands. */}
-      {/* One instrument panel, two columns, a hairline between them (live mode,
-          variant 3). The page used to be a strip, then two cards, then the
-          profile card — a tall stack with a maintenance surface at the foot and
-          a gap under whichever column was shorter. A single surface has no
-          inter-card gap to collapse, and the divider does the grouping two
-          borders were doing badly. The pairing starts at 1024 rather than 1280
-          because a 1140px window is a perfectly ordinary laptop. */}
-      <Surface className="hub-instrument">
-        <div className="hub-instrument-cols">
-          <section className="hub-instrument-col" aria-labelledby="hub-trend-h">
+      <div className="cr-hub-layout">
+        <div className="cr-hub-main">
+          <section className="cr-card cr-hub-traffic" aria-labelledby="hub-trend-h">
             <div className="hub-panel-head">
               <h2 className="hub-card-title" id="hub-trend-h">Recorded traffic</h2>
-              <PillNav className="filter-pillbar hub-pills-quiet" role="group" aria-label="Funnel window" activeKey={String(days)}>
-                {FUNNEL_WINDOWS.map(w => (
-                  <button key={w.days} type="button" data-pill-key={String(w.days)}
-                    className={`clickable-chip chip${days === w.days ? ' on-teal' : ''}`}
-                    onClick={() => { onDays(w.days) }} aria-pressed={days === w.days}>{w.label}</button>
-                ))}
-              </PillNav>
             </div>
             {/* The state sentence lives here once, and the box below stays silent
                 instead of apologising twice. The chain now OPENS with the in-flight
@@ -771,9 +800,20 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
             {daily === null
               ? <div className="hub-trend-void" aria-hidden="true" />
               : <TrendChart points={series} label={windowLabel} unlockRead={unlockRead} />}
+            <div className="cr-hub-funnel">
+              <h3 className="cr-card__title">From a view to an unlock</h3>
+              {trafficRead === 'ready' ? <>
+                <CrMeterRow label="Route views" value={windows.current.views} pct={windows.current.views > 0 ? 100 : 0} tone="route" note="Recorded route views in this window." />
+                <CrMeterRow label="Forked" value={windows.current.forks} pct={windows.current.views ? windows.current.forks / windows.current.views * 100 : 0} tone="lagoon"
+                  note={windows.current.views ? `${formatPct(windows.current.forks / windows.current.views * 100)} fork/view ratio` : 'No views to compare'} />
+              </> : <StateBlock kind={trafficRead === 'reading' ? 'loading' : 'failed'} size="compact" title="Traffic counts are unavailable." />}
+              {unlockRead === 'ready' ? <CrMeterRow label="Unlocked" value={windows.current.unlocks} pct={trafficRead === 'ready' && windows.current.forks ? windows.current.unlocks / windows.current.forks * 100 : 0} tone="marigold"
+                note={trafficRead !== 'ready' ? 'Fork count is unavailable.' : windows.current.forks ? `${formatPct(windows.current.unlocks / windows.current.forks * 100)} unlock/fork ratio` : 'No forks to compare'} /> : <StateBlock kind={unlockRead === 'reading' ? 'loading' : 'failed'} size="compact" title="Unlock counts are unavailable." />}
+              <p className="cr-tile__note">Separate activity counts. These ratios do not measure visitor conversion.</p>
+            </div>
           </section>
 
-          <section className="hub-instrument-col" aria-labelledby="hub-pubs-h">
+          <section className="cr-card cr-hub-publications" aria-labelledby="hub-pubs-h">
             <div className="hub-lead-head">
               <h2 className="hub-card-title" id="hub-pubs-h">Publications</h2>
               {!unknownPubs && tripsKnown && (
@@ -791,7 +831,10 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
                 Nothing published yet. List a trip on Explore from its Share tab.
               </p>
             ) : (
-              <div>
+              <div role="table" aria-label={`Publications, last ${days} days`}>
+                <div role="row" className="cr-hub-table-head">
+                  {['Route', 'Price', 'Status', `Views ${days} days`, 'Forks', 'Unlocks', 'Updated', 'Actions'].map(label => <span role="columnheader" key={label}>{label}</span>)}
+                </div>
                 {publishedView === 'kept' && (
                   <StateBlock kind="kept" size="compact" title="Couldn’t refresh your publications."
                     body="Showing the ones that loaded."
@@ -812,15 +855,9 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
                   // lib/pubRowStatus.ts), so no two of them can disagree.
                   const status = rowStatuses[rowIndex]
                   return (
-                    <div key={p.id} className="hub-lead-row">
-                      <span className="hub-lead-title">
+                    <div key={p.id} role="row" className="hub-lead-row cr-hub-publication">
+                      <span role="cell" className="hub-lead-title">
                         <a {...appLink(`/pub/${p.id}`)}>{p.title}</a>
-                        {/* Unpublished needs no trip, so its chip stays: the rest
-                            wait for the trips read rather than print Live. */}
-                        {tripsKnown || status.key === 'unpublished' ? <Chip tone={status.tone}>{status.label}</Chip> : null}
-                        {/* Where it goes and how long — not what it costs. The
-                            price belongs with the money surfaces; this row is
-                            about whether the page converts. */}
                         <span className="hub-lead-where">
                           {[
                             p.routeSummary.slice(0, 3).join(' · '),
@@ -838,8 +875,18 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
                           sentence through for the WHOLE first read — a separate,
                           older conflation of "loading" with "nothing recorded";
                           the reading state now returns first.) */}
-                      <FunnelLine f={funnelOf.get(p.id)} funnelRead={trafficRead} unlockRead={unlockRead} windowLabel={windowLabel} />
-                      <span className="pub-row-actions">
+                      <span role="cell" className="cr-hub-price">{p.premiumPriceInr ? formatInr(p.premiumPriceInr) : 'Free'}</span>
+                      <span role="cell" className="cr-hub-status">{tripsKnown || status.key === 'unpublished' ? <Chip tone={status.tone}>{status.label}</Chip> : null}</span>
+                      <div role="cell" className="cr-hub-views">
+                        {trafficRead === 'ready' ? funnelOf.get(p.id)?.views : <UnreadFigure view={trafficRead} />}
+                        <details className="cr-hub-route-funnel"><summary>Traffic details</summary>
+                          <FunnelLine f={funnelOf.get(p.id)} funnelRead={trafficRead} unlockRead={unlockRead} windowLabel={windowLabel} />
+                        </details>
+                      </div>
+                      <span role="cell" className="cr-hub-forks">{trafficRead === 'ready' ? funnelOf.get(p.id)?.forks : <UnreadFigure view={trafficRead} />}</span>
+                      <span role="cell" className="cr-hub-unlocks">{unlockRead === 'ready' ? funnelOf.get(p.id)?.unlocks : <UnreadFigure view={unlockRead} />}</span>
+                      <span role="cell" className="cr-hub-updated">{shortDate(p.refreshedAt ?? p.publishedAt)}</span>
+                      <span role="cell" className="pub-row-actions">
                         <button
                           className={`btn btn-sm ${status.action === 'edit' ? 'btn-outline' : 'btn-saffron'}`}
                           aria-label={status.action === 'edit'
@@ -860,9 +907,14 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
               </div>
             )}
           </section>
+          <HubActivity events={activity} salesRead={unlockRead} trafficRead={trafficRead} publicationsView={publishedView}
+            salesKeptAt={salesError ? salesAt : null} trafficKeptAt={funnelError ? dailyAt : null} />
         </div>
-      </Surface>
-
+        <aside className="cr-hub-aside">
+          {unknownPubs ? <PubsUnread view={publishedView} retrying={publishedRetrying} onRetry={onRetryPublished} /> :
+            <HubReadiness report={pageReadiness} pubs={myPubs} kept={publishedView === 'kept'} />}
+        </aside>
+      </div>
 
     </>
   )
@@ -951,6 +1003,8 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
   const walk = payoutWalk(actual?.rows ?? [], now)
   const payout = payoutStatus(walk.balanceInr, now)
   const payoutRuns = walk.periods
+  const months = grossByMonth(actual?.rows ?? [], 6, now)
+  const monthMax = Math.max(1, ...months.map(point => point.grossInr))
   return (
     <>
       {view === 'projection' ? (
@@ -962,29 +1016,35 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
            restated: the table's Total row carries Potential, Fee and Net, so showing
            them here too put the headline numbers on the screen twice — the strip
            orients, the table counts. */
-        <div className="hub-strip">
-          <div className="hub-cell">
+        <div className="hub-strip cr-tilegrid cr-hub-earnings">
+          <div className="hub-cell cr-tile">
             <span className="stat-label">Priced plans</span>
             {pubsUnknown ? <UnreadFigure view={publishedView} /> : <span className="stat-value hub-cell-value">{projection.rows.length}</span>}
             {!pubsUnknown && <span className="hub-cell-hint muted">of {myPubs.length} published</span>}
           </div>
-          <div className="hub-cell">
+          <div className="hub-cell cr-tile">
             <span className="stat-label">Forks so far</span>
             {pubsUnknown ? <UnreadFigure view={publishedView} /> : <span className="stat-value hub-cell-value">{projectionForks.toLocaleString('en-IN')}</span>}
           </div>
         </div>
       ) : (
-        <div className="hub-strip">
-          <div className="hub-cell">
+        <div className="hub-strip cr-tilegrid cr-hub-earnings">
+          <div className="hub-cell cr-tile">
             <span className="stat-label">Lifetime {shownBasis === 'net' ? 'net' : 'gross'}</span>
             {ledgerRead === 'ready'
               ? <span className="stat-value hub-cell-value">{formatInr(lifetimeInr)}</span>
               : <span className="stat-value hub-cell-value hub-cell-unread">{unreadLabel}</span>}
           </div>
-          <div className="hub-cell">
+          <div className="hub-cell cr-tile">
             <span className="stat-label">Sales</span>
             {ledgerRead === 'ready'
               ? <span className="stat-value hub-cell-value">{actual?.rows.length ?? 0}</span>
+              : <span className="stat-value hub-cell-value hub-cell-unread">{unreadLabel}</span>}
+          </div>
+          <div className="hub-cell cr-tile">
+            <span className="stat-label">Platform fee</span>
+            {ledgerRead === 'ready'
+              ? <span className="stat-value hub-cell-value">{formatInr(actual?.feeInr ?? 0)}</span>
               : <span className="stat-value hub-cell-value hub-cell-unread">{unreadLabel}</span>}
           </div>
           {/* A date only once there is something to send: a run date over a ₹0
@@ -992,7 +1052,7 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
               underneath, because a bare "—" next to a zero explains nothing — and
               while the ledger is unread, the conclusion is suppressed entirely
               rather than guessed at zero. */}
-          <div className="hub-cell">
+          <div className="hub-cell cr-tile">
             <span className="stat-label">Next payout</span>
             {ledgerRead !== 'ready' ? (
               <>
@@ -1038,8 +1098,16 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
         </PillNav>
       </div>
 
+      {view === 'actual' && ledgerRead === 'ready' && (
+        <section className="cr-card cr-hub-months" aria-labelledby="hub-months-h">
+          <CrSectionHead title="Gross by month" id="hub-months-h" note="Route unlocks" />
+          {months.map(point => <CrMeterRow key={point.month} label={new Date(`${point.month}-01T00:00:00Z`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' })}
+            value={formatInr(point.grossInr)} pct={point.grossInr / monthMax * 100} tone="marigold" />)}
+          {ledgerKeptAt !== null && <p className="cr-tile__note">Showing the last loaded sales.</p>}
+        </section>
+      )}
       {view === 'actual' && (
-        <Surface as="section" className="hub-payouts">
+        <Surface as="section" className="hub-payouts cr-card">
           <h2 className="hub-card-title">Payouts</h2>
           {/* The schedule is a statement about real money, so it waits for the
               ledger. Until then it says the balance is unknown — the old text
