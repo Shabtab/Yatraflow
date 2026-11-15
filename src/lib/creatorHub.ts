@@ -19,6 +19,7 @@ import type { FunnelDailyRow } from './pubFunnel'
 import { funnelWindowStart, utcDayKey, utcDayStart } from './pubFunnel'
 import type { SaleRow } from './earnings'
 import { livePubs } from './livePubs'
+import { DAY_MS } from './dayCount'
 
 export interface KpiFigures {
   views: number
@@ -83,7 +84,7 @@ export function kpiWindows(
   now: number,
 ): KpiWindows {
   const currentStart = funnelWindowStart(days, now)
-  const previousStart = currentStart - days * 86400000
+  const previousStart = currentStart - days * DAY_MS
   const current = sumWindow(daily, sales, currentStart, now)
   const start = logStart(daily, sales)
   const covered = start !== null && start <= previousStart
@@ -186,7 +187,7 @@ export interface ReadinessReport {
   ready: boolean
 }
 
-const FRESH_WINDOW_MS = 90 * 86400000
+const FRESH_WINDOW_MS = 90 * DAY_MS
 
 /** The D5 audit over the LIVE routes only — an unpublished route needs no
  *  cover and no season text, so counting it would flag work nobody can see.

@@ -66,7 +66,9 @@ export function MetaIcon({ icon: Icon, tone, size = 12 }: { icon: LucideIcon; to
 // baseline with a consistent gap. This replaces the copy-pasted
 // `style={{ verticalAlign: '-2px', marginRight: N }}` every surface used to
 // inline — one edit point instead of 100 drifted copies.
-export function InlineIcon({ icon: Icon, size = 13, gap = 4, className, style, fill, vAlign = '-2px' }: {
+export const INLINE_ICON_VERTICAL_ALIGN = '-2px'
+
+export function InlineIcon({ icon: Icon, size = 13, gap = 4, className, style, fill, vAlign = INLINE_ICON_VERTICAL_ALIGN }: {
   icon: LucideIcon
   size?: number
   /** space between glyph and the next word, px */

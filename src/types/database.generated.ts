@@ -978,6 +978,10 @@ export type Database = {
         }
         Returns: string
       }
+      bump_creator_page_view: {
+        Args: { p_creator: string; p_source?: string }
+        Returns: undefined
+      }
       bump_published_stats: {
         Args: {
           p_campaign?: string
@@ -1009,6 +1013,14 @@ export type Database = {
           views: number
         }[]
       }
+      get_creator_page_views: {
+        Args: { p_days?: number }
+        Returns: {
+          day: string
+          source: string
+          visits: number
+        }[]
+      }
       get_creator_sales: {
         Args: never
         Returns: {
@@ -1018,6 +1030,14 @@ export type Database = {
           order_id: string
           pub_id: string
           user_id: string
+        }[]
+      }
+      get_creator_share_sources: {
+        Args: { p_days?: number }
+        Returns: {
+          forks: number
+          source: string
+          views: number
         }[]
       }
       get_invite_trip: {
