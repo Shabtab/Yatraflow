@@ -429,7 +429,15 @@ export type Database = {
           social_links?: Json | null
           travel_styles?: Json
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_featured_pub_fkey"
+            columns: ["featured_pub_id"]
+            isOneToOne: false
+            referencedRelation: "published_itineraries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pub_events: {
         Row: {
