@@ -34,9 +34,9 @@
       "rawH1": 0
     },
     "src/pages/CreatorPage.tsx": {
-      "EmptyState": 5,
-      "loadingBlock": 2,
-      "inlineStyle": 2,
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
       "rawH1": 1
     },
     "src/pages/DMCAPage.tsx": {
