@@ -40,10 +40,10 @@
 }
 .ex-hero-copy { min-width: 0; animation: cardIn var(--motion-slow) var(--ease-out) backwards; }
 .ex-hero h1 {
-  margin: 0; color: var(--text); font-family: var(--ex-font-serif); font-weight: 600;
+  margin: 0; color: var(--text); font-family: var(--font-display); font-weight: 600;
   font-size: clamp(2.25rem, 1.15rem + 2.9vw, 3.5rem); line-height: 1.04; letter-spacing: -.015em; text-wrap: balance;
 }
-.ex-hero h1 em { position: relative; font-style: italic; color: var(--ink-teal); white-space: nowrap; }
+.ex-hero h1 em { position: relative; font-family: var(--font-serif); font-style: italic; color: var(--ink-teal); white-space: nowrap; }
 .ex-hero h1 em::after {
   content: ''; position: absolute; left: 2%; right: 4%; bottom: -.1em; height: .16em; background: var(--saffron);
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 10' preserveAspectRatio='none'%3E%3Cpath d='M2 7c30-5 60-6 98-3s70 2 98-3' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;

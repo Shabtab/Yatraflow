@@ -82,7 +82,8 @@ describe('PageHeader styles', () => {
     const start = css.indexOf('/* ===== Shared page components: header ===== */')
     expect(start).toBeGreaterThan(-1)
     const block = css.slice(start, css.indexOf('/* ===== Shared page components: surface ===== */'))
-    expect(block).toContain('font-family: var(--font-serif)')
+    expect(block).toContain('font-family: var(--font-display)')
+    expect(block).toContain('.yf-header-title em { position: relative; font-family: var(--font-serif)')
     expect(block).toContain('clamp(2rem, 1.2rem + 2vw, 2.75rem)')
     expect(block).toContain('border-bottom: 1px solid var(--line)')
     // R19: page-enter owns the page entrance, so the page header has no cardIn entrance.

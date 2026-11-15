@@ -753,7 +753,6 @@
   --shadow-card: var(--elev-1);
   --shadow-card-hover: var(--elev-2);
   --shadow-glow-teal: var(--glow-sea);
-  --font-serif: var(--font-display);
   --font-hand: var(--font-body);
   --dur-instant: var(--motion-instant);
   --dur-quick: var(--motion-fast);

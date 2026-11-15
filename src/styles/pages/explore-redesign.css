@@ -35,7 +35,7 @@
   font-family: var(--font-display); font-size: clamp(2.25rem, 1.2rem + 2.6vw, 3.5rem);
   font-weight: 700; line-height: 1.04; letter-spacing: -.025em; text-wrap: balance;
 }
-.ex-page .ex-hero h1 em { font-style: normal; color: var(--pw-lagoon-600); }
+.ex-page .ex-hero h1 em { font-family: var(--font-serif); font-style: italic; color: var(--pw-lagoon-600); }
 .ex-page .ex-hero h1 em::after { content: none; }
 
 .ex-page .ex-hero-lede {

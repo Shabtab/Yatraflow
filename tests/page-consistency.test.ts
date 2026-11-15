@@ -194,7 +194,7 @@ function cardHoverProblems(cssText: string): string[] {
 // An alias such as --ex-font-serif counts as a use of the same face.
 type Face = 'serif' | 'hand'
 const FACE_ALLOWED: Record<Face, string[]> = {
-  serif: ['.ex-hero h1', '.yf-header-title'],
+  serif: ['.ex-hero h1 em', '.yf-header-title em', '.ex-page .ex-hero h1 em'],
   hand: ['.ex-note', '.yf-header-note'],
 }
 const FACE_USE: Array<[Face, RegExp]> = [
@@ -434,8 +434,8 @@ describe('each rule fails on its bad fixture and passes its good one', () => {
     const good = [
       ':root { --font-serif: "Playfair Display", Georgia, serif; --ex-font-serif: var(--font-serif); }',
       ':root[data-theme="dark"] { --font-hand: "Caveat", cursive; }',
-      '.ex-hero h1 { font-family: var(--font-serif); }',
-      '.yf-header-title { font-family: var(--font-serif); }',
+      '.ex-hero h1 em { font-family: var(--font-serif); }',
+      '.yf-header-title em { font-family: var(--font-serif); }',
       '.ex-note { font-family: var(--ex-font-hand); }',
       '.yf-header-note { font-family: var(--font-hand); }',
     ].join('\n')
