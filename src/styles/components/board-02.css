@@ -29,6 +29,10 @@
    own column edge and looked as if it went under the next column. Unclip both
    layers only while a carry is live. */
 .board-col.drag-live, .board-col.drag-live .board-col-stops { overflow: visible; }
+/* Map focus moves each column with a transform, so each column is its own
+   layer, and a later day paints over the carried card. Lift the live column
+   above its siblings. A flex item takes z-index without a position. */
+.board-col.drag-live { z-index: var(--z-raised); }
 
 .board-head { margin-bottom: 14px; }
 
