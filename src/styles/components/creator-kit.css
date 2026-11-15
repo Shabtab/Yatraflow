@@ -50,7 +50,7 @@
 
 .cr-tile {
   display: grid;
-  grid-template-columns: 40px 1fr;
+  grid-template-columns: 1fr;
   gap: var(--space-5);
   padding: var(--space-6);
   border: 1px solid var(--pw-line-soft);
@@ -60,6 +60,14 @@
 .cr-tile--soft {
   border: 0;
   background: var(--pw-lagoon-50);
+}
+@media (min-width: 700px) {
+  .cr-tile:has(.cr-tile__icon) {
+    grid-template-columns: 40px 1fr;
+  }
+}
+.cr-tile > * {
+  min-width: 0;
 }
 .cr-tile__icon {
   width: 40px;
@@ -81,7 +89,7 @@
   font-variant-numeric: tabular-nums;
   color: var(--pw-ink);
 }
-.cr-tile__value--none {
+.cr-tile__value.cr-tile__value--none {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: normal;
@@ -98,8 +106,11 @@
 }
 .cr-tilegrid {
   display: grid;
-  grid-template-columns: repeat(var(--cr-cols, 2), 1fr);
+  grid-template-columns: repeat(var(--cr-cols, 2), minmax(0, 1fr));
   gap: var(--space-4a);
+}
+.cr-tilegrid > * {
+  min-width: 0;
 }
 
 .cr-rank {
@@ -186,10 +197,13 @@ a.cr-rank:focus-visible {
   transform-origin: 0 50%;
   animation: crMeterGrow var(--motion-slower) var(--ease-paper) backwards;
 }
-.cr-meter[data-tone="route"] .cr-meter__fill { background: var(--pw-route); }
-.cr-meter[data-tone="lagoon"] .cr-meter__fill { background: var(--pw-lagoon-400); }
-.cr-meter[data-tone="lagoon-deep"] .cr-meter__fill { background: var(--pw-lagoon-600); }
-.cr-meter[data-tone="marigold"] .cr-meter__fill { background: var(--pw-marigold-ink); }
+.cr-meter__fill[data-tone="route"] { background: var(--pw-route); }
+.cr-meter__fill[data-tone="lagoon"] { background: var(--pw-lagoon-400); }
+.cr-meter__fill[data-tone="lagoon-deep"] { background: var(--pw-lagoon-600); }
+.cr-meter__fill[data-tone="marigold"] { background: var(--pw-marigold-ink); }
+.cr-meter > * {
+  min-width: 0;
+}
 .cr-meter__value {
   font: var(--pw-meta);
   font-weight: 600;
@@ -225,6 +239,19 @@ a.cr-rank:focus-visible {
   letter-spacing: -.02em;
   color: var(--pw-on-sea);
 }
+/* Element selectors on purpose. A class subject on the button configuration point
+   (.btn) trips the config-appearance ownership gate. */
+.cr-band > a,
+.cr-band > button {
+  background: var(--pw-card);
+  color: var(--pw-sea-700);
+  min-height: 52px;
+  padding-inline: var(--space-9);
+  white-space: nowrap;
+}
+.cr-band > * {
+  min-width: 0;
+}
 
 .cr-divider {
   display: flex;
@@ -253,7 +280,7 @@ a.cr-rank:focus-visible {
 
   .cr-tile {
     grid-template-columns: 1fr;
-    gap: var(--space-4);
+    gap: var(--space-4a);
     padding: var(--space-5);
   }
   .cr-tile__icon {
@@ -264,23 +291,27 @@ a.cr-rank:focus-visible {
     font-size: 22px;
   }
   .cr-tilegrid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-4);
   }
 
   .cr-rank {
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     width: auto;
     height: 56px;
+  }
+  .cr-rank > * {
+    min-width: 0;
   }
   .cr-rank__value {
     font-size: 20px;
   }
 
   .cr-meter {
-    grid-template-columns: 1fr 52px;
+    grid-template-columns: minmax(0, 1fr) 52px;
     grid-template-areas:
       "label value"
       "track track"
@@ -311,6 +342,11 @@ a.cr-rank:focus-visible {
     font: var(--pw-display-s);
     letter-spacing: -.02em;
   }
+  .cr-band > a,
+  .cr-band > button {
+    width: 100%;
+    justify-content: center;
+  }
 
   .cr-divider {
     flex-direction: column;
@@ -321,7 +357,7 @@ a.cr-rank:focus-visible {
 
 @media (max-width: 359px) {
   .cr-tilegrid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .cr-tilegrid > :nth-child(3) {
     grid-column: 1 / -1;
