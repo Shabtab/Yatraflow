@@ -937,5 +937,146 @@ begin
   end if;
 end $$;
 
+-- ============================================================ G1. creator share sources
+-- Metadata checks run in the full contract. Behaviour checks use local fixtures only.
+-- scripts/integration/creator-g1-g2-db.mjs seeds these accounts and enables the fixture flag.
+do $$
+begin
+  if not exists (
+    select 1 from pg_proc where oid = 'public.get_creator_share_sources(integer)'::regprocedure
+      and prosecdef and proconfig @> array['search_path=public']
+  ) then
+    raise exception 'G1: the reader needs SECURITY DEFINER and a pinned search_path';
+  end if;
+  if has_function_privilege('anon', 'public.get_creator_share_sources(integer)', 'execute')
+    or not has_function_privilege('authenticated', 'public.get_creator_share_sources(integer)', 'execute') then
+    raise exception 'G1: only authenticated callers may read share sources';
+  end if;
+  if current_setting('yatraflow.creator_contract_fixture', true) is distinct from 'on' then
+    return;
+  end if;
+  set local role anon;
+  begin
+    perform * from public.get_creator_share_sources();
+    raise exception 'G1: anon read succeeded';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000002', true);
+  set local role authenticated;
+  if exists (select 1 from public.get_creator_share_sources()) then
+    raise exception 'G1: another creator read someone else''s sources';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000003', true);
+  set local role authenticated;
+  if exists (select 1 from public.get_creator_share_sources()) then
+    raise exception 'G1: a disabled owner read sources';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000001', true);
+  set local role authenticated;
+  if (select coalesce(sum(views), 0) from public.get_creator_share_sources()) <> 2
+    or (select coalesce(sum(forks), 0) from public.get_creator_share_sources()) <> 1
+    or not exists (select 1 from public.get_creator_share_sources() where source is null and views = 1) then
+    raise exception 'G1: the owner must read only own counts and retain the direct source';
+  end if;
+  reset role;
+end $$;
+
+-- ============================================================ G2. creator page views
+do $$
+declare
+  v_role text;
+  v_function text;
+begin
+  if not (select relrowsecurity from pg_class where oid = 'public.creator_page_events'::regclass) then
+    raise exception 'G2: raw page events need RLS';
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'creator_page_events'
+      and policyname = 'creator page events deny clients' and permissive = 'RESTRICTIVE'
+      and cmd = 'ALL' and roles @> array['anon', 'authenticated']::name[]
+      and qual = 'false' and with_check = 'false'
+  ) then
+    raise exception 'G2: direct client access needs a RESTRICTIVE deny policy';
+  end if;
+  if (select array_agg(column_name::text order by ordinal_position) from information_schema.columns
+    where table_schema = 'public' and table_name = 'creator_page_events')
+    is distinct from array['creator_id', 'at', 'source']::text[] then
+    raise exception 'G2: page events must hold only creator_id, at and source';
+  end if;
+  foreach v_function in array array[
+    'public.bump_creator_page_view(uuid,text)', 'public.get_creator_page_views(integer)',
+    'public.prune_creator_page_events(integer)'
+  ] loop
+    if not exists (select 1 from pg_proc where oid = v_function::regprocedure
+      and prosecdef and proconfig @> array['search_path=public']) then
+      raise exception 'G2: % needs SECURITY DEFINER and a pinned search_path', v_function;
+    end if;
+  end loop;
+  foreach v_role in array array['anon', 'authenticated'] loop
+    if has_table_privilege(v_role, 'public.creator_page_events', 'SELECT')
+      or has_table_privilege(v_role, 'public.creator_page_events', 'INSERT')
+      or has_table_privilege(v_role, 'public.creator_page_events', 'UPDATE')
+      or has_table_privilege(v_role, 'public.creator_page_events', 'DELETE') then
+      raise exception 'G2: % has direct table privileges', v_role;
+    end if;
+    if has_function_privilege(v_role, 'public.prune_creator_page_events(integer)', 'execute') then
+      raise exception 'G2: clients must not prune events';
+    end if;
+    if not has_function_privilege(v_role, 'public.bump_creator_page_view(uuid,text)', 'execute') then
+      raise exception 'G2: visitors must reach the validated bump';
+    end if;
+  end loop;
+  if has_function_privilege('anon', 'public.get_creator_page_views(integer)', 'execute')
+    or not has_function_privilege('authenticated', 'public.get_creator_page_views(integer)', 'execute')
+    or not has_function_privilege('service_role', 'public.prune_creator_page_events(integer)', 'execute') then
+    raise exception 'G2: owner read or retention grants drifted';
+  end if;
+  if current_setting('yatraflow.creator_contract_fixture', true) is distinct from 'on' then
+    return;
+  end if;
+  foreach v_role in array array['anon', 'authenticated'] loop
+    execute format('set local role %I', v_role);
+    begin
+      perform * from public.creator_page_events;
+      raise exception 'G2: direct table select succeeded for %', v_role;
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      insert into public.creator_page_events(creator_id) values ('15110000-0000-4000-8000-000000000001');
+      raise exception 'G2: direct table insert succeeded for %', v_role;
+    exception when insufficient_privilege then null;
+    end;
+    reset role;
+  end loop;
+  set local role anon;
+  begin
+    perform * from public.get_creator_page_views();
+    raise exception 'G2: anon read succeeded';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000002', true);
+  set local role authenticated;
+  if exists (select 1 from public.get_creator_page_views()) then
+    raise exception 'G2: another creator read someone else''s visits';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000003', true);
+  set local role authenticated;
+  if exists (select 1 from public.get_creator_page_views()) then
+    raise exception 'G2: a disabled owner read visits';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000001', true);
+  set local role authenticated;
+  if (select coalesce(sum(visits), 0) from public.get_creator_page_views()) <> 2 then
+    raise exception 'G2: the owner must read only own visits';
+  end if;
+  reset role;
+end $$;
+
 -- ------------------------------------------------------------------------ done
 select 'rls contract: all crew-facing policies verified' as result;
