@@ -4,14 +4,13 @@ import { Avatar } from '../ui'
 import { ExploreCover } from '../explore/ExploreCover'
 import { appLink } from '../../lib/appLink'
 
-const ORDER = [1, 0, 2]
-
 export function RankPodium({ rows, users, leadRouteFor }: {
   rows: CreatorRankRow[]
   users: CachedUser[]
   leadRouteFor?: (id: string) => PublishedItinerary | undefined
 }) {
-  const podiumRows = ORDER.map(index => rows[index]).filter(Boolean)
+  const podiumRows = [rows[1], rows[0], rows[2]]
+    .filter((row): row is CreatorRankRow => row !== undefined)
   return (
     <div className="cr-rk-podium__grid">
       {podiumRows.map(row => {

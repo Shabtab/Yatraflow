@@ -114,7 +114,7 @@ export function OwnerLayer({ creator, pubs, pubsRead, retryPubs, shareLink, now,
           <h2 className="cr-card__title">Your activity · private</h2>
           <p>{new Date(start).toISOString().slice(0, 10)} to {new Date(now).toISOString().slice(0, 10)} · UTC</p>
           <button className="btn btn-ghost btn-sm" disabled={!canExport}
-            onClick={() => downloadCsv(ownerActivityCsv(daily, sales, visits, now))}>Export CSV</button>
+            onClick={() => { downloadCsv(ownerActivityCsv(daily, sales, visits, now)) }}>Export CSV</button>
           <button className="btn btn-ghost btn-sm" onClick={retry}>Refresh activity</button>
           <ReadNote read={reads.visits} rowCount={visits.length} label="page visits" retry={retry} />
           <ReadNote read={reads.funnel} rowCount={daily.length} label="route activity" retry={retry} />

@@ -1,8 +1,8 @@
-const GLYPH = {
-  up: '▲',
-  down: '▼',
-  flat: '–',
-} as const
+const GLYPH = new Map([
+  ['up', '▲'],
+  ['down', '▼'],
+  ['flat', '–'],
+] as const)
 
 /** Change marker (cr-delta). The direction is shown by the glyph and the
  *  signed text, never by colour alone. The screen reader hears "up 3" or
@@ -20,7 +20,7 @@ export function CrDelta({ value, unit }: { value: number; unit?: string }) {
 
   return (
     <span className={`cr-delta cr-delta--${dir}`}>
-      <span aria-hidden="true">{GLYPH[dir]}</span>
+      <span aria-hidden="true">{GLYPH.get(dir)}</span>
       <span aria-hidden="true">{`${signed}${suffix}`}</span>
       <span className="sr-only">{spoken}</span>
     </span>
