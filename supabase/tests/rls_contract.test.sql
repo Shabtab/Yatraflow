@@ -1107,6 +1107,10 @@ begin
     and prosecdef and proconfig @> array['search_path=public']) then
     raise exception 'G3: public reader must pin its definer search_path';
   end if;
+  if not exists (select 1 from pg_proc where oid = 'public.stamp_publication_reviewed_at()'::regprocedure
+    and not prosecdef and proconfig @> array['search_path=public']) then
+    raise exception 'G3: review stamps need an invoker trigger with a pinned search_path';
+  end if;
   if current_setting('yatraflow.creator_g3_g4_fixture', true) is distinct from 'on' then return; end if;
   perform set_config('request.jwt.claim.sub', '', true);
   set local role anon;
@@ -1198,7 +1202,7 @@ begin
     raise exception 'G4: anonymous follow succeeded';
   exception when insufficient_privilege then null;
   end;
-  if public.get_creator_follower_count('16110000-0000-4000-8000-000000000001') <> 2 then
+  if public.get_creator_follower_count('16110000-0000-4000-8000-000000000001') <> 1 then
     raise exception 'G4: anonymous visitors need a count only';
   end if;
   reset role;

@@ -47,7 +47,9 @@ begin
   if public.is_disabled() then return 0; end if;
   if not exists (select 1 from public.profiles p
     where p.id = p_creator and p.is_creator and not p.is_disabled) then return 0; end if;
-  return (select count(*) from public.creator_follows f where f.creator = p_creator);
+  return (select count(*) from public.creator_follows f
+    join public.profiles p on p.id = f.follower
+    where f.creator = p_creator and p.is_disabled is not true);
 end;
 $$;
 revoke all on function public.get_creator_follower_count(uuid) from public, anon, authenticated;

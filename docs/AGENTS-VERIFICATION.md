@@ -50,6 +50,7 @@ No hosted database is used. This proves local SQL behaviour, not hosted migratio
 Run `node scripts/integration/creator-g3-g4-db.mjs` for the local G3 and G4 SQL contracts.
 It applies both drafts twice on PGlite and runs their fixture-only role checks from `supabase/tests/rls_contract.test.sql`.
 It checks owner writes, public projection fields, invalid shapes, stale picks, private follows and public counts.
+It also checks server review stamps, publication renames, blank notes and disabled follower counts.
 No hosted database is used. This proves local SQL behaviour, not hosted migration status or a PostgREST client journey.
 Run `node scripts/integration/growth-db.mjs` for the isolated growth SQL checks.
 This local fixture does not establish production migration status or the full Supabase role contract.

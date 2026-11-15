@@ -99,7 +99,7 @@ try {
     await db.query('update public.profiles set planning_notes = $1::jsonb where id = $2',
       [notes === null ? null : JSON.stringify(notes), owner])
   }
-  for (const notes of ['null', '{}', 'true', '1', '"note"', '[null]', '[1]', '[{}]', '[[]]',
+  for (const notes of ['null', '{}', 'true', '1', '"note"', '[null]', '[1]', '[{}]', '[[]]', '[""]', '["   "]',
     '["a","b","c","d"]', JSON.stringify(['🛣'.repeat(141)])]) {
     await reject('update public.profiles set planning_notes = $1::jsonb where id = $2', [notes, owner], '23514')
   }
@@ -111,7 +111,17 @@ try {
     for (const item of valid) await db.query(`update public.published_itineraries set ${field} = $1 where id = 'g3-owner'`, [item])
     for (const item of invalid) await reject(`update public.published_itineraries set ${field} = $1 where id = 'g3-owner'`, [item], '23514')
   }
-  await db.exec("update public.published_itineraries set reviewed_at = now() where id = 'g3-owner'")
+  await db.exec(`begin;
+    update public.published_itineraries set reviewed_at = '2099-01-01' where id = 'g3-owner';`)
+  assert.equal(await value("select reviewed_at = now() as v from public.published_itineraries where id = 'g3-owner'"), true)
+  await db.exec(`insert into public.published_itineraries(id, creator_id, reviewed_at)
+    values ('g3-review-insert', '${owner}', '2099-01-01');`)
+  assert.equal(await value("select reviewed_at = now() as v from public.published_itineraries where id = 'g3-review-insert'"), true)
+  await db.exec("delete from public.published_itineraries where id = 'g3-review-insert'; commit;")
+  const reviewedAt = await value("select reviewed_at::text as v from public.published_itineraries where id = 'g3-owner'")
+  await db.exec("update public.published_itineraries set planned_km = 100 where id = 'g3-owner'")
+  assert.equal(await value("select reviewed_at::text as v from public.published_itineraries where id = 'g3-owner'"), reviewedAt)
+  console.log('PASS: client future review dates become server now() on insert and update; unrelated edits preserve stamps')
   for (const pick of ['g3-other', 'g3-dead', 'missing']) {
     await reject('update public.profiles set featured_pub_id = $1 where id = $2', [pick, owner], '23514')
   }
@@ -120,6 +130,20 @@ try {
 
   await db.exec('reset role')
   await db.query("select set_config('request.jwt.claim.sub', '', false)")
+  await db.exec(`update public.profiles set is_creator = false where id = '${owner}';`)
+  await as('authenticated', owner)
+  await db.query('update public.profiles set planning_notes = null, featured_pub_id = featured_pub_id where id = $1', [owner])
+  assert.equal((await card()).featured_pub_id, null)
+  await db.exec('reset role')
+  await db.exec(`update public.profiles set is_creator = true where id = '${owner}';`)
+  await as('authenticated', owner)
+  await db.exec("update public.published_itineraries set id = 'g3-renamed' where id = 'g3-owner'")
+  assert.equal((await card()).featured_pub_id, 'g3-renamed')
+  assert.equal(await value('select featured_pub_id as v from public.profiles where id = $1', [owner]), 'g3-renamed')
+  await db.exec("update public.published_itineraries set id = 'g3-owner' where id = 'g3-renamed'")
+  await db.exec('reset role')
+  await db.query("select set_config('request.jwt.claim.sub', '', false)")
+  console.log('PASS: unchanged picks allow note cleanup; publication renames cascade to private and public picks')
   for (const change of ["unpublished_at = 1", `creator_id = '${other}'`]) {
     await db.exec(`update public.published_itineraries set creator_id = '${owner}', unpublished_at = null where id = 'g3-owner';
       update public.profiles set featured_pub_id = 'g3-owner' where id = '${owner}';
@@ -158,7 +182,16 @@ try {
   for (const target of [disabled, traveller, absent, null]) {
     assert.equal(await value('select public.get_creator_follower_count($1)::int as v', [target]), 0)
   }
-  assert.equal(await value('select public.get_creator_follower_count($1)::int as v', [owner]), 2)
+  assert.equal(await value('select public.get_creator_follower_count($1)::int as v', [owner]), 1)
+  await db.exec('reset role')
+  await db.query('update public.profiles set is_disabled = true where id = $1', [other])
+  await as('anon')
+  assert.equal(await value('select public.get_creator_follower_count($1)::int as v', [owner]), 0)
+  await db.exec('reset role')
+  await db.query('update public.profiles set is_disabled = false where id = $1', [other])
+  await as('anon')
+  assert.equal(await value('select public.get_creator_follower_count($1)::int as v', [owner]), 1)
+  console.log('PASS: disabling a follower removes their count; enabling restores it without a public follower list')
   console.log('PASS: own follow and unfollow, duplicate and self denial, active targets and public count-only reads')
 
   await db.exec(`reset role; create policy fixture_allow on public.creator_follows for all to authenticated using (true) with check (true);`)

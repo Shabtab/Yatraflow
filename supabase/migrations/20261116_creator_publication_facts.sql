@@ -17,6 +17,25 @@ alter table public.published_itineraries drop constraint if exists published_rev
 alter table public.published_itineraries add constraint published_reviewed_scope_check
   check (reviewed_scope is null or char_length(reviewed_scope) <= 140);
 
+-- The client must omit reviewed_at from the publish upsert.
+-- Send it only in a separate "mark reviewed" update. The server supplies the timestamp.
+drop trigger if exists publications_stamp_reviewed_at on public.published_itineraries;
+drop function if exists public.stamp_publication_reviewed_at();
+create or replace function public.stamp_publication_reviewed_at()
+returns trigger language plpgsql set search_path = public
+as $$
+begin
+  if new.reviewed_at is not null
+    and (tg_op = 'INSERT' or new.reviewed_at is distinct from old.reviewed_at) then
+    new.reviewed_at := now();
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.stamp_publication_reviewed_at() from public, anon, authenticated;
+create trigger publications_stamp_reviewed_at before insert or update on public.published_itineraries
+  for each row execute function public.stamp_publication_reviewed_at();
+
 -- Private source fields use the existing self-update policy. Cards remain read-only.
 alter table public.profiles add column if not exists featured_pub_id text;
 alter table public.profiles add column if not exists planning_notes jsonb;
@@ -34,6 +53,7 @@ as $$
       jsonb_array_length(p_notes) <= 3 and not exists (
         select 1 from jsonb_array_elements(p_notes) item
         where jsonb_typeof(item) <> 'string' or char_length(item #>> '{}') > 140
+          or btrim(item #>> '{}') = ''
       )
     else false
   end
@@ -46,7 +66,7 @@ alter table public.profile_cards add constraint cards_planning_notes_check
   check (public.valid_planning_notes(planning_notes) is true);
 alter table public.profiles drop constraint if exists profiles_featured_pub_fkey;
 alter table public.profiles add constraint profiles_featured_pub_fkey
-  foreign key (featured_pub_id) references public.published_itineraries(id) on delete set null;
+  foreign key (featured_pub_id) references public.published_itineraries(id) on update cascade on delete set null;
 
 drop trigger if exists profiles_guard_creator_picks on public.profiles;
 drop function if exists public.guard_creator_picks();
@@ -54,7 +74,8 @@ create or replace function public.guard_creator_picks()
 returns trigger language plpgsql security definer set search_path = public
 as $$
 begin
-  if new.featured_pub_id is not null then
+  if new.featured_pub_id is not null
+    and (tg_op = 'INSERT' or new.featured_pub_id is distinct from old.featured_pub_id) then
     if not new.is_creator or new.is_disabled then
       raise exception 'Creator picks need an active creator' using errcode = '23514';
     end if;
@@ -120,8 +141,8 @@ returns trigger language plpgsql security definer set search_path = public
 as $$
 begin
   update public.profiles set featured_pub_id = null
-    where featured_pub_id = old.id
-      and (new.id <> old.id or new.creator_id <> id or new.unpublished_at is not null);
+    where featured_pub_id in (old.id, new.id)
+      and (new.creator_id <> id or new.unpublished_at is not null);
   return new;
 end;
 $$;
