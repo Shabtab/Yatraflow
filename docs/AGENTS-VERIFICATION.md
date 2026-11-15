@@ -86,6 +86,7 @@ the integration branch. The script runs vitest on the union and passes the
 child's exit code through. A source change that selects no test exits 1 — it
 never reports an empty green. The full gate still runs everything;
 `test:changed` only makes the focused run honest.
+After you merge a branch into an integration branch, run the full vitest suite. A focused run misses tests that scan all of `src/`.
 
 On a busy machine, set process-only `VITEST_MAX_WORKERS=1` before `npm run verify`.
 Vitest 4.1.12 resolves this value as `maxWorkers`.
