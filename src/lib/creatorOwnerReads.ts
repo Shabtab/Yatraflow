@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { SHARE_SOURCES } from './shareUrl'
+import { isPostId } from './creatorPosts'
 import { activityCsv, activityFeed } from './creatorHub'
 import type { SaleRow } from './earnings'
 import type { FunnelDailyRow } from './unlock'
@@ -97,13 +98,17 @@ export function claimCreatorPageView(creatorId: string, viewerId: string | null,
 }
 
 const visitClaims = new Set<string>()
-export async function bumpCreatorPageView(creatorId: string, source: string | null, viewerId: string | null): Promise<void> {
+export async function bumpCreatorPageView(creatorId: string, source: string | null, viewerId: string | null, postId: string | null = null): Promise<void> {
   let storage: VisitStorage | null = null
   try { storage = window.sessionStorage } catch { /* Use the memory claim when storage is blocked. */ }
   if (!claimCreatorPageView(creatorId, viewerId, storage, visitClaims)) return
   const safeSource = CREATOR_PAGE_SOURCES.find(item => item === source) ?? null
   try {
-    const { error } = await supabase.rpc('bump_creator_page_view', { p_creator: creatorId, p_source: safeSource })
+    // G8: name the post only for a post-tagged visit. Every other visit sends the
+    // two older arguments, so it still works before the G8 SQL is applied.
+    const tagged = safeSource === 'post' && isPostId(postId)
+    const { error } = await supabase.rpc('bump_creator_page_view',
+      tagged ? { p_creator: creatorId, p_source: safeSource, p_post: postId } : { p_creator: creatorId, p_source: safeSource })
     if (error) console.error('[yatraflow] creator page visit failed', error)
   } catch (error) { console.error('[yatraflow] creator page visit failed', error) }
 }

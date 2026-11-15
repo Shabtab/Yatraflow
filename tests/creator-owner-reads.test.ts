@@ -83,6 +83,22 @@ describe('visitor attribution and session claims', () => {
     await bumpCreatorPageView('visitor-page', 'ig', null)
     expect(supabase.rpc).toHaveBeenCalledExactlyOnceWith('bump_creator_page_view', { p_creator: 'visitor-page', p_source: null })
   })
+  it('names a post only for a post-tagged visit with a real post id', async () => {
+    const rpc = vi.mocked(supabase.rpc)
+    rpc.mockClear()
+    rpc.mockResolvedValue({ success: true, data: null, error: null, count: null, status: 204, statusText: 'No Content' })
+    const post = '17110000-0000-4000-8000-0000000000a1'
+    await bumpCreatorPageView('tagged-a', 'post', null, post)
+    await bumpCreatorPageView('tagged-b', 'ig', null, post)
+    await bumpCreatorPageView('tagged-c', 'post', null, 'not-a-uuid')
+    await bumpCreatorPageView('tagged-d', 'post', null)
+    expect(rpc.mock.calls).toEqual([
+      ['bump_creator_page_view', { p_creator: 'tagged-a', p_source: 'post', p_post: post }],
+      ['bump_creator_page_view', { p_creator: 'tagged-b', p_source: 'ig' }],
+      ['bump_creator_page_view', { p_creator: 'tagged-c', p_source: 'post' }],
+      ['bump_creator_page_view', { p_creator: 'tagged-d', p_source: 'post' }],
+    ])
+  })
 })
 
 it('exports the meter counts without feed truncation or buyer fields', () => {

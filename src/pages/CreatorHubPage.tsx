@@ -15,6 +15,10 @@
 // describe a different window from the numbers beneath it.
 import { useCallback, useEffect, useState } from 'react'
 import { CreatorPicksEditor } from '../components/creator/CreatorPicksEditor'
+import { CreatorPostsEditor } from '../components/creator/CreatorPostsEditor'
+import { HubPostVisits } from '../components/creator/HubPostVisits'
+import { useCreatorPosts, useCreatorPostVisits } from '../hooks/useCreatorPosts'
+import { creatorPostsApi, type CreatorPostsApi } from '../lib/creatorPosts'
 import { useCreatorFollowerCount } from '../hooks/useCreatorFollows'
 import { creatorFollowerCountLabel, type CreatorFollowApi, type CreatorValue } from '../lib/creatorFollows'
 import { InlineIcon } from '../components/icons'
@@ -102,11 +106,14 @@ const HUB_TABS = [
   { key: 'profile', label: 'Profile', id: 'hub-tab-profile', controls: 'hub-panel-profile' },
 ]
 
-export function CreatorHubPage({ onNavigate, followsApi }: { onNavigate: (r: string) => void; followsApi?: CreatorFollowApi }) {
+export function CreatorHubPage({ onNavigate, followsApi, postsApi = creatorPostsApi }: { onNavigate: (r: string) => void; followsApi?: CreatorFollowApi; postsApi?: CreatorPostsApi }) {
   const db = useDb()
   const me = currentUser(db)
   const [followerAttempt, setFollowerAttempt] = useState(0)
   const followerCount = useCreatorFollowerCount(me?.id ?? null, followsApi, followerAttempt)
+  // G8: the post list and its visits are two reads with their own retry.
+  const [postAttempt, setPostAttempt] = useState(0)
+  const postCreator = me?.profile.isCreator ? me.id : null
   const myPubs = me ? db.published.filter(p => p.creatorId === me.id) : []
   // #704: the publication list is a read like any other. An empty list means
   // "nothing published" only after a read that succeeded. Until then the zero
@@ -183,6 +190,8 @@ export function CreatorHubPage({ onNavigate, followsApi }: { onNavigate: (r: str
   const [funnelSettled, setFunnelSettled] = useState(-1)
   const funnelReading = funnelRetry !== funnelSettled
   const [funnelDays, setFunnelDays] = useState<FunnelWindowDays>(30)
+  const posts = useCreatorPosts(postCreator, postsApi, postAttempt)
+  const postVisits = useCreatorPostVisits(postCreator !== null, funnelDays, postsApi, postAttempt)
   const timeFmt = useTimeFormat()
 
   // A read that never answers is not a state we can render honestly, so every
@@ -326,7 +335,10 @@ export function CreatorHubPage({ onNavigate, followsApi }: { onNavigate: (r: str
               salesError={salesError} salesAt={salesAt} salesReading={salesReading}
               onRetrySales={() => { setSalesRetry(n => n + 1) }}
               publishedView={publishedView} publishedRetrying={publishedRetrying} onRetryPublished={retryPublished}
-              tripsView={tripsView} tripsRetrying={tripsRetrying} onRetryTrips={retryTrips} />
+              tripsView={tripsView} tripsRetrying={tripsRetrying} onRetryTrips={retryTrips}
+              asideExtra={<HubPostVisits posts={posts} visits={postVisits} pubs={myPubs}
+                windowLabel={FUNNEL_WINDOWS.find(w => w.days === funnelDays)?.label ?? `${funnelDays} days`}
+                retry={() => setPostAttempt(n => n + 1)} />} />
             </section>
           ) : hubTab === 'earnings' ? (
             <section role="tabpanel" id="hub-panel-earnings" aria-labelledby="hub-tab-earnings">
@@ -356,6 +368,8 @@ export function CreatorHubPage({ onNavigate, followsApi }: { onNavigate: (r: str
               <Field label="Instagram link" error={socialErrors.instagram}><input className="input" type="url" inputMode="url" value={instagram} onChange={e => { setInstagram(e.target.value); if (socialErrors.instagram) setSocialErrors(s => ({ ...s, instagram: undefined })) }} placeholder="https://instagram.com/…" /></Field>
             </div>
             <CreatorPicksEditor key={me.id} me={me} pubs={myPubs} read={publishedRead} />
+            <CreatorPostsEditor key={`posts-${me.id}`} me={me} pubs={myPubs} pubsRead={publishedRead} posts={posts} api={postsApi}
+              onChanged={() => setPostAttempt(n => n + 1)} onRetry={() => setPostAttempt(n => n + 1)} />
             <div className="hub-profile-actions">
               <button className="btn btn-primary btn-sm" disabled={savingCreator} onClick={async () => {
                 const yt = youtube.trim()
@@ -559,7 +573,9 @@ function PubsUnread({ view, retrying, onRetry, need }: {
 /** Overview: the KPI strip, the recorded-traffic trend, and the publication
  *  manager rows — the trend and the rows built from one derivation over one
  *  clock, so the picture and the table describe the same window. */
-export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollowers, myPubs, onUnpublish, onNavigate, daily, dailyAt, salesRows, funnelError, onRetry, days, onDays, unlockRead, salesError, salesAt, salesReading, funnelReading, onRetrySales, publishedView, publishedRetrying, onRetryPublished, tripsView, tripsRetrying, onRetryTrips }: {
+export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollowers, myPubs, onUnpublish, onNavigate, daily, dailyAt, salesRows, funnelError, onRetry, days, onDays, unlockRead, salesError, salesAt, salesReading, funnelReading, onRetrySales, publishedView, publishedRetrying, onRetryPublished, tripsView, tripsRetrying, onRetryTrips, asideExtra }: {
+  /** Extra blocks under the readiness card (G8 post visits). */
+  asideExtra?: React.ReactNode
   followerCount?: CreatorValue<number>
   onRetryFollowers?: () => void
   myPubs: PublishedItinerary[]
@@ -831,6 +847,7 @@ export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollow
           <aside className="cr-hub-aside">
             {unknownPubs ? <PubsUnread view={publishedView} retrying={publishedRetrying} onRetry={onRetryPublished} /> :
               <HubReadiness report={pageReadiness} pubs={myPubs} kept={publishedView === 'kept'} />}
+            {asideExtra}
           </aside>
 
           <section className="cr-card cr-hub-publications" aria-labelledby="hub-pubs-h">

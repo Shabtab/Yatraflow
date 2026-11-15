@@ -26,6 +26,9 @@ import { creatorPick, plannedKilometres } from '../lib/creatorFacts'
 import { CrStatTile } from '../components/creator/CrStatTile'
 import { StoreLibrary } from '../components/creator/StoreLibrary'
 import { StoreBand } from '../components/creator/StoreBand'
+import { StorePosts } from '../components/creator/StorePosts'
+import { useCreatorPosts } from '../hooks/useCreatorPosts'
+import { creatorPostRef, creatorPostsApi, type CreatorPostsApi } from '../lib/creatorPosts'
 import { StateBlock } from '../components/page/StateBlock'
 import { OwnerLayer } from '../components/creator/OwnerLayer'
 import {
@@ -65,9 +68,10 @@ function useOwnerRows<T>(identity: string, enabled: boolean, attempt: number, lo
   return settled.read
 }
 
-export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, onPageVisit = bumpCreatorPageView, followsApi }: {
+export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, onPageVisit = bumpCreatorPageView, followsApi, postsApi = creatorPostsApi }: {
   creatorId: string
   followsApi?: CreatorFollowApi
+  postsApi?: CreatorPostsApi
   onNavigate: (r: string) => void
   ownerReads?: OwnerReads
   onOwnerRetry?: () => void
@@ -127,6 +131,9 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
   const isOwner = me === creatorId
   const [previewCreator, setPreviewCreator] = useState<string | null>(null)
   const [ownerAttempt, setOwnerAttempt] = useState(0)
+  const [postAttempt, setPostAttempt] = useState(0)
+  // G8: a disabled or missing creator gets no post read. The database hides their posts too.
+  const posts = useCreatorPosts(creator && !creatorUnavailable ? creatorId : null, postsApi, postAttempt)
   const [ownerNow, setOwnerNow] = useState(() => Date.now())
   const ownerEnabled = isOwner && Boolean(creator) && !creatorUnavailable && !ownerReads
   const ownerIdentity = `${me ?? ''}:${creatorId}`
@@ -142,7 +149,7 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
   const visits = useOwnerRows(ownerIdentity, ownerEnabled, ownerAttempt, loadVisits)
   useEffect(() => {
     if (!creator || creatorUnavailable || profileRead !== 'ready' || isOwner) return
-    void onPageVisit(creatorId, creatorPageSource(window.location.search), me)
+    void onPageVisit(creatorId, creatorPageSource(window.location.search), me, creatorPostRef(window.location.search))
   }, [creator, creatorUnavailable, profileRead, isOwner, creatorId, me, onPageVisit])
 
   if (!creator || creatorUnavailable) {
@@ -250,6 +257,9 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
         onNavigate={onNavigate}
         emptyIsNotCreator={!creator.profile.isCreator}
       />
+
+      <StorePosts creatorName={creator.profile.name} posts={posts} pubs={pubs} isOwner={isOwner}
+        retry={() => setPostAttempt(n => n + 1)} />
 
       {!me && <StoreBand />}
       {isOwner && (previewCreator === ownerIdentity

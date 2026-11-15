@@ -44,6 +44,17 @@ export function currentCreatorShareUrl(creatorId: string): string {
   return creatorShareUrl(creatorId, location.origin, Capacitor.isNativePlatform())
 }
 
+/** The tagged address a creator puts under one post (G8): the app's own creator
+ *  page, stamped `src=post` plus the post id as `p`. The page counts the visit
+ *  against that post. It names the post, never the visitor. */
+export function creatorPostShareUrl(creatorId: string, postId: string, origin: string, native = false): string {
+  return `${native ? PUBLIC_ORIGIN : origin.replace(/\/+$/, '')}/creator/${encodeURIComponent(creatorId)}?src=post&p=${encodeURIComponent(postId)}`
+}
+
+export function currentCreatorPostShareUrl(creatorId: string, postId: string): string {
+  return creatorPostShareUrl(creatorId, postId, location.origin, Capacitor.isNativePlatform())
+}
+
 /**
  * The buyer's own card address (ROADMAP I-21): the publication, plus the
  * entitlement that proves the purchase.
