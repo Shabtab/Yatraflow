@@ -11,7 +11,7 @@
 // failed-read state — which is the honest no-backend answer, shown on screen.
 //
 // STATE knobs, all in the query string (see the on-page index for every case):
-//   case=live-0|live-1|live-3|live-7|unpub|long|disabled
+//   case=live-0|live-1|live-3|live-7|unpub|long|disabled|kit   (kit = the cr- component gallery: no page, no store)
 //   links=none|youtube|both       read=ok|reading|failed|kept
 //   viewer=owner|nonowner|signedout        theme=light|dark
 //
@@ -33,6 +33,13 @@ import type { CachedUser, PrivateUser, PublicUser, PublishedItinerary, Trip } fr
 import { getSnapshot, _installUsersForTest } from '../src/store/store'
 import { CreatorPage } from '../src/pages/CreatorPage'
 import { CreatorHubPage } from '../src/pages/CreatorHubPage'
+import { CrSectionHead } from '../src/components/creator/CrSectionHead'
+import { CrStatTile } from '../src/components/creator/CrStatTile'
+import { CrRankTile } from '../src/components/creator/CrRankTile'
+import { CrDelta } from '../src/components/creator/CrDelta'
+import { CrMeterRow } from '../src/components/creator/CrMeterRow'
+import { Chip } from '../src/components/ui'
+import { Eye } from 'lucide-react'
 
 const params = new URLSearchParams(location.search)
 const THEME = params.get('theme') === 'dark' ? 'dark' : 'light'
@@ -232,6 +239,8 @@ document.documentElement.dataset.theme = THEME
 
 // ---- The on-page index: a link to every case this fixture can render ----
 const INDEX_CASES: { label: string; query: string }[] = [
+  { label: 'cr- kit gallery (every shared component)', query: '?case=kit' },
+  { label: 'cr- kit gallery, dark theme', query: '?case=kit&theme=dark' },
   { label: '0 live routes', query: '?case=live-0' },
   { label: '1 live route', query: '?case=live-1' },
   { label: '3 live routes', query: '?case=live-3' },
@@ -287,6 +296,139 @@ function FixtureIndex() {
   )
 }
 
+// ---- The cr- kit gallery (?case=kit): every shared component, every state ----
+// Dev only. No page and no store is mounted: the kit's own components render
+// over fixture text. Each block carries a caption that names what it shows, so
+// a browser check can read every state without the real pages.
+const KIT_BLOCK: React.CSSProperties = {
+  display: 'grid',
+  gap: 10,
+  padding: '18px 0',
+  borderTop: '1px solid var(--pw-line)',
+}
+const KIT_CAPTION: React.CSSProperties = {
+  margin: 0,
+  font: '500 12px/1.4 "Plus Jakarta Sans", sans-serif',
+  color: 'var(--pw-ink-3)',
+}
+
+function KitBlock({ caption, children }: { caption: string; children: React.ReactNode }) {
+  return (
+    <section style={KIT_BLOCK}>
+      <p style={KIT_CAPTION}>{caption}</p>
+      {children}
+    </section>
+  )
+}
+
+function KitGallery() {
+  return (
+    <div style={{ maxWidth: 960, margin: '0 auto', padding: '24px 16px 64px', color: 'var(--pw-ink)' }}>
+      <p style={{ margin: 0, font: '600 13px/1.4 "Plus Jakarta Sans", sans-serif' }}>
+        cr- kit gallery · theme: {THEME} · fixture text only
+      </p>
+
+      <KitBlock caption="CrSectionHead: kicker, title and note">
+        <CrSectionHead kicker="Fixture kicker" title="Fixture section title" note="Fixture note beside the title." />
+      </KitBlock>
+      <KitBlock caption="CrSectionHead: no note">
+        <CrSectionHead kicker="Fixture kicker" title="Fixture section without a note" />
+      </KitBlock>
+      <KitBlock caption="CrSectionHead: with actions">
+        <CrSectionHead
+          kicker="Fixture kicker"
+          title="Fixture section with actions"
+          note="Fixture note beside the actions."
+          actions={<button type="button" className="btn">Fixture action</button>}
+        />
+      </KitBlock>
+
+      <KitBlock caption="cr-card with cr-card__title">
+        <div className="cr-card">
+          <h3 className="cr-card__title">Fixture card title</h3>
+          <p>Fixture card body text.</p>
+        </div>
+      </KitBlock>
+
+      <KitBlock caption="cr-tilegrid, 2 columns (--cr-cols 2): value, Unavailable (value null), soft">
+        <div className="cr-tilegrid" style={{ '--cr-cols': 2 } as React.CSSProperties}>
+          <CrStatTile label="Fixture value" value="1,240" />
+          <CrStatTile label="Unavailable (value null)" value={null} />
+          <CrStatTile label="Soft tile" value="88" soft />
+        </div>
+      </KitBlock>
+      <KitBlock caption="cr-tilegrid, 3 columns (--cr-cols 3): note, icon, soft with note">
+        <div className="cr-tilegrid" style={{ '--cr-cols': 3 } as React.CSSProperties}>
+          <CrStatTile label="With a note" value="12" note="Fixture note under the label." />
+          <CrStatTile label="With an icon" value="7" icon={<Eye size={18} />} />
+          <CrStatTile label="Soft with a note" value="4" note="Fixture soft note." soft />
+        </div>
+      </KitBlock>
+
+      <KitBlock caption="CrRankTile: rank 12 of 120, no link">
+        <CrRankTile scope="Fixture scope" rank={12} total={120} />
+      </KitBlock>
+      <KitBlock caption="CrRankTile: rank 12 of 120, with href (in-app link to /creators)">
+        <CrRankTile scope="Fixture scope" rank={12} total={120} href="/creators" />
+      </KitBlock>
+      <KitBlock caption="CrRankTile: rank null (Unavailable)">
+        <CrRankTile scope="Fixture scope" rank={null} total={120} />
+      </KitBlock>
+
+      <KitBlock caption="CrDelta: +3, −2 and 0">
+        <div style={{ display: 'flex', gap: 16 }}>
+          <CrDelta value={3} />
+          <CrDelta value={-2} />
+          <CrDelta value={0} />
+        </div>
+      </KitBlock>
+
+      <KitBlock caption="CrMeterRow: pct 0, 50, 100 and 140 (140 clamps to a full bar; the shown value stays 140%)">
+        <CrMeterRow label="Fixture zero" value="0%" pct={0} tone="route" />
+        <CrMeterRow label="Fixture half" value="50%" pct={50} tone="route" />
+        <CrMeterRow label="Fixture full" value="100%" pct={100} tone="route" />
+        <CrMeterRow label="Fixture over (clamp check)" value="140%" pct={140} tone="route" />
+      </KitBlock>
+      <KitBlock caption="CrMeterRow: one row per tone (route, lagoon, lagoon-deep, marigold)">
+        <CrMeterRow label="Tone route" value="40%" pct={40} tone="route" />
+        <CrMeterRow label="Tone lagoon" value="40%" pct={40} tone="lagoon" />
+        <CrMeterRow label="Tone lagoon-deep" value="40%" pct={40} tone="lagoon-deep" />
+        <CrMeterRow label="Tone marigold" value="40%" pct={40} tone="marigold" />
+      </KitBlock>
+      <KitBlock caption="CrMeterRow: with a note">
+        <CrMeterRow label="Fixture with a note" value="60%" pct={60} tone="lagoon" note="Fixture note under the meter." />
+      </KitBlock>
+
+      <KitBlock caption="cr-ident with cr-ident__name: fake h1-sized name and a teal Creator chip">
+        <div className="cr-ident">
+          <div className="cr-ident__name">
+            <h1 style={{ margin: 0 }}>Fixture Creator</h1>
+            <Chip tone="teal">Creator</Chip>
+          </div>
+        </div>
+      </KitBlock>
+
+      <KitBlock caption="cr-band with cr-band__title, kicker, body and one .btn">
+        <div className="cr-band">
+          <div>
+            <p style={{ margin: 0, opacity: 0.8 }}>Fixture kicker</p>
+            <h3 className="cr-band__title">Fixture band title</h3>
+            <p style={{ margin: '4px 0 0' }}>Fixture band body text.</p>
+          </div>
+          <button type="button" className="btn">Fixture button</button>
+        </div>
+      </KitBlock>
+
+      <KitBlock caption="cr-divider with kicker and note">
+        <div className="cr-divider">
+          <span>Fixture kicker</span>
+          <span>Fixture note</span>
+        </div>
+      </KitBlock>
+    </div>
+  )
+}
+
 const navigate = (route: string) => { console.log('[fixture] navigate', route) }
 
 const root = document.getElementById('root')
@@ -294,7 +436,9 @@ if (!root) throw new Error('Creator fixture root not found')
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <>
-      {params.has('case') || params.has('viewer') || params.has('read') || params.has('links') ? (
+      {CASE === 'kit' ? (
+        <KitGallery />
+      ) : params.has('case') || params.has('viewer') || params.has('read') || params.has('links') ? (
         <>
           <CreatorPage creatorId={CREATOR_ID} onNavigate={navigate} />
           <CreatorHubPage onNavigate={navigate} />
