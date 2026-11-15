@@ -1607,6 +1607,13 @@ p.cr-store-planning {
 .cr-hub-post-visits > .cr-tile__note {
   margin: var(--space-3) 0 var(--space-5);
 }
+/* The aside is narrow: the note goes under the bar instead of a fourth column. */
+.cr-hub-post-visits .cr-meter {
+  grid-template-columns: 112px 1fr 52px;
+}
+.cr-hub-post-visits .cr-meter .cr-tile__note {
+  grid-column: 1 / -1;
+}
 .cr-hub-post-visits .cr-meter + .cr-meter {
   margin-top: var(--space-5);
 }

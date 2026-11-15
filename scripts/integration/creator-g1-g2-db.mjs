@@ -62,7 +62,8 @@ try {
     ('${owner}', null), ('${owner}', 'ig'), ('${disabled}', 'post');`)
   const contract = sql('supabase/tests/rls_contract.test.sql')
   const start = contract.indexOf('-- ============================================================ G1. creator share sources')
-  const end = contract.indexOf('-- ------------------------------------------------------------------------ done', start)
+  // G3, G4 and G8 have their own migrations, so the slice stops before G3.
+  const end = contract.indexOf('-- ============================================================ G3. publication facts and creator picks', start)
   assert.ok(start >= 0 && end > start)
   await db.exec(`begin; set local yatraflow.creator_contract_fixture = 'on';
     ${contract.slice(start, end)} rollback;`)

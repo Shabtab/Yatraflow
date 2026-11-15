@@ -19,7 +19,7 @@ export const POST_TIMEOUT_MS = 10_000
 // Same pattern as creator_posts_url_check. The path class is printable ASCII, so
 // a space, a control character or a non-ASCII character fails. After the host
 // the next character must be "/" or the end of the string.
-const POST_URL_RE = /^https:\/\/(instagram\.com|www\.instagram\.com|youtube\.com|www\.youtube\.com|m\.youtube\.com|youtu\.be|threads\.net|www\.threads\.net)(\/[!-~]*)?$/
+export const POST_URL_RE = /^https:\/\/(instagram\.com|www\.instagram\.com|youtube\.com|www\.youtube\.com|m\.youtube\.com|youtu\.be|threads\.net|www\.threads\.net)(\/[!-~]*)?$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const PUB_ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 // The blank test trims ASCII whitespace only, like creatorFacts.validPlanningNotes.

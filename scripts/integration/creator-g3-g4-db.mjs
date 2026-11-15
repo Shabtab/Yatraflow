@@ -91,7 +91,8 @@ try {
   assert.equal(await value('select count(*)::int as v from public.creator_follows'), 3)
   const contract = sql('supabase/tests/rls_contract.test.sql')
   const start = contract.indexOf('-- ============================================================ G3. publication facts and creator picks')
-  const end = contract.indexOf('-- ------------------------------------------------------------------------ done', start)
+  // G8 has its own migration, so the slice stops before its section.
+  const end = contract.indexOf('-- ============================================================ G8. creator post links', start)
   assert.ok(start >= 0 && end > start)
   await db.exec(`begin; set local yatraflow.creator_g3_g4_fixture = 'on'; ${contract.slice(start, end)} rollback;`)
   console.log('PASS: G3/G4 SQL contracts; anon, other seeded user, disabled caller and exact owner scope')

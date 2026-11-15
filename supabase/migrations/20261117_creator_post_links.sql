@@ -104,8 +104,8 @@ grant insert (creator, url, kind, pub_id, day_index, caption) on public.creator_
 grant update (caption) on public.creator_posts to authenticated;
 grant delete on public.creator_posts to authenticated;
 
--- One guard for the rules RLS cannot state: an active creator, a live route
--- that the creator owns, a day inside that route, and the 12-post cap.
+-- One guard for the rules RLS cannot state, on insert: an active creator, a
+-- live route that the creator owns, a day inside that route, and the 12-post cap.
 -- The FOR NO KEY UPDATE lock on the creator's profile row conflicts with
 -- itself, so two concurrent inserts count one after the other and cannot both
 -- take the twelfth place. FOR SHARE on the route row serializes the insert
@@ -119,39 +119,34 @@ declare
   v_days integer;
   v_count integer;
 begin
-  if tg_op = 'INSERT' then
-    perform 1 from public.profiles p
-      where p.id = new.creator and p.is_creator and not p.is_disabled
-      for no key update;
-    if not found then
-      raise exception 'Post links need an active creator' using errcode = '23514';
-    end if;
-    select count(*) into v_count from public.creator_posts where creator = new.creator;
-    if v_count >= 12 then
-      raise exception 'A creator can keep at most 12 post links' using errcode = '23514';
-    end if;
+  -- Insert only. Clients can update only the caption, so nothing else moves.
+  -- An update check would also fire for the cascade when a route id changes,
+  -- and it would fail a route update for a route that is not live. The
+  -- stale-day trigger below covers a route that a republish makes shorter.
+  perform 1 from public.profiles p
+    where p.id = new.creator and p.is_creator and not p.is_disabled
+    for no key update;
+  if not found then
+    raise exception 'Post links need an active creator' using errcode = '23514';
   end if;
-  -- A caption edit, or a day cleared to null, needs no route check. It still
-  -- works after the route came down or got shorter.
-  if tg_op = 'INSERT'
-    or new.pub_id is distinct from old.pub_id
-    or new.creator is distinct from old.creator
-    or (new.day_index is not null and new.day_index is distinct from old.day_index) then
-    select p.duration_days into v_days from public.published_itineraries p
-      where p.id = new.pub_id and p.creator_id = new.creator and p.unpublished_at is null
-      for share;
-    if not found then
-      raise exception 'A post must link to one of your live routes' using errcode = '23514';
-    end if;
-    if new.day_index is not null and new.day_index >= v_days then
-      raise exception 'The day is outside the route' using errcode = '23514';
-    end if;
+  select count(*) into v_count from public.creator_posts where creator = new.creator;
+  if v_count >= 12 then
+    raise exception 'A creator can keep at most 12 post links' using errcode = '23514';
+  end if;
+  select p.duration_days into v_days from public.published_itineraries p
+    where p.id = new.pub_id and p.creator_id = new.creator and p.unpublished_at is null
+    for share;
+  if not found then
+    raise exception 'A post must link to one of your live routes' using errcode = '23514';
+  end if;
+  if new.day_index is not null and new.day_index >= v_days then
+    raise exception 'The day is outside the route' using errcode = '23514';
   end if;
   return new;
 end;
 $$;
 revoke all on function public.guard_creator_post() from public, anon, authenticated;
-create trigger creator_posts_guard before insert or update on public.creator_posts
+create trigger creator_posts_guard before insert on public.creator_posts
   for each row execute function public.guard_creator_post();
 
 -- A republish can shorten a route. A day that no longer exists becomes "whole
