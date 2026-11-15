@@ -110,7 +110,7 @@ Browsing Explore: filter by style/budget/duration, sort by popularity or **newes
 
 **Keep your pages honest — and see your creator hub.** The **Creator hub** (in the nav once you're a creator) opens on how your work is doing:
 
-- **Overview** — a lifetime figures strip and a recorded-traffic trend (visits, forks and unlocks over 7, 30 or 90 days), then one row per publication with its funnel and its actions (**Edit**, plus the **"Page behind itinerary"** flag with its **Update page** shortcut whenever you change a trip after publishing). Unpublish takes a page down without touching the trip.
+- **Overview** — a lifetime figures strip and a recorded-traffic trend. The trend covers visits, forks and unlocks over 7, 30 or 90 days. One row per publication shows its funnel and its actions. **Edit** is always there. A **"Needs update"** flag adds an **Update page** shortcut after you change a trip. Unpublish takes a page down without touching the trip.
 - **Earnings** — the real sales ledger: what each buyer actually paid at purchase time, the platform-fee split on each sale, and payout runs derived from it (disbursement itself is manual — the ledger says so). A **Projection** toggle does the honest what-if arithmetic for pages that haven't sold, clearly marked as *not money*.
 
 ## FAQ

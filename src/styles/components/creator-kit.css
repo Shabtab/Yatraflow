@@ -1,0 +1,375 @@
+/* Creator kit. Shared `cr-*` classes for the Creator suite surfaces.
+   Values come from the P3 contract (spec 3.2-3.5 and the composition addendum).
+   The addendum wins over the spec where they differ. */
+
+.cr-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-12);
+  min-height: 54px;
+}
+.cr-head__kicker {
+  font: var(--pw-kicker);
+  letter-spacing: var(--pw-kicker-tracking);
+  text-transform: uppercase;
+  color: var(--pw-ink-3);
+}
+.cr-head__title {
+  margin: 0;
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 18px;
+  line-height: 1.3;
+  letter-spacing: -.02em;
+  color: var(--pw-ink);
+}
+.cr-head__note {
+  font: var(--pw-meta);
+  color: var(--pw-ink-3);
+  max-width: 520px;
+  margin: 0;
+}
+
+.cr-card {
+  padding: var(--space-9);
+  border: 1px solid var(--pw-line);
+  border-radius: var(--radius-lg);
+  background: var(--pw-card);
+  box-shadow: var(--elev-1);
+}
+.cr-card__title {
+  margin: 0;
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 18px;
+  line-height: 1.3;
+  letter-spacing: -.02em;
+  color: var(--pw-ink);
+}
+
+.cr-tile {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  border: 1px solid var(--pw-line-soft);
+  border-radius: var(--radius);
+  background: var(--pw-card);
+}
+.cr-tile--soft {
+  border: 0;
+  background: var(--pw-lagoon-50);
+}
+@media (min-width: 700px) {
+  .cr-tile:has(.cr-tile__icon) {
+    grid-template-columns: 40px 1fr;
+  }
+}
+.cr-tile > * {
+  min-width: 0;
+}
+.cr-tile__icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--pw-lagoon-100);
+  color: var(--pw-sea-700);
+}
+.cr-tile__icon svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: var(--icon-stroke);
+}
+.cr-tile__value {
+  font: var(--pw-figure);
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--pw-ink);
+}
+.cr-tile__value.cr-tile__value--none {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: normal;
+  color: var(--pw-ink-3);
+}
+.cr-tile__label {
+  font: 600 13px/1.4 var(--font-body);
+  color: var(--pw-ink-2);
+}
+.cr-tile__note {
+  font: var(--pw-caption);
+  font-weight: 400;
+  color: var(--pw-ink-3);
+}
+.cr-tilegrid {
+  display: grid;
+  grid-template-columns: repeat(var(--cr-cols, 2), minmax(0, 1fr));
+  gap: var(--space-4a);
+}
+.cr-tilegrid > * {
+  min-width: 0;
+}
+
+.cr-rank {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  justify-content: center;
+  width: 182px;
+  height: 81px;
+  padding: var(--space-4a) var(--space-5);
+  border: 1px solid var(--pw-marigold-300);
+  border-radius: var(--radius);
+  background: var(--pw-marigold-50);
+  text-decoration: none;
+}
+a.cr-rank {
+  transition: transform var(--motion-fast) var(--ease-paper),
+              border-color var(--motion-fast) var(--ease-paper);
+}
+a.cr-rank:hover {
+  transform: translateY(-2px);
+  border-color: var(--pw-line);
+}
+a.cr-rank:focus-visible {
+  outline: 2px solid var(--pw-sea-700);
+  outline-offset: 2px;
+}
+.cr-rank__scope {
+  font: var(--pw-kicker);
+  letter-spacing: var(--pw-kicker-tracking);
+  text-transform: uppercase;
+  color: var(--pw-marigold-ink);
+}
+.cr-rank__value {
+  font: var(--pw-display-s);
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--pw-ink);
+}
+.cr-rank__total {
+  font: var(--pw-caption);
+  font-weight: 400;
+  color: var(--pw-marigold-ink);
+}
+
+.cr-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font: 800 12px/1.4 var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+.cr-delta--up { color: var(--pw-ok); }
+.cr-delta--down { color: var(--pw-risk); }
+.cr-delta--flat { color: var(--pw-ink-3); }
+
+@keyframes crMeterGrow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.cr-meter {
+  display: grid;
+  grid-template-columns: 112px 1fr 52px 98px;
+  gap: var(--space-4a);
+  align-items: center;
+  min-height: 16px;
+}
+.cr-meter__label {
+  font: var(--pw-meta);
+  font-weight: 600;
+  color: var(--pw-ink-2);
+}
+.cr-meter__track {
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--pw-sunken);
+  overflow: hidden;
+}
+.cr-meter__fill {
+  width: calc(var(--pct) * 1%);
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--pw-route);
+  transform-origin: 0 50%;
+  animation: crMeterGrow var(--motion-slower) var(--ease-paper) backwards;
+}
+.cr-meter__fill[data-tone="route"] { background: var(--pw-route); }
+.cr-meter__fill[data-tone="lagoon"] { background: var(--pw-lagoon-400); }
+.cr-meter__fill[data-tone="lagoon-deep"] { background: var(--pw-lagoon-600); }
+.cr-meter__fill[data-tone="marigold"] { background: var(--pw-marigold-ink); }
+.cr-meter > * {
+  min-width: 0;
+}
+.cr-meter__value {
+  font: var(--pw-meta);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--pw-ink);
+  justify-self: end;
+}
+
+.cr-ident {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-8);
+}
+.cr-ident__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4a);
+}
+
+.cr-band {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12);
+  border-radius: var(--radius-xl);
+  background: var(--pw-sea-700);
+  color: var(--pw-on-sea);
+}
+.cr-band__title {
+  margin: 0;
+  font: var(--pw-display-m);
+  letter-spacing: -.02em;
+  color: var(--pw-on-sea);
+}
+/* Element selectors on purpose. A class subject on the button configuration point
+   (.btn) trips the config-appearance ownership gate. */
+.cr-band > a,
+.cr-band > button {
+  background: var(--pw-card);
+  color: var(--pw-sea-700);
+  min-height: 52px;
+  padding-inline: var(--space-9);
+  white-space: nowrap;
+}
+.cr-band > * {
+  min-width: 0;
+}
+
+.cr-divider {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--pw-line);
+}
+
+@media (max-width: 699px) {
+  .cr-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+    min-height: 0;
+  }
+  .cr-head__note {
+    max-width: none;
+  }
+
+  .cr-card {
+    padding: var(--space-7);
+    border-radius: var(--radius);
+  }
+
+  .cr-tile {
+    grid-template-columns: 1fr;
+    gap: var(--space-4a);
+    padding: var(--space-5);
+  }
+  .cr-tile__icon {
+    width: 36px;
+    height: 36px;
+  }
+  .cr-tile__value {
+    font-size: 22px;
+  }
+  .cr-tilegrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+
+  .cr-rank {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    width: auto;
+    height: 56px;
+  }
+  .cr-rank > * {
+    min-width: 0;
+  }
+  .cr-rank__value {
+    font-size: 20px;
+  }
+
+  .cr-meter {
+    grid-template-columns: minmax(0, 1fr) 52px;
+    grid-template-areas:
+      "label value"
+      "track track"
+      "note note";
+    row-gap: var(--space-2);
+  }
+  .cr-meter__label { grid-area: label; }
+  .cr-meter__track {
+    grid-area: track;
+    height: 10px;
+  }
+  .cr-meter__value { grid-area: value; }
+
+  .cr-ident {
+    gap: var(--space-6);
+  }
+  .cr-ident__name {
+    gap: var(--space-4);
+  }
+
+  .cr-band {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-5);
+    padding: var(--space-8);
+  }
+  .cr-band__title {
+    font: var(--pw-display-s);
+    letter-spacing: -.02em;
+  }
+  .cr-band > a,
+  .cr-band > button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .cr-divider {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+}
+
+@media (max-width: 359px) {
+  .cr-tilegrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cr-tilegrid > :nth-child(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  a.cr-rank,
+  a.cr-rank:hover,
+  .cr-meter__fill {
+    animation: none;
+    transition: none;
+    transform: none;
+  }
+}

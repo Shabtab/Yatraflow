@@ -122,6 +122,8 @@ export interface PublicUserProfile {
   creatorBio?: string
   socialLinks?: { youtube?: string; instagram?: string }
   creatorAvailable: boolean
+  featuredPubId?: string | null
+  planningNotes?: string[] | null
 }
 
 /**
@@ -564,6 +566,10 @@ export interface PublishedItinerary {
   estimatedBudgetPerPersonInr: number
   travelStyle: TravelStyle
   bestSeason?: string
+  plannedKm?: number
+  bestMonths?: number
+  reviewedAt?: number
+  reviewedScope?: string
   travelTips: string[]
   warningsAndAssumptions: string[]
   freeDayIndexes: number[]  // which itinerary days are freely viewable

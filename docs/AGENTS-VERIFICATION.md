@@ -42,6 +42,16 @@ It does not prove production RLS or a signed-in device journey.
 See [the replay audit](OFFLINE-REPLAY-783.md) for the remaining device checks and rollout order.
 
 Test analytics writes under anonymous and authenticated roles. An insert mock cannot prove RLS access.
+Run `node scripts/integration/creator-g1-g2-db.mjs` for the local G1 and G2 SQL contracts.
+It applies both drafts twice on PGlite and runs the G1/G2 sections from `supabase/tests/rls_contract.test.sql` with fixtures.
+The full contract checks metadata by default. The local probe also enables its fixture-only role checks.
+It checks source tags, disabled accounts, owner scope, direct table denial, UTC days, date limits and service-only retention.
+No hosted database is used. This proves local SQL behaviour, not hosted migration status or a PostgREST client journey.
+Run `node scripts/integration/creator-g3-g4-db.mjs` for the local G3 and G4 SQL contracts.
+It applies both drafts twice on PGlite and runs their fixture-only role checks from `supabase/tests/rls_contract.test.sql`.
+It checks owner writes, public projection fields, invalid shapes, stale picks, private follows and public counts.
+It also checks server review stamps, publication renames, blank notes and disabled follower counts.
+No hosted database is used. This proves local SQL behaviour, not hosted migration status or a PostgREST client journey.
 Run `node scripts/integration/growth-db.mjs` for the isolated growth SQL checks.
 This local fixture does not establish production migration status or the full Supabase role contract.
 
@@ -76,6 +86,7 @@ the integration branch. The script runs vitest on the union and passes the
 child's exit code through. A source change that selects no test exits 1 — it
 never reports an empty green. The full gate still runs everything;
 `test:changed` only makes the focused run honest.
+After you merge a branch into an integration branch, run the full vitest suite. A focused run misses tests that scan all of `src/`.
 
 On a busy machine, set process-only `VITEST_MAX_WORKERS=1` before `npm run verify`.
 Vitest 4.1.12 resolves this value as `maxWorkers`.

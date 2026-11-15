@@ -6,10 +6,11 @@
 // price shows, which notice shows — is computed once and handed down.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  Camera, Car, Clock, Flag, GitFork, Heart, Link2, Lock, MapPin,
+  Car, Clock, Flag, GitFork, Heart, Link2, Lock, MapPin,
   MessageCircle, Sparkles, Ticket, TriangleAlert,
 } from 'lucide-react'
 import { InlineIcon, MetaIcon, modeIcon } from '../components/icons'
+import { SocialIcon } from '../components/creator/SocialIcon'
 import { nativeCopyText, openExternal } from '../lib/native'
 import type { Trip, PublishedItinerary } from '../data/types'
 import type { Entitlement } from '../lib/payments'
@@ -1194,8 +1195,8 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                   </div>
                   {creator?.profile.socialLinks && (
                     <div className="pi-socials">
-                      {creator.profile.socialLinks.youtube && <a className="chip chip-info" href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.youtube!) }}>▶ YouTube</a>}
-                      {creator.profile.socialLinks.instagram && <a className="chip chip-info" href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.instagram!) }}><InlineIcon icon={Camera} size={12} gap={3} />Instagram</a>}
+                      {creator.profile.socialLinks.youtube && <a className="chip chip-info" href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.youtube!) }}><SocialIcon kind="youtube" size={12} />YouTube</a>}
+                      {creator.profile.socialLinks.instagram && <a className="chip chip-info" href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.instagram!) }}><SocialIcon kind="instagram" size={12} />Instagram</a>}
                     </div>
                   )}
                   {creator && (

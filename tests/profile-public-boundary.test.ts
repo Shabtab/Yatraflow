@@ -158,6 +158,23 @@ beforeEach(() => {
 })
 
 describe('the mappers', () => {
+  it('drops invalid notes without losing public or private users', async () => {
+    const store = await freshStore()
+    for (const planning_notes of [[''], ['note', 1], 'bad', ['x'.repeat(141)]]) {
+      const cards = [{ ...OWNER_CARD, planning_notes }, { ...OTHER_CARD, planning_notes: ['Start early.'] }]
+      const users = cards.map(store.rowToPublicUser)
+      expect(users.map(user => user.id)).toEqual(['u-1', 'u-2'])
+      expect(users[0].profile.planningNotes).toBeUndefined()
+      expect(users[1].profile.planningNotes).toEqual(['Start early.'])
+      const privateUsers = [{ ...OWNER_PRIVATE, planning_notes }, { ...OWNER_PRIVATE, id: 'u-2' }].map(store.rowToPrivateUser)
+      expect(privateUsers.map(user => user.id)).toEqual(['u-1', 'u-2'])
+      expect(privateUsers[0].profile.planningNotes).toBeUndefined()
+      state.cards = cards
+      await store.rereadPublicSlices()
+      expect(store.getSnapshot().users.map(user => user.id)).toEqual(expect.arrayContaining(['u-1', 'u-2']))
+      expect(store.getSnapshot().sliceReads.profiles).toBe('ok')
+    }
+  })
   it('the public mapper produces exactly the reviewed shape and no account field', async () => {
     const { rowToPublicUser } = await freshStore()
     const user = rowToPublicUser(OWNER_CARD)

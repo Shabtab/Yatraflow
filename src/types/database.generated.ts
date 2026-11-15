@@ -18,6 +18,15 @@ export type Database = {
   }
   public: {
     Tables: {
+      creator_follows: {
+        Row: { follower: string; creator: string; at: string }
+        Insert: { follower: string; creator: string; at?: string }
+        Update: { follower?: string; creator?: string; at?: string }
+        Relationships: [
+          { foreignKeyName: "creator_follows_follower_fkey"; columns: ["follower"]; isOneToOne: false; referencedRelation: "profiles"; referencedColumns: ["id"] },
+          { foreignKeyName: "creator_follows_creator_fkey"; columns: ["creator"]; isOneToOne: false; referencedRelation: "profiles"; referencedColumns: ["id"] },
+        ]
+      }
       activity: {
         Row: {
           actor_id: string
@@ -329,6 +338,8 @@ export type Database = {
       }
       profile_cards: {
         Row: {
+          featured_pub_id: string | null
+          planning_notes: Json | null
           avatar_url: string | null
           creator_available: boolean
           creator_bio: string | null
@@ -338,6 +349,8 @@ export type Database = {
           social_links: Json
         }
         Insert: {
+          featured_pub_id?: string | null
+          planning_notes?: Json | null
           avatar_url?: string | null
           creator_available?: boolean
           creator_bio?: string | null
@@ -347,6 +360,8 @@ export type Database = {
           social_links?: Json
         }
         Update: {
+          featured_pub_id?: string | null
+          planning_notes?: Json | null
           avatar_url?: string | null
           creator_available?: boolean
           creator_bio?: string | null
@@ -367,6 +382,8 @@ export type Database = {
       }
       profiles: {
         Row: {
+          featured_pub_id: string | null
+          planning_notes: Json | null
           avatar_url: string | null
           created_at: number
           creator_bio: string | null
@@ -381,6 +398,8 @@ export type Database = {
           travel_styles: Json
         }
         Insert: {
+          featured_pub_id?: string | null
+          planning_notes?: Json | null
           avatar_url?: string | null
           created_at?: number
           creator_bio?: string | null
@@ -395,6 +414,8 @@ export type Database = {
           travel_styles?: Json
         }
         Update: {
+          featured_pub_id?: string | null
+          planning_notes?: Json | null
           avatar_url?: string | null
           created_at?: number
           creator_bio?: string | null
@@ -408,7 +429,15 @@ export type Database = {
           social_links?: Json | null
           travel_styles?: Json
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_featured_pub_fkey"
+            columns: ["featured_pub_id"]
+            isOneToOne: false
+            referencedRelation: "published_itineraries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pub_events: {
         Row: {
@@ -447,6 +476,10 @@ export type Database = {
       }
       published_itineraries: {
         Row: {
+          planned_km: number | null
+          best_months: number | null
+          reviewed_at: string | null
+          reviewed_scope: string | null
           best_season: string | null
           copies: number
           cover_image_url: string | null
@@ -470,6 +503,10 @@ export type Database = {
           warnings_and_assumptions: Json
         }
         Insert: {
+          planned_km?: number | null
+          best_months?: number | null
+          reviewed_at?: string | null
+          reviewed_scope?: string | null
           best_season?: string | null
           copies?: number
           cover_image_url?: string | null
@@ -493,6 +530,10 @@ export type Database = {
           warnings_and_assumptions?: Json
         }
         Update: {
+          planned_km?: number | null
+          best_months?: number | null
+          reviewed_at?: string | null
+          reviewed_scope?: string | null
           best_season?: string | null
           copies?: number
           cover_image_url?: string | null
@@ -978,6 +1019,10 @@ export type Database = {
         }
         Returns: string
       }
+      bump_creator_page_view: {
+        Args: { p_creator: string; p_source?: string }
+        Returns: undefined
+      }
       bump_published_stats: {
         Args: {
           p_campaign?: string
@@ -1009,6 +1054,14 @@ export type Database = {
           views: number
         }[]
       }
+      get_creator_page_views: {
+        Args: { p_days?: number }
+        Returns: {
+          day: string
+          source: string
+          visits: number
+        }[]
+      }
       get_creator_sales: {
         Args: never
         Returns: {
@@ -1018,6 +1071,14 @@ export type Database = {
           order_id: string
           pub_id: string
           user_id: string
+        }[]
+      }
+      get_creator_share_sources: {
+        Args: { p_days?: number }
+        Returns: {
+          forks: number
+          source: string
+          views: number
         }[]
       }
       get_invite_trip: {
@@ -1072,9 +1133,19 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_creator_follower_count: {
+        Args: { p_creator: string }
+        Returns: number
+      }
+      valid_planning_notes: {
+        Args: { p_notes: Json }
+        Returns: boolean
+      }
       get_public_profile_cards: {
         Args: { p_ids?: string[] }
         Returns: {
+          featured_pub_id: string | null
+          planning_notes: Json | null
           avatar_url: string | null
           creator_available: boolean
           creator_bio: string | null
