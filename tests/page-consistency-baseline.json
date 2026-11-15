@@ -30,7 +30,7 @@
     "src/pages/CreatorHubPage.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 3,
+      "inlineStyle": 2,
       "rawH1": 0
     },
     "src/pages/CreatorPage.tsx": {
