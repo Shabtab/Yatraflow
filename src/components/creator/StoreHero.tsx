@@ -3,6 +3,7 @@
 // public shapes alone. The page owns the reads, the featured pick and the
 // library; this component owns the cover band, the identity card and the
 // track-record tiles. Styling lives with the page CSS owner (`cr-store-*`).
+import { countNoun } from '../../lib/creatorCopy'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { Eye, GitFork, Route } from 'lucide-react'
 import type { CachedUser, PublishedItinerary } from '../../data/types'
@@ -105,7 +106,7 @@ export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, 
                 <div className="cr-store-actions">
                   {showBrowse && (
                     <a className="btn btn-primary cr-store-browse" href={libraryHref} onClick={scrollToLibrary}>
-                      Browse {routeCount} routes
+                      Browse {countNoun(routeCount, 'route')}
                     </a>
                   )}
                   <CopyButton text={shareUrl} label="Share" />

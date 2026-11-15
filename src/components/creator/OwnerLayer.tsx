@@ -1,3 +1,5 @@
+import { ReadinessFix } from './ReadinessFix'
+import { countNoun, sourceDisplayLabel } from '../../lib/creatorCopy'
 import type { PublishedItinerary, PublicUser } from '../../data/types'
 import { readiness, kpiWindows, type ReadinessKey } from '../../lib/creatorHub'
 import { ownerActivityCsv, type OwnerRead, type OwnerReads } from '../../lib/creatorOwnerReads'
@@ -79,7 +81,7 @@ export function OwnerLayer({ creator, pubs, pubsRead, retryPubs, shareLink, now,
         <Avatar user={creator} />
         <div className="cr-own-identity">
           <strong>This is your public page</strong>
-          <p>{shareLink} · live · {pubsRead === 'ready' ? `${pubs.length} routes` : 'Routes unavailable'}</p>
+          <p>{shareLink} · live · {pubsRead === 'ready' ? countNoun(pubs.length, 'route') : 'Routes unavailable'}</p>
         </div>
         <div className="cr-own-actions">
           <button className="btn btn-secondary btn-sm" onClick={onPreview}>Preview as a visitor</button>
@@ -102,11 +104,8 @@ export function OwnerLayer({ creator, pubs, pubsRead, retryPubs, shareLink, now,
               <ul className="cr-own-checks">{report.checks.map(check => (
                 <li className="cr-own-check" key={check.key}>
                   <span>{check.failing.length ? 'Open' : 'Done'} · {CHECK_LABELS[check.key]}</span>
-                  {check.failing.map(id => {
-                    const pub = pubs.find(route => route.id === id)
-                    return pub && <a key={id} className="btn btn-ghost btn-sm" {...appLink(`/trip/${pub.tripId}/share`)}
-                      aria-label={`Fix ${CHECK_LABELS[check.key]} for ${pub.title}`}>Fix · {pub.title}</a>
-                  })}
+                  <ReadinessFix className="btn btn-ghost btn-sm" checkLabel={CHECK_LABELS[check.key]}
+                    failing={check.failing} pubs={pubs} />
                 </li>
               ))}</ul>
             </>}
@@ -133,8 +132,8 @@ export function OwnerLayer({ creator, pubs, pubsRead, retryPubs, shareLink, now,
           <p>Route opens and copies by share source, over the last 30 days. Page visits are counted separately.</p>
           <ReadNote read={reads.sources} label="share sources" retry={retry} />
           {readable(reads.sources) && reads.sources.data?.map(row => <CrMeterRow key={row.source}
-            label={row.source} value={row.views} pct={row.views / sourceMax * 100} tone="lagoon"
-            note={`${row.forks} copies`} />)}
+            label={sourceDisplayLabel(row.source)} value={row.views} pct={row.views / sourceMax * 100} tone="lagoon"
+            note={countNoun(row.forks, 'copy', 'copies')} />)}
         </section>
       </div>
       <p className="cr-own-note">Dated counts for your own use. Nothing here is shown to visitors.</p>

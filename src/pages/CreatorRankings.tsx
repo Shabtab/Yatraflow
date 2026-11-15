@@ -42,7 +42,7 @@ export function CreatorRankingsPage() {
     <div className="container yf-page page-enter cr-rk-page">
       <PageHeader
         kicker="Creator rankings"
-        headline={{ lead: 'Most forked creators' }}
+        headline={{ lead: 'Most forked', accent: 'creators' }}
         lede="Ranked by forks of live public routes. Ties go to more live routes, then name."
       />
 
@@ -94,8 +94,7 @@ export function CreatorRankingsPage() {
             {ranked.length > 3 && (
               <div className="cr-head">
                 <div>
-                  <p className="cr-head__kicker">Top three</p>
-                  <h2 className="cr-head__title">Most forked creators</h2>
+                  <h2 className="cr-head__title">Top three</h2>
                 </div>
               </div>
             )}

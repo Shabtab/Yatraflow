@@ -5,6 +5,7 @@
 // are public app-wide). The presentational parts live in the Store* components;
 // this page keeps every data read, every state decision and the shared card
 // behaviour the guards pin.
+import { countNoun } from '../lib/creatorCopy'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link2 } from 'lucide-react'
 import { useSessionUserId, usePublished, userById, useDb, rereadPublicSlices } from '../store/store'
@@ -165,7 +166,7 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
   // browser, so sharing it unfurled as the app shell.
   const shareLink = currentCreatorShareUrl(creatorId)
   const lead = featured ?? pubs[0]
-  const featuredKicker = featured ? `Most forked of ${pubs.length} routes` : undefined
+  const featuredKicker = featured ? `Most forked of ${countNoun(pubs.length, 'route')}` : undefined
 
   return (
     <div className="page-enter cr-store-page">

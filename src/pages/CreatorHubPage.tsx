@@ -750,7 +750,7 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
           ) : (
             <>
               <b>Couldn’t read your sales ledger.</b> Every unlock figure on this tab is unknown until it loads. 
-              nothing has been lost, it just could not be read.
+              Nothing has been lost, it just could not be read.
             </>
           )}
           <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetrySales} disabled={salesReading}>
