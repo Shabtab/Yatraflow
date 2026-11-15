@@ -7,7 +7,7 @@
 // behaviour the guards pin.
 import { countNoun } from '../lib/creatorCopy'
 import { useCreatorFollows } from '../hooks/useCreatorFollows'
-import type { CreatorFollowApi } from '../lib/creatorFollows'
+import { creatorFollowerCountLabel, type CreatorFollowApi } from '../lib/creatorFollows'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link2 } from 'lucide-react'
 import { useSessionUserId, usePublished, userById, useDb, rereadPublicSlices } from '../store/store'
@@ -185,7 +185,7 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
         cover={lead}
         publishingSince={since}
         shareUrl={shareLink}
-        followerCount={follows.count.kind === 'ready' ? follows.count.value.toLocaleString('en-IN') : follows.count.kind === 'failed' ? 'Unavailable' : 'Loading…'}
+        followerCount={creatorFollowerCountLabel(follows.count)}
         follow={!isOwner && creator.profile.isCreator ? <div className="cr-store-follow">
           <button type="button" className="btn btn-outline cr-store-follow-button"
             disabled={follows.busy || follows.following.kind === 'reading'}

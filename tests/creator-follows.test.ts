@@ -29,12 +29,24 @@ vi.mock('../src/lib/supabase', () => ({
   },
 }))
 
-import { creatorFollowerCount, followCreator, getCreatorFollowerCount, isFollowing, unfollowCreator } from '../src/lib/creatorFollows'
+import { creatorFollowerCount, creatorFollowerCountLabel, followCreator, getCreatorFollowerCount, isFollowing, unfollowCreator } from '../src/lib/creatorFollows'
 const signal = new AbortController().signal
 
 beforeEach(() => { state.viewer = 'viewer'; state.data = null; state.error = null; state.calls = [] })
 
 describe('YatraFlow follows', () => {
+  it('shows a failed follower count as Unavailable', () => {
+    expect(creatorFollowerCountLabel({ kind: 'failed' })).toBe('Unavailable')
+    expect(creatorFollowerCountLabel({ kind: 'ready', value: 0 })).toBe('0')
+    expect(creatorFollowerCountLabel({ kind: 'reading' })).toBe('Loading…')
+  })
+  it('accepts an existing follow after a duplicate insert', async () => {
+    state.error = { code: '23505', message: 'duplicate key' }
+    await expect(followCreator('creator', signal)).resolves.toBeUndefined()
+    state.error = null
+    state.data = [{ follower: 'viewer', creator: 'creator' }]
+    expect(await isFollowing('creator', signal)).toBe(true)
+  })
   it('reads only the signed-in account row, never a follower list', async () => {
     state.data = [{ follower: 'viewer', creator: 'creator' }]
     expect(await isFollowing('creator', signal)).toBe(true)

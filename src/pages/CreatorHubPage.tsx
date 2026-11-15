@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CreatorPicksEditor } from '../components/creator/CreatorPicksEditor'
 import { useCreatorFollowerCount } from '../hooks/useCreatorFollows'
-import type { CreatorFollowApi, CreatorValue } from '../lib/creatorFollows'
+import { creatorFollowerCountLabel, type CreatorFollowApi, type CreatorValue } from '../lib/creatorFollows'
 import { InlineIcon } from '../components/icons'
 import { ExternalLink, Pencil } from 'lucide-react'
 import { PillNav } from '../components/PillNav'
@@ -711,7 +711,7 @@ export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollow
         })}
         <div className="hub-cell cr-tile cr-hub-followers">
           <span className="stat-label cr-tile__label">YatraFlow followers</span>
-          <span className="stat-value hub-cell-value cr-tile__value">{followerCount.kind === 'ready' ? followerCount.value.toLocaleString('en-IN') : followerCount.kind === 'failed' ? 'Unavailable' : 'Loading…'}</span>
+          <span className="stat-value hub-cell-value cr-tile__value">{creatorFollowerCountLabel(followerCount)}</span>
           <span className="cr-tile__note">All time</span>
           {followerCount.kind === 'failed' && onRetryFollowers && <button type="button" className="btn btn-ghost btn-sm" onClick={onRetryFollowers}>Retry follower count</button>}
         </div>

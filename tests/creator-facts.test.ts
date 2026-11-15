@@ -13,12 +13,14 @@ describe('creator facts', () => {
   it('sends only a planned distance the SQL check accepts', () => {
     expect(publishablePlannedKm(0)).toBe(0)
     expect(publishablePlannedKm(340.6)).toBe(341)
+    expect(publishablePlannedKm(19999.6)).toBeUndefined()
+    expect(publishablePlannedKm(19999.4)).toBe(19999)
     for (const km of [-1, 20000, 25000, Number.NaN, Number.POSITIVE_INFINITY]) expect(publishablePlannedKm(km)).toBeUndefined()
   })
 
   it('matches the SQL note limits and counts Unicode characters', () => {
-    for (const value of [[], ['a'], ['a', 'b', 'c'], ['🚗'.repeat(140)]]) expect(validPlanningNotes(value)).toBe(true)
-    for (const value of [[''], [' \n'], ['a'.repeat(141)], ['a', 'b', 'c', 'd'], [1], {}, 'note']) {
+    for (const value of [[], ['a'], ['a', 'b', 'c'], ['🚗'.repeat(140)], ['\u00a0'], ['\ufeff'], ['\u2007'], ['\u202f']]) expect(validPlanningNotes(value)).toBe(true)
+    for (const value of [[''], [' \t\n\v\f\r'], ['a'.repeat(141)], ['a', 'b', 'c', 'd'], [1], {}, 'note']) {
       expect(validPlanningNotes(value)).toBe(false)
       expect(() => planningNotes(value)).toThrow()
     }

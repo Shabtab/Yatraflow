@@ -92,6 +92,9 @@ it('omits the server review stamp from a publish and a republish', async () => {
   await publishRow(store, payload)
   expect(upsert.mock.calls.at(-1)?.[0]).not.toHaveProperty('reviewed_at')
   expect(rowOf(store, row.id).reviewedAt).toBe(row.reviewedAt)
+  await publishRow(store, { ...payload, plannedKm: undefined })
+  expect(upsert.mock.calls.at(-1)?.[0]).toHaveProperty('planned_km', null)
+  expect(upsert.mock.calls.at(-1)?.[0]).not.toHaveProperty('reviewed_at')
 })
 
 describe('#363 — forks are counted once per session, like views', () => {

@@ -3,7 +3,7 @@ import { livePubs } from './livePubs'
 
 export function validPlanningNotes(value: unknown): value is string[] {
   return Array.isArray(value) && value.length <= 3
-    && value.every((note: unknown) => typeof note === 'string' && /\S/u.test(note) && [...note].length <= 140)
+    && value.every((note: unknown) => typeof note === 'string' && /[^\t\n\v\f\r ]/u.test(note) && [...note].length <= 140)
 }
 
 export function planningNotes(value: unknown): string[] | undefined {
@@ -31,7 +31,8 @@ export function publicationFacts(row: { planned_km?: unknown; best_months?: unkn
 /** The distance a publish may send. The SQL check allows 0 to under 20000 km;
  *  any other value is sent as unknown, so the publish itself never fails. */
 export function publishablePlannedKm(km: number): number | undefined {
-  return Number.isFinite(km) && km >= 0 && km < 20000 ? Math.round(km) : undefined
+  const rounded = Math.round(km)
+  return Number.isFinite(km) && km >= 0 && rounded < 20000 ? rounded : undefined
 }
 
 export function creatorPick(pubs: PublishedItinerary[], creatorId: string, id: string | null | undefined) {
