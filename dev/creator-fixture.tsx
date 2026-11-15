@@ -85,8 +85,8 @@ const LIVE_COUNT: Record<Exclude<CaseKey, 'unpub' | 'long' | 'disabled'>, number
 const pubCount = CASE_KEY in LIVE_COUNT ? LIVE_COUNT[CASE_KEY as keyof typeof LIVE_COUNT] : 1
 const WITH_UNPUB = CASE_KEY === 'unpub'
 
-// ---- Rankings fixture: 0, 1, 3 or 15 ranked creators, one disabled account ----
-const RANK_COUNTS: Record<string, number> = { 'rank-0': 0, 'rank-1': 1, 'rank-3': 3, 'rank-15': 15 }
+// ---- Rankings fixture: small lists or 15 ranked creators, one disabled account ----
+const RANK_COUNTS: Record<string, number> = { 'rank-0': 0, 'rank-1': 1, 'rank-2': 2, 'rank-3': 3, 'rank-4': 4, 'rank-15': 15 }
 const RANK_CASE = CASE in RANK_COUNTS ? CASE : undefined
 const rankCount = RANK_CASE ? RANK_COUNTS[CASE] : 0
 const rankStyleFor = (index: number) => (
@@ -371,7 +371,9 @@ const INDEX_CASES: { label: string; query: string }[] = [
   { label: 'disabled creator', query: '?case=disabled' },
   { label: 'rankings: 0 creators', query: '?page=rankings&case=rank-0' },
   { label: 'rankings: 1 creator', query: '?page=rankings&case=rank-1' },
+  { label: 'rankings: 2 creators', query: '?page=rankings&case=rank-2' },
   { label: 'rankings: 3 creators', query: '?page=rankings&case=rank-3' },
+  { label: 'rankings: 4 creators', query: '?page=rankings&case=rank-4' },
   { label: 'rankings: 15 creators', query: '?page=rankings&case=rank-15' },
   { label: 'rankings: signed-in ranked creator', query: '?page=rankings&case=rank-3&viewer=signedin' },
   { label: 'rankings: read loading', query: '?page=rankings&case=rank-3&read=reading' },
