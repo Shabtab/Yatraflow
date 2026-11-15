@@ -1,0 +1,3 @@
+### Fixed
+
+- **A failed refresh keeps the creator's route cards on screen.** The public creator page read a failed publications request as "there is nothing here", so a dropped connection took the loaded cards away and showed the failure block in their place. Now the page tells the four states apart. A failed refresh that already has rows on screen keeps every card and adds a short note with a retry, so a visitor can still open the routes. The two totals in the track record read "Unavailable" while the read has not succeeded, because a figure that nobody read is not a number. A failed read with nothing retained still shows the failure copy with a retry, and the friendly "no routes yet" copy is shown only after a read that succeeded with no rows.

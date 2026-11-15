@@ -12,8 +12,9 @@ import { openExternal } from '../lib/native'
 import { useSavedPubs } from '../lib/savedPubs'
 import { Avatar, CopyButton, EmptyState } from '../components/ui'
 import { PubCard } from '../components/PubCard'
-import { sliceState, emptyCopyFor, figureOrUnavailable } from '../lib/readState'
+import { sliceState, emptyCopyFor, figureOrUnavailable, rowsView } from '../lib/readState'
 import { livePubs } from '../lib/livePubs'
+import { StateBlock } from '../components/page/StateBlock'
 
 export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNavigate: (r: string) => void }) {
   const me = useSessionUserId()
@@ -49,6 +50,18 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
   )
   const totalViews = pubs.reduce((s, p) => s + p.views, 0)
   const totalForks = pubs.reduce((s, p) => s + p.copies, 0)
+  // #704 / R23: a failed refresh keeps the rows already on screen and says so.
+  // Only a failed read with nothing retained hides the list.
+  const pubsView = rowsView(pubsRead, pubs.length)
+  const pubsGrid = (
+    <div className="explore-grid">
+      {pubs.map(p => (
+        <PubCard key={p.id} pub={p} creator={creator} saved={isSaved(p.id)}
+          onFork={() => { void forkPublication(p, me, onNavigate, undefined, 'creator') }} needsLogin={!me}
+          onToggleSave={() => toggleSaved(p.id)} />
+      ))}
+    </div>
+  )
 
   if (!creator || creatorUnavailable) {
     // A broken read is not an absent creator. The distinction is the whole bug.
@@ -121,12 +134,12 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
             <div className="stat-tile"><div className="stat-label">Itineraries</div><div className="stat-value">{pubs.length}</div></div>
             <div className="stat-tile"><div className="stat-label">Total views</div><div className="stat-value">
               {figureOrUnavailable(totalViews, pubsRead) === null
-                ? <span className="muted">unavailable</span>
+                ? <span className="muted">Unavailable</span>
                 : <><InlineIcon icon={Eye} size={15} gap={5} vAlign="-1px" />{totalViews}</>}
             </div></div>
             <div className="stat-tile"><div className="stat-label">Total forks</div><div className="stat-value">
               {figureOrUnavailable(totalForks, pubsRead) === null
-                ? <span className="muted">unavailable</span>
+                ? <span className="muted">Unavailable</span>
                 : <><InlineIcon icon={GitFork} size={15} gap={5} vAlign="-1px" />{totalForks}</>}
             </div></div>
           </div>
@@ -134,17 +147,17 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
 
         <h2 style={{ marginBottom: 12 }}>Publications</h2>
 
-        {pubsRead !== 'ready' ? (
-          // Loading and failed both sit here, and both are checked BEFORE the
-          // empty copy — which is the ordering whose absence caused the bug.
-          pubsRead === 'reading' ? (
-            <div className="loading-block"><div className="spinner" />Loading publications…</div>
-          ) : (
-            <EmptyState icon={<MapPin size={38} aria-hidden />} title={emptyCopyFor(pubsRead, 'publications', retry).title}
-              body={emptyCopyFor(pubsRead, 'publications', retry).body}
-              action={<button className="btn btn-primary" onClick={retry}>Try again</button>} />
-          )
-        ) : pubs.length === 0 ? (
+        {/* #704 / R23: four states, never three. A failed refresh that still has
+            rows on screen keeps them and adds a note; only a failed read with
+            nothing retained reaches the failure copy. The empty copy is reachable
+            from a read that succeeded with no rows, and from nothing else. */}
+        {pubsView === 'reading' ? (
+          <div className="loading-block"><div className="spinner" />Loading publications…</div>
+        ) : pubsView === 'failed' ? (
+          <EmptyState icon={<MapPin size={38} aria-hidden />} title={emptyCopyFor(pubsRead, 'publications', retry).title}
+            body={emptyCopyFor(pubsRead, 'publications', retry).body}
+            action={<button className="btn btn-primary" onClick={retry}>Try again</button>} />
+        ) : pubsView === 'empty' ? (
           !creator.profile.isCreator ? (
             <EmptyState icon={<Compass size={38} aria-hidden />} title="No creator page here yet"
               body={`${creator.profile.name} hasn’t enabled creator mode or published an itinerary.`}
@@ -154,13 +167,14 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
               body="When they publish a trip to Explore, it will appear here." />
           )
         ) : (
-          <div className="explore-grid">
-            {pubs.map(p => (
-              <PubCard key={p.id} pub={p} creator={creator} saved={isSaved(p.id)}
-                onFork={() => { void forkPublication(p, me, onNavigate, undefined, 'creator') }} needsLogin={!me}
-                onToggleSave={() => toggleSaved(p.id)} />
-            ))}
-          </div>
+          <>
+            {pubsView === 'kept' && (
+              <StateBlock kind="kept" size="compact" title="Couldn’t refresh these publications."
+                body="Showing the ones that loaded."
+                actions={<button className="btn btn-outline btn-sm" onClick={retry}>Try again</button>} />
+            )}
+            {pubsGrid}
+          </>
         )}
       </div>
     </div>
