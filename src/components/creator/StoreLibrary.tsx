@@ -2,6 +2,7 @@
 // The section head, the "Starting from" filter and the card grid, with every
 // read state drawn through StateBlock. Props only: the page owns the read, the
 // rows and the fork or save behaviour; this component owns the filter choice.
+import { countNoun } from '../../lib/creatorCopy'
 import { useState } from 'react'
 import { Compass, MapPin } from 'lucide-react'
 import type { CachedUser, PublishedItinerary } from '../../data/types'
@@ -68,7 +69,7 @@ export function StoreLibrary({ name, pubs, view, read, retry, creator, savedIds,
       aria-labelledby="creator-library-title">
       <CrSectionHead
         kicker="Route library"
-        title={`All ${pubs.length} routes by ${name}`}
+        title={`All ${countNoun(pubs.length, 'route')} by ${name}`}
         id="creator-library-title"
         note={anyPrice ? `Plan is what the plan costs. Trip is ${name}’s estimate of what the trip costs you.` : undefined}
       />

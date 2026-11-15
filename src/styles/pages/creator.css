@@ -513,7 +513,7 @@
   flex: 1 1 100%;
 }
 .cr-own-check .btn {
-  min-height: 38px;
+  min-height: 44px;
   --btn-padding: 0 var(--space-4);
 }
 .cr-own-check,
@@ -667,6 +667,16 @@
 }
 .cr-hub-publication .hub-cell-unread {
   font: 600 11px/1.3 var(--font-body);
+  color: var(--pw-ink-3);
+  opacity: 1;
+}
+.cr-hub-check a,
+.cr-own-check a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font: 700 13px/1.3 var(--font-body);
+  color: var(--pw-sea-700);
 }
 .cr-hub-price,
 .cr-hub-views,

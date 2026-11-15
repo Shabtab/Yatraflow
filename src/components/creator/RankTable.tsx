@@ -68,9 +68,9 @@ function RankRow({ row, me, users }: {
         {isMe && <Chip tone="teal">You</Chip>}
       </span>
       <span className="cr-rk-table__known"><Chip>{row.knownFor}</Chip></span>
-      <span className="cr-rk-table__value"><b>{row.forks}</b> forks</span>
-      <span className="cr-rk-table__value"><b>{row.plans}</b> routes</span>
-      <span className="cr-rk-table__value"><b>{row.views}</b> views</span>
+      <span className="cr-rk-table__value"><b>{row.forks}</b> {row.forks === 1 ? 'fork' : 'forks'}</span>
+      <span className="cr-rk-table__value"><b>{row.plans}</b> {row.plans === 1 ? 'route' : 'routes'}</span>
+      <span className="cr-rk-table__value"><b>{row.views}</b> {row.views === 1 ? 'view' : 'views'}</span>
       <a className="btn btn-secondary btn-sm" {...appLink(`/creator/${row.id}` as `/${string}`)}>View page</a>
     </li>
   )
