@@ -828,6 +828,11 @@ export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollow
             </div>
           </section>
 
+          <aside className="cr-hub-aside">
+            {unknownPubs ? <PubsUnread view={publishedView} retrying={publishedRetrying} onRetry={onRetryPublished} /> :
+              <HubReadiness report={pageReadiness} pubs={myPubs} kept={publishedView === 'kept'} />}
+          </aside>
+
           <section className="cr-card cr-hub-publications" aria-labelledby="hub-pubs-h">
             <div className="hub-lead-head">
               <h2 className="hub-card-title" id="hub-pubs-h">Publications</h2>
@@ -890,17 +895,17 @@ export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollow
                           sentence through for the WHOLE first read — a separate,
                           older conflation of "loading" with "nothing recorded";
                           the reading state now returns first.) */}
-                      <span role="cell" className="cr-hub-price">{p.premiumPriceInr ? formatInr(p.premiumPriceInr) : 'Free'}</span>
+                      <span role="cell" className="cr-hub-price" data-label="Price">{p.premiumPriceInr ? formatInr(p.premiumPriceInr) : 'Free'}</span>
                       <span role="cell" className="cr-hub-status">{tripsKnown || status.key === 'unpublished' ? <Chip tone={status.tone}>{status.label}</Chip> : null}</span>
-                      <div role="cell" className="cr-hub-views">
+                      <div role="cell" className="cr-hub-views" data-label={`Views ${days} days`}>
                         {trafficRead === 'ready' ? funnelOf.get(p.id)?.views : <UnreadFigure view={trafficRead} />}
                         <details className="cr-hub-route-funnel"><summary>Traffic details</summary>
                           <FunnelLine f={funnelOf.get(p.id)} funnelRead={trafficRead} unlockRead={unlockRead} windowLabel={windowLabel} />
                         </details>
                       </div>
-                      <span role="cell" className="cr-hub-forks">{trafficRead === 'ready' ? funnelOf.get(p.id)?.forks : <UnreadFigure view={trafficRead} />}</span>
-                      <span role="cell" className="cr-hub-unlocks">{unlockRead === 'ready' ? funnelOf.get(p.id)?.unlocks : <UnreadFigure view={unlockRead} />}</span>
-                      <span role="cell" className="cr-hub-updated">{shortDate(p.refreshedAt ?? p.publishedAt)}</span>
+                      <span role="cell" className="cr-hub-forks" data-label="Forks">{trafficRead === 'ready' ? funnelOf.get(p.id)?.forks : <UnreadFigure view={trafficRead} />}</span>
+                      <span role="cell" className="cr-hub-unlocks" data-label="Unlocks">{unlockRead === 'ready' ? funnelOf.get(p.id)?.unlocks : <UnreadFigure view={unlockRead} />}</span>
+                      <span role="cell" className="cr-hub-updated" data-label="Updated">{shortDate(p.refreshedAt ?? p.publishedAt)}</span>
                       <span role="cell" className="pub-row-actions">
                         <button
                           className={`btn btn-sm ${status.action === 'edit' ? 'btn-outline' : 'btn-saffron'}`}
@@ -925,10 +930,6 @@ export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollow
           <HubActivity events={activity} salesRead={unlockRead} trafficRead={trafficRead} publicationsView={publishedView}
             salesKeptAt={salesError ? salesAt : null} trafficKeptAt={funnelError ? dailyAt : null} />
         </div>
-        <aside className="cr-hub-aside">
-          {unknownPubs ? <PubsUnread view={publishedView} retrying={publishedRetrying} onRetry={onRetryPublished} /> :
-            <HubReadiness report={pageReadiness} pubs={myPubs} kept={publishedView === 'kept'} />}
-        </aside>
       </div>
 
     </>
