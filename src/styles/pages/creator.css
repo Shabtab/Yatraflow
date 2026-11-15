@@ -1403,8 +1403,8 @@ p.cr-store-planning {
 .cr-own-picks > .btn {
   align-self: flex-start;
 }
-/* One class carries both the saved message and the errors, so this block stays
-   neutral. A success must not read as a failure. */
+/* The base stays neutral so a saved message does not read as a failure; the
+   error variant takes the app's danger tone. */
 .cr-own-picks-feedback {
   margin: 0;
   padding: var(--space-4) var(--space-5);
@@ -1414,4 +1414,9 @@ p.cr-store-planning {
   font: 600 13px/1.4 var(--font-body);
   color: var(--pw-ink);
   overflow-wrap: anywhere;
+}
+.cr-own-picks-feedback[data-kind="error"] {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--ink-coral);
 }
