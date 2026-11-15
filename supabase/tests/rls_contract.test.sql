@@ -989,6 +989,9 @@ do $$
 declare
   v_role text;
   v_function text;
+  -- G8 replaces the two-argument bump with a three-argument one. Accept either.
+  v_bump text := coalesce(to_regprocedure('public.bump_creator_page_view(uuid,text,uuid)'),
+    to_regprocedure('public.bump_creator_page_view(uuid,text)'))::text;
 begin
   if not (select relrowsecurity from pg_class where oid = 'public.creator_page_events'::regclass) then
     raise exception 'G2: raw page events need RLS';
@@ -1003,11 +1006,11 @@ begin
   end if;
   if (select array_agg(column_name::text order by ordinal_position) from information_schema.columns
     where table_schema = 'public' and table_name = 'creator_page_events')
-    is distinct from array['creator_id', 'at', 'source']::text[] then
-    raise exception 'G2: page events must hold only creator_id, at and source';
+    not in (array['creator_id', 'at', 'source']::text[], array['creator_id', 'at', 'source', 'post_id']::text[]) then
+    raise exception 'G2: page events must hold only creator_id, at and source, plus post_id after G8';
   end if;
   foreach v_function in array array[
-    'public.bump_creator_page_view(uuid,text)', 'public.get_creator_page_views(integer)',
+    v_bump, 'public.get_creator_page_views(integer)',
     'public.prune_creator_page_events(integer)'
   ] loop
     if not exists (select 1 from pg_proc where oid = v_function::regprocedure
@@ -1025,7 +1028,7 @@ begin
     if has_function_privilege(v_role, 'public.prune_creator_page_events(integer)', 'execute') then
       raise exception 'G2: clients must not prune events';
     end if;
-    if not has_function_privilege(v_role, 'public.bump_creator_page_view(uuid,text)', 'execute') then
+    if not has_function_privilege(v_role, v_bump, 'execute') then
       raise exception 'G2: visitors must reach the validated bump';
     end if;
   end loop;
@@ -1242,6 +1245,221 @@ begin
   if v_count <> 1 then raise exception 'G4: owner must delete only their own follow'; end if;
   insert into public.creator_follows(follower, creator) values
     ('16110000-0000-4000-8000-000000000001', '16110000-0000-4000-8000-000000000002');
+  reset role;
+end $$;
+
+-- ============================================================ G8. creator post links
+-- The metadata half runs on any database. The behaviour half runs only when a
+-- local fixture sets yatraflow.creator_g8_fixture = 'on' and seeds these rows:
+--   17110000-0000-4000-8000-000000000001  active creator (owner)
+--   17110000-0000-4000-8000-000000000002  another active creator
+--   17110000-0000-4000-8000-000000000003  disabled account
+--   routes of the owner: g8-pub-live (3 days, live), g8-pub-down (unpublished)
+--   one route of the other creator: g8-pub-other (live)
+--   posts: 17110000-0000-4000-8000-0000000000a1 on g8-pub-live (owner),
+--          17110000-0000-4000-8000-0000000000a2 on g8-pub-down (owner)
+-- No fixture script ships with this draft. Nothing here was run against a database.
+do $$
+declare
+  v_role text;
+  v_count integer;
+  v_n integer;
+begin
+  if not (select relrowsecurity from pg_class where oid = 'public.creator_posts'::regclass) then
+    raise exception 'G8: posts need RLS';
+  end if;
+  if (select array_agg(column_name::text order by ordinal_position) from information_schema.columns
+    where table_schema = 'public' and table_name = 'creator_posts') is distinct from
+    array['id', 'creator', 'url', 'kind', 'pub_id', 'day_index', 'caption', 'created_at']::text[] then
+    raise exception 'G8: the public post columns changed';
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'creator_posts'
+      and policyname = 'deny disabled' and permissive = 'RESTRICTIVE' and cmd = 'ALL'
+      and roles = array['authenticated']::name[] and qual is not null and with_check is not null) then
+    raise exception 'G8: posts need a RESTRICTIVE disabled denial';
+  end if;
+  if (select count(*) from pg_policies where schemaname = 'public' and tablename = 'creator_posts'
+      and permissive = 'PERMISSIVE') <> 5
+    or not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'creator_posts'
+      and policyname = 'creator posts public read' and permissive = 'PERMISSIVE' and cmd = 'SELECT'
+      and roles @> array['anon', 'authenticated']::name[]
+      and qual ilike '%unpublished_at IS NULL%' and qual ilike '%creator_available%')
+    or exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'creator_posts'
+      and policyname like 'creator posts own %' and not (roles = array['authenticated']::name[]
+        and (coalesce(qual, '') || coalesce(with_check, '')) ilike '%auth.uid()%')) then
+    raise exception 'G8: post policies drifted';
+  end if;
+  foreach v_role in array array['creator_posts_url_check', 'creator_posts_kind_check',
+    'creator_posts_day_index_check', 'creator_posts_caption_check', 'creator_posts_creator_url_key'] loop
+    if not exists (select 1 from pg_constraint where conrelid = 'public.creator_posts'::regclass
+      and conname = v_role and convalidated) then
+      raise exception 'G8: constraint % is missing', v_role;
+    end if;
+  end loop;
+  if not exists (select 1 from pg_trigger where tgrelid = 'public.creator_posts'::regclass
+      and tgname = 'creator_posts_guard' and not tgisinternal and tgenabled <> 'D')
+    or not exists (select 1 from pg_proc where oid = 'public.guard_creator_post()'::regprocedure
+      and prosecdef and proconfig @> array['search_path=public'])
+    or not exists (select 1 from pg_trigger where tgrelid = 'public.published_itineraries'::regclass
+      and tgname = 'publications_clear_stale_post_day' and not tgisinternal and tgenabled <> 'D') then
+    raise exception 'G8: guard triggers are missing or have no pinned definer';
+  end if;
+  if has_table_privilege('anon', 'public.creator_posts', 'INSERT')
+    or has_any_column_privilege('anon', 'public.creator_posts', 'INSERT')
+    or has_any_column_privilege('anon', 'public.creator_posts', 'UPDATE')
+    or has_table_privilege('anon', 'public.creator_posts', 'DELETE')
+    or not has_table_privilege('anon', 'public.creator_posts', 'SELECT')
+    or has_table_privilege('authenticated', 'public.creator_posts', 'UPDATE')
+    or has_table_privilege('authenticated', 'public.creator_posts', 'TRUNCATE')
+    or has_column_privilege('authenticated', 'public.creator_posts', 'url', 'UPDATE')
+    or has_column_privilege('authenticated', 'public.creator_posts', 'pub_id', 'UPDATE')
+    or not has_column_privilege('authenticated', 'public.creator_posts', 'caption', 'UPDATE')
+    or has_column_privilege('authenticated', 'public.creator_posts', 'id', 'INSERT')
+    or has_column_privilege('authenticated', 'public.creator_posts', 'created_at', 'INSERT')
+    or not has_column_privilege('authenticated', 'public.creator_posts', 'url', 'INSERT')
+    or not has_table_privilege('authenticated', 'public.creator_posts', 'DELETE') then
+    raise exception 'G8: post grants drifted';
+  end if;
+  if not exists (select 1 from pg_proc where oid = 'public.bump_creator_page_view(uuid,text,uuid)'::regprocedure
+      and prosecdef and proconfig @> array['search_path=public'])
+    or to_regprocedure('public.bump_creator_page_view(uuid,text)') is not null
+    or not has_function_privilege('anon', 'public.bump_creator_page_view(uuid,text,uuid)', 'execute')
+    or not has_function_privilege('authenticated', 'public.bump_creator_page_view(uuid,text,uuid)', 'execute')
+    or not exists (select 1 from pg_proc where oid = 'public.get_creator_post_visits(integer)'::regprocedure
+      and prosecdef and proconfig @> array['search_path=public'])
+    or has_function_privilege('anon', 'public.get_creator_post_visits(integer)', 'execute')
+    or not has_function_privilege('authenticated', 'public.get_creator_post_visits(integer)', 'execute') then
+    raise exception 'G8: attribution functions drifted';
+  end if;
+  if (select array_agg(column_name::text order by ordinal_position) from information_schema.columns
+    where table_schema = 'public' and table_name = 'creator_page_events')
+    is distinct from array['creator_id', 'at', 'source', 'post_id']::text[] then
+    raise exception 'G8: page events must add only post_id';
+  end if;
+  if current_setting('yatraflow.creator_g8_fixture', true) is distinct from 'on' then return; end if;
+
+  -- Anonymous visitors: only posts on live routes of an active creator, read only.
+  perform set_config('request.jwt.claim.sub', '', true);
+  set local role anon;
+  if (select count(*) from public.creator_posts) <> 1
+    or exists (select 1 from public.creator_posts where pub_id = 'g8-pub-down') then
+    raise exception 'G8: anonymous visitors must read only posts on live routes';
+  end if;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/x', 'youtube', 'g8-pub-live');
+    raise exception 'G8: anonymous insert succeeded';
+  exception when insufficient_privilege then null;
+  end;
+  -- A visit names a real post of that creator and keeps no visitor identity.
+  perform public.bump_creator_page_view('17110000-0000-4000-8000-000000000001', 'post',
+    '17110000-0000-4000-8000-0000000000a1');
+  perform public.bump_creator_page_view('17110000-0000-4000-8000-000000000001', 'post',
+    '17110000-0000-4000-8000-0000000000ff');
+  reset role;
+
+  -- Another creator: no write on the owner's posts, and their own routes only.
+  perform set_config('request.jwt.claim.sub', '17110000-0000-4000-8000-000000000002', true);
+  set local role authenticated;
+  if (select count(*) from public.creator_posts) <> 1 then
+    raise exception 'G8: another creator must read only the public post';
+  end if;
+  delete from public.creator_posts;
+  get diagnostics v_count = row_count;
+  update public.creator_posts set caption = 'x';
+  get diagnostics v_n = row_count;
+  if v_count <> 0 or v_n <> 0 then raise exception 'G8: another creator changed an owner post'; end if;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/y', 'youtube', 'g8-pub-live');
+    raise exception 'G8: another creator inserted an owner post';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000002', 'https://youtu.be/y', 'youtube', 'g8-pub-live');
+    raise exception 'G8: a post on another creator''s route succeeded';
+  exception when check_violation then null;
+  end;
+  if exists (select 1 from public.get_creator_post_visits(30)) then
+    raise exception 'G8: another creator read someone else''s post visits';
+  end if;
+  reset role;
+
+  -- A disabled caller reads nothing.
+  perform set_config('request.jwt.claim.sub', '17110000-0000-4000-8000-000000000003', true);
+  set local role authenticated;
+  if exists (select 1 from public.creator_posts) or exists (select 1 from public.get_creator_post_visits(30)) then
+    raise exception 'G8: a disabled caller read posts';
+  end if;
+  reset role;
+
+  -- The owner: own rows, valid and invalid inserts, caption-only update, the cap.
+  perform set_config('request.jwt.claim.sub', '17110000-0000-4000-8000-000000000001', true);
+  set local role authenticated;
+  if (select count(*) from public.creator_posts) <> 2 then
+    raise exception 'G8: the owner must read both own posts';
+  end if;
+  if (select coalesce(sum(visits), 0) from public.get_creator_post_visits(30)) <> 1 then
+    raise exception 'G8: only the real post may carry a visit';
+  end if;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://instagram.com.example.com/p/x', 'instagram', 'g8-pub-live');
+    raise exception 'G8: a look-alike host succeeded';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'http://youtu.be/x', 'youtube', 'g8-pub-live');
+    raise exception 'G8: a plain http address succeeded';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/x', 'instagram', 'g8-pub-live');
+    raise exception 'G8: a mismatched kind succeeded';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id, caption)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/x', 'youtube', 'g8-pub-live', E' \t ');
+    raise exception 'G8: a blank caption succeeded';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id, day_index)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/x', 'youtube', 'g8-pub-live', 3);
+    raise exception 'G8: a day past the route succeeded';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/x', 'youtube', 'g8-pub-down');
+    raise exception 'G8: a post on an unpublished route succeeded';
+  exception when check_violation then null;
+  end;
+  insert into public.creator_posts(creator, url, kind, pub_id, day_index, caption)
+    values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/ok', 'youtube', 'g8-pub-live', 2, 'Day three');
+  begin
+    update public.creator_posts set url = 'https://youtu.be/moved';
+    raise exception 'G8: a client changed a post address';
+  exception when insufficient_privilege then null;
+  end;
+  update public.creator_posts set caption = 'Edited';
+  for v_n in 1..9 loop
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/fill' || v_n, 'youtube', 'g8-pub-live');
+  end loop;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/over', 'youtube', 'g8-pub-live');
+    raise exception 'G8: a thirteenth post succeeded';
+  exception when check_violation then null;
+  end;
+  delete from public.creator_posts;
+  get diagnostics v_count = row_count;
+  if v_count <> 12 then raise exception 'G8: the owner must delete only own posts'; end if;
   reset role;
 end $$;
 
