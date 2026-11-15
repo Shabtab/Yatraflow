@@ -551,4 +551,4 @@ article.ex-card[data-id] .ex-card-foot { flex-wrap: nowrap; gap: 8px; }
 .ex-card .ex-card-foot .ex-byline > span { min-width: 0; overflow-wrap: anywhere; }
 .ex-card .ex-card-foot .ex-byline > .avatar, .ex-card .ex-card-foot .ex-byline > svg { flex: none; }
 .ex-card .ex-card-foot .ex-fork { flex: none; padding-inline: 12px; }
-.ex-page .ex-hero h1 > em { display: block; }
+.ex-page .ex-hero h1 > em { display: block; width: fit-content; margin-bottom: .18em; }
