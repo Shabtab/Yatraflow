@@ -83,14 +83,15 @@ const DISABLED_ID = 'fixture-creator-disabled'
 const LONG_NAME = ('Fixture Creator ' + 'n'.repeat(40)).slice(0, 40)
 const LONG_BIO = 'YatraFlow fixture bio sentence. '.repeat(10).slice(0, 300)
 
-type CaseKey = 'live-0' | 'live-1' | 'live-3' | 'live-7' | 'unpub' | 'long' | 'disabled'
+type CaseKey = 'live-0' | 'live-1' | 'live-3' | 'live-7' | 'stale' | 'unpub' | 'long' | 'disabled'
 const CASE_KEY: CaseKey = (
-  ['live-0', 'live-1', 'live-3', 'live-7', 'unpub', 'long', 'disabled'] as const
+  ['live-0', 'live-1', 'live-3', 'live-7', 'stale', 'unpub', 'long', 'disabled'] as const
 ).includes(CASE as CaseKey) ? (CASE as CaseKey) : 'live-3'
 
-/** How many LIVE publications this case shows. `unpub` = 1 live + 1 taken down. */
+/** How many LIVE publications this case shows. `unpub` = 1 live + 1 taken down.
+ *  `stale` = 1 live + 1 live page whose trip changed after the page was built. */
 const LIVE_COUNT: Record<Exclude<CaseKey, 'unpub' | 'long' | 'disabled'>, number> = {
-  'live-0': 0, 'live-1': 1, 'live-3': 3, 'live-7': 7,
+  'live-0': 0, 'live-1': 1, 'live-3': 3, 'live-7': 7, stale: 2,
 }
 
 const pubCount = CASE_KEY in LIVE_COUNT ? LIVE_COUNT[CASE_KEY as keyof typeof LIVE_COUNT] : 1
@@ -293,7 +294,10 @@ function pub(i: number, takenDown: boolean): PublishedItinerary {
   }
 }
 
-const livePubs = Array.from({ length: pubCount }, (_, i) => pub(i, false))
+const livePubs = Array.from({ length: pubCount }, (_, i) => ({
+  ...pub(i, false),
+  ...(CASE_KEY === 'stale' ? { routeSummary: ['Kolkata, India', 'Purulia, India', 'Patratu Valley, India'] } : {}),
+}))
 const allPubs = WITH_UNPUB ? [...livePubs, pub(90, true)] : livePubs
 const rankPubs = [
   ...rankCreatorIds.map((creatorId, index) => ({
@@ -325,7 +329,10 @@ const tripsVerdict = effectivePubsVerdict ?? undefined
 // fixture documents. Seed the plain slices first, plant the session id, then
 // let `_installUsersForTest` stamp the authority once.
 const db = getSnapshot()
-db.trips = allPubs.map((p, i) => trip(WITH_UNPUB && i === livePubs.length ? 90 : i))
+db.trips = allPubs.map((p, i) => {
+  const seeded = trip(WITH_UNPUB && i === livePubs.length ? 90 : i)
+  return CASE_KEY === 'stale' && i === 1 ? { ...seeded, updatedAt: 1_770_000_000_000 } : seeded
+})
 db.decisions = []
 db.activity = []
 db.notifications = []
@@ -366,6 +373,7 @@ const INDEX_CASES: { label: string; query: string }[] = [
   { label: '3 live routes', query: '?case=live-3' },
   { label: '7 live routes', query: '?case=live-7' },
   { label: 'one unpublished route', query: '?case=unpub' },
+  { label: 'publications: one needs update', query: '?page=hub&case=stale' },
   { label: 'long name (40) and bio (300)', query: '?case=long' },
   { label: 'links: none', query: '?case=live-3&links=none' },
   { label: 'links: YouTube only', query: '?case=live-3&links=youtube' },

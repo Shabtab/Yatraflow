@@ -661,6 +661,25 @@ p.cr-store-planning {
   gap: var(--space-7);
   min-width: 0;
 }
+/* The publications table needs the full hub width: its container threshold is
+   782px, and the main column beside the readiness aside cannot reach that at
+   1280. `display: contents` promotes the main column's children into the hub
+   grid, so the DOM keeps traffic, readiness, publications, activity. */
+@media (min-width: 1100px) {
+  .cr-hub-layout {
+    grid-template-areas:
+      "traffic aside"
+      "pubs pubs"
+      "activity activity";
+  }
+  .cr-hub-main {
+    display: contents;
+  }
+  .cr-hub-traffic { grid-area: traffic; }
+  .cr-hub-aside { grid-area: aside; }
+  .cr-hub-publications { grid-area: pubs; }
+  .cr-hub-activity { grid-area: activity; }
+}
 .cr-hub-kpis {
   --cr-cols: 5;
   gap: var(--space-6);
@@ -703,6 +722,10 @@ p.cr-store-planning {
 }
 .cr-hub-publications {
   container: hubpubs / inline-size;
+  /* The head and every row are separate grids, so a per-row max-content
+     actions column made row 1 (Edit) 88px and row 2 (Update page) 127px and
+     shifted every column between them. Pin the widest action instead. */
+  --cr-hub-actions: 128px;
 }
 .cr-hub-table-head {
   display: none;
@@ -713,10 +736,19 @@ p.cr-store-planning {
   gap: var(--space-2);
   padding: var(--space-5) var(--space-7);
 }
-@container hubpubs (min-width: 640px) {
+.cr-hub-publication .pub-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* 782px = 180 route + 432 numeric + 128 actions + 7 x 6px gaps. Below it the
+   card keeps the stacked layout rather than crushing the route column. */
+@container hubpubs (min-width: 782px) {
   .cr-hub-table-head {
     display: grid;
-    grid-template-columns: minmax(0, 1.6fr) 52px 72px minmax(0, 1fr) 64px 64px 56px 112px;
+    grid-template-columns: minmax(180px, 2fr) 56px 108px 88px 52px 64px 64px var(--cr-hub-actions);
     gap: var(--space-3);
     align-items: center;
     min-height: 38px;
@@ -726,13 +758,75 @@ p.cr-store-planning {
     text-transform: uppercase;
     color: var(--pw-ink-3);
   }
+  .cr-hub-table-head > * {
+    white-space: nowrap;
+  }
+  /* "Views 30 days" is 99px and its column is 88px. Two lines beat a label
+     that paints over Forks. Every other header stays on one line. */
+  .cr-hub-table-head > :nth-child(4) {
+    white-space: normal;
+  }
   .cr-hub-publication {
     display: grid;
-    grid-template-columns: minmax(0, 1.6fr) 52px 72px minmax(0, 1fr) 64px 64px 56px 112px;
+    grid-template-columns: minmax(180px, 2fr) 56px 108px 88px 52px 64px 64px var(--cr-hub-actions);
     gap: var(--space-3);
     align-items: center;
     min-height: 61px;
     padding: var(--space-4a) 0;
+  }
+  .cr-hub-publication .pub-row-actions {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    justify-self: end;
+    justify-content: center;
+    align-items: flex-end;
+    gap: var(--space-2);
+  }
+  .cr-hub-publication .pub-row-actions > * {
+    justify-self: end;
+  }
+}
+/* Below the table threshold the header is gone, so each figure carries its
+   own label. The grid keeps five label/value pairs compact, then the status
+   chip, then the actions. */
+@container hubpubs (max-width: 781.98px) {
+  .cr-hub-publication {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "title title"
+      "price views"
+      "forks unlocks"
+      "updated updated"
+      "status status"
+      "actions actions";
+    column-gap: var(--space-5);
+    row-gap: var(--space-3);
+    align-items: start;
+  }
+  .cr-hub-publication .hub-lead-title { grid-area: title; }
+  .cr-hub-price { grid-area: price; }
+  .cr-hub-views { grid-area: views; }
+  .cr-hub-forks { grid-area: forks; }
+  .cr-hub-unlocks { grid-area: unlocks; }
+  .cr-hub-updated { grid-area: updated; }
+  .cr-hub-status { grid-area: status; }
+  .cr-hub-publication .pub-row-actions { grid-area: actions; }
+  .cr-hub-status:empty { display: none; }
+  .cr-hub-price::before,
+  .cr-hub-views::before,
+  .cr-hub-forks::before,
+  .cr-hub-unlocks::before,
+  .cr-hub-updated::before {
+    content: attr(data-label);
+    content: attr(data-label) / "";
+    display: block;
+    margin-bottom: var(--space-1);
+    font: 600 11px/1.3 var(--font-body);
+    letter-spacing: var(--pw-kicker-tracking);
+    text-transform: uppercase;
+    color: var(--pw-ink-3);
   }
 }
 /* The legacy strip paints a navy band with white figures. The kit tile is a
@@ -804,6 +898,7 @@ p.cr-store-planning {
 }
 .cr-hub-status {
   min-width: 0;
+  white-space: nowrap;
 }
 .cr-hub-views details {
   margin-top: var(--space-2);
@@ -812,6 +907,7 @@ p.cr-store-planning {
   font: 600 12px/1.4 var(--font-body);
   color: var(--pw-sea-700);
   cursor: pointer;
+  white-space: nowrap;
 }
 .cr-hub-events {
   list-style: none;
