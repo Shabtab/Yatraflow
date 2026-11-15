@@ -4,7 +4,7 @@
 // counted, forksToNext 0 for rank 1, and the style filter. No markup.
 import { describe, expect, it } from 'vitest'
 import type { CachedUser, PublishedItinerary, PublicUser } from '../src/data/types'
-import { rankCreators, rankOf } from '../src/lib/creatorRank'
+import { rankCreators, rankOf, rankTableRows } from '../src/lib/creatorRank'
 
 const NOW = Date.UTC(2026, 10, 15, 12)
 
@@ -129,6 +129,21 @@ describe('rankCreators', () => {
     const pubs = [pub({ views: 7 }), pub({ id: 'p2', views: 8 })]
     const rows = rankCreators(pubs, [privateUser('c1')])
     expect(rows[0]).toMatchObject({ id: 'c1', views: 15 })
+  })
+})
+
+describe('rankTableRows', () => {
+  it.each([
+    [0, 0], [1, 0], [2, 0], [3, 0], [4, 1],
+  ])('%i ranked creators leave %i table rows', (count, total) => {
+    const users = Array.from({ length: count }, (_, index) => user(`c${index}`))
+    const pubs = users.map(({ id }) => pub({ id: `p-${id}`, creatorId: id }))
+    const ranked = rankCreators(pubs, users)
+    const table = rankTableRows(ranked)
+    expect(ranked).toHaveLength(count)
+    expect(table.total).toBe(total)
+    expect(table.rows).toEqual(ranked.slice(3))
+    expect(table.rows.map(row => row.rank)).toEqual(total ? [4] : [])
   })
 })
 

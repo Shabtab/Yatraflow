@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { usePublished, useUsers, useSessionUserId, useDb, rereadPublicSlices } from '../store/store'
 import { rowsView, sliceState } from '../lib/readState'
-import { rankCreators, rankOf } from '../lib/creatorRank'
+import { rankCreators, rankOf, rankTableRows } from '../lib/creatorRank'
 import { appLink } from '../lib/appLink'
 import { TRAVEL_STYLES, type PublishedItinerary, type TravelStyle } from '../data/types'
 import { cap } from '../lib/labels'
@@ -32,6 +32,7 @@ export function CreatorRankingsPage() {
   const liveStyles = useMemo(() => stylesInLiveRoutes(published), [published])
   const ranked = useMemo(() => rankCreators(published, users, { style }), [published, users, style])
   const view = rowsView(read, ranked.length)
+  const table = rankTableRows(ranked)
   const myRank = me ? rankOf(ranked, me) : undefined
   const leadRouteFor = (id: string) => {
     const leadRouteId = ranked.find(row => row.id === id)?.leadRouteId
@@ -115,13 +116,13 @@ export function CreatorRankingsPage() {
         </div>
       ) : null}
 
-      {view === 'rows' || view === 'kept' ? (
+      {(view === 'rows' || view === 'kept') && table.total > 0 ? (
         <RankTable
-          rows={ranked.slice(3)}
+          rows={table.rows}
           me={me}
           users={users}
           visibleCount={visibleCount}
-          total={ranked.length - 3}
+          total={table.total}
           onShowMore={() => setVisibleCount(count => count + TABLE_PAGE_SIZE)}
         />
       ) : null}

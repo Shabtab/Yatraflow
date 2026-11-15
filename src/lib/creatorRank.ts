@@ -66,6 +66,10 @@ export interface RankPosition {
   forksToNext: number
 }
 
+export function rankTableRows(rows: CreatorRankRow[]) {
+  return { rows: rows.slice(3), total: Math.max(0, rows.length - 3) }
+}
+
 /** Where one creator sits in the ranking, or `undefined` when they hold no
  *  live route and so never entered the list. */
 export function rankOf(rows: CreatorRankRow[], id: string): RankPosition | undefined {
