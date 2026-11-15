@@ -42,6 +42,11 @@ It does not prove production RLS or a signed-in device journey.
 See [the replay audit](OFFLINE-REPLAY-783.md) for the remaining device checks and rollout order.
 
 Test analytics writes under anonymous and authenticated roles. An insert mock cannot prove RLS access.
+Run `node scripts/integration/creator-g1-g2-db.mjs` for the local G1 and G2 SQL contracts.
+It applies both drafts twice on PGlite and runs the G1/G2 sections from `supabase/tests/rls_contract.test.sql` with fixtures.
+The full contract checks metadata by default. The local probe also enables its fixture-only role checks.
+It checks source tags, disabled accounts, owner scope, direct table denial, UTC days, date limits and service-only retention.
+No hosted database is used. This proves local SQL behaviour, not hosted migration status or a PostgREST client journey.
 Run `node scripts/integration/growth-db.mjs` for the isolated growth SQL checks.
 This local fixture does not establish production migration status or the full Supabase role contract.
 

@@ -1207,6 +1207,9 @@ I-108 and I-113 are complete. Shared status chips keep their colours. Settings c
 | I-114 | Settings states in the fixture | Workspace read-state acceptance | The form receives a loaded trip. Its fixture supports empty and filled days. Failed and retained reads belong to the workspace. |
 #### Creator portfolio proposals
 
+G1 and G2 have local SQL drafts dated 2026-11-15. Share-source and page-view contracts pass on PGlite.
+The migrations are not applied. Each gate still needs operator review and manual SQL execution. Client work remains separate.
+
 | # | Idea | Blocked on | Note |
 |---|---|---|---|
 | I-48 | Creator route-library foundation | Five-creator pilot | Proposed medium scope: separate unlock price from trip spend, feature one route, preview and share, then measure edits and invites. Reuse I-23's checklist. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
