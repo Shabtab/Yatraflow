@@ -1605,7 +1605,13 @@ p.cr-store-planning {
 
 /* The hub block reuses the cr-meter rows; only its note needs room. */
 .cr-hub-post-visits > .cr-tile__note {
-  margin: var(--space-5) 0 0;
+  margin: var(--space-3) 0 var(--space-5);
+}
+.cr-hub-post-visits .cr-meter + .cr-meter {
+  margin-top: var(--space-5);
+}
+.cr-hub-post-visits > .cr-tile__note:last-child {
+  margin-bottom: 0;
 }
 
 /* The owner editor sits under the creator picks, in the Profile tab. */

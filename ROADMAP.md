@@ -1216,6 +1216,8 @@ G3 and G4 have SQL migrations dated 2026-11-16. The operator applied both migrat
 G3 client reads show route facts, review stamps, creator picks, and planning notes. The hub can save picks and notes.
 State codes remain in G3b. The applied G3 schema has no state field.
 G4 clients can follow and unfollow creators. Public pages and the hub show counts or an unavailable state.
+G8 has a local SQL draft dated 2026-11-17 and client code. The SQL is not applied. Operator review and manual execution are still needed.
+The storefront section, the hub editor and the hub visits block show nothing until the operator applies it.
 
 | # | Idea | Blocked on | Note |
 |---|---|---|---|

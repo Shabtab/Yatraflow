@@ -1,5 +1,4 @@
 import type { PublishedItinerary } from '../../data/types'
-import { countNoun } from '../../lib/creatorCopy'
 import { POST_KIND_LABEL, type PostsRead, type PostVisitsRead } from '../../lib/creatorPosts'
 import { StateBlock } from '../page/StateBlock'
 import { CrMeterRow } from './CrMeterRow'
@@ -15,8 +14,10 @@ export function HubPostVisits({ posts, visits, pubs, windowLabel, retry }: {
   windowLabel: string
   retry: () => void
 }) {
-  const head = <CrSectionHead title="Posts bringing visits" id="hub-post-visits-h" as="h2"
-    note={`Page visits through each post's tagged link · ${windowLabel}`} />
+  const head = <>
+    <CrSectionHead title="Posts bringing visits" id="hub-post-visits-h" as="h2" />
+    <p className="cr-tile__note">Page visits through each post's tagged link · {windowLabel}</p>
+  </>
   const again = <button type="button" className="btn btn-ghost btn-sm" onClick={retry}>Try again</button>
   let body
   if (posts.kind === 'failed' || visits.kind === 'failed') {
@@ -32,9 +33,9 @@ export function HubPostVisits({ posts, visits, pubs, windowLabel, retry }: {
     const max = Math.max(1, ...rows.map(row => row.visits))
     body = <>
       {rows.map(({ post, visits: n }) => <CrMeterRow key={post.id} tone="route"
-        label={`${POST_KIND_LABEL[post.kind]} · ${post.caption ?? 'No caption'}`}
+        label={POST_KIND_LABEL[post.kind]}
         value={n} pct={n / max * 100}
-        note={`${pubs.find(pub => pub.id === post.pubId)?.title ?? 'Unknown route'} · ${countNoun(n, 'visit')}`} />)}
+        note={`${post.caption ?? 'No caption'} · ${pubs.find(pub => pub.id === post.pubId)?.title ?? 'Unknown route'}`} />)}
       <p className="cr-tile__note">Counts only visits that used the tagged link.</p>
     </>
   }

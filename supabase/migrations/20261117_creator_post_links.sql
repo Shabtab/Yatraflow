@@ -131,8 +131,8 @@ begin
       raise exception 'A creator can keep at most 12 post links' using errcode = '23514';
     end if;
   end if;
-  -- Clearing a day needs no route check, so a caption edit still works after a
-  -- route came down or got shorter.
+  -- A caption edit, or a day cleared to null, needs no route check. It still
+  -- works after the route came down or got shorter.
   if tg_op = 'INSERT'
     or new.pub_id is distinct from old.pub_id
     or new.creator is distinct from old.creator
