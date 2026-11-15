@@ -45,6 +45,7 @@
 @import './styles/pages/workspace-timeline.css';
 @import './styles/pages/overview-route-card.css';
 @import './styles/components/creator-kit.css';
+@import './styles/pages/creator.css';
 @import './styles/components/map-v2-rail.css';
 
 /* Settings controls keep their state legible in both themes. */

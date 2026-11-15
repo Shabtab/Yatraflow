@@ -1,0 +1,375 @@
+/* Creator storefront. `cr-store-*` classes, owned by the `creator` owner.
+   Values come from the P4 contract (spec 4.1) and the composition addendum.
+   The addendum wins over the spec where they differ. */
+
+.cr-store-page {
+  padding-bottom: var(--space-12);
+}
+
+.cr-store-hero {
+  margin-top: var(--space-12);
+}
+
+/* ---- Cover band (F-01, F-03) ---- */
+.cr-store-cover {
+  position: relative;
+  height: 300px;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: var(--radius-xl);
+  background: linear-gradient(180deg, var(--pw-sea-900), var(--pw-sea-700));
+}
+.cr-store-cover--plain {
+  background: linear-gradient(180deg, var(--pw-sea-900), var(--pw-sea-700));
+}
+.cr-store-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 30%, var(--pw-glass) 100%);
+  pointer-events: none;
+}
+.cr-store-cover .ex-cover-img {
+  transform-origin: 50% 55%;
+  animation: yfCoverSettle calc(var(--motion-slower) * 3) var(--ease-glide) backwards;
+}
+
+.cr-store-tabs {
+  position: absolute;
+  top: var(--space-7a);
+  left: var(--space-9);
+  right: var(--space-9);
+  z-index: var(--z-content);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: max-content;
+  height: 52px;
+  padding: var(--space-3);
+  border: 1px solid var(--pw-glass-edge);
+  border-radius: var(--radius-pill);
+  background: var(--pw-glass);
+  -webkit-backdrop-filter: blur(var(--yf-blur-chip));
+  backdrop-filter: blur(var(--yf-blur-chip));
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  white-space: nowrap;
+}
+.cr-store-tabs::-webkit-scrollbar {
+  display: none;
+}
+.cr-store-tab {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  padding-inline: var(--space-7);
+  border-radius: var(--radius-pill);
+  font: 600 14px/1 var(--font-body);
+  color: var(--pw-ink);
+  text-decoration: none;
+  scroll-snap-align: start;
+}
+.cr-store-tab:hover {
+  background: color-mix(in srgb, var(--pw-sea-700) 10%, transparent);
+}
+.cr-store-tab:focus-visible {
+  outline: 2px solid var(--pw-sea-700);
+  outline-offset: 2px;
+}
+
+/* ---- Identity card (F-04 … F-19) ---- */
+.cr-store-card {
+  position: relative;
+  margin: calc(-1 * (var(--space-16) + var(--space-9) + var(--space-10))) var(--space-13) 0;
+  padding: var(--space-11) var(--space-12);
+  border: 1px solid var(--pw-line);
+  border-radius: var(--radius-xl);
+  background: var(--pw-card);
+  box-shadow: var(--elev-1);
+}
+.cr-store-cardgrid {
+  display: grid;
+  grid-template-columns: minmax(0, 562fr) minmax(0, 540fr);
+  gap: var(--space-12);
+  align-items: start;
+}
+
+.cr-store-ident {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+}
+.cr-store-avatar {
+  flex: 0 0 auto;
+  width: 128px;
+  height: 128px;
+  margin-top: calc(-1 * (var(--space-16) + var(--space-11)));
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px var(--pw-card);
+}
+.cr-store-avatar .avatar {
+  width: 128px;
+  height: 128px;
+}
+.cr-store-id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cr-store-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4a);
+  margin: 0;
+}
+.cr-store-name h1 {
+  /* Spec pins 46px. The display scale is 56 / 40, so this stays a literal. */
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 46px;
+  line-height: 1;
+  letter-spacing: -.02em;
+  color: var(--pw-ink);
+  overflow-wrap: anywhere;
+}
+.cr-store-bio {
+  font: var(--pw-body-l);
+  color: var(--pw-ink-2);
+  max-width: 560px;
+  margin: var(--space-6) 0 0;
+}
+.cr-store-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: var(--space-6) 0 0;
+}
+.cr-store-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-7);
+}
+.cr-store-actions .btn {
+  min-height: 44px;
+}
+.cr-store-browse {
+  justify-content: center;
+}
+.cr-store-divider {
+  display: inline-block;
+  width: 1px;
+  height: 26px;
+  background: var(--pw-line);
+}
+
+.cr-store-track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4a);
+  min-width: 0;
+}
+.cr-store-track-label {
+  margin: 0;
+  font: var(--pw-kicker);
+  letter-spacing: var(--pw-kicker-tracking);
+  text-transform: uppercase;
+  color: var(--pw-ink-3);
+}
+.cr-store-note {
+  margin: 0;
+  font: var(--pw-caption);
+  color: var(--pw-ink-3);
+}
+
+/* ---- Featured route stamps ---- */
+.cr-store-season,
+.cr-store-updated {
+  width: 100%;
+  max-width: var(--container-max, 1180px);
+  margin-inline: auto;
+  padding-inline: 20px;
+  box-sizing: border-box;
+}
+.cr-store-season {
+  margin-top: var(--space-5);
+  font: 600 13px/1.4 var(--font-body);
+  color: var(--pw-ink-2);
+}
+.cr-store-updated {
+  margin-top: var(--space-2);
+  font: var(--pw-caption);
+  color: var(--pw-ink-3);
+}
+
+.cr-store-featured,
+.cr-store-library,
+.cr-store-band {
+  margin-top: var(--space-12);
+}
+.cr-store-library {
+  scroll-margin-top: var(--space-12);
+}
+
+/* ---- Route library (F-32 … F-35) ---- */
+.cr-store-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4a);
+  height: 66px;
+  margin: var(--space-7) 0 var(--space-8);
+  padding-inline: var(--space-6);
+  border: 1px solid var(--pw-line);
+  border-radius: var(--radius-lg);
+  background: var(--pw-card);
+  box-shadow: var(--elev-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+.cr-store-filter::-webkit-scrollbar {
+  display: none;
+}
+.cr-store-filter .ex-chip {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+.cr-store-filter-label {
+  flex: 0 0 auto;
+  font: 700 13px/1 var(--font-body);
+  color: var(--pw-ink-2);
+  white-space: nowrap;
+}
+.cr-store-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-7);
+}
+
+/* ---- Become a creator band (F-42) ---- */
+.cr-store-band-kicker {
+  margin: 0;
+  font: var(--pw-kicker);
+  letter-spacing: var(--pw-kicker-tracking);
+  text-transform: uppercase;
+  color: var(--pw-route);
+}
+.cr-store-band-body {
+  margin: var(--space-4) 0 0;
+  font: var(--pw-body);
+  color: var(--pw-lagoon-100);
+}
+.cr-store-band-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding-inline: var(--space-9);
+  background: var(--pw-card);
+  color: var(--pw-sea-700);
+  white-space: nowrap;
+}
+
+@media (min-width: 700px) and (max-width: 1099px) {
+  .cr-store-cardgrid {
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
+  }
+  .cr-store-track .cr-tilegrid {
+    --cr-cols: 3;
+  }
+}
+
+@media (max-width: 699px) {
+  .cr-store-cover {
+    height: 200px;
+  }
+  .cr-store-card {
+    margin: calc(-1 * var(--space-15)) 0 0;
+    padding: var(--space-8) var(--space-7);
+    border-radius: var(--radius-lg);
+  }
+  .cr-store-cardgrid {
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
+  }
+  .cr-store-ident {
+    flex-direction: column;
+    gap: var(--space-5);
+  }
+  .cr-store-avatar {
+    width: 96px;
+    height: 96px;
+    margin-top: calc(-1 * (var(--space-14) + var(--space-8)));
+  }
+  .cr-store-avatar .avatar {
+    width: 96px;
+    height: 96px;
+  }
+  .cr-store-name h1 {
+    font-size: 32px;
+    line-height: 1.1;
+  }
+  .cr-store-bio {
+    font-size: 16px;
+  }
+  .cr-store-browse {
+    flex: 1 1 100%;
+  }
+  .cr-store-divider {
+    display: none;
+  }
+  .cr-store-tabs {
+    left: var(--space-5);
+    right: var(--space-5);
+    max-width: none;
+  }
+  .cr-store-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+  }
+  .cr-store-band-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 359px) {
+  .cr-store-cover {
+    height: 176px;
+  }
+  .cr-store-card {
+    margin-top: calc(-1 * var(--space-14));
+    padding: var(--space-7) var(--space-5);
+  }
+  .cr-store-avatar {
+    width: 80px;
+    height: 80px;
+    margin-top: calc(-1 * (var(--space-13) + var(--space-7)));
+  }
+  .cr-store-avatar .avatar {
+    width: 80px;
+    height: 80px;
+  }
+  .cr-store-name h1 {
+    font-size: 28px;
+  }
+}
+
+@media (pointer: coarse) {
+  .cr-store-tab {
+    min-height: 44px;
+  }
+  .cr-store-filter .ex-chip {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cr-store-cover .ex-cover-img {
+    animation: none;
+  }
+}
