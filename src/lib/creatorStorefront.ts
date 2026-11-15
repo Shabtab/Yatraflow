@@ -112,7 +112,9 @@ export interface StorefrontSections {
 /** Which sections the storefront renders, decided once. */
 export function storefrontSections(input: StorefrontInput): StorefrontSections {
   return {
-    pubsView: rowsView(input.read, input.pubs.length),
+    // The count the panel can actually show: an all-unpublished list is not
+    // rows on screen, and must not claim the rows body over a failed read.
+    pubsView: rowsView(input.read, livePubs(input.pubs).length),
     coverTabs: livePubs(input.pubs).length >= 3,
     startChips: startPlaces(input.pubs).length >= 2,
   }

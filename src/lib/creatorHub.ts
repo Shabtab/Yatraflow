@@ -165,6 +165,7 @@ export function grossByMonth(sales: readonly SaleRow[], months: number, now: num
   }
   const byMonth = new Map(buckets.map(point => [point.month, point] as const))
   for (const sale of sales) {
+    if (sale.grantedAt > now) continue
     const point = byMonth.get(utcDayKey(sale.grantedAt).slice(0, 7))
     if (point) point.grossInr += sale.amountPaidInr
   }
@@ -232,6 +233,9 @@ export function activityCsv(rows: readonly ActivityEvent[]): string {
 }
 
 function csvField(value: string): string {
-  if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`
-  return value
+  // A cell that opens with a formula character is spreadsheet code, not text:
+  // an apostrophe BEFORE the RFC 4180 quoting keeps Excel from executing it.
+  const safe = /^[=+@-]/.test(value) ? `'${value}` : value
+  if (/[",\r\n]/.test(safe)) return `"${safe.replace(/"/g, '""')}"`
+  return safe
 }

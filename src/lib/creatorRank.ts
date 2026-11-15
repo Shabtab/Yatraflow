@@ -8,7 +8,6 @@
 // Disabled creators never rank: `creatorList` drops accounts whose server-
 // derived `creatorAvailable` flag is false, and rows here inherit that.
 import type { CachedUser, PublishedItinerary, TravelStyle } from '../data/types'
-import { TRAVEL_STYLES } from '../data/types'
 import { creatorList, type CreatorTile } from './explorePage'
 import { livePubs } from './livePubs'
 
@@ -17,7 +16,7 @@ export interface CreatorRankRow extends CreatorTile {
   rank: number
   views: number
   /** The most common `travelStyle` across the creator's live routes; ties go
-   *  to the style earlier in `TRAVEL_STYLES`. Always defined: a row exists
+   *  to the alphabetically earlier style name. Always defined: a row exists
    *  only for a creator with at least one live route. */
   knownFor: TravelStyle
 }
@@ -44,15 +43,14 @@ export function rankCreators(
   })
 }
 
-/** The most common style, ties to the earlier name in `TRAVEL_STYLES`. */
+/** The most common style; ties go to the alphabetically earlier name, so the
+ *  answer never depends on the order the routes arrived in. */
 function mostCommonStyle(styles: TravelStyle[]): TravelStyle {
   const counts = new Map<TravelStyle, number>()
   for (const style of styles) counts.set(style, (counts.get(style) ?? 0) + 1)
-  let best = styles[0]
-  for (const style of TRAVEL_STYLES) {
-    if ((counts.get(style) ?? 0) > (counts.get(best) ?? 0)) best = style
-  }
-  return best
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .map(([style]) => style)[0]
 }
 
 export interface RankPosition {

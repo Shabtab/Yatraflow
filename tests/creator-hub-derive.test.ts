@@ -131,6 +131,18 @@ describe('grossByMonth', () => {
     expect(series.map(point => point.month)).toEqual(['2026-09', '2026-10', '2026-11'])
     expect(series.map(point => point.grossInr)).toEqual([0, 499, 999])
   })
+
+  it('a future sale in the current month is excluded', () => {
+    const series = grossByMonth(
+      [
+        sale({ grantedAt: Date.UTC(2026, 10, 20), amountPaidInr: 500 }),
+        sale({ grantedAt: NOW, amountPaidInr: 999 }),
+      ],
+      1,
+      NOW,
+    )
+    expect(series).toEqual([{ month: '2026-11', grossInr: 999 }])
+  })
 })
 
 describe('readiness', () => {
@@ -139,13 +151,14 @@ describe('readiness', () => {
     const pubs = [
       pub({ id: 'bad', coverImageUrl: undefined, bestSeason: undefined, publishedAt: stale }),
       pub({ id: 'paid-nofree', premiumPriceInr: 499, freeDayIndexes: [] }),
+      pub({ id: 'nocost', estimatedBudgetPerPersonInr: 0 }),
       pub({ id: 'gone', unpublishedAt: NOW, coverImageUrl: undefined, bestSeason: undefined, publishedAt: stale }),
     ]
     const report = readiness(pubs, NOW)
     const byKey = Object.fromEntries(report.checks.map(check => [check.key, check.failing]))
     expect(byKey).toEqual({
       cover: ['bad'],
-      cost: [],
+      cost: ['nocost'],
       freeDays: ['paid-nofree'],
       season: ['bad'],
       freshness: ['bad'],
@@ -170,5 +183,25 @@ describe('activityCsv', () => {
     const lines = csv.replaceAll('\r\n', '\n').split('\n')
     expect(lines[0]).toBe('kind,date,route,count,amount_inr')
     expect(lines[1]).toBe('unlocked,2026-11-15T00:00:00.000Z,"Kochi, ""quoted""",,424')
+  })
+
+  it('escapes CR and LF inside a field, so a naive split cannot forge a row', () => {
+    const csv = activityCsv([
+      { kind: 'unlocked', at: Date.UTC(2026, 10, 15), route: 'A\r\nB', netInr: 424 },
+    ])
+    expect(csv).toContain('"A\r\nB"')
+  })
+
+  it('prefixes formula-leading cells with an apostrophe, for = + - and @', () => {
+    const csv = activityCsv([
+      { kind: 'forked', at: Date.UTC(2026, 10, 15), route: '=SUM(A1)', count: 1 },
+      { kind: 'forked', at: Date.UTC(2026, 10, 15), route: '+2', count: 1 },
+      { kind: 'forked', at: Date.UTC(2026, 10, 15), route: '-2', count: 1 },
+      { kind: 'forked', at: Date.UTC(2026, 10, 15), route: '@x', count: 1 },
+    ])
+    expect(csv).toContain("'=SUM(A1)")
+    expect(csv).toContain("'+2")
+    expect(csv).toContain("'-2")
+    expect(csv).toContain("'@x")
   })
 })

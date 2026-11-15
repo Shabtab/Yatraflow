@@ -69,6 +69,20 @@ describe('storefrontSections', () => {
     expect(storefrontSections({ user: user(), pubs: [], read: 'ready' }).pubsView).toBe('empty')
   })
 
+  it('an all-unpublished list never shows the rows body, in any read state', () => {
+    const gone = [pub({ id: 'gone', unpublishedAt: NOW })]
+    expect(storefrontSections({ user: user(), pubs: gone, read: 'ready' }).pubsView).toBe('empty')
+    expect(storefrontSections({ user: user(), pubs: gone, read: 'failed' }).pubsView).toBe('failed')
+    expect(storefrontSections({ user: user(), pubs: gone, read: 'reading' }).pubsView).toBe('reading')
+  })
+
+  it('cover tabs need three or more live routes', () => {
+    const two = [pub({ id: 'a' }), pub({ id: 'b' })]
+    expect(storefrontSections({ user: user(), pubs: two, read: 'ready' }).coverTabs).toBe(false)
+    expect(storefrontSections({ user: user(), pubs: [...two, pub({ id: 'c' })], read: 'ready' }).coverTabs).toBe(true)
+    expect(storefrontSections({ user: user(), pubs: [...two, pub({ id: 'c', unpublishedAt: NOW })], read: 'ready' }).coverTabs).toBe(false)
+  })
+
   it('case 6: the storefront input accepts a PublicUser, needing no private field', () => {
     const input: Parameters<typeof storefrontSections>[0] = {
       user: user({ name: 'Public name only' }),

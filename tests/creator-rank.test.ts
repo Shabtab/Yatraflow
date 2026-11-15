@@ -92,6 +92,26 @@ describe('rankCreators', () => {
     expect(rankCreators(pubs, users)[0].knownFor).toBe('packed')
   })
 
+  it('knownFor ties pick the alphabetically earlier style, whatever the input order', () => {
+    const users = [user('c1')]
+    const relaxed = pub({ id: 'p2', travelStyle: 'relaxed' })
+    const packed = pub({ id: 'p3', travelStyle: 'packed' })
+    expect(rankCreators([relaxed, packed], users)[0].knownFor).toBe('packed')
+    expect(rankCreators([packed, relaxed], users)[0].knownFor).toBe('packed')
+  })
+
+  it('fork ties break by plans, with shuffled inputs', () => {
+    const users = [user('c1'), user('c2')]
+    const first = [
+      pub({ id: 'p1', creatorId: 'c1', copies: 5, views: 1 }),
+      pub({ id: 'p2', creatorId: 'c1', copies: 0, views: 1 }),
+      pub({ id: 'p3', creatorId: 'c2', copies: 5, views: 1 }),
+    ]
+    expect(rankCreators(first, users).map(row => row.id)).toEqual(['c1', 'c2'])
+    expect(rankCreators([...first].reverse(), users).map(row => row.id)).toEqual(['c1', 'c2'])
+    expect(rankOf(rankCreators(first, users), 'c2')).toEqual({ rank: 2, total: 2, forksToNext: 0 })
+  })
+
   it('the style filter narrows the pool before anything is counted', () => {
     const users = [user('c1')]
     const pubs = [
