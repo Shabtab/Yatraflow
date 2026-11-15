@@ -1,6 +1,6 @@
-// ============ Trip workspace — Share tab ============
-// Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
-// Includes SnapshotCard — ShareTab is its only consumer.
+// ============ Trip workspace â€” Share tab ============
+// Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) â€” no behavior changes.
+// Includes SnapshotCard â€” ShareTab is its only consumer.
 import { useEffect, useRef, useState } from 'react'
 import { InlineIcon } from '../../components/icons'
 import { CalendarDays, Download, Link2, Lock } from 'lucide-react'
@@ -13,7 +13,7 @@ import { currentPublicShareUrl, withShareRef } from '../../lib/shareUrl'
 import { downloadTripIcs } from '../../lib/ics'
 import { nativeCopyText } from '../../lib/native'
 import { useTablist } from '../../hooks/useTablist'
-import { formatInr, type LegEstimate } from '../../lib/engine'
+import { computeTotals, formatInr, type LegEstimate } from '../../lib/engine'
 import { netOfFeeInr, PLATFORM_FEE_SUMMARY } from '../../lib/earnings'
 import {
   publishValidation, PUBLISH_FIELD_ORDER, PUBLISH_FIELD_LABELS, PublishRejected, type PublishField,
@@ -38,16 +38,16 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
   me: { id: string }
   onNavigate: (r: string) => void
   legCorrections?: Record<string, LegEstimate>
-  /** The trip's publication row, when it has one — carried in the exported
+  /** The trip's publication row, when it has one â€” carried in the exported
    *  file's `publication` block so a shared file keeps its shelf metadata. */
   publication?: Record<string, unknown>
 }) {
   const [link, setLink] = useState('')
-  // #391 — the encode is async and can reject (`CompressionStream` is
+  // #391 â€” the encode is async and can reject (`CompressionStream` is
   // unavailable in some browsers, and a large trip can exceed the URL budget),
   // so this used to leave a button that did nothing at all: no link, no message,
   // no sign anything happened. `busy` also stops a rapid second click from
-  // racing the first into a stale link (AGENTS §6a's input-guard rule).
+  // racing the first into a stale link (AGENTS Â§6a's input-guard rule).
   const [busy, setBusy] = useState(false)
 
   async function makeLink() {
@@ -64,7 +64,7 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
       // The raw failure names CompressionStream or a URL-length error; neither
       // is anything a reader can act on, so the message says what to do instead
       // and the cause stays in the console.
-      toast('Couldn’t build a snapshot link for this trip. The plan may be too large for a URL. Download the JSON instead.', 'err')
+      toast('Couldnâ€™t build a snapshot link for this trip. The plan may be too large for a URL. Download the JSON instead.', 'err')
     } finally {
       setBusy(false)
     }
@@ -72,7 +72,7 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
 
   return (
     <Surface className="card shr-panel">
-      <span className="share-intent share-intent--info">3 · Keep a record</span>
+      <span className="share-intent share-intent--info">3 Â· Keep a record</span>
       <h3 className="shr-card-title">Export & snapshot sharing</h3>
       <p className="hint-text shr-snapshot-description">
         Take the whole plan anywhere. The trip sits inside the link, so the reader&rsquo;s browser unpacks it and no
@@ -85,7 +85,7 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
                   <PrintExport trip={trip} legCorrections={legCorrections} />
                   <button className="btn btn-outline btn-sm" onClick={() => downloadTripIcs(trip, legCorrections)} title="One calendar event per day plus timed events for flights and fixed commitments. Imports into Google/Apple/Outlook calendars"><InlineIcon icon={CalendarDays} size={13} gap={4} />Add to calendar</button>
                    <button className="btn btn-saffron btn-sm" onClick={makeLink} disabled={busy} aria-busy={busy}>
-                     <InlineIcon icon={Link2} size={13} gap={4} />{busy ? 'Building…' : 'Create snapshot link'}
+                     <InlineIcon icon={Link2} size={13} gap={4} />{busy ? 'Buildingâ€¦' : 'Create snapshot link'}
                    </button>
       </div>
       {link && (
@@ -105,17 +105,18 @@ const DEFAULT_WARNINGS = ['All costs are estimates based on typical prices. Veri
 
 // The publish rules, the price ceiling, the field order and the refusal type all
 // live in `lib/publishRules` (#354) because `publishItinerary` enforces the same
-// ones — see that module for why one derivation beats two copies. This form is
+// ones â€” see that module for why one derivation beats two copies. This form is
 // the surface that RENDERS them: it maps each field key to a control, a focus
 // target and a polite message, and the summary turns the first key into the one
 // assertive announcement.
 
 /** Per-day free/premium picker + pricing/CTA form for the public itinerary.
- *  Replaces the hardcoded freeDayIndexes [0] / ₹199 publish payload: the owner
+ *  Replaces the hardcoded freeDayIndexes [0] / â‚¹199 publish payload: the owner
  *  now chooses which days are the free preview, whether the itinerary is
- *  premium at all (empty/₹0 price = entirely free), and the reader-facing
- *  copy — pre-filled from the live publication when updating. */
-function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone, onWriting, saveErr, setSaveErr, publishRead }: {
+ *  premium at all (empty/â‚¹0 price = entirely free), and the reader-facing
+ *  copy â€” pre-filled from the live publication when updating. */
+function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone, onWriting, saveErr, setSaveErr, publishRead, legCorrections }: {
+  legCorrections?: Record<string, LegEstimate>
   trip: Trip
   pub: PublishedItinerary | undefined
   /** An imported file's publish block, taken once from the stash. The draft
@@ -123,8 +124,8 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
    *  and submit path still decide what may go live. */
   draft?: PublicationDraft | null
   /** Whether that row is up on Explore right now (#350). False while it is
-   *  soft-unpublished: the form keeps the row as its prefill — the creator
-   *  should not retype their tagline — but its button offers publishing again
+   *  soft-unpublished: the form keeps the row as its prefill â€” the creator
+   *  should not retype their tagline â€” but its button offers publishing again
    *  rather than "update", because nothing is live to update. */
   live?: boolean
   isOwner: boolean
@@ -153,20 +154,20 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   const [bestSeason, setBestSeason] = useState(draft?.bestSeason ?? pub?.bestSeason ?? '')
   const [tips, setTips] = useState(() => (draft?.travelTips ?? pub?.travelTips ?? DEFAULT_TRAVEL_TIPS).join('\n'))
   const [cta, setCta] = useState(draft?.subscriberCta ?? pub?.subscriberCta ?? '')
-  // #389 — F-15, ported from CreateTrip rather than invented a second time.
+  // #389 â€” F-15, ported from CreateTrip rather than invented a second time.
   // The form had ONE `err: string` driving ONE `role="alert"` banner at the
   // bottom: a screen-reader user heard "Premium days need a call-to-action" and
   // a sighted user had to work out which of six fields it meant, with focus
-  // left on the submit button. Six rules, four fields — so `errs` is keyed by
+  // left on the submit button. Six rules, four fields â€” so `errs` is keyed by
   // FIELD and the summary reads its first key. `saveErr` is deliberately NOT in
   // that map: a failed WRITE is not a field's fault, and pointing at the price
   // box for it would be a lie.
   const [errs, setErrs] = useState<Record<string, string>>({})
-  /** first-invalid focus targets (F-15) — plain inputs and the day picker only */
+  /** first-invalid focus targets (F-15) â€” plain inputs and the day picker only */
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
   // A publish is a network write, and this button was the only publish control
   // in the app without a busy state (#388). Two clicks fired two upserts, two
-  // `refreshedAt` stamps and two toasts — the duplicate was only prevented by
+  // `refreshedAt` stamps and two toasts â€” the duplicate was only prevented by
   // accidental id-reuse in the store, which is not a guard. The cover picker's
   // `busy` is the pattern this copies.
   const [busy, setBusy] = useState(false)
@@ -175,8 +176,8 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   // for a read that succeeded. The reason is shown beside the button.
   const publishReady = publishRead === 'ready'
   const publishBlockedReason = publishRead === 'failed'
-    ? 'Publishing is paused until this trip’s Explore status loads. Try again above.'
-    : 'Publishing waits until this trip’s publish status has loaded.'
+    ? 'Publishing is paused until this tripâ€™s Explore status loads. Try again above.'
+    : 'Publishing waits until this tripâ€™s publish status has loaded.'
 
   const priceNum = price.trim() === '' ? 0 : Number(price)
   const entirelyFree = price.trim() === '' || priceNum === 0
@@ -190,7 +191,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   const defaultArtUrl = defaultArtId ? artCoverUrl(defaultArtId, artCoverOrigin()) : null
   const defaultArt = defaultArtId && defaultArtUrl ? { id: defaultArtId, url: defaultArtUrl } : null
 
-  /** #389 — one field's edit clears that field's message and nothing else, so
+  /** #389 â€” one field's edit clears that field's message and nothing else, so
    *  fixing the price does not wipe a still-true complaint about the CTA. */
   const clearErr = (field: string) => setErrs(prev => {
     if (!(field in prev)) return prev
@@ -201,7 +202,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
 
   function toggleDay(index: number) {
     if (free.has(index) && free.size <= 1) {
-      // Tagged to the DAY PICKER, which is the control the message is about —
+      // Tagged to the DAY PICKER, which is the control the message is about â€”
       // and it used to be a form-wide `err` the reader could not locate.
       setErrs(prev => ({ ...prev, freeDays: 'At least one day must stay free. It is the preview readers see.' }))
       return
@@ -224,7 +225,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   async function submit() {
     // Guard first, and by STATE rather than by the button: a click that arrives
     // while a write is in flight is dropped, so a double-click cannot become two
-    // publishes (AGENTS §2.6a — every async path needs an input guard, and the
+    // publishes (AGENTS Â§2.6a â€” every async path needs an input guard, and the
     // guard must match the visual feedback state).
     if (busy) return
     // #704: the same rule as the disabled button, enforced again here.
@@ -234,11 +235,11 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
     // artwork for the plan is stored, so the link never falls to the brand card.
     // A URL the handler's `^https://\S+$` test rejects still refuses to publish.
     const cover = trip.coverImageUrl?.trim() || defaultArt?.url
-    // #354 — these six rules are no longer the FORM's alone: `publishItinerary`
+    // #354 â€” these six rules are no longer the FORM's alone: `publishItinerary`
     // now refuses the same set, so a direct store caller cannot publish a row
     // the paywall would price but the preview shows fully. The MESSAGES live in
     // `publishValidation` (below) and this form renders whatever it returns, so
-    // there is one message per rule rather than two that can drift — and the
+    // there is one message per rule rather than two that can drift â€” and the
     // writer's refusal and this form's are literally the same string.
     const next = publishValidation({
       coverImageUrl: cover,
@@ -255,7 +256,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
       // below, so a keyboard user is taken to the topmost thing needing a fix
       // rather than left on the submit button. A field with no focusable element
       // of its own falls back to its own message, made focusable for the
-      // occasion — which is why the `.err-text` fallback exists at all.
+      // occasion â€” which is why the `.err-text` fallback exists at all.
       const first = PUBLISH_FIELD_ORDER.find(k => k in next)
       const target = first ? fieldRefs.current[first] : null
       if (target) target.focus()
@@ -268,8 +269,8 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
     setBusy(true)
     onWriting(true)
     try {
-      // AWAITED (#388). The old call was fire-and-forget, so `onDone` — and
-      // with it the "Published to Explore" toast — fired while the write was
+      // AWAITED (#388). The old call was fire-and-forget, so `onDone` â€” and
+      // with it the "Published to Explore" toast â€” fired while the write was
       // still in flight; a later failure then rolled back under a success
       // message. The toast is now a statement about a resolved outcome.
       const outcome = await publishItinerary({
@@ -282,6 +283,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         tagline: tagline.trim() || defaultTagline,
         routeSummary: [trip.startLocation, ...trip.destinations],
         durationDays: trip.days.length,
+        plannedKm: computeTotals(trip, legCorrections).totalDistanceKm,
         estimatedBudgetPerPersonInr: trip.budgetPerPersonInr,
         travelStyle: trip.travelStyle,
         bestSeason: bestSeason.trim() || undefined,
@@ -299,7 +301,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
       }
       onDone(Boolean(pub) && live)
     } catch (e) {
-      // #354/#389 — a REFUSAL is not a failed write. The writer raises it before
+      // #354/#389 â€” a REFUSAL is not a failed write. The writer raises it before
       // touching anything, so the form's own messages go back on their fields and
       // focus moves to the first of them; no banner, because nothing went wrong
       // and nothing was lost. A genuine write failure keeps the assertive banner,
@@ -326,7 +328,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
 
   return (
     <div className="ts-form">
-      {/* #389 — the ONE assertive announcement for this form, naming the FIELD
+      {/* #389 â€” the ONE assertive announcement for this form, naming the FIELD
           as well as the complaint. The messages below stay polite, so a
           three-field failure interrupts once rather than three times (the
           CreateTrip F-15 split, not a new system). Mounted at the top of the
@@ -337,7 +339,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         <span className="small muted">Your artwork shows by default. Upload or paste a photo to replace it.</span>
       </div>
       {/* Two of the six rules are about this control, and it took no `error`
-          prop — so a refused publish said "add a cover photo" with nothing
+          prop â€” so a refused publish said "add a cover photo" with nothing
           marked on the control it was talking about. The wrapper carries the
           focus target: the picker is a group of buttons, and its own message
           node is the focusable fallback. */}
@@ -360,14 +362,14 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         <input className="input" value={tagline} onChange={e => { setTagline(e.target.value); setSaveErr(null) }} maxLength={140} />
       </Field>
       <div className="form-row">
-        <Field label="Premium price (₹)" error={errs.price} hint={priceNum > 0
-          // The floor, not the rate: the ladder charges 15% up to ₹25,000 of
+        <Field label="Premium price (â‚¹)" error={errs.price} hint={priceNum > 0
+          // The floor, not the rate: the ladder charges 15% up to â‚¹25,000 of
           // LIFETIME gross and 10% after, so a price seen on its own can only
           // honestly promise the least a creator keeps. Pricing is the moment
           // this number matters, and the hub is too late to inform it.
           //
-          // Floored, because `formatInr` rounds: a net of ₹172.55 must not be
-          // promised as ₹173 — a figure you can *at least* count on is the only
+          // Floored, because `formatInr` rounds: a net of â‚¹172.55 must not be
+          // promised as â‚¹173 â€” a figure you can *at least* count on is the only
           // one this sentence is allowed to state.
           ? `At ${formatInr(priceNum)} a sale nets you at least ${formatInr(Math.floor(netOfFeeInr(priceNum)))}. The platform fee is ${PLATFORM_FEE_SUMMARY}.`
           : 'Leave empty or 0 for an entirely free itinerary.'}>
@@ -376,7 +378,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
             value={price} onChange={e => { setPrice(e.target.value); clearErr('price'); setSaveErr(null) }} />
         </Field>
         <Field label="Best season" hint="Optional. Shown as practical guidance.">
-          <input className="input" value={bestSeason} onChange={e => { setBestSeason(e.target.value); setSaveErr(null) }} placeholder="e.g. Sep–Mar" />
+          <input className="input" value={bestSeason} onChange={e => { setBestSeason(e.target.value); setSaveErr(null) }} placeholder="e.g. Sepâ€“Mar" />
         </Field>
       </div>
       <Field label="Travel tips" hint="One per line.">
@@ -391,7 +393,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         <b>Free preview days</b>
         {entirelyFree && <span className="small muted">Entirely free. Every day is viewable.</span>}
       </div>
-      {/* The day picker's focus target: the group, not one button — moving focus
+      {/* The day picker's focus target: the group, not one button â€” moving focus
           to an arbitrary day would be worse than moving it to the group that
           owns the choice. `tabIndex={-1}` is the a11y-sanctioned way to make a
           non-interactive group focusable for exactly this. */}
@@ -403,10 +405,10 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
           const isFree = entirelyFree || free.has(d.index)
           return (
             <div key={d.id} className="row-between">
-              <span className="small">Day {d.index + 1}{d.title ? ` · ${d.title}` : ''}</span>
+              <span className="small">Day {d.index + 1}{d.title ? ` Â· ${d.title}` : ''}</span>
               <button type="button" className={`btn btn-sm ${isFree ? 'btn-outline' : 'btn-saffron'}`}
                 disabled={entirelyFree} aria-pressed={!isFree}
-                aria-label={`Day ${d.index + 1}${d.title ? ` · ${d.title}` : ''}: ${isFree ? 'Free' : 'Premium'}`}
+                aria-label={`Day ${d.index + 1}${d.title ? ` Â· ${d.title}` : ''}: ${isFree ? 'Free' : 'Premium'}`}
                 onClick={() => toggleDay(d.index)}>
                 {isFree ? <>Free</> : <><InlineIcon icon={Lock} size={11} gap={3} />Premium</>}
               </button>
@@ -414,10 +416,10 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
           )
         })}
       </div>
-      {/* Field-tied, so POLITE — the summary above owns the one assertive beat. */}
+      {/* Field-tied, so POLITE â€” the summary above owns the one assertive beat. */}
       {errs.freeDays && <p className="err-text" id="pub-free-err" role="status" aria-live="polite">{errs.freeDays}</p>}
 
-      {/* #389 — the ONE assertive banner stays, and it stays the SUMMARY. It is
+      {/* #389 â€” the ONE assertive banner stays, and it stays the SUMMARY. It is
           the failed-WRITE case only now: a validation failure speaks through
           FormErrorSummary plus the field messages, so this line is no longer the
           only way to hear about six different rules, which is what made it
@@ -428,7 +430,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
           write rules. */}
       <fieldset className="ts-submit-gate" disabled={!publishReady}>
         <button className="btn btn-saffron" disabled={!isOwner || busy} onClick={() => void submit()}>
-          {busy ? 'Publishing…' : pub && live ? 'Update publication' : 'Publish to Explore'}
+          {busy ? 'Publishingâ€¦' : pub && live ? 'Update publication' : 'Publish to Explore'}
         </button>
       </fieldset>
       {!publishReady && <p className="hint-text ts-note">{publishBlockedReason}</p>}
@@ -442,13 +444,13 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
 // concern (plan together / publish / keep a record) gets its own
 // focused surface instead of competing for space in a 340px sidebar. The
 // Danger zone is re-homed under "Plan together" (matches the approved variant).
-// Heading order is corrected (page h1 → panel h2 → card h3) via sr-only h2s.
+// Heading order is corrected (page h1 â†’ panel h2 â†’ card h3) via sr-only h2s.
 // Trip settings moved to its own workspace tab (#213).
 
 const SHARE_TABS = [
-  { id: 'plan', label: '1 · Plan together' },
-  { id: 'publish', label: '2 · Share publicly' },
-  { id: 'record', label: '3 · Keep a record' },
+  { id: 'plan', label: '1 Â· Plan together' },
+  { id: 'publish', label: '2 Â· Share publicly' },
+  { id: 'record', label: '3 Â· Keep a record' },
 ] as const
 type ShareTabId = (typeof SHARE_TABS)[number]['id']
 const SHARE_TAB_IDS = SHARE_TABS.map(t => t.id)
@@ -461,7 +463,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   legCorrections?: Record<string, LegEstimate>
 }) {
   const db = useDb()
-  // Short invite code link (#/join/GOA-K7QF): minted lazily on first share —
+  // Short invite code link (#/join/GOA-K7QF): minted lazily on first share â€”
   // codes are meaningfully readable instead of a 36-char UUID. A trip id is
   // never offered as a link, because it no longer joins anyone. When minting
   // fails, the panel says so and offers another try.
@@ -480,11 +482,11 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   }, [trip.id, inviteCode, mintTry])
   const inviteLink = inviteCode ? `${location.origin}/join/${inviteCode}` : ''
   const pub = db.published.find(p => p.tripId === trip.id)
-  // #350 — a soft-unpublished publication keeps its row (so buyers keep what
+  // #350 â€” a soft-unpublished publication keeps its row (so buyers keep what
   // they paid for and the sales history stays whole) but it is NOT live. Every
   // affordance below that says "this is up" hangs off this flag: the live line,
   // the public link, the Unpublish action. The form keeps `pub` as its prefill
-  // either way — re-publishing should not mean retyping the tagline.
+  // either way â€” re-publishing should not mean retyping the tagline.
   const pubLive = !!pub && !pub.unpublishedAt
   // #704: "not published" is a claim, and it holds only after a read that
   // succeeded. A failed or pending read leaves `pub` empty without saying why.
@@ -507,7 +509,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   const [shownKey, setShownKey] = useState<string | null>(null)
   const mount = publishFormMount({ read: publishRead, formKey, shownKey })
   if (mount.shownKey !== shownKey) setShownKey(mount.shownKey)
-  // #230 — the copy button's link names the button it left through (`ref=copy`).
+  // #230 â€” the copy button's link names the button it left through (`ref=copy`).
   const pubLink = pubLive && pub ? withShareRef(currentPublicShareUrl(pub.id), 'copy') : ''
   const isOwner = (trip.members ?? []).some(m => m.userId === me.id && m.role === 'owner')
   // One read consumes the stash (#368): the import's offer lands here or
@@ -519,7 +521,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
 
   // #87: this implementation was extracted verbatim into the shared
   // useTablist hook so Auth, Admin and the workspace tab bar follow the
-  // same APG contract — kept as the reference.
+  // same APG contract â€” kept as the reference.
   const { refs: tabRefs, tabProps } = useTablist(SHARE_TAB_IDS, tab, setTab)
 
   function confirmRemoveMember() {
@@ -559,7 +561,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
         className="share-panel" hidden={tab !== 'plan'}>
         <h2 className="sr-only">Plan together</h2>
         <Surface className="card shr-panel">
-          <span className="share-intent share-intent--teal">1 · Plan together</span>
+          <span className="share-intent share-intent--teal">1 Â· Plan together</span>
           <h3 className="shr-card-title">Invite collaborators</h3>
           <p className="hint-text shr-invite-description">Anyone with this link joins as an editor after logging in.</p>
           {inviteCode && (
@@ -584,7 +586,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
             </div>
           ) : (
             <div className="shr-state">
-              <StateBlock kind="loading" size="compact" title="Making your invite link…" />
+              <StateBlock kind="loading" size="compact" title="Making your invite linkâ€¦" />
             </div>
           )}
           <hr className="divider" />
@@ -604,7 +606,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
                   <div className="shr-member-details">
                     {/* #800: a crew member's account email is PRIVATE. Being on the
                         same trip is not self or admin authority, so the address is
-                        gone from this list — the name, the avatar and the role are
+                        gone from this list â€” the name, the avatar and the role are
                         what a crew surface may show. */}
                     <b>{u?.profile.name ?? 'Traveller'}</b>
                     <div className="small muted">Joined {timeAgo(m.joinedAt)}</div>
@@ -645,7 +647,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
         className="share-panel" hidden={tab !== 'publish'}>
         <h2 className="sr-only">Share publicly</h2>
         <Surface className="card shr-panel">
-          <span className="share-intent share-intent--saffron">2 · Share publicly</span>
+          <span className="share-intent share-intent--saffron">2 Â· Share publicly</span>
           <h3 className="shr-card-title">Publish as public itinerary</h3>
           <p className="hint-text shr-publication-description">
             List this trip on Explore so anyone can discover and fork it. Choose which days are the free preview. The rest sit behind a premium placeholder (no real payments in this MVP).
@@ -656,20 +658,20 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
               failed read is an alert, a pending one and a kept note are statuses. */}
           {publishView === 'reading' && (
             <div className="shr-state">
-              <StateBlock kind="loading" size="compact" title="Checking whether this trip is on Explore…" />
+              <StateBlock kind="loading" size="compact" title="Checking whether this trip is on Exploreâ€¦" />
             </div>
           )}
           {publishView === 'failed' && (
             <div className="shr-state">
-              <StateBlock kind="failed" size="compact" title="Couldn’t check if this trip is on Explore."
+              <StateBlock kind="failed" size="compact" title="Couldnâ€™t check if this trip is on Explore."
                 actions={<button className="btn btn-outline btn-sm" onClick={retryPublish} disabled={publishRetrying}>
-                  {publishRetrying ? 'Trying…' : 'Try again'}
+                  {publishRetrying ? 'Tryingâ€¦' : 'Try again'}
                 </button>} />
             </div>
           )}
           {pub && (pubLive ? (
             <div className="row-between shr-publication-status">
-              <span className="small muted">Live on Explore · {pub.views} views · {pub.copies} forks</span>
+              <span className="small muted">Live on Explore Â· {pub.views} views Â· {pub.copies} forks</span>
               <button className="btn btn-outline btn-sm" onClick={() => onNavigate(`/pub/${pub.id}`)}>View public page</button>
             </div>
           ) : (
@@ -681,9 +683,9 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           ))}
           {publishView === 'kept' && (
             <div className="shr-state">
-              <StateBlock kind="kept" size="compact" title="Couldn’t refresh. Showing the last status that loaded."
+              <StateBlock kind="kept" size="compact" title="Couldnâ€™t refresh. Showing the last status that loaded."
                 actions={<button className="btn btn-outline btn-sm" onClick={retryPublish} disabled={publishRetrying}>
-                  {publishRetrying ? 'Trying…' : 'Try again'}
+                  {publishRetrying ? 'Tryingâ€¦' : 'Try again'}
                 </button>} />
             </div>
           )}
@@ -691,7 +693,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
               status has loaded, stays open through a later refresh, and remounts
               when the publication changes (#704). */}
           {mount.mounted && (
-            <PublicationForm key={formKey} trip={trip} pub={pub} draft={draft} live={pubLive} isOwner={isOwner} creatorId={me.id}
+            <PublicationForm key={formKey} legCorrections={legCorrections} trip={trip} pub={pub} draft={draft} live={pubLive} isOwner={isOwner} creatorId={me.id}
               publishRead={publishRead}
               onDone={wasPublished => {
                 // A published draft is spent. A later remount must not seed the form from it again.

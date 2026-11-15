@@ -3,6 +3,7 @@
 // authority downgrade, the private-to-public mutation conversion and the public
 // fallback card.
 import type { CachedUser, PublicUser, PublicUserProfile } from '../data/types'
+import { planningNotes } from './creatorFacts'
 
 /** The reviewed nested social-links allowlist, rebuilt from an untrusted value.
  *  Only `youtube` and `instagram` survive, and only as non-empty strings. This is
@@ -35,6 +36,8 @@ export function toPublicUser(user: CachedUser): PublicUser {
       creatorBio: user.profile.creatorBio,
       socialLinks: reviewedSocialLinks(user.profile.socialLinks),
       creatorAvailable: user.profile.creatorAvailable,
+      featuredPubId: user.profile.featuredPubId,
+      planningNotes: planningNotes(user.profile.planningNotes),
     },
   }
 }

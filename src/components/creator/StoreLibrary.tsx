@@ -13,6 +13,7 @@ import { PubCard } from '../PubCard'
 import { StateBlock } from '../page/StateBlock'
 import { FilterChip } from '../filters/FilterChip'
 import { CrSectionHead } from './CrSectionHead'
+import { StoreRouteStamp } from './StoreRouteStamp'
 
 export function StoreLibrary({ name, pubs, view, read, retry, creator, savedIds, needsLogin, onFork, onToggleSave, onNavigate, emptyIsNotCreator }: {
   name: string
@@ -92,6 +93,7 @@ export function StoreLibrary({ name, pubs, view, read, retry, creator, savedIds,
       <div className="cr-store-grid">
         {rows.map((pub, index) => (
           <PubCard key={pub.id} pub={pub} creator={creator} saved={savedIds(pub.id)} enterIndex={index}
+            footer={<StoreRouteStamp pub={pub} />}
             onFork={() => onFork(pub)} onToggleSave={() => onToggleSave(pub.id)} needsLogin={needsLogin} />
         ))}
       </div>

@@ -56,6 +56,7 @@ import {
   buildCatalog, type AccessScope, type CatalogReads, type CatalogResult, type PreviousCatalog, type SliceRead,
 } from './profileCatalog'
 import { toPublicUser, reviewedSocialLinks } from '../lib/publicProfile'
+import { planningNotes, publicationFacts, validPlanningNotes } from '../lib/creatorFacts'
 import {
   correlateSession, nextIncarnation, nextOperationId, sameSession,
   type Credentials, type ObservedSession, type Owner, type ReadTicket,
@@ -458,6 +459,7 @@ interface ProfileRow {
   social_links?: { youtube?: string; instagram?: string }; created_at: number;
   /** present only after the masteradmin migration (see 20260909_masteradmin.sql) */
   is_disabled?: boolean;
+  featured_pub_id?: string | null; planning_notes?: unknown;
 }
 
 /** A row of `public.profile_cards` — what the public RPC returns. Snake_case,
@@ -465,6 +467,7 @@ interface ProfileRow {
 interface ProfileCardRow {
   id: string; name: string; avatar_url?: string; is_creator: boolean; creator_bio?: string;
   social_links?: { youtube?: string; instagram?: string }; creator_available: boolean;
+  featured_pub_id?: string | null; planning_notes?: unknown;
 }
 
 /** Shape of a trip_members row as stored in Postgres (snake_case). */
@@ -491,6 +494,8 @@ export function rowToPublicUser(row: unknown): PublicUser {
       creatorBio: r.creator_bio ?? undefined,
       socialLinks: r.social_links ?? undefined,
       creatorAvailable: r.creator_available !== false,
+      featuredPubId: r.featured_pub_id ?? undefined,
+      planningNotes: planningNotes(r.planning_notes),
     },
   }
 }
@@ -603,6 +608,7 @@ export function rowToPrivateUser(row: unknown): PrivateUser {
   const pub = rowToPublicUser({
     id: r.id, name: r.name, avatar_url: r.avatar_url, is_creator: r.is_creator,
     creator_bio: r.creator_bio, social_links: r.social_links,
+    featured_pub_id: r.featured_pub_id, planning_notes: r.planning_notes,
     creator_available: r.is_disabled !== true,
   })
   return {
@@ -705,6 +711,8 @@ export function sanitizeSnapshotUsers(rows: unknown[]): PublicUser[] {
         creatorBio: typeof profile.creatorBio === 'string' ? profile.creatorBio : undefined,
         socialLinks: reviewedSocialLinks(profile.socialLinks),
         creatorAvailable: available,
+        featuredPubId: typeof profile.featuredPubId === 'string' ? profile.featuredPubId : undefined,
+        planningNotes: validPlanningNotes(profile.planningNotes) ? profile.planningNotes : undefined,
       },
     })
   }
@@ -2245,6 +2253,7 @@ function rowToPublished(row: unknown): PublishedItinerary {
     estimatedBudgetPerPersonInr: r.estimated_budget_per_person_inr, travelStyle: r.travel_style,
     bestSeason: r.best_season, travelTips: r.travel_tips ?? [], warningsAndAssumptions: r.warnings_and_assumptions ?? [],
     freeDayIndexes: r.free_day_indexes ?? [], premiumPriceInr: r.premium_price_inr, subscriberCta: r.subscriber_cta,
+    ...publicationFacts(r),
     publishedAt: r.published_at, refreshedAt: r.refreshed_at ?? undefined,
     unpublishedAt: r.unpublished_at ?? undefined, views: r.views ?? 0, copies: r.copies ?? 0,
   }
@@ -2301,6 +2310,7 @@ export async function updateProfile(patchFields: Partial<PrivateUserProfile>): P
   // value was absent. A refusal contributes nothing to the reducer, so an
   // unrelated change that landed while the request was in flight — a live rename,
   // another edit, even an equal-valued acceptance — survives.
+  if (patchFields.planningNotes != null && !validPlanningNotes(patchFields.planningNotes)) return { ok: false, error: 'Use up to three non-blank planning notes of at most 140 characters.' }
   const after = { ...u.profile, ...patchFields }
   const owned: OwnedFields = { id: u.id, patch: patchFields }
   // The ledger is built from the row's ORIGINAL values BEFORE the optimistic
@@ -2314,6 +2324,7 @@ export async function updateProfile(patchFields: Partial<PrivateUserProfile>): P
       name: patchFields.name, home_city: patchFields.homeCity, languages: patchFields.languages,
       travel_styles: patchFields.travelStyles, is_creator: patchFields.isCreator,
       creator_bio: patchFields.creatorBio, social_links: patchFields.socialLinks,
+      featured_pub_id: patchFields.featuredPubId, planning_notes: patchFields.planningNotes,
     }).eq('id', u.id)
     if (!error) { settleOwnedFields(owned, applied, 'accepted'); return { ok: true } }
     console.error('[yatraflow] profiles write failed', error)
@@ -7677,6 +7688,7 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
   const id = existing?.id ?? uid('pub')
   const p: PublishedItinerary = {
     ...pub, id,
+    reviewedAt: existing?.reviewedAt,
     publishedAt: existing?.publishedAt ?? Date.now(),
     // Freshness marker for the dashboard's "page behind itinerary" nudge —
     // publishedAt stays the original date for Explore's newest sort.
@@ -7744,6 +7756,7 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
     cover_image_url: p.coverImageUrl, route_summary: p.routeSummary, duration_days: p.durationDays,
     estimated_budget_per_person_inr: p.estimatedBudgetPerPersonInr, travel_style: p.travelStyle,
     best_season: p.bestSeason, travel_tips: p.travelTips, warnings_and_assumptions: p.warningsAndAssumptions,
+    planned_km: p.plannedKm, best_months: p.bestMonths, reviewed_scope: p.reviewedScope,
     free_day_indexes: p.freeDayIndexes, premium_price_inr: p.premiumPriceInr || undefined, subscriber_cta: p.subscriberCta,
     ...(hasRefreshedCol ? { refreshed_at: p.refreshedAt } : {}),
     ...(hasUnpublishedCol ? { unpublished_at: null } : {}),

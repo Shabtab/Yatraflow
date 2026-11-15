@@ -329,6 +329,8 @@ export type Database = {
       }
       profile_cards: {
         Row: {
+          featured_pub_id: string | null
+          planning_notes: Json | null
           avatar_url: string | null
           creator_available: boolean
           creator_bio: string | null
@@ -338,6 +340,8 @@ export type Database = {
           social_links: Json
         }
         Insert: {
+          featured_pub_id?: string | null
+          planning_notes?: Json | null
           avatar_url?: string | null
           creator_available?: boolean
           creator_bio?: string | null
@@ -347,6 +351,8 @@ export type Database = {
           social_links?: Json
         }
         Update: {
+          featured_pub_id?: string | null
+          planning_notes?: Json | null
           avatar_url?: string | null
           creator_available?: boolean
           creator_bio?: string | null
@@ -367,6 +373,8 @@ export type Database = {
       }
       profiles: {
         Row: {
+          featured_pub_id: string | null
+          planning_notes: Json | null
           avatar_url: string | null
           created_at: number
           creator_bio: string | null
@@ -381,6 +389,8 @@ export type Database = {
           travel_styles: Json
         }
         Insert: {
+          featured_pub_id?: string | null
+          planning_notes?: Json | null
           avatar_url?: string | null
           created_at?: number
           creator_bio?: string | null
@@ -395,6 +405,8 @@ export type Database = {
           travel_styles?: Json
         }
         Update: {
+          featured_pub_id?: string | null
+          planning_notes?: Json | null
           avatar_url?: string | null
           created_at?: number
           creator_bio?: string | null
@@ -447,6 +459,10 @@ export type Database = {
       }
       published_itineraries: {
         Row: {
+          planned_km: number | null
+          best_months: number | null
+          reviewed_at: string | null
+          reviewed_scope: string | null
           best_season: string | null
           copies: number
           cover_image_url: string | null
@@ -470,6 +486,10 @@ export type Database = {
           warnings_and_assumptions: Json
         }
         Insert: {
+          planned_km?: number | null
+          best_months?: number | null
+          reviewed_at?: string | null
+          reviewed_scope?: string | null
           best_season?: string | null
           copies?: number
           cover_image_url?: string | null
@@ -493,6 +513,10 @@ export type Database = {
           warnings_and_assumptions?: Json
         }
         Update: {
+          planned_km?: number | null
+          best_months?: number | null
+          reviewed_at?: string | null
+          reviewed_scope?: string | null
           best_season?: string | null
           copies?: number
           cover_image_url?: string | null
@@ -1095,6 +1119,8 @@ export type Database = {
       get_public_profile_cards: {
         Args: { p_ids?: string[] }
         Returns: {
+          featured_pub_id: string | null
+          planning_notes: Json | null
           avatar_url: string | null
           creator_available: boolean
           creator_bio: string | null

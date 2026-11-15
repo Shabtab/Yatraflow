@@ -51,6 +51,7 @@ const LINKS = params.get('links') ?? 'both'
 const READ = params.get('read') ?? 'ok'
 const VIEWER = params.get('viewer') ?? 'owner'
 const OWNER = params.get('owner') ?? 'ready'
+const PICKS = params.get('picks') === 'on'
 const PAGE = params.get('page')
 
 const CREATOR_ID = 'fixture-creator-0001'
@@ -94,6 +95,8 @@ type ProfileShape = {
   creatorBio?: string
   socialLinks?: { youtube?: string; instagram?: string }
   creatorAvailable: boolean
+  featuredPubId?: string
+  planningNotes?: string[]
   homeCity?: string
   languages: string[]
   travelStyles: string[]
@@ -113,6 +116,8 @@ const baseProfile: ProfileShape = {
   creatorBio: CASE_KEY === 'long' ? LONG_BIO : 'Plans slow hill drives with early starts and long chai halts.',
   socialLinks,
   creatorAvailable: CASE_KEY !== 'disabled',
+  featuredPubId: PICKS ? 'fixture-pub-0' : undefined,
+  planningNotes: PICKS ? ['Start early.', 'Leave time for breaks.'] : undefined,
   homeCity: 'Kochi',
   languages: ['en', 'hi'],
   travelStyles: ['balanced'],
@@ -138,6 +143,8 @@ const creatorPublic: PublicUser = {
     creatorBio: baseProfile.creatorBio,
     socialLinks: baseProfile.socialLinks,
     creatorAvailable: baseProfile.creatorAvailable,
+    featuredPubId: baseProfile.featuredPubId,
+    planningNotes: baseProfile.planningNotes,
   },
 }
 
@@ -250,6 +257,9 @@ function pub(i: number, takenDown: boolean): PublishedItinerary {
     estimatedBudgetPerPersonInr: 18000,
     travelStyle: 'balanced',
     bestSeason: 'Nov - Feb',
+    plannedKm: PICKS ? 340 : undefined,
+    bestMonths: PICKS ? 2051 : undefined,
+    reviewedAt: PICKS ? Date.parse('2026-10-14T00:00:00Z') : undefined,
     travelTips: ['Fixture tip — replace with a real one in production data.'],
     warningsAndAssumptions: ['Fixture warning.'],
     freeDayIndexes: [0],
@@ -564,7 +574,7 @@ ReactDOM.createRoot(root).render(
         </Suspense>
       ) : CASE === 'kit' ? (
         <KitGallery />
-      ) : params.has('case') || params.has('viewer') || params.has('read') || params.has('links') || params.has('owner') ? (
+      ) : params.has('case') || params.has('viewer') || params.has('read') || params.has('links') || params.has('owner') || params.has('picks') ? (
         <>
           <FixtureCreatorPage />
           <CreatorHubPage onNavigate={navigate} />

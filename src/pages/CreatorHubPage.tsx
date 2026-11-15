@@ -14,6 +14,7 @@
 // (`now` is computed once and handed to both builders), so the chart can never
 // describe a different window from the numbers beneath it.
 import { useCallback, useEffect, useState } from 'react'
+import { CreatorPicksEditor } from '../components/creator/CreatorPicksEditor'
 import { InlineIcon } from '../components/icons'
 import { ExternalLink, Pencil } from 'lucide-react'
 import { PillNav } from '../components/PillNav'
@@ -349,6 +350,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               <Field label="YouTube link" error={socialErrors.youtube}><input className="input" type="url" inputMode="url" value={youtube} onChange={e => { setYoutube(e.target.value); if (socialErrors.youtube) setSocialErrors(s => ({ ...s, youtube: undefined })) }} placeholder="https://youtube.com/@…" /></Field>
               <Field label="Instagram link" error={socialErrors.instagram}><input className="input" type="url" inputMode="url" value={instagram} onChange={e => { setInstagram(e.target.value); if (socialErrors.instagram) setSocialErrors(s => ({ ...s, instagram: undefined })) }} placeholder="https://instagram.com/…" /></Field>
             </div>
+            <CreatorPicksEditor key={me.id} me={me} pubs={myPubs} read={publishedRead} />
             <div className="hub-profile-actions">
               <button className="btn btn-primary btn-sm" disabled={savingCreator} onClick={async () => {
                 const yt = youtube.trim()

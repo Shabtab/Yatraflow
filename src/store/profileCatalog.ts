@@ -93,6 +93,8 @@ function overlayPublic(held: PrivateUser, card: PublicUser): PrivateUser {
       creatorBio: card.profile.creatorBio,
       socialLinks: card.profile.socialLinks,
       creatorAvailable: card.profile.creatorAvailable,
+      featuredPubId: card.profile.featuredPubId,
+      planningNotes: card.profile.planningNotes,
     },
   }
 }

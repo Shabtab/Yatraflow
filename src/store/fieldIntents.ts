@@ -3,6 +3,7 @@ import type { PrivateUserProfile } from '../data/types'
 const FIELDS = [
   'name', 'avatarUrl', 'isCreator', 'creatorBio', 'socialLinks', 'creatorAvailable',
   'homeCity', 'languages', 'travelStyles', 'isDisabled',
+  'featuredPubId', 'planningNotes',
 ] as const satisfies readonly (keyof PrivateUserProfile)[]
 
 type ProfilePatch = Partial<PrivateUserProfile>
