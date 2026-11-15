@@ -99,7 +99,7 @@ try {
     await db.query('update public.profiles set planning_notes = $1::jsonb where id = $2',
       [notes === null ? null : JSON.stringify(notes), owner])
   }
-  for (const notes of ['null', '{}', 'true', '1', '"note"', '[null]', '[1]', '[{}]', '[[]]', '[""]', '["   "]',
+  for (const notes of ['null', '{}', 'true', '1', '"note"', '[null]', '[1]', '[{}]', '[[]]', '[""]', '["   "]', '["\\t"]', '["\\n"]',
     '["a","b","c","d"]', JSON.stringify(['🛣'.repeat(141)])]) {
     await reject('update public.profiles set planning_notes = $1::jsonb where id = $2', [notes, owner], '23514')
   }

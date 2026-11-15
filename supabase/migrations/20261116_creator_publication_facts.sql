@@ -53,7 +53,7 @@ as $$
       jsonb_array_length(p_notes) <= 3 and not exists (
         select 1 from jsonb_array_elements(p_notes) item
         where jsonb_typeof(item) <> 'string' or char_length(item #>> '{}') > 140
-          or btrim(item #>> '{}') = ''
+          or (item #>> '{}') !~ '\S'
       )
     else false
   end
