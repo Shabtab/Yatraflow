@@ -138,7 +138,7 @@ const viewerUser: PrivateUser = {
   },
 }
 
-// The viewer decides which identity the session carries, and therefore which
+// The viewer decides which identity the session carries, so it decides which
 // shape the creator's row may hold: the account's OWN row is private, a row
 // another account sees is the public card only (#800).
 const sessionUserId: string | null =
