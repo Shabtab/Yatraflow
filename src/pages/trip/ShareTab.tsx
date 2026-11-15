@@ -14,6 +14,7 @@ import { downloadTripIcs } from '../../lib/ics'
 import { nativeCopyText } from '../../lib/native'
 import { useTablist } from '../../hooks/useTablist'
 import { computeTotals, formatInr, type LegEstimate } from '../../lib/engine'
+import { publishablePlannedKm } from '../../lib/creatorFacts'
 import { netOfFeeInr, PLATFORM_FEE_SUMMARY } from '../../lib/earnings'
 import {
   publishValidation, PUBLISH_FIELD_ORDER, PUBLISH_FIELD_LABELS, PublishRejected, type PublishField,
@@ -283,7 +284,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         tagline: tagline.trim() || defaultTagline,
         routeSummary: [trip.startLocation, ...trip.destinations],
         durationDays: trip.days.length,
-        plannedKm: computeTotals(trip, legCorrections).totalDistanceKm,
+        plannedKm: publishablePlannedKm(computeTotals(trip, legCorrections).totalDistanceKm),
         estimatedBudgetPerPersonInr: trip.budgetPerPersonInr,
         travelStyle: trip.travelStyle,
         bestSeason: bestSeason.trim() || undefined,

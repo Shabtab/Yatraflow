@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { creatorPick, plannedKilometres, planningNotes, publicationFacts, validPlanningNotes } from '../src/lib/creatorFacts'
+import { creatorPick, plannedKilometres, planningNotes, publicationFacts, publishablePlannedKm, validPlanningNotes } from '../src/lib/creatorFacts'
 import { beginLedger, applyLedger, settleLedger } from '../src/store/fieldIntents'
 import type { PrivateUserProfile, PublishedItinerary } from '../src/data/types'
 
@@ -10,6 +10,12 @@ const route: PublishedItinerary = {
 }
 
 describe('creator facts', () => {
+  it('sends only a planned distance the SQL check accepts', () => {
+    expect(publishablePlannedKm(0)).toBe(0)
+    expect(publishablePlannedKm(340.6)).toBe(341)
+    for (const km of [-1, 20000, 25000, Number.NaN, Number.POSITIVE_INFINITY]) expect(publishablePlannedKm(km)).toBeUndefined()
+  })
+
   it('matches the SQL note limits and counts Unicode characters', () => {
     for (const value of [[], ['a'], ['a', 'b', 'c'], ['🚗'.repeat(140)]]) expect(validPlanningNotes(value)).toBe(true)
     for (const value of [[''], [' \n'], ['a'.repeat(141)], ['a', 'b', 'c', 'd'], [1], {}, 'note']) {

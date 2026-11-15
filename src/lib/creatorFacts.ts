@@ -28,6 +28,12 @@ export function publicationFacts(row: { planned_km?: unknown; best_months?: unkn
   }
 }
 
+/** The distance a publish may send. The SQL check allows 0 to under 20000 km;
+ *  any other value is sent as unknown, so the publish itself never fails. */
+export function publishablePlannedKm(km: number): number | undefined {
+  return Number.isFinite(km) && km >= 0 && km < 20000 ? Math.round(km) : undefined
+}
+
 export function creatorPick(pubs: PublishedItinerary[], creatorId: string, id: string | null | undefined) {
   return livePubs(pubs).find(pub => pub.id === id && pub.creatorId === creatorId)
 }

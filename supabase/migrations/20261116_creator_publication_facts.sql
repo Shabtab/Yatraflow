@@ -1,4 +1,4 @@
--- G3 draft. Apply by hand after review. This SQL is not applied yet.
+-- G3. The operator applied this file by hand on the hosted database on 2026-11-15.
 begin;
 
 -- Existing owner paths: "published write" and "profiles update self".

@@ -1,4 +1,4 @@
--- G2 draft. Apply by hand after review. This file has not run on the hosted database.
+-- G2. The operator applied this file by hand on the hosted database on 2026-11-15.
 begin;
 
 -- The creator identifies the page, never its visitor. Keep no visitor identifier.

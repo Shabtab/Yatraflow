@@ -1,4 +1,4 @@
--- G1 draft. Apply by hand after review. This file has not run on the hosted database.
+-- G1. The operator applied this file by hand on the hosted database on 2026-11-15.
 begin;
 
 drop function if exists public.get_creator_share_sources();

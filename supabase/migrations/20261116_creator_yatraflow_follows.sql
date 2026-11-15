@@ -1,4 +1,4 @@
--- G4 draft. Apply by hand after review. This SQL is not applied yet.
+-- G4. The operator applied this file by hand on the hosted database on 2026-11-15.
 begin;
 create table if not exists public.creator_follows (
   follower uuid not null references public.profiles(id) on delete cascade,
