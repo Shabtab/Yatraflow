@@ -1,19 +1,25 @@
 // ============ Public creator page — #/creator/:id ============
 // The shareable destination for the creator chips on Explore cards and the
-// public itinerary pages: bio + links + every itinerary this creator has
-// published. Works logged-out (profiles and publications are public app-wide).
+// public itinerary pages: the v2 storefront — hero, featured route, route
+// library — over real fields alone. Works logged-out (profiles and publications
+// are public app-wide). The presentational parts live in the Store* components;
+// this page keeps every data read, every state decision and the shared card
+// behaviour the guards pin.
 import { useMemo } from 'react'
-import { InlineIcon } from '../components/icons'
-import { Camera, Compass, Eye, GitFork, Link2, MapPin, Sparkles, TvMinimalPlay } from 'lucide-react'
+import { Link2 } from 'lucide-react'
 import { useSessionUserId, usePublished, userById, useDb, rereadPublicSlices } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
 import { currentCreatorShareUrl } from '../lib/shareUrl'
-import { openExternal } from '../lib/native'
 import { useSavedPubs } from '../lib/savedPubs'
-import { Avatar, CopyButton, EmptyState } from '../components/ui'
-import { PubCard } from '../components/PubCard'
-import { sliceState, emptyCopyFor, figureOrUnavailable, rowsView } from '../lib/readState'
+import { sliceState, emptyCopyFor, rowsView } from '../lib/readState'
 import { livePubs } from '../lib/livePubs'
+import {
+  storefrontFigures, publishingSince, leadRoute, storefrontSections,
+} from '../lib/creatorStorefront'
+import { FeaturedCard } from '../components/explore/FeaturedCard'
+import { StoreHero, dayStamp } from '../components/creator/StoreHero'
+import { StoreLibrary } from '../components/creator/StoreLibrary'
+import { StoreBand } from '../components/creator/StoreBand'
 import { StateBlock } from '../components/page/StateBlock'
 
 export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNavigate: (r: string) => void }) {
@@ -48,135 +54,107 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
     () => livePubs(published.filter(p => p.creatorId === creatorId)).sort((a, b) => b.publishedAt - a.publishedAt),
     [published, creatorId],
   )
-  const totalViews = pubs.reduce((s, p) => s + p.views, 0)
-  const totalForks = pubs.reduce((s, p) => s + p.copies, 0)
+  // One decision point for the figures, the "publishing since" chip, the
+  // featured pick and the section layout (the P2 read model).
+  const figures = useMemo(() => storefrontFigures(pubs, pubsRead), [pubs, pubsRead])
+  const since = useMemo(() => publishingSince(pubs), [pubs])
+  const featured = useMemo(() => leadRoute(pubs, 3), [pubs])
+  const sections = useMemo(
+    // The read model takes the public shape. When the viewer IS the creator the
+    // cached row is the account's own private row, so the page hands over a
+    // public view of it instead of widening the model's input.
+    () => creator
+      ? storefrontSections({ user: { id: creator.id, kind: 'public', profile: creator.profile }, pubs, read: pubsRead })
+      : undefined,
+    [creator, pubs, pubsRead],
+  )
   // #704 / R23: a failed refresh keeps the rows already on screen and says so.
   // Only a failed read with nothing retained hides the list.
   const pubsView = rowsView(pubsRead, pubs.length)
-  const pubsGrid = (
-    <div className="explore-grid">
-      {pubs.map(p => (
-        <PubCard key={p.id} pub={p} creator={creator} saved={isSaved(p.id)}
-          onFork={() => { void forkPublication(p, me, onNavigate, undefined, 'creator') }} needsLogin={!me}
-          onToggleSave={() => toggleSaved(p.id)} />
-      ))}
-    </div>
-  )
 
   if (!creator || creatorUnavailable) {
     // A broken read is not an absent creator. The distinction is the whole bug.
-    // A disabled creator is not an absent creator either, and gets the same
-    // not-found copy rather than a page that names them.
+    // A disabled creator is an absent creator too, and gets the same not-found
+    // copy rather than a page that names them.
     if (profileRead !== 'ready') {
       const copy = emptyCopyFor(profileRead, 'this creator', retry)
       return (
         <div className="container page-enter">
-          {profileRead === 'reading' ? (
-            <div className="loading-block"><div className="spinner" />{copy.title}</div>
-          ) : (
-            <EmptyState icon={<Link2 size={38} aria-hidden />} title={copy.title} body={copy.body}
-              action={<button className="btn btn-primary" onClick={retry}>Try again</button>} />
-          )}
+          <StateBlock kind={profileRead === 'reading' ? 'loading' : 'failed'}
+            icon={<Link2 size={38} aria-hidden />}
+            title={copy.title} body={copy.body}
+            actions={profileRead === 'reading' ? undefined
+              : <button className="btn btn-primary" onClick={retry}>Try again</button>} />
         </div>
       )
     }
     return (
       <div className="container page-enter">
-        <EmptyState icon={<Link2 size={38} aria-hidden />} title="Creator not found"
+        <StateBlock kind="empty" icon={<Link2 size={38} aria-hidden />} title="Creator not found"
           body="This page may have been removed, or the link is wrong."
-          action={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Back to Explore</button>} />
+          actions={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Back to Explore</button>} />
       </div>
     )
   }
 
-  const links: { key: 'youtube' | 'instagram'; href: string; label: string; Icon: typeof Camera }[] = []
-  if (creator.profile.socialLinks?.youtube) links.push({ key: 'youtube', href: creator.profile.socialLinks.youtube, label: `${creator.profile.name} on YouTube`, Icon: TvMinimalPlay })
-  if (creator.profile.socialLinks?.instagram) links.push({ key: 'instagram', href: creator.profile.socialLinks.instagram, label: `${creator.profile.name} on Instagram`, Icon: Camera })
   // #362: the copied link is the SERVER path (`/c/<id>`), which carries the
   // creator's own card to a link preview. The hash form never leaves the
   // browser, so sharing it unfurled as the app shell.
   const shareLink = currentCreatorShareUrl(creatorId)
+  const lead = featured ?? pubs[0]
+  const featuredKicker = featured ? `Most forked of ${pubs.length} routes` : undefined
 
   return (
-    <div className="page-enter">
-      {/* ---- Creator hero: identity, trust, share ---- */}
-      <section className="creator-hero">
-        <div className="container creator-hero-inner">
-          <Avatar user={creator} size="lg" />
-          <div className="creator-hero-id">
-            <h1>
-              {creator.profile.name}
-              {creator.profile.isCreator && <span className="creator-badge" title="Creator"><Sparkles size={13} aria-hidden /> Creator</span>}
-            </h1>
-            {/* #800: home city and languages are PRIVATE (the confirmed decision),
-                so the public creator hero no longer prints them. The public card
-                carries only the name, the avatar, the creator marker, the bio and
-                the reviewed social links. */}
-            <p className="creator-hero-meta">
-              {creator.profile.isCreator ? 'Creator' : 'Traveller'}
-            </p>
-            {creator.profile.creatorBio && <p className="creator-hero-bio">{creator.profile.creatorBio}</p>}
-          </div>
-          <div className="creator-hero-actions">
-            {links.map(({ key, href, label, Icon }) => (
-              <a key={key} className="btn btn-outline btn-sm" href={href} target="_blank" rel="noreferrer noopener" aria-label={label} onClick={e => { e.preventDefault(); openExternal(href) }}>
-                <InlineIcon icon={Icon} size={14} gap={4} />{key === 'youtube' ? 'YouTube' : 'Instagram'}
-              </a>
-            ))}
-            <CopyButton text={shareLink} label="Copy page link" />
-          </div>
-        </div>
-      </section>
+    <div className="page-enter cr-store-page">
+      <StoreHero
+        creator={creator}
+        heading={<h1>{creator.profile.name}</h1>}
+        cover={lead}
+        publishingSince={since}
+        shareUrl={shareLink}
+        figures={{ liveRoutes: figures.liveRoutes, views: figures.views, forks: figures.forks }}
+        routeCount={pubs.length}
+        showBrowse={pubs.length > 0}
+        tabs={sections?.coverTabs === true && sections.pubsView !== 'empty'}
+      />
 
-      <div className="container" style={{ paddingTop: 20 }}>
-        {pubs.length > 0 && (
-          <div className="creator-stats" role="group" aria-label="Creator track record">
-            <div className="stat-tile"><div className="stat-label">Itineraries</div><div className="stat-value">{figureOrUnavailable(pubs.length, pubsRead) === null ? <span className="muted">Unavailable</span> : pubs.length}</div></div>
-            <div className="stat-tile"><div className="stat-label">Total views</div><div className="stat-value">
-              {figureOrUnavailable(totalViews, pubsRead) === null
-                ? <span className="muted">Unavailable</span>
-                : <><InlineIcon icon={Eye} size={15} gap={5} vAlign="-1px" />{totalViews}</>}
-            </div></div>
-            <div className="stat-tile"><div className="stat-label">Total forks</div><div className="stat-value">
-              {figureOrUnavailable(totalForks, pubsRead) === null
-                ? <span className="muted">Unavailable</span>
-                : <><InlineIcon icon={GitFork} size={15} gap={5} vAlign="-1px" />{totalForks}</>}
-            </div></div>
-          </div>
-        )}
+      {featured && (
+        <section className="container cr-store-featured" aria-label="Featured route">
+          <FeaturedCard
+            pub={featured}
+            creator={creator}
+            kicker={featuredKicker}
+            saved={isSaved(featured.id)}
+            needsLogin={!me}
+            onFork={() => { void forkPublication(featured, me, onNavigate, undefined, 'creator') }}
+            onToggleSave={() => toggleSaved(featured.id)}
+          />
+        </section>
+      )}
 
-        <h2 style={{ marginBottom: 12 }}>Publications</h2>
+      {featured && featured.bestSeason && <p className="cr-store-season">{featured.bestSeason}</p>}
+      {featured && (
+        <p className="cr-store-updated">
+          Updated {dayStamp(featured.refreshedAt ?? featured.publishedAt)}
+        </p>
+      )}
 
-        {/* #704 / R23: four states, never three. A failed refresh that still has
-            rows on screen keeps them and adds a note; only a failed read with
-            nothing retained reaches the failure copy. The empty copy is reachable
-            from a read that succeeded with no rows, and from nothing else. */}
-        {pubsView === 'reading' ? (
-          <div className="loading-block"><div className="spinner" />Loading publications…</div>
-        ) : pubsView === 'failed' ? (
-          <EmptyState icon={<MapPin size={38} aria-hidden />} title={emptyCopyFor(pubsRead, 'publications', retry).title}
-            body={emptyCopyFor(pubsRead, 'publications', retry).body}
-            action={<button className="btn btn-primary" onClick={retry}>Try again</button>} />
-        ) : pubsView === 'empty' ? (
-          !creator.profile.isCreator ? (
-            <EmptyState icon={<Compass size={38} aria-hidden />} title="No creator page here yet"
-              body={`${creator.profile.name} hasn’t enabled creator mode or published an itinerary.`}
-              action={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Explore itineraries</button>} />
-          ) : (
-            <EmptyState icon={<MapPin size={38} aria-hidden />} title="No itineraries published yet"
-              body="When they publish a trip to Explore, it will appear here." />
-          )
-        ) : (
-          <>
-            {pubsView === 'kept' && (
-              <StateBlock kind="kept" size="compact" title="Couldn’t refresh these publications."
-                body="Showing the ones that loaded."
-                actions={<button className="btn btn-outline btn-sm" onClick={retry}>Try again</button>} />
-            )}
-            {pubsGrid}
-          </>
-        )}
-      </div>
+      <StoreLibrary
+        name={creator.profile.name}
+        pubs={pubs}
+        view={pubsView}
+        read={pubsRead}
+        retry={retry}
+        creator={creator}
+        savedIds={isSaved}
+        needsLogin={!me}
+        onFork={pub => { void forkPublication(pub, me, onNavigate, undefined, 'creator') }}
+        onToggleSave={toggleSaved}
+        onNavigate={onNavigate}
+        emptyIsNotCreator={!creator.profile.isCreator}
+      />
+
+      {!me && <StoreBand />}
     </div>
   )
 }
