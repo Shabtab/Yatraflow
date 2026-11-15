@@ -79,7 +79,8 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
   }
 })
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { memberBootstrapClient } = await import('./helpers/memberBootstrapClient')
   const query = (table: string) => {
     let method = 'select'
     let selection = '*'
@@ -156,9 +157,35 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: true,
-    supabase: {
+    supabase: memberBootstrapClient({
       from: query,
-      rpc: async () => ({ data: [], error: null }),
+      rpc: (name: string, args: { p_trip_id: string; p_action: string; p_expected_revision: number | null }) => {
+        let header = ''
+        const request = {
+          setHeader(_key: string, value: string) { header = value; return request },
+          then(resolve: (result: unknown) => unknown, reject?: (reason: unknown) => unknown) {
+            return (async () => {
+              if (name !== 'change_trip_access' || args.p_action !== 'invite') return { data: [], error: null }
+              await state.updateGate
+              state.beforeUpdate?.()
+              state.beforeUpdate = null
+              const row = state.rows.get(args.p_trip_id)
+              const actor = header.replace(/^Bearer token-/, '')
+              if (!row || !state.members.some(m => m.trip_id === row.id && m.user_id === actor)) return { data: null, error: { message: 'Not a member' } }
+              const base = row.write_version
+              const mint = !row.invite_code
+              const stale = mint && base !== args.p_expected_revision
+              if (mint && !stale) { row.invite_code = 'YATRA-ABCDEFGH'; row.write_version = Number(base) + 1 }
+              return { data: { status: stale ? 'stale' : 'applied', state: {
+                version: Number(row.write_version), planVersion: row.write_version, inviteCode: row.invite_code,
+                ...(mint && !stale ? { mintBaseVersion: base } : {}), removed: [],
+                members: state.members.filter(m => m.trip_id === row.id).map(m => ({ userId: m.user_id, role: m.role, joinedAt: m.joined_at, revision: 1 })),
+              } }, error: null }
+            })().then(resolve, reject)
+          },
+        }
+        return request
+      },
       channel: () => {
         const channel = { on: () => channel, subscribe: () => channel }
         return channel
@@ -172,7 +199,7 @@ vi.mock('../src/lib/supabase', () => {
         },
         signOut: async () => ({ error: null }),
       },
-    },
+    }),
   }
 })
 

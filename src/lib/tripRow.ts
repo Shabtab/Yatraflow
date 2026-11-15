@@ -367,6 +367,7 @@ export function tripUpdateRow(
   // unused binding (the lint ratchet counts an unused destructured name).
   const row: Omit<TripRow, 'created_at' | 'updated_at' | 'owner_id'> = tripToRow(trip, ownerId, cols)
   delete (row as Partial<TripRow>).owner_id
+  delete row.invite_code
   return row
 }
 

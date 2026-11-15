@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from 'react'
 import { InlineIcon } from '../../components/icons'
 import { CalendarDays, Download, Link2, Lock } from 'lucide-react'
 import type { Trip, PublishedItinerary } from '../../data/types'
-import { useDb, userById, setMemberRole, removeMember, restoreMember, publishItinerary, unpublishItinerary, ensureInviteCode, rereadPublicSlices } from '../../store/store'
+import { useDb, userById, setMemberRole, removeMember, restoreMember, readMemberAccess, publishItinerary, unpublishItinerary, ensureInviteCode, rereadPublicSlices } from '../../store/store'
+import type { AccessMember, MemberAccessState } from '../../lib/memberAccess'
 import { encodeTripSnapshot, snapshotUrl, downloadTripJson } from '../../lib/snapshot'
 import { ImportTripButton } from '../../components/ImportTripButton'
 import { CoverImagePicker } from '../../components/CoverImagePicker'
@@ -465,19 +466,20 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   // codes are meaningfully readable instead of a 36-char UUID. A trip id is
   // never offered as a link, because it no longer joins anyone. When minting
   // fails, the panel says so and offers another try.
-  const [inviteCode, setInviteCode] = useState<string | null>(trip.inviteCode ?? null)
+  const [inviteReady, setInviteReady] = useState<string | null>(null)
   const [mintFailed, setMintFailed] = useState(false)
   const [mintTry, setMintTry] = useState(0)
+  const inviteKey = `${trip.id}:${me.id}:${mintTry}`
+  const inviteCode = inviteReady === inviteKey ? trip.inviteCode ?? null : null
   useEffect(() => {
-    if (inviteCode) return
     let alive = true
     void ensureInviteCode(trip.id).then(code => {
       if (!alive) return
-      if (code) setInviteCode(code)
-      else setMintFailed(true)
+      setInviteReady(code ? inviteKey : null)
+      setMintFailed(!code)
     })
     return () => { alive = false }
-  }, [trip.id, inviteCode, mintTry])
+  }, [trip.id, inviteKey])
   const inviteLink = inviteCode ? `${location.origin}/join/${inviteCode}` : ''
   const pub = db.published.find(p => p.tripId === trip.id)
   // #350 — a soft-unpublished publication keeps its row (so buyers keep what
@@ -515,6 +517,22 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   const [draft, setDraft] = useState(() => takePublishDraft(trip.id))
   const [tab, setTab] = useState<ShareTabId>('plan')
   const [pendingRemove, setPendingRemove] = useState<NonNullable<Trip['members']>[number] | null>(null)
+  const [memberBusy, setMemberBusy] = useState(false)
+  const [accessRead, setAccessRead] = useState<{ key: string; state: MemberAccessState | null } | null>(null)
+  const [accessTry, setAccessTry] = useState(0)
+  const accessKey = `${trip.id}:${me.id}:${accessTry}`
+  const accessPending = accessRead?.key !== accessKey
+  const accessFailed = !accessPending && !accessRead?.state
+  const removedMembers = !accessPending ? accessRead?.state?.removed ?? [] : []
+  useEffect(() => {
+    if (!isOwner) return
+    let alive = true
+    void readMemberAccess(trip.id).then(state => {
+      if (!alive) return
+      setAccessRead({ key: accessKey, state })
+    })
+    return () => { alive = false }
+  }, [trip.id, isOwner, accessKey])
   const [pendingUnpublish, setPendingUnpublish] = useState(false)
 
   // #87: this implementation was extracted verbatim into the shared
@@ -522,14 +540,36 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   // same APG contract — kept as the reference.
   const { refs: tabRefs, tabProps } = useTablist(SHARE_TAB_IDS, tab, setTab)
 
-  function confirmRemoveMember() {
-    if (!pendingRemove) return
-    removeMember(trip.id, pendingRemove.userId)
-    undoToast(`${userById(pendingRemove.userId)?.profile.name ?? 'Member'} removed`, () => {
-      restoreMember(trip.id, pendingRemove)
-      toast('Member restored')
-    })
-    setPendingRemove(null)
+  async function restoreRemoved(member: AccessMember) {
+    if (memberBusy) return
+    setMemberBusy(true)
+    try {
+      if (await restoreMember(trip.id, member)) toast('Member restored')
+    } finally {
+      setMemberBusy(false)
+      setAccessTry(n => n + 1)
+    }
+  }
+
+  async function confirmRemoveMember() {
+    if (!pendingRemove || memberBusy) return
+    const name = userById(pendingRemove.userId)?.profile.name ?? 'Member'
+    setMemberBusy(true)
+    try {
+      const removed = await removeMember(trip.id, pendingRemove.userId)
+      if (removed) undoToast(`${name} removed`, () => { void restoreRemoved(removed) })
+    } finally {
+      setMemberBusy(false)
+      setPendingRemove(null)
+      setAccessTry(n => n + 1)
+    }
+  }
+
+  async function changeRole(userId: string, role: string) {
+    if (memberBusy || (role !== 'editor' && role !== 'commenter' && role !== 'viewer')) return
+    setMemberBusy(true)
+    try { await setMemberRole(trip.id, userId, role) }
+    finally { setMemberBusy(false); setAccessTry(n => n + 1) }
   }
 
   function confirmUnpublish() {
@@ -561,7 +601,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
         <Surface className="card shr-panel">
           <span className="share-intent share-intent--teal">1 · Plan together</span>
           <h3 className="shr-card-title">Invite collaborators</h3>
-          <p className="hint-text shr-invite-description">Anyone with this link joins as an editor after logging in.</p>
+          <p className="hint-text shr-invite-description">New members join as editors. Returning members keep their assigned role. Removed members need an owner restore.</p>
           {inviteCode && (
             <div className="invite-code-row shr-invite-code-row">
               <div className="invite-code-chip">
@@ -610,11 +650,8 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
                     <div className="small muted">Joined {timeAgo(m.joinedAt)}</div>
                   </div>
                   {isOwner && m.role !== 'owner' ? (
-                    <select className="role-select" value={m.role} onChange={e => setMemberRole(trip.id, m.userId, e.target.value as never)}
+                    <select className="role-select" value={m.role} disabled={memberBusy} onChange={e => { void changeRole(m.userId, e.target.value) }}
                       aria-label={`Role for ${u?.profile.name ?? 'Traveller'}`}>
-                      {/* value stays the raw enum (the store writes it straight
-                          through); only the visible label is capitalised, via the
-                          shared helper the rest of the app uses for enum labels. */}
                       {['editor', 'commenter', 'viewer'].map(r => <option key={r} value={r}>{cap(r)}</option>)}
                     </select>
                   ) : (
@@ -629,13 +666,30 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
         {isOwner && (trip.members ?? []).length > 1 && (
           <Surface className="card shr-panel">
             <h3 className="shr-card-title">Danger zone</h3>
-            <p className="hint-text shr-removal-warning">Removing someone revokes their access immediately.</p>
+            <p className="hint-text shr-removal-warning">Removal blocks private trip access and replaces the invite link. Public plans and paid unlocks keep their normal access.</p>
             {(trip.members ?? []).filter(m => m.role !== 'owner').map(m => (
               <div key={m.userId} className="row-between shr-removal-row">
                 <span className="small">{userById(m.userId)?.profile.name}</span>
-                <button className="btn btn-danger btn-sm" onClick={() => setPendingRemove(m)}>Remove</button>
+                <button className="btn btn-danger btn-sm" disabled={memberBusy} onClick={() => setPendingRemove(m)}>Remove</button>
               </div>
             ))}
+          </Surface>
+        )}
+        {isOwner && (
+          <Surface className="card shr-panel">
+            <h3 className="shr-card-title">Removed members</h3>
+            <p className="hint-text">Only an owner can restore access. A new invite does not restore it.</p>
+            {accessPending ? <StateBlock kind="loading" size="compact" title="Checking removed members…" />
+              : accessFailed ? <StateBlock kind="failed" size="compact" title="Could not check removed members."
+              actions={<button className="btn btn-outline btn-sm" disabled={memberBusy} onClick={() => setAccessTry(n => n + 1)}>Try again</button>} />
+              : removedMembers.length === 0 ? <p className="hint-text">No removed members.</p>
+                : removedMembers.map(member => (
+                  <div key={member.userId} className="row-between shr-removal-row">
+                    <span className="small">{userById(member.userId)?.profile.name ?? 'Traveller'}</span>
+                    <button className="btn btn-outline btn-sm" disabled={memberBusy} onClick={() => { void restoreRemoved(member) }}>Restore access</button>
+                  </div>
+                ))}
+            {memberBusy && <p role="status" className="hint-text">Saving trip access…</p>}
           </Surface>
         )}
       </section>
@@ -724,7 +778,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
       <ConfirmDialog
         open={!!pendingRemove}
         title={`Remove ${userById(pendingRemove?.userId)?.profile.name ?? 'this member'}?`}
-        body="They lose access to this trip immediately. You can undo this from the toast for a few seconds."
+        body="This blocks private trip access and replaces the invite link. You can undo removal or restore access here later."
         confirmLabel="Remove member"
         danger
         onConfirm={confirmRemoveMember}

@@ -165,6 +165,7 @@ export interface TripMember {
   userId: ID
   role: 'owner' | 'editor' | 'commenter' | 'viewer'
   joinedAt: number
+  revision?: number
 }
 
 export const EXPENSE_CATEGORIES = [

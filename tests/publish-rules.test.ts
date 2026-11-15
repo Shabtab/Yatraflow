@@ -401,7 +401,7 @@ describe('#389 — the publish form reports a rule against its own field', () =>
     // alert and a pending or kept one as a status. `state-block.test.ts` pins
     // that table, so the two counts here are the form's own messages only: the
     // write-failure banner is the single assertive beat the form still has.
-    expect(SHARE.match(/role="status"/g) ?? []).toHaveLength(2)
+    expect(SHARE.match(/role="status"/g) ?? []).toHaveLength(3)
     expect(SHARE.match(/role="alert"/g) ?? []).toHaveLength(1)
     expect(SHARE).toContain('role="alert">{saveErr}</p>')
     expect(SHARE).toContain('kind="failed" size="compact" title="Couldn’t check if this trip is on Explore."')
@@ -477,49 +477,7 @@ describe('#390 — the cover picker validates what it stores', () => {
 
 // ---- #391: writes that have a way back --------------------------------------
 
-describe('#391 — a refused member write is rolled back and said', () => {
-  const removeMember = STORE.slice(STORE.indexOf('export function removeMember'))
-  const setRole = STORE.slice(STORE.indexOf('export function setMemberRole'))
-
-  it('no longer fires the delete without watching it', () => {
-    // The defect: the row left the cache, the delete fired, and a refused delete
-    // resurrected the member on the next hydrate with no message at all.
-    expect(removeMember).not.toMatch(/fire\('trip_members'/)
-    expect(removeMember).toContain('const removed = before.find(m => m.userId === userId)')
-    expect(removeMember).toContain('restore()')
-  })
-
-  it('restores the exact row, including joinedAt, and not twice', () => {
-    // The cache's own captured row — not a re-read of the server, which is
-    // exactly the thing that just refused us.
-    expect(removeMember).toContain('current.members = [...(current.members ?? []), removed]')
-    expect(removeMember).toContain('if (current.members?.some(m => m.userId === userId)) return')
-  })
-
-  it('rolls a role change back to the role it had', () => {
-    expect(setRole).not.toMatch(/fire\('trip_members'/)
-    expect(setRole).toContain('const previousRole = m.role')
-    expect(setRole).toContain('if (dm) dm.role = previousRole')
-    // A no-op write is not a write: clicking the current role fires nothing.
-    expect(setRole).toContain('if (!t || !m || m.role === role) return')
-  })
-
-  it('fails LOUD on both — a quiet failure reads as success', () => {
-    expect(removeMember).toMatch(/toast\(`Couldn't remove that traveller/)
-    expect(setRole).toMatch(/toast\(`Couldn't change that role/)
-    // …and distinguishes a refused write from a dropped connection.
-    expect(removeMember).toContain("console.error('[yatraflow] trip_members write failed'")
-    expect(setRole).toContain('Couldn’t change that role. Check your connection.')
-  })
-
-  it('keeps the undo window, which covers intent rather than failure', () => {
-    // Both are wanted and they are different failures: the undo restores a
-    // removal the user regrets; this restores one the server refused. Dropping
-    // either half would leave a stranded member.
-    expect(removeMember).toContain('const removed = before.find(')
-    expect(src('../src/store/store.ts')).toContain('export function restoreMember')
-  })
-
+describe('snapshot write feedback', () => {
   it('guards the snapshot link, which could fail in silence', () => {
     // `encodeTripSnapshot` is async and can reject (no CompressionStream, or a
     // plan too large for a URL), which used to leave a button that did nothing:

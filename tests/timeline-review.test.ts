@@ -226,7 +226,7 @@ describe('the timeline blocks cascade in, like the Overview beside them', () => 
     expect(open, 'the tab has no `page-enter` wrapper').toBeGreaterThan(-1)
     // Anchor on the wrapper's own close: the modals follow it, so the block
     // between them is exactly what the cascade owns.
-    const close = tab.indexOf('      </div>\n\n      <StopEditor')
+      const close = tab.search(/<\/div>\s*<StopEditor/)
     expect(close, 'the wrapper does not close before the modals').toBeGreaterThan(open)
     const wrapped = tab.slice(open, close)
     expect(wrapped).toMatch(/className="row-between tl-head"/)

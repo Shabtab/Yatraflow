@@ -72,7 +72,14 @@ describe('#366 — the admin grant lockdown', () => {
       .filter(f => ALL_EIGHT.some(name => grantsFor(read(`../supabase/migrations/${f}`), name).length > 0))
     expect(granters.length).toBeGreaterThan(0)
     for (const f of granters) {
-      expect(LOCKDOWN > f, `${LOCKDOWN} must sort after ${f}`).toBe(true)
+      if (f < LOCKDOWN) continue
+      const source = read(`../supabase/migrations/${f}`)
+      for (const name of ALL_EIGHT) {
+        const grants = grantsFor(source, name)
+        if (grants.length === 0) continue
+        expect(grants, `${f} must keep ${name} authenticated-only`).toEqual([['authenticated']])
+        expect(revokesFor(source, name).flat()).toEqual(expect.arrayContaining(['public', 'anon']))
+      }
     }
   })
 

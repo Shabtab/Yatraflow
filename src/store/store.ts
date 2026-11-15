@@ -39,7 +39,8 @@ import {
 } from './tripPreviewRecovery'
 import { ownSuggestedCover, unclaimedCovers } from '../lib/coverUpload'
 import { publishValidation, PUBLISH_FIELD_ORDER, PublishRejected } from '../lib/publishRules'
-import { makeInviteCode, normalizeInviteCode } from '../lib/inviteCode'
+import { normalizeInviteCode } from '../lib/inviteCode'
+import { parseMemberAccess, memberChangeReceipt, type AccessMember, type MemberAccessState, type MemberChange } from '../lib/memberAccess'
 import { publishedToRow } from '../lib/restoreRows'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
 import { MISSING_BACKEND_MESSAGE, describeAuthFailure } from '../lib/authErrors'
@@ -2167,7 +2168,7 @@ async function seedDemoFor(userId: string, gen: number = hydrateGen): Promise<vo
     if (error) { console.error('seed trip failed', error); continue }
     // The membership row is what makes the trip visible after a reload — a
     // failure here silently produced trips that "persisted" as invisible rows.
-    const { error: memErr } = await supabase.from('trip_members').insert({ trip_id: trip.id, user_id: userId, role: 'owner', joined_at: Date.now() })
+    const { error: memErr } = await supabase.rpc('change_trip_access', { p_trip_id: trip.id, p_action: 'bootstrap' })
     if (memErr) console.error('seed trip member insert failed', memErr)
     markLocalWrite('trips', trip.id)
   }
@@ -2565,65 +2566,119 @@ export async function fetchTripByInviteCode(code: string): Promise<Trip | null> 
   return rowToTrip(preview, [])
 }
 
-/** The invite code the server holds for a trip. `undefined` means the read
- *  failed, so the caller must not guess. `null` means the server holds none. */
-async function readServerInviteCode(tripId: ID, token: string): Promise<string | null | undefined> {
-  const { data, error } = await supabase.from('trips').select('invite_code').eq('id', tripId).maybeSingle()
-    .setHeader('Authorization', `Bearer ${token}`)
-  if (error) {
-    console.error('[yatraflow] invite-code read failed', error)
-    return undefined
-  }
-  const row = data as { invite_code: string | null } | null
-  return row?.invite_code || null
+const accessReceipts = new Map<ID, { owner: string; epoch: number; version: number }>()
+type MemberAccessScope = IdentityScope & { session: Owner | null }
+
+function captureMemberScope(): MemberAccessScope | null {
+  const scope = identityScope()
+  return scope ? { ...scope, session: currentOwner() } : null
 }
 
-/**
- * Mint the invite code for one of the viewer's trips, when the server holds none, and
- * persist it. Codes are shown on the Share tab; minting happens lazily on
- * first share rather than at trip creation, so the DB column can be absent
- * (probe false) without breaking trip creation. A unique clash regenerates
- * the tail; the caller surfaces a final failure honestly.
- */
-export async function ensureInviteCode(tripId: ID): Promise<string | null> {
-  const scope = identityScope()
-  const t = tripById(tripId)
-  if (!scope || !t) return null
-  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
-  const live = () => canSendTripWrite(scope, tripId, accessEpoch)
-  if (!live()) return null
-  if (t.inviteCode) return t.inviteCode
-  const cols = await tripsHaveOptionalColumns()
-  if (!cols.inviteCode || !live()) return null
+function memberAccessLive(scope: MemberAccessScope, tripId: ID, epoch: number): boolean {
+  const trip = tripById(tripId)
+  const sameOwner = scope.session ? sameSession(scope.session, currentOwner()) : currentOwner() === null
+  return sameOwner && isCurrentIdentity(scope) && (tripAccessEpochs.get(tripId) ?? 0) === epoch
+    && !!trip && !trip.deletedAt && (!!trip.members?.some(m => m.userId === scope.userId) || isAdminCached())
+}
+
+function installMemberAccess(tripId: ID, state: MemberAccessState, scope: MemberAccessScope, epoch: number): boolean {
+  if (!memberAccessLive(scope, tripId, epoch)) return false
+  const previous = accessReceipts.get(tripId)
+  const owner = JSON.stringify(scope)
+  if (previous?.owner === owner && previous.epoch === epoch && previous.version > state.version) return false
+  accessReceipts.set(tripId, { owner, epoch, version: state.version })
+  mutateTrip(tripId, draft => {
+    draft.members = state.members
+    draft.inviteCode = state.inviteCode ?? undefined
+  }, { touch: false })
+  return true
+}
+
+export async function readMemberAccess(tripId: ID): Promise<MemberAccessState | null> {
+  const scope = captureMemberScope()
+  if (!scope || !tripById(tripId)) return null
+  const epoch = tripAccessEpochs.get(tripId) ?? 0
+  const token = await tripWriteToken(scope)
+  if (!token || !memberAccessLive(scope, tripId, epoch)) return null
+  try {
+    const { data, error } = await supabase.rpc('trip_access_state', { p_trip_id: tripId })
+      .setHeader('Authorization', 'Bearer ' + token)
+    const state = !error ? parseMemberAccess(data) : null
+    return state && installMemberAccess(tripId, state, scope, epoch) ? state : null
+  } catch { return null }
+}
+
+async function changeMemberAccess(tripId: ID, change: MemberChange): Promise<MemberAccessState | null> {
+  const scope = captureMemberScope()
+  if (!scope) return null
+  const epoch = tripAccessEpochs.get(tripId) ?? 0
+  const live = () => memberAccessLive(scope, tripId, epoch)
+  return serializeTripWrite(`${scope.epoch}:${scope.userId}:${tripId}`, async () => {
   const token = await tripWriteToken(scope)
   if (!token || !live()) return null
-  // A cached trip without a code does not prove the server has none. Read the
-  // server first, so a code that already exists is never replaced.
-  const held = await readServerInviteCode(tripId, token)
-  if (held === undefined || !live()) return null
-  if (held) {
-    mutateTrip(tripId, draft => { draft.inviteCode = held }, { touch: false })
-    return held
-  }
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = makeInviteCode(t)
-    // The write lands only while the server still holds no code.
-    let uniqueClash = false
-    const saved = await persistTripMetadata(tripId, { invite_code: code }, { inviteCode: code }, 'invite_code', error => {
-      uniqueClash = error.code === '23505' || /duplicate key|unique/i.test(error.message ?? '')
-      if (!uniqueClash) console.error('[yatraflow] invite-code mint failed')
-    })
+  try {
+    const userId = change.action === 'restore' ? change.member.userId : change.userId
+    const before = await readMemberAccess(tripId)
+    if (!before || !live()) throw new Error('Could not check current trip access. Try again.')
+    const expected = change.action === 'restore' ? change.member.revision : change.revision ?? before.members.find(m => m.userId === userId)?.revision
+    if (expected === undefined) throw new Error('This membership changed. Check the crew and try again.')
+    const { data, error } = await supabase.rpc('change_trip_access', {
+      p_trip_id: tripId, p_action: change.action, p_user_id: userId,
+      p_role: change.action === 'role' ? change.role : null, p_expected_revision: expected,
+    }).setHeader('Authorization', 'Bearer ' + token)
     if (!live()) return null
-    if (saved) return code
-    const again = await readServerInviteCode(tripId, token)
-    if (!live() || again === undefined) return null
-    if (again) {
-      mutateTrip(tripId, draft => { draft.inviteCode = again }, { touch: false })
-      return again
+    const result = !error ? memberChangeReceipt(data) : null
+    if (result?.state && !installMemberAccess(tripId, result.state, scope, epoch)) return null
+    if (!result || result.status !== 'applied') throw new Error(error?.message || 'This membership changed. Refresh the crew and try again.')
+    if (change.action === 'leave') {
+      cache.trips = cache.trips.filter(t => t.id !== tripId)
+      commit()
+      return before
     }
-    if (!uniqueClash) return null
+    if (!result.state) throw new Error('Could not confirm the membership change. Refresh and try again.')
+    return result.state
+  } catch (error) {
+    if (live()) toast(error instanceof Error ? error.message : 'Could not change trip access. Try again.', 'err')
+    return null
   }
-  return null
+  })
+}
+
+export async function ensureInviteCode(tripId: ID): Promise<string | null> {
+  const scope = captureMemberScope()
+  if (!scope || !tripById(tripId)) return null
+  const epoch = tripAccessEpochs.get(tripId) ?? 0
+  const live = () => memberAccessLive(scope, tripId, epoch)
+  return serializeTripWrite(`${scope.epoch}:${scope.userId}:${tripId}`, async () => {
+    if (!live()) return null
+    const token = await tripWriteToken(scope)
+    if (!token || !live()) return null
+    const base = tripById(tripId)?.writeVersion
+    const previousCode = tripById(tripId)?.inviteCode
+    try {
+      const { data, error } = await supabase.rpc('change_trip_access', {
+        p_trip_id: tripId, p_action: 'invite', p_expected_revision: base ?? null,
+      }).setHeader('Authorization', 'Bearer ' + token)
+      const result = !error ? memberChangeReceipt(data) : null
+      if (!result?.state || result.status !== 'applied' || !installMemberAccess(tripId, result.state, scope, epoch)) return null
+      const version = result.state.planVersion
+      if (!previousCode && validWriteVersion(base) && result.state.mintBaseVersion === base
+        && validWriteVersion(version) && version > base) {
+        mutateTrip(tripId, draft => {
+          if (draft.writeVersion === base) draft.writeVersion = version
+        }, { touch: false })
+        const held = queuedLocalTrips.get(tripId)
+        if (held?.ownerId === scope.userId && held.baseVersion === base) {
+          const next = { ...held, baseVersion: version,
+            trip: { ...held.trip as Trip, inviteCode: result.state.inviteCode ?? undefined, writeVersion: version } }
+          queuedLocalTrips.set(tripId, next)
+          await requeueIfCurrent(next)
+          if (!live()) return null
+        }
+      }
+      return result.state.inviteCode
+    } catch { return null }
+  })
 }
 
 export interface NewTripInput {
@@ -3099,34 +3154,21 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean;
     Object.assign(trip, rowToTrip(saved as TripRow, trip.members ?? []))
     commit()
   }
-  const { error: mErr } = await pinBearer(
-    supabase.from('trip_members').insert(
-      (trip.members ?? []).map(m => ({ trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
-    ),
-    recovery?.token,
-  )
-  if (!guard()) return false
-  // A member row is what makes the trip visible to its owner after a reload —
-  // without it the trips row is an invisible orphan, so a failure here counts
-  // as "not persisted" even though the trips row landed. Same tolerance on a
-  // retry: the membership we are inserting may already be there.
-  if (mErr && !(opts.retry && duplicateMyOwnRow(mErr))) {
-    console.error('member insert failed', mErr)
-    return refuse('Could not save trip.')
-  }
-  if (mErr) {
-    if (!guard()) return false
-    const { data: owner, error: readError } = await pinBearer(
-      supabase.from('trip_members').select('user_id, role, joined_at')
-        .eq('trip_id', trip.id).eq('user_id', ownerId).maybeSingle(),
+  try {
+    const { data: memberData, error: mErr } = await pinBearer(
+      supabase.rpc('change_trip_access', { p_trip_id: trip.id, p_action: 'bootstrap' }),
       recovery?.token,
     )
     if (!guard()) return false
-    if (readError || !owner || owner.role !== 'owner') return false
-    trip.members = [{ userId: owner.user_id, role: 'owner', joinedAt: owner.joined_at }]
+    const memberResult = !mErr ? memberChangeReceipt(memberData) : null
+    if (!memberResult?.state || memberResult.status !== 'applied') return refuse('Could not save the trip crew. Try again.')
+    trip.members = memberResult.state.members
+    trip.inviteCode = memberResult.state.inviteCode ?? undefined
     commit()
+    return true
+  } catch {
+    return guard() ? refuse('Could not save the trip crew. Try again.') : false
   }
-  return true
 }
 
 /** Shared body for every trip copy (fork / copy-this-trip / share import).
@@ -4111,12 +4153,8 @@ export async function permanentlyDeleteTrip(id: ID): Promise<boolean> {
   return true
 }
 
-/** Put a removed member back — powers Undo on member removal. */
-export function restoreMember(tripId: ID, member: TripMember): void {
-  const t = tripById(tripId)
-  if (!t || t.members?.some(m => m.userId === member.userId)) return
-  mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), member] }, { touch: false })
-  fire('trip_members', supabase.from('trip_members').insert({ trip_id: tripId, user_id: member.userId, role: member.role, joined_at: member.joinedAt }))
+export async function restoreMember(tripId: ID, member: AccessMember): Promise<boolean> {
+  return !!await changeMemberAccess(tripId, { action: 'restore', member })
 }
 
 /** What an Undo restore did, so the toast speaks the truth. */
@@ -5745,55 +5783,10 @@ export function canEditAdmin(role: TripMember['role'] | null): boolean {
   return canEdit(role) || isAdminCached()
 }
 
-/**
- * Change a member's role, and roll the cache back if the write is refused.
- *
- * #391 — this was a `mutateTrip` + `fire(...)` with neither a rollback nor a
- * toast, so a role change the server refused looked exactly like one that
- * landed and then reverted on the next hydrate. The undo window that
- * `removeMember` gets does not apply here (there is nothing to undo), so the
- * rollback is the only safety net this path has and it was missing.
- *
- * The directions matter: the cache is restored on failure (the UI must not
- * claim a role the server refused) and the failure is LOUD, because a quiet
- * one is indistinguishable from success. A quiet SUCCESS is fine here.
- *
- * `mutateTrip` with `touch: false` is kept, so the role change does not bump
- * the trip's `updatedAt` and re-arm the "page behind itinerary" nudge for a
- * change no itinerary content saw.
- */
-export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']): void {
-  const t = tripById(tripId)
-  const m = t?.members?.find(x => x.userId === userId)
-  if (!t || !m || m.role === role) return
-  const previousRole = m.role
-  mutateTrip(tripId, draft => {
-    const dm = draft.members?.find(x => x.userId === userId)
-    if (dm) dm.role = role
-  }, { touch: false })
-  void Promise.resolve(
-    supabase.from('trip_members').update({ role }).eq('trip_id', tripId).eq('user_id', userId),
-  ).then(
-    res => {
-      if (!res?.error) return
-      console.error('[yatraflow] trip_members write failed', res.error)
-      mutateTrip(tripId, draft => {
-        const dm = draft.members?.find(x => x.userId === userId)
-        if (dm) dm.role = previousRole
-      }, { touch: false })
-      commit()
-      toast(`Couldn't change that role. It has been put back. (${res.error.message ?? 'write refused'})`, 'err')
-    },
-    err => {
-      console.error('[yatraflow] trip_members write rejected', err)
-      mutateTrip(tripId, draft => {
-        const dm = draft.members?.find(x => x.userId === userId)
-        if (dm) dm.role = previousRole
-      }, { touch: false })
-      commit()
-      toast('Couldn’t change that role. Check your connection.', 'err')
-    },
-  )
+export async function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']): Promise<boolean> {
+  if (role === 'owner') return false
+  const revision = tripById(tripId)?.members?.find(m => m.userId === userId)?.revision
+  return !!await changeMemberAccess(tripId, { action: 'role', userId, role, revision })
 }
 
 /**
@@ -6172,49 +6165,11 @@ export async function viewerIsMemberOf(tripId: ID, userId: ID): Promise<boolean>
   return (await membershipCertain(tripId, userId)).member
 }
 
-/**
- * Remove a member, and put them back if the write is refused.
- *
- * #391 — the row was filtered out of the cache and the delete fired with no
- * error handling, so a refused delete looked like a successful one and the
- * member came back on the next hydrate with no message. The 7s `undoToast`
- * covers INTENT-regret ("I did not mean to"); this covers WRITE-FAILURE. They
- * are different failures and both paths are wanted — the undo restores through
- * `restoreMember`, and this restores the exact row the cache held, including
- * its `joinedAt`, so a failed delete does not quietly re-order the crew.
- */
-export function removeMember(tripId: ID, userId: ID): void {
-  const t = tripById(tripId)
-  if (!t) return
-  const before = t.members ?? []
-  const removed = before.find(m => m.userId === userId)
-  if (!removed) return
-  t.members = before.filter(m => m.userId !== userId)
-  commit()
-  // The rollback is the cache's OWN list, captured before the filter — not a
-  // re-read of the server, which is exactly the thing that just refused us.
-  const restore = () => {
-    const current = cache.trips.find(x => x.id === tripId)
-    if (!current) return
-    if (current.members?.some(m => m.userId === userId)) return // already back
-    current.members = [...(current.members ?? []), removed]
-    commit()
-  }
-  void Promise.resolve(
-    supabase.from('trip_members').delete().eq('trip_id', tripId).eq('user_id', userId),
-  ).then(
-    res => {
-      if (!res?.error) return
-      console.error('[yatraflow] trip_members write failed', res.error)
-      restore()
-      toast(`Couldn't remove that traveller. They're still on the trip. (${res.error.message ?? 'write refused'})`, 'err')
-    },
-    err => {
-      console.error('[yatraflow] trip_members write rejected', err)
-      restore()
-      toast('Couldn’t remove that traveller. Check your connection.', 'err')
-    },
-  )
+export async function removeMember(tripId: ID, userId: ID): Promise<AccessMember | null> {
+  const isSelf = cache.sessionUserId === userId
+  const revision = tripById(tripId)?.members?.find(m => m.userId === userId)?.revision
+  const state = await changeMemberAccess(tripId, { action: isSelf ? 'leave' : 'remove', userId, revision })
+  return state?.removed.find(m => m.userId === userId) ?? null
 }
 
 export function userName(id: ID): string {

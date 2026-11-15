@@ -112,7 +112,12 @@ vi.mock('../src/lib/supabase', () => {
           then: (res: (v: { data: unknown; error: unknown }) => unknown) => {
             state.calls.push({ fn, args, header: (b.authHeader as string | undefined) ?? null })
             state.log.push(`call ${fn}`)
-            const answer = fn === 'restore_trip_contributions' ? state.archive : { status: 'applied' }
+            const argsTrip = typeof args === 'object' && args !== null && 'p_trip_id' in args ? args.p_trip_id : null
+            const owner = { userId: 'amelia', role: 'owner', joinedAt: 0, revision: 1 }
+            const answer = fn === 'restore_trip_contributions' ? state.archive
+              : fn === 'change_trip_access' ? (state.fail.has('trip_members') ? { error: 'Membership unavailable' }
+                : { status: 'applied', state: { version: 1, inviteCode: null, members: [owner, { userId: 'priya', role: 'editor', joinedAt: 1, revision: 1 }], removed: [] }, trip: argsTrip })
+                : { status: 'applied' }
             const isError = 'error' in answer
             const settle = () => Promise.resolve({
               data: isError ? null : answer,
@@ -298,7 +303,9 @@ describe('undo after trip delete (#43)', () => {
     expect(restored?.days[0].stops).toHaveLength(1)   // JSONB survived all along
     expect(restored?.expenses).toHaveLength(1)
     expect(store.getSnapshot().suggestions.filter(s => s.tripId === 'trip-1')).toHaveLength(1)
-    expect(writesTo('trip_members', 'insert')[0].payload).toHaveLength(2)
+    expect(restored?.members).toHaveLength(2)
+    expect(state.calls.some(c => c.fn === 'change_trip_access')).toBe(true)
+    expect(writesTo('trip_members', 'insert')).toHaveLength(0)
   })
 
   it('restores nothing when there is no captured payload to recover', async () => {
@@ -451,7 +458,8 @@ describe('undo after trip delete (#43)', () => {
 
     // The whole recovery runs this time, and the payload is released.
     expect(state.calls.filter(c => c.fn === 'restore_trip_contributions')).toHaveLength(1)
-    expect(writesTo('trip_members', 'insert')).toHaveLength(1)
+    expect(state.calls.filter(c => c.fn === 'change_trip_access')).toHaveLength(1)
+    expect(writesTo('trip_members', 'insert')).toHaveLength(0)
     store.restoreTrip(trip, 0)
     await flush()
     await flush()

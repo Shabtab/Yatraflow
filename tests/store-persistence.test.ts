@@ -80,10 +80,11 @@ function tripsUpdates() {
 }
 
 describe('store persistence write-through', () => {
-  it('duplicateTrip writes the trip row plus its members row', async () => {
+  it('duplicateTrip saves the trip and receives its owner membership', async () => {
     singleTrip()
     await flush()
     expect(calls.some(c => c.table === 'trips' && (c.method === 'insert' || c.method === 'update'))).toBe(true)
+    expect(tripById(getSnapshot().trips.at(-1)!.id)?.members?.some(m => m.userId === ownerId && m.role === 'owner')).toBe(true)
     expect(calls.some(c => c.table === 'trip_members' && c.method === 'insert')).toBe(true)
   })
 

@@ -39,6 +39,28 @@ number collides with a shipped release, the ledger wins.
 
 ---
 
+## Issue #931: durable trip-member access
+
+Status: approved for local implementation. Codex is repairing the server and client boundary. Verification is pending.
+
+Removal needs an explicit owner restore, even with a replacement invite.
+Keep Undo and add a small owner-only restore option after its window expires.
+Demotion must survive leaving and rejoining. Ordinary voluntary leaving must remain available.
+Server operations must atomically record access restrictions and rotate the invite on removal or demotion.
+Direct writes and concurrent joins must not bypass these rules.
+Preserve owner, admin, disabled-account, publication, and trash boundaries.
+The Share tab must display the current invite and acknowledge server outcomes accurately.
+Add actual SQL, RLS-contract, store, and browser evidence before completion.
+
+The user confirmed one-time expiry of all existing invite links during rollout.
+Past removed identities cannot be recovered from a membership table with no removal history.
+The proposed cutover preserves current members and invalidates their old invite codes.
+It preserves current roles and must not repeat global rotation on a migration rerun.
+Historical removed identities cannot be blocked by identity without a prior removal record.
+Removal restricts the private workspace, not public pages or paid entitlements.
+Root Codex implements the approved specification. Existing agents will review the fixed candidate.
+Hosted SQL, publication, and deployment remain separate approval steps.
+
 ## Papercut warmth execution track
 
 This track is the plan of record for the 28 October design sources.
