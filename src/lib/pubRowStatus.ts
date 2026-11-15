@@ -47,7 +47,7 @@ export function pubRowStatus(
   const builtAt = pub.refreshedAt ?? pub.publishedAt
   if (trip && trip.updatedAt > builtAt) {
     return {
-      key: 'behind', label: 'Page behind itinerary', tone: 'saffron',
+      key: 'behind', label: 'Needs update', tone: 'saffron',
       action: 'update-page', actionLabel: 'Update page',
     }
   }
@@ -55,4 +55,10 @@ export function pubRowStatus(
     key: 'live', label: 'Live', tone: 'ok',
     action: 'edit', actionLabel: 'Edit',
   }
+}
+
+/** The hub's live count. A page that needs an update is still live: it is
+ *  on Explore, and only its content is out of date. */
+export function livePublicationCount(statuses: Pick<PubRowStatus, 'key'>[]): number {
+  return statuses.filter(s => s.key === 'live' || s.key === 'behind').length
 }

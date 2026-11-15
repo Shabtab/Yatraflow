@@ -19,3 +19,9 @@ export function sourceDisplayLabel(source: string): string {
   if (known) return known
   return source ? source.charAt(0).toUpperCase() + source.slice(1) : 'Unknown source'
 }
+
+/** A place name without a trailing country, for display only. The stored
+ *  route summary keeps its full place names. */
+export function placeShortName(place: string): string {
+  return place.replace(/,\s*India\s*$/i, '').trim()
+}

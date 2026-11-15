@@ -703,6 +703,7 @@ p.cr-store-planning {
 }
 .cr-hub-publications {
   container: hubpubs / inline-size;
+  --cr-hub-actions: 228px;
 }
 .cr-hub-table-head {
   display: none;
@@ -713,10 +714,17 @@ p.cr-store-planning {
   gap: var(--space-2);
   padding: var(--space-5) var(--space-7);
 }
+.cr-hub-publication .pub-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+  gap: var(--space-2);
+}
 @container hubpubs (min-width: 640px) {
   .cr-hub-table-head {
     display: grid;
-    grid-template-columns: minmax(0, 1.6fr) 52px 72px minmax(0, 1fr) 64px 64px 56px 112px;
+    grid-template-columns: minmax(0, 1.6fr) 52px 112px minmax(0, 1fr) 64px 64px 72px minmax(var(--cr-hub-actions), max-content);
     gap: var(--space-3);
     align-items: center;
     min-height: 38px;
@@ -728,11 +736,18 @@ p.cr-store-planning {
   }
   .cr-hub-publication {
     display: grid;
-    grid-template-columns: minmax(0, 1.6fr) 52px 72px minmax(0, 1fr) 64px 64px 56px 112px;
+    grid-template-columns: minmax(0, 1.6fr) 52px 112px minmax(0, 1fr) 64px 64px 72px minmax(var(--cr-hub-actions), max-content);
     gap: var(--space-3);
     align-items: center;
     min-height: 61px;
     padding: var(--space-4a) 0;
+  }
+  .cr-hub-publication .pub-row-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--space-2);
   }
 }
 /* The legacy strip paints a navy band with white figures. The kit tile is a
@@ -804,6 +819,7 @@ p.cr-store-planning {
 }
 .cr-hub-status {
   min-width: 0;
+  white-space: nowrap;
 }
 .cr-hub-views details {
   margin-top: var(--space-2);

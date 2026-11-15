@@ -45,7 +45,8 @@ import { PageHeader } from '../components/page/PageHeader'
 import { SegmentedTabs } from '../components/page/SegmentedTabs'
 import { StateBlock } from '../components/page/StateBlock'
 import { Surface } from '../components/page/Surface'
-import { pubRowStatus } from '../lib/pubRowStatus'
+import { livePublicationCount, pubRowStatus } from '../lib/pubRowStatus'
+import { placeShortName } from '../lib/creatorCopy'
 import { appLink } from '../lib/appLink'
 import { sliceState, rowsView, pubsPanel, type RowsView } from '../lib/readState'
 
@@ -643,8 +644,8 @@ export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollow
     ? daily.reduce((min, r) => (r.day < min ? r.day : min), daily[0].day)
     : null
   // #350 — the strip answers "how much of my work is up?", so a soft-unpublished
-  // publication is neither live nor behind: it cannot be live (that is what the
-  // marker means) and it cannot be behind its itinerary either, because a page
+  // publication is neither live nor out of date: it cannot be live (that is what
+  // the marker means) and it cannot need an update either, because a page
   // that is down has nothing to catch up on. The row-level nudge is suppressed
   // for the same reason, and the two MUST agree — a KPI that counts a row the
   // list below it refuses to label is the strip contradicting its own contents.
@@ -655,7 +656,7 @@ export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollow
   // reading both halves from `pubRowStatus` makes that agreement structural
   // instead of a promise two copies of the rule have to keep.
   const rowStatuses = myPubs.map(p => pubRowStatus(p, tripById(p.tripId)))
-  const liveCount = rowStatuses.filter(s => s.key === 'live').length
+  const liveCount = livePublicationCount(rowStatuses)
   const unpublishedCount = rowStatuses.filter(s => s.key === 'unpublished').length
   const staleCount = rowStatuses.filter(s => s.key === 'behind').length
   const windowLabel = FUNNEL_WINDOWS.find(w => w.days === days)?.label ?? `${days} days`
@@ -832,7 +833,7 @@ export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollow
               <h2 className="hub-card-title" id="hub-pubs-h">Publications</h2>
               {!unknownPubs && tripsKnown && (
                 <span>
-                  {liveCount} live{unpublishedCount > 0 ? ` · ${unpublishedCount} unpublished` : ''}{staleCount > 0 ? ` · ${staleCount} behind` : ''}
+                  {liveCount} live{unpublishedCount > 0 ? ` · ${unpublishedCount} unpublished` : ''}{staleCount > 0 ? ` · ${staleCount} needs update` : ''}
                 </span>
               )}
             </div>
@@ -861,8 +862,8 @@ export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollow
                   // purpose: the row is where its funnel and its sales history
                   // live, and unpublishing does not un-earn either. What it must
                   // not do is read as live, so it is labelled, and the
-                  // "page behind itinerary" nudge is suppressed — a page that is
-                  // down cannot be behind.
+                  // "Needs update" nudge is suppressed — a page that is down
+                  // cannot need an update.
                   //
                   // MR11 — the label, the action and the strip's counts all
                   // come from the same `pubRowStatus` call (see
@@ -874,7 +875,7 @@ export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollow
                         <a {...appLink(`/pub/${p.id}`)}>{p.title}</a>
                         <span className="hub-lead-where">
                           {[
-                            p.routeSummary.slice(0, 3).join(' · '),
+                            p.routeSummary.slice(0, 3).map(placeShortName).join(' · '),
                             p.durationDays ? `${p.durationDays} days` : '',
                           ].filter(Boolean).join(' · ')}
                         </span>
