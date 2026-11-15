@@ -15,6 +15,9 @@ export interface CreatorRankRow extends CreatorTile {
   /** 1-based position in `creatorList`'s order (forks, plans, name, id). */
   rank: number
   views: number
+  /** The route the ranking cover shows: the creator's most-forked live route,
+   *  then the most-viewed, then the newest. */
+  leadRouteId: string
   /** The most common `travelStyle` across the creator's live routes; ties go
    *  to the alphabetically earlier style name. Always defined: a row exists
    *  only for a creator with at least one live route. */
@@ -38,6 +41,9 @@ export function rankCreators(
       ...tile,
       rank: index + 1,
       views: own.reduce((total, pub) => total + pub.views, 0),
+      leadRouteId: [...own].sort((a, b) =>
+        b.copies - a.copies || b.views - a.views || b.publishedAt - a.publishedAt,
+      )[0].id,
       knownFor: mostCommonStyle(own.map(pub => pub.travelStyle)),
     }
   })
