@@ -61,6 +61,7 @@ const PublicItineraryPage = lazy(() => import('./pages/PublicItinerary').then(m 
 const ProfilePage = lazy(() => import('./pages/Profile').then(m => ({ default: m.ProfilePage })))
 const PurchasesPage = lazy(() => import('./pages/Purchases').then(m => ({ default: m.PurchasesPage })))
 const CreatorPage = lazy(() => import('./pages/CreatorPage').then(m => ({ default: m.CreatorPage })))
+const CreatorRankingsPage = lazy(() => import('./pages/CreatorRankings').then(m => ({ default: m.CreatorRankingsPage })))
 // Gated route: only shown in the nav when the account has creator mode on.
 const CreatorHubPage = lazy(() => import('./pages/CreatorHubPage').then(m => ({ default: m.CreatorHubPage })))
 // Masteradmin console: JWT app_metadata role only (never linked anywhere -
@@ -616,6 +617,9 @@ export default function App() {
         break
       case 'explore':
         page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
+        break
+      case 'creators':
+        page = <Suspense fallback={lazyRouteFallback}><CreatorRankingsPage /></Suspense>
         break
       case 'pub':
         page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage key={parts[1]} slug={parts[1] ?? ''} onNavigate={navigate} /></Suspense>

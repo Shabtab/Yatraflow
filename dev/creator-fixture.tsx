@@ -19,7 +19,7 @@
 // screen, so `rowsView` returns 'kept' — the hub keeps its rows and adds the
 // failure note. The store cannot report "kept" itself; the pair (failed read,
 // rows present) is what produces it, exactly as in production.
-import React from 'react'
+import React, { Suspense, lazy } from 'react'
 import ReactDOM from 'react-dom/client'
 import '@fontsource/sora/500.css'
 import '@fontsource/sora/600.css'
@@ -33,6 +33,8 @@ import type { CachedUser, PrivateUser, PublicUser, PublishedItinerary, Trip } fr
 import { getSnapshot, _installUsersForTest } from '../src/store/store'
 import { CreatorPage } from '../src/pages/CreatorPage'
 import { CreatorHubPage } from '../src/pages/CreatorHubPage'
+const CreatorRankingsPage = lazy(() =>
+  import('../src/pages/CreatorRankings').then(module => ({ default: module.CreatorRankingsPage })))
 import { CrSectionHead } from '../src/components/creator/CrSectionHead'
 import { CrStatTile } from '../src/components/creator/CrStatTile'
 import { CrRankTile } from '../src/components/creator/CrRankTile'
@@ -49,9 +51,12 @@ const LINKS = params.get('links') ?? 'both'
 const READ = params.get('read') ?? 'ok'
 const VIEWER = params.get('viewer') ?? 'owner'
 const OWNER = params.get('owner') ?? 'ready'
+const PAGE = params.get('page')
 
 const CREATOR_ID = 'fixture-creator-0001'
 const VIEWER_ID = 'fixture-viewer-0002'
+const RANKED_ID = 'fixture-creator-ranked'
+const DISABLED_ID = 'fixture-creator-disabled'
 
 // ---- Long strings: exactly the lengths the spec pins (40 name, 300 bio) ----
 const LONG_NAME = ('Fixture Creator ' + 'n'.repeat(40)).slice(0, 40)
@@ -69,6 +74,16 @@ const LIVE_COUNT: Record<Exclude<CaseKey, 'unpub' | 'long' | 'disabled'>, number
 
 const pubCount = CASE_KEY in LIVE_COUNT ? LIVE_COUNT[CASE_KEY as keyof typeof LIVE_COUNT] : 1
 const WITH_UNPUB = CASE_KEY === 'unpub'
+
+// ---- Rankings fixture: 0, 1, 3 or 15 ranked creators, one disabled account ----
+const RANK_COUNTS: Record<string, number> = { 'rank-0': 0, 'rank-1': 1, 'rank-3': 3, 'rank-15': 15 }
+const RANK_CASE = CASE in RANK_COUNTS ? CASE : undefined
+const rankCount = RANK_CASE ? RANK_COUNTS[CASE] : 0
+const rankStyleFor = (index: number) => (
+  ['adventure', 'balanced', 'food-focused', 'family', 'budget', 'relaxed', 'packed'][
+    index % 7
+  ]
+)
 
 // ---- The seeded creator (and, for the non-owner viewer, a second account) ----
 // Clearly synthetic names — "Fixture", an example.invalid address — so a
@@ -126,6 +141,40 @@ const creatorPublic: PublicUser = {
   },
 }
 
+const rankedPrivate: PrivateUser = {
+  id: RANKED_ID,
+  kind: 'private',
+  email: 'fixture-ranked@example.invalid',
+  createdAt: 3,
+  profile: {
+    name: 'Fixture Ranked Creator',
+    isCreator: true,
+    creatorAvailable: true,
+    languages: ['en'],
+    travelStyles: ['balanced'],
+  },
+}
+
+const rankedPublic: PublicUser = {
+  id: RANKED_ID,
+  kind: 'public',
+  profile: {
+    name: 'Fixture Ranked Creator',
+    isCreator: true,
+    creatorAvailable: true,
+  },
+}
+
+const disabledCreator: PublicUser = {
+  id: DISABLED_ID,
+  kind: 'public',
+  profile: {
+    name: 'Fixture Disabled Creator',
+    isCreator: true,
+    creatorAvailable: false,
+  },
+}
+
 const viewerUser: PrivateUser = {
   id: VIEWER_ID,
   kind: 'private',
@@ -144,8 +193,26 @@ const viewerUser: PrivateUser = {
 // shape the creator's row may hold: the account's OWN row is private, a row
 // another account sees is the public card only (#800).
 const sessionUserId: string | null =
-  VIEWER === 'owner' ? CREATOR_ID : VIEWER === 'nonowner' ? VIEWER_ID : null
-const creatorRow: CachedUser = VIEWER === 'owner' ? creatorPrivate : creatorPublic
+  PAGE === 'rankings'
+    ? VIEWER === 'signedin' ? RANKED_ID : null
+    : VIEWER === 'owner' ? CREATOR_ID : VIEWER === 'nonowner' ? VIEWER_ID : null
+const rankCreatorIds = Array.from({ length: rankCount }, (_, index) => (
+  index === 2 ? RANKED_ID : `fixture-rank-creator-${String(index + 1).padStart(4, '0')}`
+))
+
+const rankCreatorRows: CachedUser[] = rankCreatorIds.map((id, index) => (
+  id === RANKED_ID
+    ? sessionUserId === RANKED_ID ? rankedPrivate : rankedPublic
+    : {
+        id,
+        kind: 'public',
+        profile: {
+          name: `Fixture Ranked ${String.fromCharCode(65 + index)}`,
+          isCreator: true,
+          creatorAvailable: true,
+        },
+      }
+))
 
 // ---- The seeded trips behind the publications (one each, minimal shape) ----
 function trip(i: number): Trip {
@@ -198,6 +265,20 @@ function pub(i: number, takenDown: boolean): PublishedItinerary {
 
 const livePubs = Array.from({ length: pubCount }, (_, i) => pub(i, false))
 const allPubs = WITH_UNPUB ? [...livePubs, pub(90, true)] : livePubs
+const rankPubs = [
+  ...rankCreatorIds.map((creatorId, index) => ({
+    ...pub(index, false),
+    id: `fixture-rank-pub-${index}`,
+    creatorId,
+    title: `Fixture ranked drive ${index}`,
+    travelStyle: rankStyleFor(index),
+    views: 500 - index * 5,
+    copies: Math.max(1, rankCount * 4 - index),
+  })),
+  // A disabled account's live route still exists, but the account never ranks.
+  { ...pub(90, false), id: 'fixture-rank-pub-disabled', creatorId: DISABLED_ID, copies: 999, views: 999 },
+]
+const seededPubs = RANK_CASE ? rankPubs : allPubs
 
 // ---- The slice-read verdicts ----
 // `ok`     → 'ready';  absent → 'reading';  `failed` → 'failed'.
@@ -218,7 +299,7 @@ db.trips = allPubs.map((p, i) => trip(WITH_UNPUB && i === livePubs.length ? 90 :
 db.decisions = []
 db.activity = []
 db.notifications = []
-db.published = allPubs
+db.published = seededPubs
 db.suggestions = []
 db.ready = true
 db.sessionUserId = sessionUserId
@@ -229,7 +310,11 @@ const reads: Record<string, 'ok' | 'failed'> = {
 }
 db.sliceReads = reads
 
-if (sessionUserId === CREATOR_ID) {
+if (PAGE === 'rankings') {
+  _installUsersForTest(sessionUserId === RANKED_ID
+    ? [...rankCreatorRows, disabledCreator]
+    : [...rankCreatorRows, rankedPublic, disabledCreator])
+} else if (sessionUserId === CREATOR_ID) {
   _installUsersForTest([creatorPrivate])
 } else if (sessionUserId === VIEWER_ID) {
   _installUsersForTest([viewerUser, creatorPublic])
@@ -262,6 +347,15 @@ const INDEX_CASES: { label: string; query: string }[] = [
   { label: 'viewer: non-owner (signed in)', query: '?case=live-3&viewer=nonowner' },
   { label: 'viewer: signed out', query: '?case=live-3&viewer=signedout' },
   { label: 'disabled creator', query: '?case=disabled' },
+  { label: 'rankings: 0 creators', query: '?page=rankings&case=rank-0' },
+  { label: 'rankings: 1 creator', query: '?page=rankings&case=rank-1' },
+  { label: 'rankings: 3 creators', query: '?page=rankings&case=rank-3' },
+  { label: 'rankings: 15 creators', query: '?page=rankings&case=rank-15' },
+  { label: 'rankings: signed-in ranked creator', query: '?page=rankings&case=rank-3&viewer=signedin' },
+  { label: 'rankings: read loading', query: '?page=rankings&case=rank-3&read=reading' },
+  { label: 'rankings: read failed', query: '?page=rankings&case=rank-3&read=failed' },
+  { label: 'rankings: read kept', query: '?page=rankings&case=rank-3&read=kept' },
+  { label: 'rankings: disabled creator hidden', query: '?page=rankings&case=rank-1' },
 ]
 
 function FixtureIndex() {
@@ -464,7 +558,11 @@ if (!root) throw new Error('Creator fixture root not found')
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <>
-      {CASE === 'kit' ? (
+      {PAGE === 'rankings' ? (
+        <Suspense fallback={<StateBlockLoading />}>
+          <CreatorRankingsPage />
+        </Suspense>
+      ) : CASE === 'kit' ? (
         <KitGallery />
       ) : params.has('case') || params.has('viewer') || params.has('read') || params.has('links') || params.has('owner') ? (
         <>
@@ -477,3 +575,7 @@ ReactDOM.createRoot(root).render(
     </>
   </React.StrictMode>,
 )
+
+function StateBlockLoading() {
+  return <div className="container yf-page page-enter">Loading…</div>
+}

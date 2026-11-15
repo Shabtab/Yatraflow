@@ -53,7 +53,7 @@ It also has a clean `npm run verify` run and a change fragment. Send Claude that
 
 **R20. Titles follow R14.** Card and section titles use Plus Jakarta Sans 800, at 18px with a line height of 1.3. Change them page by page, as each page converts. Big numbers keep Sora. Do not change the global h1-h4 rule in a page PR.
 
-**R21. Serif h1 on content pages only.** Trip created, Profile, Creator hub and Invite get the `PageHeader` serif h1. Auth, Admin and Native home keep a Sora h1.
+**R21. Serif h1 on content pages only.** Trip created, Profile, Creator hub, Invite and Creator rankings get the `PageHeader` serif h1. Auth, Admin and Native home keep a Sora h1.
 
 **R22. Tabs use a compact `StateBlock`.** Inside a workspace tab or a card, use the compact variant. It has no dashed border and small padding. It keeps the same roles, and failed stays separate from empty. A whole page uses the full block.
 

@@ -120,7 +120,7 @@ describe('legacy hash bridge (#426, slice 2)', () => {
     // The router's own cases minus the bridge's exclusions. '' is the bare
     // route; 'creator' keeps its switch case (the app page lives at
     // /creator/<id> while /c/<id> stays the crawler card — see routes.ts).
-    for (const segment of ['trips', 'new', 'created', 'trip', 'explore', 'pub', 'creator', 'profile', 'purchases', 'creator-hub', 'admin', 'auth', 'join', 'invite', 'share']) {
+    for (const segment of ['trips', 'new', 'created', 'trip', 'explore', 'pub', 'creator', 'creators', 'profile', 'purchases', 'creator-hub', 'admin', 'auth', 'join', 'invite', 'share']) {
       expect(ROUTED_SEGMENTS, `/${segment} must be bridged`).toContain(segment)
     }
   })

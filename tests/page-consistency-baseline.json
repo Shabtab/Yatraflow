@@ -33,6 +33,12 @@
       "inlineStyle": 2,
       "rawH1": 0
     },
+    "src/pages/CreatorRankings.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 0
+    },
     "src/pages/CreatorPage.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
