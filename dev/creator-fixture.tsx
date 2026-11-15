@@ -194,8 +194,6 @@ const sessionUserId: string | null =
   PAGE === 'rankings'
     ? VIEWER === 'signedin' ? RANKED_ID : null
     : VIEWER === 'owner' ? CREATOR_ID : VIEWER === 'nonowner' ? VIEWER_ID : null
-const creatorRow: CachedUser = VIEWER === 'owner' ? creatorPrivate : creatorPublic
-
 const rankCreatorIds = Array.from({ length: rankCount }, (_, index) => (
   index === 2 ? RANKED_ID : `fixture-rank-creator-${String(index + 1).padStart(4, '0')}`
 ))
@@ -278,7 +276,7 @@ const rankPubs = [
   // A disabled account's live route still exists, but the account never ranks.
   { ...pub(90, false), id: 'fixture-rank-pub-disabled', creatorId: DISABLED_ID, copies: 999, views: 999 },
 ]
-const rankingsPubs = RANK_CASE ? rankPubs : allPubs
+const seededPubs = RANK_CASE ? rankPubs : allPubs
 
 // ---- The slice-read verdicts ----
 // `ok`     → 'ready';  absent → 'reading';  `failed` → 'failed'.
@@ -299,7 +297,7 @@ db.trips = allPubs.map((p, i) => trip(WITH_UNPUB && i === livePubs.length ? 90 :
 db.decisions = []
 db.activity = []
 db.notifications = []
-db.published = allPubs
+db.published = seededPubs
 db.suggestions = []
 db.ready = true
 db.sessionUserId = sessionUserId
