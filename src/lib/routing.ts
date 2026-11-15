@@ -15,16 +15,31 @@
 //   2. the per-leg fallback (Google-first) runs legs in PARALLEL — the old
 //      "sequential by design" comment was only ever about being polite to one
 //      demo server, and the chain request IS the polite path now;
-//   3. every fetch takes the caller's AbortSignal, so a cancelled effect
-//      stops burning the rate-limit budget instead of discarding results;
+//   3. every fetch takes the caller's AbortSignal (Google Routes included), so
+//      a cancelled effect stops burning the rate-limit budget instead of
+//      discarding results;
 //   4. a small session cache remembers measured legs (rounded pair + mode),
 //      so the workspace chain, the map's day lines, the Board and the stop
 //      editor share one measurement instead of re-fetching the same roads.
 // Estimate legs are deliberately NOT cached: a rate-limited leg must stay
 // free to succeed on the next open, never pinned as a chord for the session.
+//
+// One cold page load makes ONE Google request (it made 16 before):
+//   5. a request that is still in flight is shared. Two callers that ask for
+//      the same chain (React StrictMode replays the workspace effect in dev) or
+//      the same leg wait on one fetch. Each keeps its own cancellation;
+//   6. a chain that failed in TRANSPORT (rejected fetch, 401/403/429, a quota
+//      refusal) is not split into per-leg Google calls, because splitting
+//      cannot fix it. It makes one OSRM chain request, then degrades to
+//      estimates. Only a refusal that splitting can fix (leg-count mismatch,
+//      geometry assertion) still measures leg by leg.
 import { legBetween } from './engine'
 import type { EngineAssumptions, LegEstimate } from './engine'
-import { googleRoute, routesEnabled, type RouteResult, type CorridorResult, type RoadLegResult } from './providers/routes'
+import {
+  googleRoute, routesEnabled, routeFailureIsSplittable, RoutesRefusalError,
+  type RouteResult, type CorridorResult, type RoadLegResult,
+} from './providers/routes'
+import { requestSignal } from './providers/requestSignal'
 import type { RoadProfilePoint } from './ridePlan'
 
 const OSRM = 'https://router.project-osrm.org/route/v1/driving'
@@ -81,17 +96,6 @@ interface OsrmChainRoute {
       annotation?: { distance?: number[]; duration?: number[] }
     }[]
   }[]
-}
-
-/** Combine a caller's signal with the per-request timeout where supported. */
-function requestSignal(signal: AbortSignal | undefined): AbortSignal {
-  // an already-aborted caller must hand the fetch an ABORTED signal — a fresh
-  // timeout here would send post-abort fallback fetches out un-aborted
-  if (signal?.aborted) return AbortSignal.abort()
-  const timeout = AbortSignal.timeout(8000)
-  if (!signal) return timeout
-  const Any = AbortSignal as unknown as { any?: (sigs: AbortSignal[]) => AbortSignal }
-  return Any.any ? Any.any([signal, timeout]) : timeout
 }
 
 /**
@@ -278,7 +282,7 @@ function legCacheKey(a: LatLng, b: LatLng, mode: string): string {
   // are never stored). A FIXED sentinel is safe: valid keys always begin
   // `${mode}:`, and invalid legs never reach cacheSet. (No Math.random —
   // Codacy's weak-RNG rule rightly objects, and determinism costs nothing.)
-  if (!va || !vb) return 'invalid:uncacheable'
+  if (!va || !vb) return UNCACHEABLE_SENTINEL
   return `${mode}:${va.lat.toFixed(5)},${va.lng.toFixed(5)}>${vb.lat.toFixed(5)},${vb.lng.toFixed(5)}`
 }
 
@@ -302,11 +306,133 @@ function cacheSet(key: string, leg: RoadLeg): void {
 /** Test seam: drop every cached leg (routing-routes tests re-stub fetch). */
 export function clearRouteCacheForTests(): void {
   legCache.clear()
+  pendingChains.clear()
+  pendingLegs.clear()
 }
 
 /** Test seam: how many legs are currently cached. */
 export function routeCacheSizeForTests(): number {
   return legCache.size
+}
+
+/** The key `legCacheKey` gives every unvalidated pair — never a shareable key. */
+const UNCACHEABLE_SENTINEL = 'invalid:uncacheable'
+
+// ---- in-flight sharing -----------------------------------------------------
+// The cache above stores COMPLETED legs only. A second caller that arrives while
+// the first request is still out used to start a second request. Pending work is
+// now shared by key, and every caller keeps its OWN cancellation: the shared
+// request belongs to its subscribers, not to the first one. It is cancelled only
+// when the last subscriber has gone, and only after a short grace period — React
+// StrictMode runs effect, cleanup, effect in one task, so the replay must be able
+// to adopt the request its own cleanup just released.
+interface InFlight<T> {
+  promise: Promise<T>
+  controller: AbortController
+  subscribers: number
+  stopTimer: ReturnType<typeof setTimeout> | undefined
+}
+
+const ABANDON_GRACE_MS = 0
+const pendingChains = new Map<string, InFlight<ChainOutcome>>()
+const pendingLegs = new Map<string, InFlight<RoadLeg>>()
+
+/**
+ * Run `start` once per `key` while it is pending; every caller gets its result.
+ * `start` runs on the SHARED signal, never a caller's. The shared promise never
+ * rejects (a failure resolves `whenAborted`), so a request that lost every
+ * subscriber cannot surface as an unhandled rejection. A caller whose own
+ * `signal` aborts gets `whenAborted` at once and leaves the others undisturbed.
+ */
+function shareInFlight<T>(
+  pending: Map<string, InFlight<T>>,
+  key: string,
+  start: (signal: AbortSignal) => Promise<T>,
+  signal: AbortSignal | undefined,
+  whenAborted: T,
+): Promise<T> {
+  if (signal?.aborted) return Promise.resolve(whenAborted)
+  let entry = pending.get(key)
+  if (!entry) {
+    const made: InFlight<T> = {
+      promise: Promise.resolve(whenAborted),
+      controller: new AbortController(),
+      subscribers: 0,
+      stopTimer: undefined,
+    }
+    made.promise = start(made.controller.signal)
+      .catch(() => whenAborted)
+      .finally(() => { if (pending.get(key) === made) pending.delete(key) })
+    pending.set(key, made)
+    entry = made
+  }
+  const live = entry
+  live.subscribers++
+  if (live.stopTimer !== undefined) {
+    clearTimeout(live.stopTimer)
+    live.stopTimer = undefined
+  }
+  return new Promise<T>(resolve => {
+    let released = false
+    const release = (): boolean => {
+      if (released) return false
+      released = true
+      signal?.removeEventListener('abort', onAbort)
+      live.subscribers--
+      return true
+    }
+    const onAbort = (): void => {
+      if (!release()) return
+      resolve(whenAborted)
+      if (live.subscribers > 0) return
+      live.stopTimer = setTimeout(() => {
+        if (live.subscribers > 0) return
+        live.controller.abort()
+        if (pending.get(key) === live) pending.delete(key)
+      }, ABANDON_GRACE_MS)
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    void live.promise.then(value => { if (release()) resolve(value) })
+  })
+}
+
+/** What one chain measurement came to. */
+type ChainOutcome =
+  | { legs: RoadLeg[] }
+  /** `perLeg`: measuring leg by leg can still help (the failure was in the shape
+   *  of the answer, or the provider is keyless OSRM). False = go to estimates. */
+  | { legs: null; perLeg: boolean }
+
+const CHAIN_REFUSED: ChainOutcome = { legs: null, perLeg: false }
+
+/** Chain key: mode plus the ordered rounded coordinates; null if any is invalid. */
+function chainKey(span: LatLng[], mode: string): string | null {
+  const parts: string[] = []
+  for (const p of span) {
+    const v = coordValid(p)
+    if (!v) return null
+    parts.push(`${v.lat.toFixed(5)},${v.lng.toFixed(5)}`)
+  }
+  return `chain:${mode}:${parts.join('>')}`
+}
+
+/** The haversine leg a failed or abandoned measurement degrades to. */
+function estimateRoadLeg(a: LatLng, b: LatLng, mode: string): RoadLeg {
+  return {
+    ...legBetween(a, b, assumptionsFromMode(mode)),
+    source: 'estimate',
+    geometry: [[a.lng, a.lat], [b.lng, b.lat]],
+  }
+}
+
+/** A single Google route (no intermediates) as one road leg. */
+function routeToLeg(r: RouteResult, a: LatLng, b: LatLng): RoadLeg {
+  return {
+    distanceKm: r.km,
+    durationMinutes: Math.round(r.min),
+    source: 'google',
+    geometry: r.coords.length ? r.coords : [[a.lng, a.lat], [b.lng, b.lat]],
+  }
 }
 
 /**
@@ -316,15 +442,8 @@ export function routeCacheSizeForTests(): number {
 async function bestRoute(a: LatLng, b: LatLng, mode: string, signal?: AbortSignal): Promise<RoadLeg> {
   if (routesEnabled()) {
     try {
-      const r = await googleRoute(a, b, mode) as RouteResult | CorridorResult
-      if (!('legs' in r)) {
-        return {
-          distanceKm: r.km,
-          durationMinutes: Math.round(r.min),
-          source: 'google',
-          geometry: r.coords.length ? r.coords : [[a.lng, a.lat], [b.lng, b.lat]],
-        }
-      }
+      const r = await googleRoute(a, b, mode, [], signal) as RouteResult | CorridorResult
+      if (!('legs' in r)) return routeToLeg(r, a, b)
       // a corridor-shaped response cannot come back without `via` — treat as refusal
       return {
         distanceKm: r.legs.reduce((s, l) => s + l.km, 0),
@@ -346,12 +465,7 @@ async function bestRoute(a: LatLng, b: LatLng, mode: string, signal?: AbortSigna
       ...(r.segments ? { segments: r.segments } : {}),
     }
   }
-  const est = legBetween(a, b, assumptionsFromMode(mode))
-  return {
-    ...est,
-    source: 'estimate',
-    geometry: [[a.lng, a.lat], [b.lng, b.lat]],
-  }
+  return estimateRoadLeg(a, b, mode)
 }
 
 /**
@@ -381,48 +495,83 @@ export async function roadLegBetween(
   assumptions: EngineAssumptions,
   signal?: AbortSignal,
 ): Promise<RoadLeg> {
-  const cached = cacheGet(legCacheKey(a, b, assumptions.mode))
+  const key = legCacheKey(a, b, assumptions.mode)
+  const cached = cacheGet(key)
   if (cached) return cached
-  const leg = await bestRoute(a, b, assumptions.mode, signal)
+  // Share the pending measurement by the leg cache key (mode only: the estimate
+  // below still uses THIS caller's assumptions). An unvalidated pair never shares.
+  const leg = key === UNCACHEABLE_SENTINEL
+    ? await bestRoute(a, b, assumptions.mode, signal)
+    : await shareInFlight(pendingLegs, key, s => bestRoute(a, b, assumptions.mode, s), signal, estimateRoadLeg(a, b, assumptions.mode))
   if (leg.source === 'estimate') {
     // re-run against the real assumptions for an accurate haversine number
     const est = legBetween(a, b, assumptions)
     return { ...est, source: 'estimate', geometry: leg.geometry }
   }
-  cacheSet(legCacheKey(a, b, assumptions.mode), leg)
+  cacheSet(key, leg)
   return leg
 }
 
 /**
- * One request for a whole waypoint span via whichever keyed provider answers:
- * Google Routes `intermediates` when a key is configured, else the OSRM chain.
- * Null = the provider refused; the caller falls back to parallel per-leg.
+ * Google Routes chain for a span: one request per chunk of up to 25 waypoints.
+ * Throws on any failure; the caller classifies it. A chunk of exactly two points
+ * (a short span, or the tail of a long one) has no intermediates, so Google
+ * answers with ONE route and no `legs` — that is the whole answer, one leg.
  */
-async function measureSpanChain(span: LatLng[], mode: string, signal?: AbortSignal): Promise<RoadLeg[] | null> {
+async function googleChainLegs(span: LatLng[], mode: string, signal: AbortSignal): Promise<RoadLeg[]> {
+  const chunked: RoadLeg[][] = []
+  for (let i = 0; i < span.length - 1; i += GOOGLE_CHAIN_WAYPOINTS - 1) {
+    const chunk = span.slice(i, i + GOOGLE_CHAIN_WAYPOINTS)
+    const a = chunk[0]
+    const b = chunk[chunk.length - 1]
+    const via = chunk.slice(1, -1)
+    const r: Awaited<ReturnType<typeof googleRoute>> = await googleRoute(a, b, mode, via, signal)
+    if (!('legs' in r)) {
+      if (via.length > 0) throw new RoutesRefusalError('routes: chain response carried no per-leg data')
+      chunked.push([routeToLeg(r, a, b)])
+      continue
+    }
+    if (r.legs.length !== chunk.length - 1) throw new RoutesRefusalError('routes: chain leg count mismatch')
+    chunked.push(r.legs.map((l: RoadLegResult) => ({
+      distanceKm: l.km,
+      durationMinutes: Math.round(l.min),
+      source: 'google' as const,
+      geometry: l.coords.length ? l.coords : [[a.lng, a.lat], [b.lng, b.lat]],
+    })))
+  }
+  return chunked.flat()
+}
+
+/**
+ * One measurement of a waypoint span: Google Routes `intermediates` when a key
+ * is configured, else the OSRM chain.
+ *
+ * Keyed failure ladder: a refusal that SPLITTING CAN FIX (leg-count mismatch,
+ * geometry assertion) reports `perLeg: true`. Any other failure — a rejected
+ * fetch, 401/403/429, a quota refusal — means Google is unreachable or
+ * disallowed, so per-leg Google calls would only fail again. It makes ONE OSRM
+ * chain request and, if that fails, reports `perLeg: false` (estimates).
+ */
+async function measureSpanChainOnce(span: LatLng[], mode: string, signal: AbortSignal): Promise<ChainOutcome> {
   if (routesEnabled()) {
     try {
-      const chunked: RoadLeg[][] = []
-      for (let i = 0; i < span.length - 1; i += GOOGLE_CHAIN_WAYPOINTS - 1) {
-        const chunk = span.slice(i, i + GOOGLE_CHAIN_WAYPOINTS)
-        const a = chunk[0]
-        const b = chunk[chunk.length - 1]
-        const via = chunk.slice(1, -1)
-        const r: Awaited<ReturnType<typeof googleRoute>> = await googleRoute(a, b, mode, via)
-        if (!('legs' in r)) return null
-        if (r.legs.length !== chunk.length - 1) return null
-        chunked.push(r.legs.map((l: RoadLegResult) => ({
-          distanceKm: l.km,
-          durationMinutes: Math.round(l.min),
-          source: 'google' as const,
-          geometry: l.coords.length ? l.coords : [[a.lng, a.lat], [b.lng, b.lat]],
-        })))
-      }
-      return chunked.flat()
-    } catch {
-      return null // Google chain refused — per-leg fallback below
+      return { legs: await googleChainLegs(span, mode, signal) }
+    } catch (err) {
+      if (signal.aborted) return CHAIN_REFUSED
+      if (routeFailureIsSplittable(err)) return { legs: null, perLeg: true }
+      const osrm = await osrmRouteChain(span, signal)
+      return osrm ? { legs: osrm } : CHAIN_REFUSED
     }
   }
-  return osrmRouteChain(span, signal)
+  const osrm = await osrmRouteChain(span, signal)
+  return osrm ? { legs: osrm } : { legs: null, perLeg: true }
+}
+
+/** `measureSpanChainOnce`, shared while pending (same span + mode = one fetch). */
+async function measureSpanChain(span: LatLng[], mode: string, signal?: AbortSignal): Promise<ChainOutcome> {
+  const key = chainKey(span, mode)
+  if (!key) return measureSpanChainOnce(span, mode, signal ?? new AbortController().signal)
+  return shareInFlight(pendingChains, key, s => measureSpanChainOnce(span, mode, s), signal, CHAIN_REFUSED)
 }
 
 /** Waypoints per Google Routes chain request (Google caps intermediates at 25). */
@@ -432,10 +581,12 @@ const GOOGLE_CHAIN_WAYPOINTS = 25
  * Route every consecutive pair of points — the corridor as ONE chain request
  * when keyless (a 20-stop trip is one fetch, not nineteen serial
  * ones), with legs the cache already knows skipped from the measured span.
- * Google-keyed callers and chain-failure fallbacks measure legs in parallel:
+ * Google-keyed callers measure the corridor as ONE chain request too; a chain
+ * refusal that splitting can fix falls back to parallel per-leg measurement:
  * the sequential loop this used to be was the reason a day's road line took
- * half a minute to finish drawing (#polylines). Unmeasured legs degrade to
- * the engine's haversine estimate, as always — planning never blocks.
+ * half a minute to finish drawing (#polylines). A chain that failed in
+ * transport does NOT split (see measureSpanChainOnce). Unmeasured legs degrade
+ * to the engine's haversine estimate, as always — planning never blocks.
  */
 export async function routePath(
   points: LatLng[],
@@ -460,11 +611,12 @@ export async function routePath(
   const first = missing[0]
   const last = missing[missing.length - 1]
   const span = points.slice(first, last + 2)
-  const chainLegs: RoadLeg[] | null = await measureSpanChain(span, assumptions.mode, signal)
+  const outcome = await measureSpanChain(span, assumptions.mode, signal)
+  const chainLegs = outcome.legs
   if (chainLegs && chainLegs.length === span.length - 1) {
     missing.forEach(legIndex => {
       // Cached legs inside the span shift missing's index; use the span offset.
-      const leg = chainLegs![legIndex - first]
+      const leg = chainLegs[legIndex - first]
       legs[legIndex] = leg
       cacheSet(legCacheKey(points[legIndex], points[legIndex + 1], assumptions.mode), leg)
     })
@@ -474,8 +626,10 @@ export async function routePath(
   // Per-leg fallback (Google-first when keyed, OSRM per leg otherwise), all in
   // parallel. Any leg that still fails degrades to the haversine estimate.
   // An already-aborted caller skips straight to estimates — firing fetches it
-  // would immediately discard only spends rate-limit budget.
-  const settled = signal?.aborted
+  // would immediately discard only spends rate-limit budget. So does a chain
+  // that failed in transport: the same provider would fail every leg again.
+  const perLeg = 'perLeg' in outcome ? outcome.perLeg : true // a wrong-length chain still splits
+  const settled = signal?.aborted || !perLeg
     ? missing.map(() => null)
     : await Promise.all(missing.map(async legIndex => {
       try {

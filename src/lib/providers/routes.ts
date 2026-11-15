@@ -11,6 +11,7 @@
 // long before paid events can fire.
 import { quotaAllows, quotaCount, type QuotaSku } from './quota'
 import { decodePolyline } from './polyline'
+import { requestSignal } from './requestSignal'
 
 const ROUTES = 'https://routes.googleapis.com/v2:computeRoutes'
 
@@ -86,15 +87,19 @@ export { decodePolyline }
  * `via` waypoints (up to 25 total points per Google's limit) make this a
  * corridor measurement: ONE quota event covers the whole chain (#polylines).
  * The returned per-leg split is aligned with the requested legs.
+ * `signal` is the caller's cancellation; it is combined with the request
+ * timeout, so an abandoned caller stops the fetch instead of only ignoring it.
  */
 export async function googleRoute(
   a: { lat: number; lng: number },
   b: { lat: number; lng: number },
   travelMode: string,
   via: { lat: number; lng: number }[] = [],
+  signal?: AbortSignal,
 ): Promise<CorridorResult | RouteResult> {
   const sku: QuotaSku = 'routes'
   if (!routesEnabled()) throw new Error('routes: no Google key configured')
+  if (signal?.aborted) throw new DOMException('routes: caller aborted', 'AbortError')
   if (!quotaAllows(sku)) throw new QuotaExhaustedError(sku)
   const res = await fetch(ROUTES, {
     method: 'POST',
@@ -111,14 +116,14 @@ export async function googleRoute(
       routingPreference: 'TRAFFIC_UNAWARE',
       units: 'METRIC',
     }),
-    signal: AbortSignal.timeout(8000),
+    signal: requestSignal(signal),
   })
-  if (!res.ok) throw new Error(`routes → HTTP ${res.status}`)
+  if (!res.ok) throw new RoutesHttpError(res.status)
   quotaCount(sku) // count only once a request actually went out
   const data = (await res.json()) as RoutesResponse
   const r = data.routes?.[0]
   if (!r || typeof r.distanceMeters !== 'number' || !r.duration) {
-    throw new Error('routes: empty/malformed response')
+    throw new RoutesRefusalError('routes: empty/malformed response')
   }
   const seconds = parseIsoDuration(r.duration)
   const coords = r.polyline?.encodedPolyline ? decodePolyline(r.polyline.encodedPolyline) : []
@@ -132,7 +137,7 @@ export async function googleRoute(
     const legs = r.legs ?? []
     const ok = legs.length === points.length - 1 && legs.every(l => typeof l.distanceMeters === 'number' && typeof l.duration === 'string')
     if (!ok || coords.length < 2) {
-      throw new Error('routes: corridor response missing per-leg data')
+      throw new RoutesRefusalError('routes: corridor response missing per-leg data')
     }
     // #187 rule: assert the geometry before trusting it — each requested
     // waypoint must sit ON the returned polyline (within ~150 m). A response
@@ -140,7 +145,7 @@ export async function googleRoute(
     // drawn as a road it never measured.
     for (const w of points) {
       const d = minDistanceMeters(coords, w)
-      if (d > 150) throw new Error(`routes: waypoint ${d.toFixed(0)}m off the returned polyline`)
+      if (d > 150) throw new RoutesRefusalError(`routes: waypoint ${d.toFixed(0)}m off the returned polyline`)
     }
     const out: RoadLegResult[] = []
     let cursor = 0
@@ -149,7 +154,7 @@ export async function googleRoute(
       const legMin = parseIsoDuration(legs[i].duration!) / 60
       const start = nearestIndexOnPolyline(coords, cursor, points[i])
       const end = nearestIndexOnPolyline(coords, start, points[i + 1])
-      if (end <= start) throw new Error('routes: corridor leg split is degenerate')
+      if (end <= start) throw new RoutesRefusalError('routes: corridor leg split is degenerate')
       const seg = coords.slice(start, end + 1)
       out.push({
         km: legKm,
@@ -163,6 +168,42 @@ export async function googleRoute(
     return { legs: out }
   }
   return { km: r.distanceMeters / 1000, min: seconds / 60, coords }
+}
+
+/** The server answered with a non-OK status. */
+export class RoutesHttpError extends Error {
+  readonly status: number
+  constructor(status: number) {
+    super(`routes → HTTP ${status}`)
+    this.name = 'RoutesHttpError'
+    this.status = status
+  }
+}
+
+/**
+ * Google answered, but the answer cannot be used as asked. Examples: a
+ * mismatched leg count, a waypoint off the returned polyline, a degenerate
+ * split. Per-leg calls can fix this. They cannot fix a transport, auth or quota
+ * failure. The facade classifies on this type, never on message text.
+ */
+export class RoutesRefusalError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RoutesRefusalError'
+  }
+}
+
+/**
+ * Can asking Google again, one leg at a time, plausibly fix this failure?
+ * Allowlist: only a refusal of the response shape, or an HTTP 400 (the request
+ * itself was wrong, for example too many intermediates). A rejected fetch,
+ * 401/403/429, a 5xx, a quota-guard refusal and an abort all mean "Google is not
+ * reachable or not allowed", so fourteen more requests would only fail fourteen
+ * more times.
+ */
+export function routeFailureIsSplittable(err: unknown): boolean {
+  if (err instanceof RoutesRefusalError) return true
+  return err instanceof RoutesHttpError && err.status === 400
 }
 
 /** Thrown when the Phase-B soft cap says no more Routes events this month. */
