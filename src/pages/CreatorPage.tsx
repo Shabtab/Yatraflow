@@ -5,7 +5,7 @@
 // are public app-wide). The presentational parts live in the Store* components;
 // this page keeps every data read, every state decision and the shared card
 // behaviour the guards pin.
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link2 } from 'lucide-react'
 import { useSessionUserId, usePublished, userById, useDb, rereadPublicSlices } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
@@ -21,8 +21,51 @@ import { StoreHero, dayStamp } from '../components/creator/StoreHero'
 import { StoreLibrary } from '../components/creator/StoreLibrary'
 import { StoreBand } from '../components/creator/StoreBand'
 import { StateBlock } from '../components/page/StateBlock'
+import { OwnerLayer } from '../components/creator/OwnerLayer'
+import {
+  fetchCreatorPageViews, fetchCreatorShareSources, bumpCreatorPageView, creatorPageSource, failedOwnerRead,
+  type OwnerRead, type OwnerReads,
+} from '../lib/creatorOwnerReads'
+import { fetchCreatorFunnel, fetchCreatorSales } from '../lib/unlock'
+import { deriveActualSales } from '../lib/earnings'
 
-export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNavigate: (r: string) => void }) {
+function useOwnerRows<T>(identity: string, enabled: boolean, attempt: number, load: (signal: AbortSignal) => Promise<T[]>): OwnerRead<T> {
+  const [settled, setSettled] = useState<{ identity: string; attempt: number; load: typeof load; read: OwnerRead<T> } | null>(null)
+  useEffect(() => {
+    if (!enabled) return
+    let alive = true
+    const ac = new AbortController()
+    let timer: ReturnType<typeof setTimeout>
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new DOMException('The owner read timed out', 'TimeoutError')
+        ac.abort(error)
+        reject(error)
+      }, 10_000)
+    })
+    void Promise.race([load(ac.signal), timeout]).then(data => {
+      if (alive) setSettled({ identity, attempt, load, read: { kind: 'ready', data, at: Date.now() } })
+    }).catch(() => {
+      if (alive) setSettled(previous => {
+        const kept = previous?.identity === identity ? previous.read : null
+        const read = failedOwnerRead(kept)
+        return { identity, attempt, load, read }
+      })
+    }).finally(() => clearTimeout(timer))
+    return () => { alive = false; clearTimeout(timer); ac.abort() }
+  }, [identity, enabled, attempt, load])
+  if (settled?.identity !== identity) return { kind: 'reading', data: null, at: null }
+  if (settled.attempt !== attempt || settled.load !== load) return { kind: 'reading', data: settled.read.data, at: settled.read.at }
+  return settled.read
+}
+
+export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, onPageVisit = bumpCreatorPageView }: {
+  creatorId: string
+  onNavigate: (r: string) => void
+  ownerReads?: OwnerReads
+  onOwnerRetry?: () => void
+  onPageVisit?: typeof bumpCreatorPageView
+}) {
   const me = useSessionUserId()
   const published = usePublished()
   const { sliceReads } = useDb()
@@ -71,6 +114,26 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
   // #704 / R23: a failed refresh keeps the rows already on screen and says so.
   // Only a failed read with nothing retained hides the list.
   const pubsView = rowsView(pubsRead, pubs.length)
+  const isOwner = me === creatorId
+  const [previewCreator, setPreviewCreator] = useState<string | null>(null)
+  const [ownerAttempt, setOwnerAttempt] = useState(0)
+  const [ownerNow, setOwnerNow] = useState(() => Date.now())
+  const ownerEnabled = isOwner && Boolean(creator) && !creatorUnavailable && !ownerReads
+  const ownerIdentity = `${me ?? ''}:${creatorId}`
+  const allOwnerPubs = useMemo(() => published.filter(pub => pub.creatorId === creatorId), [published, creatorId])
+  const loadSales = useCallback(async (signal: AbortSignal) =>
+    deriveActualSales(await fetchCreatorSales({ signal }), allOwnerPubs).rows, [allOwnerPubs])
+  const loadFunnel = useCallback((signal: AbortSignal) => fetchCreatorFunnel({ days: 30, signal }), [])
+  const loadSources = useCallback((signal: AbortSignal) => fetchCreatorShareSources(30, { signal }), [])
+  const loadVisits = useCallback((signal: AbortSignal) => fetchCreatorPageViews(30, { signal }), [])
+  const sales = useOwnerRows(ownerIdentity, ownerEnabled, ownerAttempt, loadSales)
+  const funnel = useOwnerRows(ownerIdentity, ownerEnabled, ownerAttempt, loadFunnel)
+  const sources = useOwnerRows(ownerIdentity, ownerEnabled, ownerAttempt, loadSources)
+  const visits = useOwnerRows(ownerIdentity, ownerEnabled, ownerAttempt, loadVisits)
+  useEffect(() => {
+    if (!creator || creatorUnavailable || profileRead !== 'ready' || isOwner) return
+    void onPageVisit(creatorId, creatorPageSource(window.location.search), me)
+  }, [creator, creatorUnavailable, profileRead, isOwner, creatorId, me, onPageVisit])
 
   if (!creator || creatorUnavailable) {
     // A broken read is not an absent creator. The distinction is the whole bug.
@@ -155,6 +218,19 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
       />
 
       {!me && <StoreBand />}
+      {isOwner && (previewCreator === ownerIdentity
+        ? <div className="container cr-own-preview">
+            <button className="btn btn-secondary btn-sm" onClick={() => setPreviewCreator(null)}>Back to your view</button>
+          </div>
+        : <OwnerLayer creator={{ id: creator.id, kind: 'public', profile: creator.profile }} pubs={pubs}
+            pubsRead={pubsRead} retryPubs={retry} shareLink={shareLink} now={ownerNow}
+            reads={ownerReads ?? { sales, funnel, sources, visits }}
+            retry={() => {
+              setOwnerNow(Date.now())
+              if (onOwnerRetry) onOwnerRetry()
+              else setOwnerAttempt(attempt => attempt + 1)
+            }}
+            onPreview={() => setPreviewCreator(ownerIdentity)} />)}
     </div>
   )
 }
