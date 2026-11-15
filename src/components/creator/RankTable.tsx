@@ -20,7 +20,7 @@ export function RankTable({ rows, me, users, visibleCount, total, onShowMore }: 
         <div>
           <h2 id="cr-rk-table-title" className="cr-head__title">Full rankings</h2>
         </div>
-        <button type="button" className="btn btn-ghost btn-sm" aria-pressed={plainTable} onClick={() => setPlainTable(value => !value)}>
+        <button type="button" className="btn btn-ghost btn-sm" aria-pressed={plainTable} onClick={() => { setPlainTable(value => !value) }}>
           Show as a plain table
         </button>
       </div>

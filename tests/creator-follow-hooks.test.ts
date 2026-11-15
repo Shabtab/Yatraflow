@@ -27,7 +27,8 @@ vi.mock('react', () => ({
     if (!runtime.deps[index] || deps.some((value, key) => !Object.is(value, runtime.deps[index][key]))) {
       runtime.deps[index] = deps
       runtime.pending.push(() => {
-        runtime.cleanups[index]?.()
+        const previousCleanup = runtime.cleanups[index]
+        if (previousCleanup) previousCleanup()
         runtime.cleanups[index] = effect()
       })
     }

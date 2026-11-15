@@ -123,7 +123,7 @@ export function CreatorRankingsPage() {
           users={users}
           visibleCount={visibleCount}
           total={table.total}
-          onShowMore={() => setVisibleCount(count => count + TABLE_PAGE_SIZE)}
+          onShowMore={() => { setVisibleCount(count => count + TABLE_PAGE_SIZE) }}
         />
       ) : null}
 

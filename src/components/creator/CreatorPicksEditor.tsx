@@ -40,9 +40,9 @@ export function CreatorPicksEditor({ me, pubs, read }: { me: PrivateUser; pubs: 
         <Field label={`Planning note ${index + 1}`}>
           <textarea className="textarea" value={note} disabled={busy} onChange={event => { setNotes(rows => rows.map((row, i) => i === index ? event.target.value : row)); setFeedback(null) }} />
         </Field>
-        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setNotes(rows => rows.filter((_, i) => i !== index))}>Remove note {index + 1}</button>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setNotes(rows => rows.filter((_, i) => i !== index)) }}>Remove note {index + 1}</button>
       </div>)}
-      <button type="button" className="btn btn-outline btn-sm" disabled={busy || notes.length >= 3} onClick={() => setNotes(rows => [...rows, ''])}>Add planning note</button>
+      <button type="button" className="btn btn-outline btn-sm" disabled={busy || notes.length >= 3} onClick={() => { setNotes(rows => [...rows, '']) }}>Add planning note</button>
     </div>
     <button type="button" className="btn btn-primary btn-sm" disabled={busy || read !== 'ready'} onClick={() => { void save() }}>{busy ? 'Saving…' : 'Save creator picks'}</button>
     {feedback && <p className="cr-own-picks-feedback" data-kind={feedback.kind} role={feedback.kind === 'error' ? 'alert' : 'status'}>{feedback.text}</p>}

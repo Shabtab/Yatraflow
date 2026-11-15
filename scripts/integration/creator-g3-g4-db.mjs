@@ -32,9 +32,12 @@ try {
   const schema = sql('supabase/schema.sql')
   const profileTable = schema.match(/create table if not exists public\.profiles \([\s\S]*?\n\);/)[0]
   const policy = name => {
-    const statement = schema.match(new RegExp(`create policy "${name}"[\\s\\S]*?;`))?.[0]
-    assert.ok(statement, `missing prerequisite policy: ${name}`)
-    return statement
+    const marker = `create policy "${name}"`
+    const markerStart = schema.indexOf(marker)
+    assert.ok(markerStart >= 0, `missing prerequisite policy: ${name}`)
+    const statementEnd = schema.indexOf(';', markerStart)
+    assert.ok(statementEnd > markerStart, `missing prerequisite policy: ${name}`)
+    return schema.slice(markerStart, statementEnd + 1)
   }
   await db.exec(`
     create role anon nologin;

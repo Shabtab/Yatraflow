@@ -12,10 +12,12 @@ export function useCreatorFollowerCount(creator: string | null, api: CreatorFoll
       if (alive && !ac.signal.aborted) setResult({ creator, api, attempt, read: { kind: 'ready', value } })
     }).catch(() => {
       if (alive) setResult({ creator, api, attempt, read: { kind: 'failed' } })
-    }).finally(() => clearTimeout(timer))
+    }).finally(() => { clearTimeout(timer) })
     return () => { alive = false; clearTimeout(timer); ac.abort() }
   }, [creator, api, attempt])
-  return result?.creator === creator && result?.api === api && result?.attempt === attempt ? result.read : { kind: 'reading' }
+  return result !== null && result.creator === creator && result.api === api && result.attempt === attempt
+    ? result.read
+    : { kind: 'reading' }
 }
 
 export function useCreatorFollows(creator: string, viewer: string | null, api: CreatorFollowApi = creatorFollowApi) {
@@ -39,12 +41,12 @@ export function useCreatorFollows(creator: string, viewer: string | null, api: C
         setFailure(current => current?.identity === identity && current.intended === value ? null : current)
       }
     }).catch(() => { if (alive) setSettled({ identity, api, attempt, read: { kind: 'failed' } }) })
-      .finally(() => clearTimeout(timer))
+      .finally(() => { clearTimeout(timer) })
     return () => { alive = false; clearTimeout(timer); ac.abort() }
   }, [creator, viewer, identity, api, attempt])
   const following: CreatorValue<boolean> = !viewer ? { kind: 'ready', value: false }
     : settled?.identity === identity && settled.api === api && settled.attempt === attempt ? settled.read : { kind: 'reading' }
-  const refresh = () => setAttempt(value => value + 1)
+  const refresh = () => { setAttempt(value => value + 1) }
   async function toggle() {
     if (inFlight.current || !viewer || viewer === creator || following.kind !== 'ready') return
     inFlight.current = true

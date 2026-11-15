@@ -14,8 +14,8 @@ export function ReadinessFix({ checkLabel, failing, pubs, className }: {
   const routes = failing
     .map(id => pubs.find(pub => pub.id === id))
     .filter((pub): pub is PublishedItinerary => pub !== undefined)
+  if (routes.length === 0) return null
   const first = routes[0]
-  if (!first) return null
   const many = routes.length > 1
   return (
     <a

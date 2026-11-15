@@ -57,7 +57,7 @@ export function StoreLibrary({ name, pubs, view, read, retry, creator, savedIds,
         {emptyIsNotCreator ? (
           <StateBlock kind="empty" icon={<Compass size={38} aria-hidden />} title="No creator page here yet"
             body={`${name} hasn’t enabled creator mode or published an itinerary.`}
-            actions={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Explore itineraries</button>} />
+            actions={<button className="btn btn-primary" onClick={() => { onNavigate('/explore') }}>Explore itineraries</button>} />
         ) : (
           <StateBlock kind="empty" icon={<MapPin size={38} aria-hidden />} title="No itineraries published yet"
             body="When they publish a trip to Explore, it will appear here." />
@@ -84,7 +84,7 @@ export function StoreLibrary({ name, pubs, view, read, retry, creator, savedIds,
           <span className="cr-store-filter-label">Starting from</span>
           {places.map(place => (
             <FilterChip key={place.place} pressed={start === place.place} count={place.count}
-              onClick={() => setStart(start === place.place ? null : place.place)}>
+              onClick={() => { setStart(start === place.place ? null : place.place) }}>
               {place.place}
             </FilterChip>
           ))}
@@ -94,7 +94,7 @@ export function StoreLibrary({ name, pubs, view, read, retry, creator, savedIds,
         {rows.map((pub, index) => (
           <PubCard key={pub.id} pub={pub} creator={creator} saved={savedIds(pub.id)} enterIndex={index}
             footer={<StoreRouteStamp pub={pub} />}
-            onFork={() => onFork(pub)} onToggleSave={() => onToggleSave(pub.id)} needsLogin={needsLogin} />
+            onFork={() => { onFork(pub) }} onToggleSave={() => { onToggleSave(pub.id) }} needsLogin={needsLogin} />
         ))}
       </div>
     </section>
