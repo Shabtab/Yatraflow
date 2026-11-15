@@ -440,6 +440,13 @@
       "owned": [],
       "configClasses": [],
       "variables": []
+    },
+    {
+      "id": "creator-kit",
+      "file": "src/styles/components/creator-kit.css",
+      "owned": [],
+      "configClasses": [],
+      "variables": []
     }
   ],
   "legacy": [
