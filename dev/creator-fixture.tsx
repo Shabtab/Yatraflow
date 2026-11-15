@@ -7,7 +7,7 @@
 // WHAT THIS DOES NOT DO. It does not sign in, mint a session or touch the
 // hydrate. The store is never `init()`ed, so no slice read, realtime channel or
 // write path starts. Owner reads use synthetic props. The hub's separate RPC
-// reads stay unauthenticated and show their own failed-read state.
+// reads stay unauthenticated. page=hub returns synthetic empty RPC reads.
 //
 // STATE knobs, all in the query string (see the on-page index for every case):
 //   case=live-0|live-1|live-3|live-7|unpub|long|disabled|kit   (kit = the cr- component gallery: no page, no store)
@@ -62,6 +62,17 @@ const fixtureFollows: CreatorFollowApi = {
   unfollow: async () => { if (FOLLOW === 'write-failed') throw new Error('Fixture write failed'); fixtureFollowing = false },
 }
 const PAGE = params.get('page')
+if (PAGE === 'hub') {
+  const originalFetch = window.fetch.bind(window)
+  window.fetch = (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input), location.href)
+    if (['/rest/v1/rpc/get_creator_sales', '/rest/v1/rpc/get_creator_funnel'].includes(url.pathname)) {
+      return Promise.resolve(new Response('[]', { headers: { 'Content-Type': 'application/json' } }))
+    }
+    if (url.origin !== location.origin) return Promise.reject(new Error('External requests are blocked in the hub fixture'))
+    return originalFetch(input, init)
+  }
+}
 
 const CREATOR_ID = 'fixture-creator-0001'
 const VIEWER_ID = 'fixture-viewer-0002'
@@ -582,7 +593,9 @@ if (!root) throw new Error('Creator fixture root not found')
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <>
-      {PAGE === 'rankings' ? (
+      {PAGE === 'hub' ? (
+        <CreatorHubPage onNavigate={navigate} followsApi={fixtureFollows} />
+      ) : PAGE === 'rankings' ? (
         <Suspense fallback={<StateBlockLoading />}>
           <CreatorRankingsPage />
         </Suspense>

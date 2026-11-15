@@ -183,9 +183,12 @@ export interface ReadinessCheck {
 
 export interface ReadinessReport {
   checks: ReadinessCheck[]
-  /** True when no live route fails any check. */
+  liveCount: number
+  /** True when live routes exist and none fail a check. */
   ready: boolean
 }
+
+export const EMPTY_READINESS_MESSAGE = 'Publish a route to check readiness'
 
 const FRESH_WINDOW_MS = 90 * DAY_MS
 
@@ -216,7 +219,7 @@ export function readiness(pubs: PublishedItinerary[], now: number): ReadinessRep
     { key: 'season', failing: failing.season },
     { key: 'freshness', failing: failing.freshness },
   ]
-  return { checks, ready: checks.every(check => check.failing.length === 0) }
+  return { checks, liveCount: live.length, ready: live.length > 0 && checks.every(check => check.failing.length === 0) }
 }
 
 /** RFC 4180 CSV for the activity feed: one header row, ISO dates, and every

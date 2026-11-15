@@ -146,6 +146,12 @@ describe('grossByMonth', () => {
 })
 
 describe('readiness', () => {
+  it.each([{ pubs: [] }, { pubs: [pub({ unpublishedAt: NOW })] }])('needs a live publication before readiness can be ready: $pubs', ({ pubs }) => {
+    const report = readiness(pubs, NOW)
+    expect(report.liveCount).toBe(0)
+    expect(report.ready).toBe(false)
+  })
+
   it('ignores unpublished routes and reports failing route ids per check', () => {
     const stale = NOW - 91 * DAY
     const pubs = [

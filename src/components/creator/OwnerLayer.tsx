@@ -1,7 +1,7 @@
 import { ReadinessFix } from './ReadinessFix'
 import { countNoun, sourceDisplayLabel } from '../../lib/creatorCopy'
 import type { PublishedItinerary, PublicUser } from '../../data/types'
-import { readiness, kpiWindows, type ReadinessKey } from '../../lib/creatorHub'
+import { EMPTY_READINESS_MESSAGE, readiness, kpiWindows, type ReadinessKey } from '../../lib/creatorHub'
 import { ownerActivityCsv, type OwnerRead, type OwnerReads } from '../../lib/creatorOwnerReads'
 import { funnelWindowStart, formatPct } from '../../lib/pubFunnel'
 import { appLink } from '../../lib/appLink'
@@ -97,8 +97,8 @@ export function OwnerLayer({ creator, pubs, pubsRead, retryPubs, shareLink, now,
             title={pubsRead === 'reading' ? 'Loading readiness' : pubs.length ? 'Kept readiness checks' : 'Could not load readiness'}
             body="The checklist needs a current route list."
             actions={pubsRead === 'failed' ? <button className="btn btn-ghost btn-sm" onClick={retryPubs}>Try again</button> : undefined} />}
-          {pubsRead === 'ready' && pubs.length === 0
-            ? <StateBlock size="compact" kind="empty" title="Publish a route to check readiness" />
+          {pubsRead === 'ready' && report.liveCount === 0
+            ? <StateBlock size="compact" kind="empty" title={EMPTY_READINESS_MESSAGE} />
             : (pubsRead === 'ready' || pubs.length > 0) && <>
               <p>{done} of 5 done{pubsRead !== 'ready' ? ' · last loaded routes' : ''}</p>
               <ul className="cr-own-checks">{report.checks.map(check => (

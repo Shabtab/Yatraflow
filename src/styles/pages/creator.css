@@ -671,7 +671,8 @@ p.cr-store-planning {
   margin-left: calc(-1 * var(--space-5));
   min-height: 44px;
 }
-.cr-hub-kpis .cr-tile {
+.cr-hub-kpis .cr-tile,
+.cr-hub-earnings .cr-tile {
   padding: var(--space-7) var(--space-7);
   border-radius: var(--radius-lg);
 }
@@ -736,14 +737,16 @@ p.cr-store-planning {
 }
 /* The legacy strip paints a navy band with white figures. The kit tile is a
    light card, so the strip gives its paint back. */
-.hub-strip.cr-hub-kpis {
+.hub-strip.cr-hub-kpis,
+.hub-strip.cr-hub-earnings {
   grid-template-columns: repeat(var(--cr-cols), minmax(0, 1fr));
   background: transparent;
   box-shadow: none;
   overflow: visible;
   border-radius: 0;
 }
-.hub-strip.cr-hub-kpis .hub-cell.cr-tile {
+.hub-strip.cr-hub-kpis .hub-cell.cr-tile,
+.hub-strip.cr-hub-earnings .hub-cell.cr-tile {
   border: 1px solid var(--pw-line-soft);
   border-inline-start: 1px solid var(--pw-line-soft);
   border-top: 1px solid var(--pw-line-soft);
@@ -751,20 +754,24 @@ p.cr-store-planning {
   gap: var(--space-2);
 }
 .hub-strip.cr-hub-kpis .stat-value,
-.hub-strip.cr-hub-kpis .cr-tile__value {
+.hub-strip.cr-hub-kpis .cr-tile__value,
+.hub-strip.cr-hub-earnings .stat-value {
   color: var(--pw-ink);
 }
 .hub-strip.cr-hub-kpis .stat-label,
-.hub-strip.cr-hub-kpis .cr-tile__label {
+.hub-strip.cr-hub-kpis .cr-tile__label,
+.hub-strip.cr-hub-earnings .stat-label {
   color: var(--pw-ink-3);
   opacity: 1;
 }
 .hub-strip.cr-hub-kpis .hub-cell-hint,
-.hub-strip.cr-hub-kpis .metric-warn {
+.hub-strip.cr-hub-kpis .metric-warn,
+.hub-strip.cr-hub-earnings .hub-cell-hint {
   color: var(--pw-ink-3);
   opacity: 1;
 }
-.hub-strip.cr-hub-kpis .hub-cell-unread {
+.hub-strip.cr-hub-kpis .hub-cell-unread,
+.hub-strip.cr-hub-earnings .hub-cell-unread {
   color: var(--pw-ink-3);
   opacity: 1;
 }
@@ -840,10 +847,16 @@ p.cr-store-planning {
 .cr-hub-event[data-kind="forked"] .cr-hub-event-dot { background: var(--pw-route); }
 .cr-hub-event[data-kind="published"] .cr-hub-event-dot { background: var(--pw-ok); }
 .cr-hub-profile {
-  max-width: 640px;
+  max-width: 80ch;
+  margin-inline: auto;
 }
 .cr-hub-profile-note {
   margin-top: var(--space-2);
+  margin-bottom: var(--space-7);
+}
+.hub-page .pub-ledger {
+  display: table;
+  width: 100%;
 }
 
 @media (max-width: 1099px) {
@@ -904,7 +917,8 @@ p.cr-store-planning {
   .cr-hub-earnings {
     --cr-cols: 2;
   }
-  .cr-hub-kpis .cr-tile {
+  .cr-hub-kpis .cr-tile,
+  .cr-hub-earnings .cr-tile {
     padding: var(--space-6) var(--space-6);
   }
   .cr-hub-event {
@@ -939,6 +953,7 @@ p.cr-store-planning {
 }
 .cr-rk-filter {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-5);
   min-height: 66px;
@@ -962,19 +977,15 @@ p.cr-store-planning {
 }
 .cr-rk-filter__chips {
   display: flex;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-  scroll-snap-type: x proximity;
-}
-.cr-rk-filter__chips::-webkit-scrollbar {
-  display: none;
 }
 .cr-rk-filter__chips > * {
   flex: 0 0 auto;
-  scroll-snap-align: start;
+  min-height: 44px;
 }
 
 /* ---- Podium and your rank ---- */
