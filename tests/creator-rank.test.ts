@@ -101,14 +101,17 @@ describe('rankCreators', () => {
   })
 
   it('fork ties break by plans, with shuffled inputs', () => {
-    const users = [user('c1'), user('c2')]
+    // The creator with MORE live routes carries the alphabetically LATER name
+    // ("Creator c9" > "Creator c2") and the later id, so name and id order
+    // would put it LAST. Only the live-route comparator can put it first.
     const first = [
-      pub({ id: 'p1', creatorId: 'c1', copies: 5, views: 1 }),
-      pub({ id: 'p2', creatorId: 'c1', copies: 0, views: 1 }),
+      pub({ id: 'p1', creatorId: 'c9', copies: 5, views: 1 }),
+      pub({ id: 'p2', creatorId: 'c9', copies: 0, views: 1 }),
       pub({ id: 'p3', creatorId: 'c2', copies: 5, views: 1 }),
     ]
-    expect(rankCreators(first, users).map(row => row.id)).toEqual(['c1', 'c2'])
-    expect(rankCreators([...first].reverse(), users).map(row => row.id)).toEqual(['c1', 'c2'])
+    const users = [user('c2'), user('c9')]
+    expect(rankCreators(first, users).map(row => row.id)).toEqual(['c9', 'c2'])
+    expect(rankCreators([...first].reverse(), users).map(row => row.id)).toEqual(['c9', 'c2'])
     expect(rankOf(rankCreators(first, users), 'c2')).toEqual({ rank: 2, total: 2, forksToNext: 0 })
   })
 
