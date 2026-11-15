@@ -1210,6 +1210,8 @@ I-108 and I-113 are complete. Shared status chips keep their colours. Settings c
 G1 and G2 have SQL migrations dated 2026-11-15. Share-source and page-view contracts pass on PGlite.
 The operator applied both migrations by hand on 2026-11-15. Client work remains separate.
 
+G3 and G4 have local SQL drafts dated 2026-11-16. They are not applied. Operator review and manual execution are still needed.
+
 | # | Idea | Blocked on | Note |
 |---|---|---|---|
 | I-48 | Creator route-library foundation | Five-creator pilot | Proposed medium scope: separate unlock price from trip spend, feature one route, preview and share, then measure edits and invites. Reuse I-23's checklist. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
