@@ -1,11 +1,10 @@
-import type { TripMember } from '../data/types'
+import type { Trip, TripMember } from '../data/types'
 
 export type AccessMember = TripMember & { revision: number }
 export interface MemberAccessState {
   version: number
   inviteCode: string | null
   planVersion?: number
-  mintBaseVersion?: number
   members: AccessMember[]
   removed: AccessMember[]
 }
@@ -13,6 +12,11 @@ export type MemberChange =
   | { action: 'role'; userId: string; role: 'editor' | 'commenter' | 'viewer'; revision?: number }
   | { action: 'remove' | 'leave'; userId: string; revision?: number }
   | { action: 'restore'; member: AccessMember }
+
+export function keepCurrentInvite(incoming: Trip, existing?: Trip): Trip {
+  if (existing?.accessVersion === undefined || (incoming.accessVersion ?? -1) >= existing.accessVersion) return incoming
+  return { ...incoming, inviteCode: existing.inviteCode, accessVersion: existing.accessVersion }
+}
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -40,11 +44,8 @@ export function parseMemberAccess(value: unknown): MemberAccessState | null {
   if (!members || !removed || removed.some(r => members.some(m => m.userId === r.userId))) return null
   if (value.planVersion !== undefined && value.planVersion !== null
     && (typeof value.planVersion !== 'number' || !Number.isSafeInteger(value.planVersion) || value.planVersion < 0)) return null
-  if (value.mintBaseVersion !== undefined
-    && (typeof value.mintBaseVersion !== 'number' || !Number.isSafeInteger(value.mintBaseVersion) || value.mintBaseVersion < 0)) return null
   return { version: value.version, inviteCode: value.inviteCode, members, removed,
-    ...(typeof value.planVersion === 'number' ? { planVersion: value.planVersion } : {}),
-    ...(typeof value.mintBaseVersion === 'number' ? { mintBaseVersion: value.mintBaseVersion } : {}) }
+    ...(typeof value.planVersion === 'number' ? { planVersion: value.planVersion } : {}) }
 }
 
 export function memberChangeReceipt(value: unknown): { status: 'applied' | 'stale'; state: MemberAccessState | null } | null {

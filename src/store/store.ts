@@ -40,7 +40,7 @@ import {
 import { ownSuggestedCover, unclaimedCovers } from '../lib/coverUpload'
 import { publishValidation, PUBLISH_FIELD_ORDER, PublishRejected } from '../lib/publishRules'
 import { normalizeInviteCode } from '../lib/inviteCode'
-import { parseMemberAccess, memberChangeReceipt, type AccessMember, type MemberAccessState, type MemberChange } from '../lib/memberAccess'
+import { parseMemberAccess, memberChangeReceipt, keepCurrentInvite, type AccessMember, type MemberAccessState, type MemberChange } from '../lib/memberAccess'
 import { publishedToRow } from '../lib/restoreRows'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
 import { MISSING_BACKEND_MESSAGE, describeAuthFailure } from '../lib/authErrors'
@@ -1938,7 +1938,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     )
     trips = trips.filter(r => !(r as TripRow).deleted_at)
     const tripList = mapOrSkip(trips, row =>
-      rowToTrip(row as TripRow, members.filter(m => m.trip_id === (row as TripRow).id).map(m => ({ userId: m.user_id, role: m.role, joinedAt: m.joined_at })))
+      keepCurrentInvite(rowToTrip(row as TripRow, members.filter(m => m.trip_id === (row as TripRow).id).map(m => ({ userId: m.user_id, role: m.role, joinedAt: m.joined_at }))), tripById((row as TripRow).id))
     )
 
     const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
@@ -2585,11 +2585,13 @@ function installMemberAccess(tripId: ID, state: MemberAccessState, scope: Member
   if (!memberAccessLive(scope, tripId, epoch)) return false
   const previous = accessReceipts.get(tripId)
   const owner = JSON.stringify(scope)
-  if (previous?.owner === owner && previous.epoch === epoch && previous.version > state.version) return false
+  if ((tripById(tripId)?.accessVersion ?? -1) > state.version
+    || (previous?.owner === owner && previous.epoch === epoch && previous.version > state.version)) return false
   accessReceipts.set(tripId, { owner, epoch, version: state.version })
   mutateTrip(tripId, draft => {
     draft.members = state.members
     draft.inviteCode = state.inviteCode ?? undefined
+    draft.accessVersion = state.version
   }, { touch: false })
   return true
 }
@@ -2598,9 +2600,9 @@ export async function readMemberAccess(tripId: ID): Promise<MemberAccessState | 
   const scope = captureMemberScope()
   if (!scope || !tripById(tripId)) return null
   const epoch = tripAccessEpochs.get(tripId) ?? 0
-  const token = await tripWriteToken(scope)
-  if (!token || !memberAccessLive(scope, tripId, epoch)) return null
   try {
+    const token = await tripWriteToken(scope)
+    if (!token || !memberAccessLive(scope, tripId, epoch)) return null
     const { data, error } = await supabase.rpc('trip_access_state', { p_trip_id: tripId })
       .setHeader('Authorization', 'Bearer ' + token)
     const state = !error ? parseMemberAccess(data) : null
@@ -2614,33 +2616,35 @@ async function changeMemberAccess(tripId: ID, change: MemberChange): Promise<Mem
   const epoch = tripAccessEpochs.get(tripId) ?? 0
   const live = () => memberAccessLive(scope, tripId, epoch)
   return serializeTripWrite(`${scope.epoch}:${scope.userId}:${tripId}`, async () => {
-  const token = await tripWriteToken(scope)
-  if (!token || !live()) return null
-  try {
-    const userId = change.action === 'restore' ? change.member.userId : change.userId
-    const before = await readMemberAccess(tripId)
-    if (!before || !live()) throw new Error('Could not check current trip access. Try again.')
-    const expected = change.action === 'restore' ? change.member.revision : change.revision ?? before.members.find(m => m.userId === userId)?.revision
-    if (expected === undefined) throw new Error('This membership changed. Check the crew and try again.')
-    const { data, error } = await supabase.rpc('change_trip_access', {
-      p_trip_id: tripId, p_action: change.action, p_user_id: userId,
-      p_role: change.action === 'role' ? change.role : null, p_expected_revision: expected,
-    }).setHeader('Authorization', 'Bearer ' + token)
-    if (!live()) return null
-    const result = !error ? memberChangeReceipt(data) : null
-    if (result?.state && !installMemberAccess(tripId, result.state, scope, epoch)) return null
-    if (!result || result.status !== 'applied') throw new Error(error?.message || 'This membership changed. Refresh the crew and try again.')
-    if (change.action === 'leave') {
-      cache.trips = cache.trips.filter(t => t.id !== tripId)
-      commit()
-      return before
+    try {
+      const token = await tripWriteToken(scope)
+      if (!live()) return null
+      if (!token) throw new Error('Could not check your session. Try again.')
+      const userId = change.action === 'restore' ? change.member.userId : change.userId
+      const before = await readMemberAccess(tripId)
+      if (!before || !live()) throw new Error('Could not check current trip access. Try again.')
+      if (change.action === 'role' && before.members.find(m => m.userId === userId)?.role === change.role) return before
+      const expected = change.action === 'restore' ? change.member.revision : change.revision ?? before.members.find(m => m.userId === userId)?.revision
+      if (expected === undefined) throw new Error('This membership changed. Check the crew and try again.')
+      const { data, error } = await supabase.rpc('change_trip_access', {
+        p_trip_id: tripId, p_action: change.action, p_user_id: userId,
+        p_role: change.action === 'role' ? change.role : null, p_expected_revision: expected,
+      }).setHeader('Authorization', 'Bearer ' + token)
+      if (!live()) return null
+      const result = !error ? memberChangeReceipt(data) : null
+      if (result?.state && !installMemberAccess(tripId, result.state, scope, epoch)) return null
+      if (!result || result.status !== 'applied') throw new Error(error?.message || 'This membership changed. Refresh the crew and try again.')
+      if (change.action === 'leave') {
+        cache.trips = cache.trips.filter(t => t.id !== tripId)
+        commit()
+        return before
+      }
+      if (!result.state) throw new Error('Could not confirm the membership change. Refresh and try again.')
+      return result.state
+    } catch (error) {
+      if (live()) toast(error instanceof Error ? error.message : 'Could not change trip access. Try again.', 'err')
+      return null
     }
-    if (!result.state) throw new Error('Could not confirm the membership change. Refresh and try again.')
-    return result.state
-  } catch (error) {
-    if (live()) toast(error instanceof Error ? error.message : 'Could not change trip access. Try again.', 'err')
-    return null
-  }
   })
 }
 
@@ -2651,31 +2655,14 @@ export async function ensureInviteCode(tripId: ID): Promise<string | null> {
   const live = () => memberAccessLive(scope, tripId, epoch)
   return serializeTripWrite(`${scope.epoch}:${scope.userId}:${tripId}`, async () => {
     if (!live()) return null
-    const token = await tripWriteToken(scope)
-    if (!token || !live()) return null
-    const base = tripById(tripId)?.writeVersion
-    const previousCode = tripById(tripId)?.inviteCode
     try {
+      const token = await tripWriteToken(scope)
+      if (!token || !live()) return null
       const { data, error } = await supabase.rpc('change_trip_access', {
-        p_trip_id: tripId, p_action: 'invite', p_expected_revision: base ?? null,
+        p_trip_id: tripId, p_action: 'invite',
       }).setHeader('Authorization', 'Bearer ' + token)
       const result = !error ? memberChangeReceipt(data) : null
       if (!result?.state || result.status !== 'applied' || !installMemberAccess(tripId, result.state, scope, epoch)) return null
-      const version = result.state.planVersion
-      if (!previousCode && validWriteVersion(base) && result.state.mintBaseVersion === base
-        && validWriteVersion(version) && version > base) {
-        mutateTrip(tripId, draft => {
-          if (draft.writeVersion === base) draft.writeVersion = version
-        }, { touch: false })
-        const held = queuedLocalTrips.get(tripId)
-        if (held?.ownerId === scope.userId && held.baseVersion === base) {
-          const next = { ...held, baseVersion: version,
-            trip: { ...held.trip as Trip, inviteCode: result.state.inviteCode ?? undefined, writeVersion: version } }
-          queuedLocalTrips.set(tripId, next)
-          await requeueIfCurrent(next)
-          if (!live()) return null
-        }
-      }
       return result.state.inviteCode
     } catch { return null }
   })
@@ -3164,6 +3151,7 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean;
     if (!memberResult?.state || memberResult.status !== 'applied') return refuse('Could not save the trip crew. Try again.')
     trip.members = memberResult.state.members
     trip.inviteCode = memberResult.state.inviteCode ?? undefined
+    trip.accessVersion = memberResult.state.version
     commit()
     return true
   } catch {
@@ -4062,7 +4050,7 @@ export function restoreTrashedTrip(trip: Trip): void {
     {
       if (error) toast('Could not restore that trip.')
       else if (Array.isArray(data) && data.length === 1) {
-        const shared = rowToTrip(data[0] as TripRow, tripById(trip.id)?.members ?? trip.members ?? [])
+        const shared = keepCurrentInvite(rowToTrip(data[0] as TripRow, tripById(trip.id)?.members ?? trip.members ?? []), tripById(trip.id))
         const pending = await pendingWrites()
         if (!live()) return
         const displayed = overlayQueuedTrips([shared], pending, scope.userId)[0]
@@ -5231,7 +5219,7 @@ async function readSharedTripWithMembership(
   const members = (memberRead.data as MemberRow[]).map(m => ({
     userId: m.user_id, role: m.role as TripMember['role'], joinedAt: m.joined_at,
   }))
-  return { trip: rowToTrip(tripRead.data as TripRow, members), members }
+  return { trip: keepCurrentInvite(rowToTrip(tripRead.data as TripRow, members), tripById(tripId)), members }
 }
 
 /** What a discard needs from the server before it removes the local copy. */
@@ -6117,7 +6105,7 @@ function admitFullRow(input: {
   // The floor is cleared only after every row, membership, identity and
   // revision check succeeds for the expected join grant.
   if (expectedGrant) tripAccessEpochs.delete(roleFloorKey(tripId, scope.userId))
-  const trip = rowToTrip(row, mapped)
+  const trip = keepCurrentInvite(rowToTrip(row, mapped), tripById(tripId))
   recordServerTripTimestamp(trip.id, trip.updatedAt)
   const idx = cache.trips.findIndex(t => t.id === trip.id)
   cache.trips = idx < 0
@@ -8499,6 +8487,16 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
         cache.notifications = cache.notifications.filter(n => n.tripId !== id)
         break
       }
+      const current = tripById(id)
+      const accessVersion = row?.access_version
+      if (event === 'UPDATE' && current && Number.isSafeInteger(accessVersion)
+        && accessVersion >= 0 && accessVersion > (current.accessVersion ?? -1)
+        && (row?.invite_code === null || typeof row?.invite_code === 'string')) {
+        mutateTrip(id, draft => {
+          draft.inviteCode = row.invite_code ?? undefined
+          draft.accessVersion = accessVersion
+        }, { touch: false })
+      }
       const held = queuedLocalTrips.get(id)
       if (held?.ownerId === cache.sessionUserId) {
         recordServerTripTimestamp(id, row?.updated_at)
@@ -8515,7 +8513,7 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       }
       {
         const existing = tripById(id)
-        const incoming = rowToTrip(row as TripRow, existing?.members ?? [])
+        const incoming = keepCurrentInvite(rowToTrip(row as TripRow, existing?.members ?? []), existing)
         if (event === 'UPDATE') {
           // B2 stale-update guard — TRIPS ONLY (the generic reduceSlice stays
           // plain: no other table carries a comparable timestamp pair;

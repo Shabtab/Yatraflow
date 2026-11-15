@@ -172,13 +172,11 @@ vi.mock('../src/lib/supabase', async () => {
               const row = state.rows.get(args.p_trip_id)
               const actor = header.replace(/^Bearer token-/, '')
               if (!row || !state.members.some(m => m.trip_id === row.id && m.user_id === actor)) return { data: null, error: { message: 'Not a member' } }
-              const base = row.write_version
               const mint = !row.invite_code
-              const stale = mint && base !== args.p_expected_revision
-              if (mint && !stale) { row.invite_code = 'YATRA-ABCDEFGH'; row.write_version = Number(base) + 1 }
-              return { data: { status: stale ? 'stale' : 'applied', state: {
+              if (mint) row.invite_code = 'YATRA-ABCDEFGH'
+              return { data: { status: 'applied', state: {
                 version: Number(row.write_version), planVersion: row.write_version, inviteCode: row.invite_code,
-                ...(mint && !stale ? { mintBaseVersion: base } : {}), removed: [],
+                removed: [],
                 members: state.members.filter(m => m.trip_id === row.id).map(m => ({ userId: m.user_id, role: m.role, joinedAt: m.joined_at, revision: 1 })),
               } }, error: null }
             })().then(resolve, reject)
@@ -795,27 +793,41 @@ describe('#783 metadata and plan ordering', () => {
     expect(store.tripById('shared')).toBeUndefined()
   })
 
-  it('rebases a saved edit only after its own conditional invite-code write', async () => {
+  it('keeps a saved plan revision valid while a separate invite is minted', async () => {
     const store = await fresh()
     await capture(store)
     vi.stubGlobal('navigator', { onLine: true })
     const code = await store.ensureInviteCode('shared')
     expect(code).toBeTruthy()
-    expect((await pending())[0]).toMatchObject({ baseVersion: 1, trip: { inviteCode: code } })
+    expect((await pending())[0]).toMatchObject({ baseVersion: 0 })
     expect(await store.replayQueuedWrites()).toBe(1)
-    expect(state.rows.get('shared')).toMatchObject({ name: 'My offline plan', invite_code: code, write_version: 2 })
+    expect(state.rows.get('shared')).toMatchObject({ name: 'My offline plan', invite_code: code, write_version: 1 })
   })
 
-  it('does not rebase an unseen collaborator change when minting a code loses CAS', async () => {
+  it('does not certify an unseen collaborator edit when minting a separate invite', async () => {
     const store = await fresh()
     await capture(store)
     vi.stubGlobal('navigator', { onLine: true })
     state.beforeUpdate = () => Object.assign(state.rows.get('shared')!, { name: 'Collaborator winner', write_version: 4 })
-    expect(await store.ensureInviteCode('shared')).toBeNull()
+    expect(await store.ensureInviteCode('shared')).toBeTruthy()
     expect((await pending())[0].baseVersion).toBe(0)
     expect(await store.replayQueuedWrites()).toBe(0)
     expect((await pending())[0].state).toBe('conflict')
     expect(state.rows.get('shared')?.name).toBe('Collaborator winner')
+  })
+
+  it('refreshes rotated invites over an unsaved plan and rejects older invite events', async () => {
+    const store = await fresh(true)
+    await capture(store)
+    const server = state.rows.get('shared')!
+    store._applyRealtimeEventForTest('trips', change({ eventType: 'UPDATE',
+      new: { ...server, access_version: 4, invite_code: 'YATRA-ABCDEFGH' }, old: {} }))
+    expect(store.tripById('shared')).toMatchObject({ name: 'My offline plan', inviteCode: 'YATRA-ABCDEFGH', accessVersion: 4 })
+    expect((await pending())[0].baseVersion).toBe(0)
+    store._applyRealtimeEventForTest('trips', change({ eventType: 'UPDATE',
+      new: { ...server, access_version: 3, invite_code: 'YATRA-JKLMNPQR' }, old: {} }))
+    expect(store.tripById('shared')?.inviteCode).toBe('YATRA-ABCDEFGH')
+    expect(store.tripById('shared')?.name).toBe('My offline plan')
   })
 
   it('trash cancels pending replay and undo fetches the restored server revision', async () => {

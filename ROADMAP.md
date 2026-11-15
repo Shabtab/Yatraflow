@@ -41,7 +41,7 @@ number collides with a shipped release, the ledger wins.
 
 ## Issue #931: durable trip-member access
 
-Status: approved for local implementation. Codex is repairing the server and client boundary. Verification is pending.
+Status: implemented locally and under independent review. Review repairs and final verification are in progress.
 
 Removal needs an explicit owner restore, even with a replacement invite.
 Keep Undo and add a small owner-only restore option after its window expires.

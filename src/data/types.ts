@@ -396,6 +396,7 @@ export interface Trip {
    * trip. See lib/inviteCode.ts and supabase/migrations/20260909_invite_codes.sql.
    */
   inviteCode?: string
+  accessVersion?: number
   visibility: 'private' | 'public'
   /**
    * Share attribution (#230, widened for F7 · #228): how the owner ARRIVED — the shared link's `ref`

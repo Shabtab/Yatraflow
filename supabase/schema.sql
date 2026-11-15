@@ -2344,10 +2344,8 @@ create policy "deny disabled" on public.admin_audit
 
 commit;
 
--- Issue #931: durable member access.
 begin;
 
--- History survives same-ID trip recovery. Only profile deletion cascades it.
 create table if not exists public.trip_member_access (
   trip_id uuid not null,
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -2362,6 +2360,42 @@ alter table public.trip_member_access enable row level security;
 revoke all on public.trip_member_access from public, anon, authenticated, service_role;
 
 alter table public.trips add column if not exists access_version bigint not null default 0;
+
+create or replace function public.trip_access_only_change(p_old jsonb,p_new jsonb)
+returns boolean language sql immutable set search_path='' as $$
+  select (p_old->'invite_code' is distinct from p_new->'invite_code'
+      or p_old->'access_version' is distinct from p_new->'access_version')
+    and (p_old - array['invite_code','access_version','write_version','updated_at'])
+      is not distinct from (p_new - array['invite_code','access_version','write_version','updated_at']);
+$$;
+revoke all on function public.trip_access_only_change(jsonb,jsonb) from public,anon,authenticated,service_role;
+
+create or replace function public.advance_trip_write_version()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin
+  if tg_op='UPDATE' and public.trip_access_only_change(to_jsonb(old),to_jsonb(new)) then
+    new.write_version := old.write_version;
+  else
+    new.write_version := pg_catalog.nextval('public.trip_write_version_seq'::regclass);
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.advance_trip_write_version() from public,anon,authenticated,service_role;
+
+create or replace function public.touch_trip_updated_at()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin
+  if public.trip_access_only_change(to_jsonb(old),to_jsonb(new)) then
+    new.updated_at := old.updated_at;
+  else
+    new.updated_at := (extract(epoch from now()) * 1000)::bigint;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.touch_trip_updated_at() from public,anon,authenticated,service_role;
+
 create table if not exists public.member_access_cutover (id boolean primary key default true check (id));
 revoke all on public.member_access_cutover from public, anon, authenticated, service_role;
 alter table public.member_access_cutover enable row level security;
@@ -2475,10 +2509,10 @@ begin
     if not v_rotate then
       return jsonb_build_object('status','applied','state',public.trip_access_state(p_trip_id));
     end if;
-    if p_expected_revision is distinct from (to_jsonb(v_trip)->>'write_version')::bigint then
-      return jsonb_build_object('status','stale','state',public.trip_access_state(p_trip_id));
-    end if;
   elsif p_action in ('role','remove','restore','leave') then
+    if p_action='restore' and v_trip.owner_id<>v_actor then
+      raise exception 'Only the owner can restore access.' using errcode='42501';
+    end if;
     if (p_action='leave' and v_target<>v_actor) or (p_action<>'leave' and not v_manager) then
       raise exception 'Member change refused.' using errcode='42501';
     end if;
@@ -2491,6 +2525,9 @@ begin
     if p_action='role' then
       if p_role is null or p_role not in ('editor','commenter','viewer') or v_access.state<>'active' then
         raise exception 'Invalid role change.' using errcode='22023';
+      end if;
+      if p_role=v_access.role then
+        return jsonb_build_object('status','applied','state',public.trip_access_state(p_trip_id));
       end if;
       v_rotate := array_position(array['viewer','commenter','editor','owner'],p_role)
         < array_position(array['viewer','commenter','editor','owner'],v_access.role);
@@ -2526,9 +2563,7 @@ begin
   end if;
   update public.trips set access_version=access_version+1 where id=p_trip_id;
   if p_action='leave' then return jsonb_build_object('status','applied'); end if;
-  return jsonb_build_object('status','applied','state',public.trip_access_state(p_trip_id)
-    || case when p_action='invite' and v_rotate then jsonb_build_object('mintBaseVersion',(to_jsonb(v_trip)->>'write_version')::bigint)
-      else '{}'::jsonb end);
+  return jsonb_build_object('status','applied','state',public.trip_access_state(p_trip_id));
 end;
 $$;
 revoke all on function public.change_trip_access(uuid,text,uuid,text,bigint) from public, anon, authenticated, service_role;
@@ -2590,14 +2625,11 @@ $$;
 revoke all on function public.admin_remove_member(uuid,uuid) from public, anon, authenticated, service_role;
 grant execute on function public.admin_remove_member(uuid,uuid) to authenticated;
 
--- Direct trip updates must not restore an expired credential.
 create or replace function public.guard_trip_invite()
 returns trigger language plpgsql set search_path=public as $$
 begin
   if tg_op='INSERT' then
-    if exists(select 1 from public.trip_member_access where trip_id=new.id) then
-      new.invite_code := null;
-    end if;
+    new.invite_code := null;
     new.access_version := 0;
     return new;
   end if;
@@ -2616,7 +2648,26 @@ create trigger trips_invite_boundary before insert or update of invite_code,acce
 create or replace function public.move_trip_access_owner()
 returns trigger language plpgsql security definer set search_path=public as $$
 begin
-  update public.trip_member_access set owner_id=new.owner_id where trip_id=new.id;
+  if exists(select 1 from public.trip_member_access where trip_id=new.id and user_id=new.owner_id and state='removed') then
+    raise exception 'Restore access before transferring ownership.' using errcode='42501';
+  end if;
+  update public.trip_member_access set owner_id=new.owner_id,
+    role=case when user_id=old.owner_id and role='owner' then 'editor' else role end,
+    revision=revision+1 where trip_id=new.id;
+  update public.trip_members set role='editor' where trip_id=new.id and user_id=old.owner_id and role='owner';
+  insert into public.trip_member_access(trip_id,user_id,owner_id,state,role,joined_at)
+    values(new.id,new.owner_id,new.owner_id,'active','owner',floor(extract(epoch from clock_timestamp())*1000))
+    on conflict(trip_id,user_id) do update set role='owner',state='active',revision=public.trip_member_access.revision+1;
+  insert into public.trip_members(trip_id,user_id,role,joined_at)
+    select trip_id,user_id,'owner',joined_at from public.trip_member_access where trip_id=new.id and user_id=new.owner_id
+    on conflict(trip_id,user_id) do update set role='owner';
+  loop
+    begin
+      update public.trips set invite_code=public.new_trip_invite(),access_version=access_version+1 where id=new.id;
+      exit;
+    exception when unique_violation then null;
+    end;
+  end loop;
   return new;
 end;
 $$;

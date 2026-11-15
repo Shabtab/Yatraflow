@@ -43,7 +43,11 @@ describe('durable member access through actual SQL', () => {
       create function public.is_member(p uuid) returns boolean language sql stable security definer as $$ select exists(select 1 from public.trip_members where trip_id=p and user_id=auth.uid()) $$;
       create table public.admin_audit(actor_id uuid,action text,target_type text,target_id text,detail jsonb);
       grant select,insert,update,delete,truncate,references,trigger on public.trip_members to authenticated,anon,service_role;
-      grant select,update on public.trips to authenticated;`)
+      grant select,insert,update on public.trips to authenticated;
+      alter table public.trips enable row level security;
+      create policy fixture_trips_read on public.trips for select to authenticated using(owner_id=auth.uid() or public.is_member(id));
+      create policy fixture_trips_insert on public.trips for insert to authenticated with check(owner_id=auth.uid());
+      create policy fixture_trips_update on public.trips for update to authenticated using(owner_id=auth.uid()) with check(true);`)
     for (const id of [owner, member, fresh]) {
       await db.query('insert into auth.users values($1)', [id])
       await db.query('insert into public.profiles(id,email) values($1,$2)', [id, `${id}@synthetic.invalid`])
@@ -51,6 +55,7 @@ describe('durable member access through actual SQL', () => {
     await db.query('insert into public.trips(id,owner_id,name,invite_code) values($1,$2,$3,$4)', [trip, owner, 'Synthetic trip', originalCode])
     await db.query("insert into public.trip_members(trip_id,user_id,role) values($1,$2,'owner'),($1,$3,'viewer')", [trip, owner, member])
     await db.exec(readFileSync('supabase/migrations/20261017_trip_write_version.sql', 'utf8'))
+    await db.exec(readFileSync('supabase/migrations/20260919_trip_touch_updated_at.sql', 'utf8'))
     await db.exec(migration)
   })
   afterAll(async () => { await db?.close() })
@@ -119,9 +124,45 @@ describe('durable member access through actual SQL', () => {
     await expect(call(member, 'select public.join_trip($1)', [oldCode])).rejects.toMatchObject({ code: '42501' })
   })
 
+  it('keeps the first saved plan editable after bootstrap, invite and crew changes', async () => {
+    const id = '20000000-0000-4000-8000-000000000002'
+    const inserted = await call<{ write_version: number }>(owner, 'insert into public.trips(id,owner_id,name,invite_code) values($1,$2,$3,$4) returning write_version', [id, owner, 'First saved plan', originalCode])
+    const base = inserted.rows[0].write_version
+    const view = async () => (await call<{ s: { planVersion: number; inviteCode: string; members: Array<{ userId: string; revision: number }> } }>(owner, 'select public.trip_access_state($1) as s', [id])).rows[0].s
+    await call(owner, "select public.change_trip_access($1,'bootstrap')", [id])
+    expect((await view()).planVersion).toBe(base)
+    expect((await view()).inviteCode).toBeNull()
+    await call(owner, "select public.change_trip_access($1,'invite')", [id])
+    await call(member, 'select public.join_trip($1)', [(await view()).inviteCode])
+    let memberRevision = (await view()).members.find(m => m.userId === member)!.revision
+    await call(owner, "select public.change_trip_access($1,'role',$2,'viewer',$3)", [id, member, memberRevision])
+    memberRevision = (await view()).members.find(m => m.userId === member)!.revision
+    await call(owner, "select public.change_trip_access($1,'remove',$2,null,$3)", [id, member, memberRevision])
+    expect((await view()).planVersion).toBe(base)
+    const saved = await db.query<{ write_version: number }>('update public.trips set name=$1 where id=$2 and write_version=$3 returning write_version', ['First actual edit', id, base])
+    expect(saved.rows).toHaveLength(1)
+    expect(saved.rows[0].write_version).toBeGreaterThan(base)
+    expect((await db.query<{ name: string }>('select name from public.trips where id=$1', [id])).rows[0].name).toBe('First actual edit')
+  })
+
+  it('keeps ownership transfer and both member roles coherent without bypassing a removal', async () => {
+    const id = '20000000-0000-4000-8000-000000000002'
+    await expect(call(owner, 'update public.trips set owner_id=$1 where id=$2', [member, id])).rejects.toMatchObject({ code: '42501' })
+    const before = (await call<{ s: { inviteCode: string; removed: Array<{ userId: string; revision: number }> } }>(owner, 'select public.trip_access_state($1) as s', [id])).rows[0].s
+    await call(owner, "select public.change_trip_access($1,'restore',$2,null,$3)", [id, member, before.removed.find(m => m.userId === member)!.revision])
+    await call(owner, 'update public.trips set owner_id=$1 where id=$2', [member, id])
+    const after = (await call<{ s: { inviteCode: string; members: Array<{ userId: string; role: string }> } }>(member, 'select public.trip_access_state($1) as s', [id])).rows[0].s
+    expect(after.members.find(m => m.userId === member)?.role).toBe('owner')
+    expect(after.members.find(m => m.userId === owner)?.role).toBe('editor')
+    expect(after.inviteCode).not.toBe(before.inviteCode)
+  })
+
   it('preserves enabled audited admin removal, canonical owner and disabled boundaries', async () => {
     await expect(change(owner, 'remove', owner, null, 1)).rejects.toMatchObject({ code: '42501' })
     await db.exec("select set_config('test.admin','true',false)")
+    await expect(call(fresh, 'select public.admin_remove_member($1,$2)', [trip, owner])).rejects.toMatchObject({ code: '42501' })
+    const blocked = (await state()).removed.find(m => m.userId === member)!
+    await expect(change(fresh, 'restore', member, null, blocked.revision)).rejects.toMatchObject({ code: '42501' })
     await call(fresh, 'select public.admin_remove_member($1,$2)', [trip, fresh])
     expect((await db.query('select * from public.admin_audit')).rows).toHaveLength(1)
     await db.query('update public.profiles set is_disabled=true where id=$1', [fresh])

@@ -64,7 +64,7 @@ describe('#366 — the admin grant lockdown', () => {
     }
   })
 
-  it('is the last word on these grants, or a fresh apply hands the door back', () => {
+  it('keeps later admin grants authenticated-only with explicit public and anon revokes', () => {
     // Name order decides which grant a fresh in-order apply leaves behind
     // (#351's redefinition lesson, applied to grants).
     const dir = new URL('../supabase/migrations/', import.meta.url)

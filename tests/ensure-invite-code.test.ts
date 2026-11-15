@@ -4,6 +4,7 @@ import type { MemberAccessState } from '../src/lib/memberAccess'
 
 const transport = vi.hoisted(() => ({
   actor: 'owner', error: null as null | { message: string },
+  sessionThrows: false,
   server: null as MemberAccessState | null, reply: null as unknown,
   gate: null as Promise<void> | null,
   calls: [] as Array<{ fn: string; args: Record<string, unknown>; header: string | null }>,
@@ -13,7 +14,10 @@ vi.mock('../src/components/ui', () => ({ toast: notice }))
 vi.mock('../src/lib/supabase', () => ({
   isSupabaseConfigured: false,
   supabase: {
-    auth: { getSession: async () => ({ data: { session: { user: { id: transport.actor }, access_token: `token-${transport.actor}` } } }) },
+    auth: { getSession: async () => {
+      if (transport.sessionThrows) throw new Error('Session check failed. Try again.')
+      return { data: { session: { user: { id: transport.actor }, access_token: `token-${transport.actor}` } } }
+    } },
     from: () => { throw new Error('Membership commands must not use a direct write.') },
     rpc: (fn: string, args: Record<string, unknown>) => {
       let header: string | null = null
@@ -45,6 +49,7 @@ beforeEach(async () => {
   vi.resetModules()
   store = await import('../src/store/store')
   transport.actor = 'owner'
+  transport.sessionThrows = false
   transport.error = null
   transport.gate = null
   transport.server = state()
@@ -60,13 +65,27 @@ describe('acknowledged trip membership and invites', () => {
   it('checks the server even with a cached invite and binds the caller bearer', async () => {
     expect(await store.ensureInviteCode('member-fixture')).toBe('YATRA-ABCDEFGH')
     expect(cached().inviteCode).toBe('YATRA-ABCDEFGH')
-    expect(transport.calls).toEqual([{ fn: 'change_trip_access', args: { p_trip_id: 'member-fixture', p_action: 'invite', p_expected_revision: null }, header: 'Authorization: Bearer token-owner' }])
+    expect(transport.calls).toEqual([{ fn: 'change_trip_access', args: { p_trip_id: 'member-fixture', p_action: 'invite' }, header: 'Authorization: Bearer token-owner' }])
   })
 
   it('does not invent an invite when server support is absent', async () => {
     transport.error = { message: 'Function is unavailable' }
     expect(await store.ensureInviteCode('member-fixture')).toBeNull()
     expect(cached().inviteCode).toBe('STALE-ABCDEFGH')
+  })
+
+  it('reports a failed session check without rejecting the UI promise', async () => {
+    transport.sessionThrows = true
+    expect(await store.ensureInviteCode('member-fixture')).toBeNull()
+    expect(await store.readMemberAccess('member-fixture')).toBeNull()
+    expect(await store.setMemberRole('member-fixture', 'guest', 'editor')).toBe(false)
+    expect(notice).toHaveBeenCalledWith('Session check failed. Try again.', 'err')
+  })
+
+  it('acknowledges an unchanged role from the server without a mutation', async () => {
+    expect(await store.setMemberRole('member-fixture', 'guest', 'viewer')).toBe(true)
+    expect(transport.calls.map(c => c.fn)).toEqual(['trip_access_state'])
+    expect(cached().members?.find(m => m.userId === 'guest')?.revision).toBe(1)
   })
 
   it('waits for removal acknowledgement, then installs the rotated code and Undo revision', async () => {
