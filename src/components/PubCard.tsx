@@ -11,10 +11,10 @@
 // keep the behaviour of their page. Nothing here claims a statistic, a follower
 // count, a payout or a date: the row prints only what the profile holds.
 import type { CSSProperties } from 'react'
-import { Camera, TvMinimalPlay } from 'lucide-react'
 import type { PublishedItinerary, CachedUser } from '../data/types'
 import { staggerDelay } from '../lib/motion'
 import { openExternal } from '../lib/native'
+import { SocialIcon } from './creator/SocialIcon'
 import { ExploreCard } from './explore/ExploreCard'
 import { PUB_GRID_SIZES } from './explore/ExploreCover'
 
@@ -44,11 +44,11 @@ export function PubCard({ pub, creator, saved, onFork, onToggleSave, enterIndex,
       <span className="ex-card-channels">
         {youtube && (
           <a href={youtube} target="_blank" rel="noreferrer noopener" aria-label={`${creatorName} on YouTube`} className="icon-link"
-            onClick={e => { e.preventDefault(); openExternal(youtube) }}><TvMinimalPlay size={14} aria-hidden /></a>
+            onClick={e => { e.preventDefault(); openExternal(youtube) }}><SocialIcon kind="youtube" gap={0} /></a>
         )}
         {instagram && (
           <a href={instagram} target="_blank" rel="noreferrer noopener" aria-label={`${creatorName} on Instagram`} className="icon-link"
-            onClick={e => { e.preventDefault(); openExternal(instagram) }}><Camera size={14} aria-hidden /></a>
+            onClick={e => { e.preventDefault(); openExternal(instagram) }}><SocialIcon kind="instagram" gap={0} /></a>
         )}
       </span>
     </div>
