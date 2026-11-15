@@ -6,14 +6,14 @@
 //
 // WHAT THIS DOES NOT DO. It does not sign in, mint a session or touch the
 // hydrate. The store is never `init()`ed, so no slice read, realtime channel or
-// write path starts. The two RPC reads the hub issues (`get_creator_sales`,
-// `get_creator_funnel`) go out unauthenticated and land in the page's own
-// failed-read state — which is the honest no-backend answer, shown on screen.
+// write path starts. Owner reads use synthetic props. The hub's separate RPC
+// reads stay unauthenticated and show their own failed-read state.
 //
 // STATE knobs, all in the query string (see the on-page index for every case):
 //   case=live-0|live-1|live-3|live-7|unpub|long|disabled|kit   (kit = the cr- component gallery: no page, no store)
 //   links=none|youtube|both       read=ok|reading|failed|kept
 //   viewer=owner|nonowner|signedout        theme=light|dark
+//   owner=ready|failed|kept                owner-layer reads only
 //
 // "read=kept" means: the publications read FAILED but rows were already on
 // screen, so `rowsView` returns 'kept' — the hub keeps its rows and adds the
@@ -40,6 +40,7 @@ import { CrDelta } from '../src/components/creator/CrDelta'
 import { CrMeterRow } from '../src/components/creator/CrMeterRow'
 import { Chip } from '../src/components/ui'
 import { Eye } from 'lucide-react'
+import type { OwnerRead, OwnerReads } from '../src/lib/creatorOwnerReads'
 
 const params = new URLSearchParams(location.search)
 const THEME = params.get('theme') === 'dark' ? 'dark' : 'light'
@@ -47,6 +48,7 @@ const CASE = params.get('case') ?? 'live-3'
 const LINKS = params.get('links') ?? 'both'
 const READ = params.get('read') ?? 'ok'
 const VIEWER = params.get('viewer') ?? 'owner'
+const OWNER = params.get('owner') ?? 'ready'
 
 const CREATOR_ID = 'fixture-creator-0001'
 const VIEWER_ID = 'fixture-viewer-0002'
@@ -254,6 +256,9 @@ const INDEX_CASES: { label: string; query: string }[] = [
   { label: 'publications read: failed', query: '?case=live-3&read=failed' },
   { label: 'publications read: kept', query: '?case=live-3&read=kept' },
   { label: 'viewer: owner', query: '?case=live-3&viewer=owner' },
+  { label: 'owner reads: ready', query: '?viewer=owner&owner=ready' },
+  { label: 'owner reads: failed', query: '?viewer=owner&owner=failed' },
+  { label: 'owner reads: kept', query: '?viewer=owner&owner=kept' },
   { label: 'viewer: non-owner (signed in)', query: '?case=live-3&viewer=nonowner' },
   { label: 'viewer: signed out', query: '?case=live-3&viewer=signedout' },
   { label: 'disabled creator', query: '?case=disabled' },
@@ -431,6 +436,29 @@ function KitGallery() {
 
 const navigate = (route: string) => { console.log('[fixture] navigate', route) }
 
+const OWNER_AT = Date.now() - 60_000
+const OWNER_DAY = new Date(OWNER_AT).toISOString().slice(0, 10)
+function ownerRead<T>(data: T[], mode: string): OwnerRead<T> {
+  return mode === 'failed' ? { kind: 'failed', data: null, at: null }
+    : { kind: mode === 'kept' ? 'kept' : 'ready', data, at: OWNER_AT }
+}
+const fixturePageVisit = async () => {}
+
+function FixtureCreatorPage() {
+  const [mode, setMode] = React.useState(OWNER)
+  const reads: OwnerReads = {
+    funnel: ownerRead([{ pubId: 'fixture-pub-0', day: OWNER_DAY, views: 80, forks: 12 }], mode),
+    sales: ownerRead([{
+      pubId: 'fixture-pub-0', title: 'Fixture Kerala drive 0', amountPaidInr: 199,
+      feeInr: 0, netInr: 199, grantedAt: OWNER_AT,
+    }], mode),
+    sources: ownerRead([{ source: 'ig', views: 60, forks: 10 }, { source: 'Direct link', views: 20, forks: 2 }], mode),
+    visits: ownerRead([{ day: OWNER_DAY, source: 'Direct link', visits: 100 }], mode),
+  }
+  return <CreatorPage creatorId={CREATOR_ID} onNavigate={navigate} ownerReads={reads}
+    onOwnerRetry={() => setMode('ready')} onPageVisit={fixturePageVisit} />
+}
+
 const root = document.getElementById('root')
 if (!root) throw new Error('Creator fixture root not found')
 ReactDOM.createRoot(root).render(
@@ -438,9 +466,9 @@ ReactDOM.createRoot(root).render(
     <>
       {CASE === 'kit' ? (
         <KitGallery />
-      ) : params.has('case') || params.has('viewer') || params.has('read') || params.has('links') ? (
+      ) : params.has('case') || params.has('viewer') || params.has('read') || params.has('links') || params.has('owner') ? (
         <>
-          <CreatorPage creatorId={CREATOR_ID} onNavigate={navigate} />
+          <FixtureCreatorPage />
           <CreatorHubPage onNavigate={navigate} />
         </>
       ) : (
