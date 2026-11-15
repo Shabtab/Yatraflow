@@ -553,6 +553,7 @@
 /* ============ Hub (P6) ============ */
 .cr-hub-layout {
   display: grid;
+  margin-top: var(--space-7);
   grid-template-columns: minmax(0, 844fr) minmax(0, 420fr);
   gap: var(--space-7);
   align-items: start;
@@ -660,15 +661,12 @@
   color: var(--pw-ink-3);
   opacity: 1;
 }
-.hub-cell-unread {
+.hub-strip.cr-hub-kpis .hub-cell-unread {
   color: var(--pw-ink-3);
   opacity: 1;
 }
 .cr-hub-publication .hub-cell-unread {
   font: 600 11px/1.3 var(--font-body);
-}
-.cr-hub-layout {
-  margin-top: var(--space-7);
 }
 .cr-hub-price,
 .cr-hub-views,
@@ -888,7 +886,7 @@
 }
 .cr-rk-podium__card:hover {
   transform: translateY(-2px);
-  box-shadow: var(--elev-2);
+  box-shadow: var(--shadow-card-hover);
 }
 .cr-rk-podium__cover {
   position: relative;
@@ -925,6 +923,7 @@
   background: var(--pw-marigold-500);
 }
 .cr-rk-podium__identity {
+  --avatar-ring: 0 0 0 4px var(--pw-card);
   position: relative;
   z-index: var(--z-content);
   display: flex;
@@ -936,9 +935,6 @@
 }
 .cr-rk-podium__cover + .cr-rk-podium__body .cr-rk-podium__identity {
   margin-top: calc(-1 * var(--space-12));
-}
-.cr-rk-podium__identity {
-  --avatar-ring: 0 0 0 4px var(--pw-card);
 }
 .cr-rk-podium__name {
   margin: 0;
