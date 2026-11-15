@@ -711,7 +711,7 @@ export function HubOverview({ followerCount = { kind: 'reading' }, onRetryFollow
         })}
         <div className="hub-cell cr-tile cr-hub-followers">
           <span className="stat-label cr-tile__label">YatraFlow followers</span>
-          <span className="stat-value hub-cell-value cr-tile__value">{creatorFollowerCountLabel(followerCount)}</span>
+          <span className={`stat-value hub-cell-value cr-tile__value${followerCount.kind === 'failed' ? ' cr-tile__value--none' : ''}`}>{creatorFollowerCountLabel(followerCount)}</span>
           <span className="cr-tile__note">All time</span>
           {followerCount.kind === 'failed' && onRetryFollowers && <button type="button" className="btn btn-ghost btn-sm" onClick={onRetryFollowers}>Retry follower count</button>}
         </div>

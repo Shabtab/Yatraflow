@@ -185,13 +185,14 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
         cover={lead}
         publishingSince={since}
         shareUrl={shareLink}
-        followerCount={creatorFollowerCountLabel(follows.count)}
+        followerCount={<span className={follows.count.kind === 'failed' ? 'cr-tile__value--none' : undefined}>{creatorFollowerCountLabel(follows.count)}</span>}
         follow={!isOwner && creator.profile.isCreator ? <div className="cr-store-follow">
           <button type="button" className="btn btn-outline cr-store-follow-button"
             disabled={follows.busy || follows.following.kind === 'reading'}
             aria-pressed={follows.following.kind === 'ready' ? follows.following.value : undefined}
+            aria-label={follows.following.kind === 'failed' ? 'Retry follow status' : undefined}
             onClick={() => { if (!me) onNavigate('/auth'); else if (follows.following.kind === 'failed') follows.refresh(); else void follows.toggle() }}>
-            {follows.busy ? 'Saving…' : follows.following.kind === 'failed' ? 'Retry follow status' : follows.following.kind === 'reading' ? 'Loading…' : follows.following.value ? 'Following' : 'Follow'}
+            {follows.busy ? 'Saving…' : follows.following.kind === 'failed' ? 'Retry' : follows.following.kind === 'reading' ? 'Loading…' : follows.following.value ? 'Following' : 'Follow'}
           </button>
           {follows.following.kind === 'failed' && <span role="status">Follow status: Unavailable</span>}
           {follows.error && <span role="status">{follows.error}</span>}
