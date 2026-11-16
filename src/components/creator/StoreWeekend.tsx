@@ -47,7 +47,7 @@ export function StoreWeekend({ pub, creatorName, signedIn, onCopy }: {
   const span = copiedSpan(source)
   const end = span === null ? null : endForSpan(start, span)
   if (span === null || end === null) return null
-  const town = (pub.routeSummary ?? [])[0]?.trim() || null
+  const town = pub.routeSummary[0]?.trim() || null
   const plan = planLine(pub.premiumPriceInr)
   const head = headEstimateInr(pub.estimatedBudgetPerPersonInr)
   const partyLabel = countNoun(party, 'person', 'people')
