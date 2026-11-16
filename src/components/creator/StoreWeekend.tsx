@@ -2,17 +2,18 @@
 // A visitor picks a start date and a party size, then copies the featured route
 // with those answers. The ticket shows what the copy will hold. The route figures
 // come from the publication row, and a figure the row does not have is left off.
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { PublishedItinerary } from '../../data/types'
 import { CREW_MIN } from '../../lib/crew'
 import { countNoun } from '../../lib/creatorCopy'
 import { formatInr } from '../../lib/engine'
 import { takeForkAttribution } from '../../lib/growthAttribution'
 import {
-  PARTY_DEFAULT, PARTY_MAX, clampParty, dateRangeLabel, endForSpan, headEstimateInr,
+  PARTY_DEFAULT, PARTY_MAX, clampParty, copiedSpan, dateRangeLabel, endForSpan, headEstimateInr,
   isoDayOf, pickLabel, planLine, weekendStarts, type ForkPlan,
 } from '../../lib/weekendPlan'
 import { localMidnightMs } from '../../lib/dayCount'
+import { fetchPublicTrip, tripById } from '../../store/store'
 
 export function StoreWeekend({ pub, creatorName, signedIn, onCopy }: {
   pub: PublishedItinerary
@@ -36,10 +37,16 @@ export function StoreWeekend({ pub, creatorName, signedIn, onCopy }: {
   const [otherOpen, setOtherOpen] = useState(() => kept !== null && !picks.includes(kept.startDate))
   const [party, setParty] = useState(() => (kept ? clampParty(kept.travellers) : PARTY_DEFAULT))
 
-  // The route's own length. A route with no usable length gets no card.
-  const span = pub.durationDays
-  const end = endForSpan(start, span)
-  if (end === null) return null
+  const [source, setSource] = useState(() => tripById(pub.tripId) ?? null)
+  useEffect(() => {
+    if (source) return
+    let alive = true
+    void fetchPublicTrip(pub.id).then(trip => { if (alive) setSource(trip) }).catch(() => {})
+    return () => { alive = false }
+  }, [pub.id, source])
+  const span = copiedSpan(source)
+  const end = span === null ? null : endForSpan(start, span)
+  if (span === null || end === null) return null
   const town = (pub.routeSummary ?? [])[0]?.trim() || null
   const plan = planLine(pub.premiumPriceInr)
   const head = headEstimateInr(pub.estimatedBudgetPerPersonInr)

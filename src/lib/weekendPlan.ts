@@ -2,10 +2,10 @@
 // The storefront card (components/creator/StoreWeekend.tsx) asks for a start date
 // and a party size. These helpers turn those answers into the dates a fork copies
 // and into the ticket lines. Pure logic, no backend. The copy keeps the route's own
-// length: the pick sets the start, and the end follows from the source trip's span.
+// length: the pick sets the start, and the copied day count sets the end.
 import type { Trip } from '../data/types'
 import { CREW_MIN } from './crew'
-import { dayCountForRange, localMidnightMs } from './dayCount'
+import { localMidnightMs } from './dayCount'
 
 /** The most people the card's stepper offers. A trip itself allows more. */
 export const PARTY_MAX = 20
@@ -115,20 +115,25 @@ export function sanitizeForkPlan(raw: unknown): ForkPlan | null {
   if (!raw || typeof raw !== 'object') return null
   const { startDate, travellers, startTown } = raw as { startDate?: unknown; travellers?: unknown; startTown?: unknown }
   if (typeof startDate !== 'string' || typeof travellers !== 'number' || !Number.isFinite(travellers)) return null
+  if (startDate.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return null
   const ms = localMidnightMs(startDate)
   if (ms === null) return null
   const town = typeof startTown === 'string' ? startTown.trim().slice(0, 80) : ''
   return { startDate: isoDayOf(new Date(ms)), travellers: clampParty(travellers), startTown: town || null }
 }
 
-/** The copy takes the chosen start and keeps the source trip's own length. Days are numbered from the start,
- *  so moving the start needs no day edits. With no usable date range, the day count sets the span. A source with neither keeps its dates. The party always applies.
+export function copiedSpan(trip: Pick<Trip, 'days'> | null | undefined): number | null {
+  // Count all copied itinerary days, including locked placeholders; dates and publication summaries can differ.
+  const count = trip?.days.length ?? 0
+  return Number.isInteger(count) && count >= 1 ? count : null
+}
+
+/** The copy takes the chosen start and keeps the source trip's day count. Days are numbered from the start,
+ *  so moving the start needs no day edits. A source with no days keeps its dates. The party always applies.
  *  The start town is not written: the copy already starts where the route does. */
 export function applyForkPlan(trip: Trip, plan: ForkPlan): Trip {
-  // No usable date range: the day count sets the span, the same count the publication shows.
-  const range = dayCountForRange(trip.startDate, trip.endDate)
-  const span = range >= 1 ? range : trip.days.length
-  const endDate = span >= 1 ? endForSpan(plan.startDate, span) : null
+  const span = copiedSpan(trip)
+  const endDate = span === null ? null : endForSpan(plan.startDate, span)
   return {
     ...trip,
     travellers: clampParty(plan.travellers),

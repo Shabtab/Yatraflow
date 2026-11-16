@@ -100,13 +100,14 @@ describe('persisted fork activation', () => {
   })
 
   it('forks with the storefront dates and party applied to the copy', async () => {
-    const dated = { ...source, startDate: '2026-11-01', endDate: '2026-11-05', travellers: 2 }
+    const dated = { ...source, startDate: '2026-11-01', endDate: '2026-11-05', travellers: 2,
+      days: Array.from({ length: 3 }, (_, index) => ({ ...source.days[0], index })) }
     mocks.fetch.mockResolvedValueOnce(dated)
     const navigate = vi.fn()
     const plan = { startDate: '2026-11-21', travellers: 6, startTown: 'Kochi' }
-    expect(await forkPublication(pub, 'growth-owner', navigate, false, 'creator', null, plan)).toBe(true)
+    expect(await forkPublication({ ...pub, durationDays: 3 }, 'growth-owner', navigate, false, 'creator', null, plan)).toBe(true)
     const [copy] = mocks.publicDuplicate.mock.calls[0]
-    expect(copy).toMatchObject({ startDate: '2026-11-21', endDate: '2026-11-25', travellers: 6 })
+    expect(copy).toMatchObject({ startDate: '2026-11-21', endDate: '2026-11-23', travellers: 6 })
     expect(dated.startDate).toBe('2026-11-01')
   })
 })

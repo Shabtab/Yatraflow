@@ -2064,10 +2064,10 @@ p.cr-store-planning {
 .cr-store-weekend {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
-  gap: var(--space-8);
+  gap: var(--space-12);
   align-items: start;
   margin-top: var(--space-12);
-  padding: var(--space-7);
+  padding: var(--space-11);
   border: 1px solid var(--pw-line-soft);
   border-radius: var(--radius-xl);
   background: var(--pw-card);
@@ -2095,7 +2095,7 @@ p.cr-store-planning {
 .cr-weekend-fields {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
+  gap: var(--space-5);
   align-items: start;
 }
 .cr-weekend-field {
@@ -2263,25 +2263,24 @@ p.cr-store-planning {
   justify-content: space-between;
   min-height: 44px;
   padding: 0 var(--space-4);
-  /* Stays dark in both themes: --pw-sea-900 turns into a light tint in dark mode. */
-  background: #0B3F44;
-  color: #FFFFFF;
+  background: var(--pw-ticket-head);
+  color: var(--pw-ticket-ink);
 }
 .cr-weekend-ticket-brand {
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 700;
-  color: #FFFFFF;
+  color: var(--pw-ticket-ink);
 }
 .cr-weekend-ticket-brand span {
-  color: #6CCAB3;
+  color: var(--pw-lagoon-300);
 }
 .cr-weekend-ticket-tag {
   font-size: 11px;
   text-transform: uppercase;
   font-weight: 800;
   letter-spacing: .14em;
-  color: #9FD9CF;
+  color: var(--pw-ticket-muted);
 }
 .cr-weekend-ticket-cover {
   height: 92px;

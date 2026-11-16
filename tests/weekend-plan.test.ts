@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Trip } from '../src/data/types'
 import {
-  PARTY_MAX, addIsoDays, applyForkPlan, clampParty, dateRangeLabel, endForSpan, headEstimateInr,
+  PARTY_MAX, addIsoDays, applyForkPlan, clampParty, copiedSpan, dateRangeLabel, endForSpan, headEstimateInr,
   isoDayOf, pickLabel, planLine, sanitizeForkPlan, weekendStarts,
 } from '../src/lib/weekendPlan'
 import { rememberFork, takeForkAttribution } from '../src/lib/growthAttribution'
@@ -87,19 +87,39 @@ describe('ticket lines', () => {
 })
 
 describe('applying a plan to the copy', () => {
-  const source = { id: 't1', startDate: '2026-11-01', endDate: '2026-11-05', travellers: 2, startLocation: 'Kochi', days: [] } as unknown as Trip
+  const source = { id: 't1', startDate: '2026-11-01', endDate: '2026-11-05', travellers: 2, startLocation: 'Kochi', days: [{}, {}, {}] } as unknown as Trip
 
   it('moves the start, keeps the route span, and sets the party without touching the source', () => {
     const copy = applyForkPlan(source, { startDate: '2026-11-21', travellers: 4, startTown: 'Kochi' })
-    expect(copy).toMatchObject({ startDate: '2026-11-21', endDate: '2026-11-25', travellers: 4, startLocation: 'Kochi' })
+    const publication = { durationDays: 3 }
+    expect(copiedSpan(source)).toBe(publication.durationDays)
+    const ticketEnd = endForSpan('2026-11-21', copiedSpan(source) ?? 0)
+    expect(copy).toMatchObject({ startDate: '2026-11-21', endDate: ticketEnd, travellers: 4, startLocation: 'Kochi' })
+    expect(copy.endDate).toBe('2026-11-23')
+    expect(dateRangeLabel(copy.startDate, copy.endDate)).toBe('21–23 Nov')
+    expect(pickLabel(copy.startDate, copy.endDate)).toBe('Sat 21 – Mon 23 Nov')
     expect(source.startDate).toBe('2026-11-01')
     expect(source.travellers).toBe(2)
   })
 
   it('keeps the dates when the source has no usable span, and still applies the party', () => {
-    const broken = { ...source, startDate: '', endDate: '' } as Trip
+    const broken = { ...source, startDate: '', endDate: '', days: [] } as Trip
     const copy = applyForkPlan(broken, { startDate: '2026-11-21', travellers: 30, startTown: null })
     expect(copy).toMatchObject({ startDate: '', endDate: '', travellers: 20 })
+    expect(copiedSpan(broken)).toBeNull()
+    expect(copiedSpan(null)).toBeNull()
+  })
+
+  it('uses five copied days when the publication still says three', () => {
+    const publication = { durationDays: 3 }
+    const fiveDays = { ...source, days: Array.from({ length: 5 }, () => source.days[0]) }
+    const span = copiedSpan(fiveDays)
+    expect(span).toBe(5)
+    expect(span).not.toBe(publication.durationDays)
+    const copy = applyForkPlan(fiveDays, { startDate: '2026-11-21', travellers: 4, startTown: null })
+    expect(copy.endDate).toBe(endForSpan('2026-11-21', span ?? 0))
+    expect(copy.endDate).toBe('2026-11-25')
+    expect(pickLabel(copy.startDate, copy.endDate)).toBe('Sat 21 – Wed 25 Nov')
   })
 
   it('takes the span from the day count when the source has no date range', () => {
@@ -140,11 +160,19 @@ describe('plan through sign-in', () => {
 
 describe('sanitizeForkPlan', () => {
   it('normalises a stored date, clamps the party and trims the town', () => {
-    expect(sanitizeForkPlan({ startDate: '2026-11-21T08:00', travellers: 99, startTown: '  Kochi  ' }))
+    expect(sanitizeForkPlan({ startDate: '2026-11-21', travellers: 99, startTown: '  Kochi  ' }))
       .toEqual({ startDate: '2026-11-21', travellers: 20, startTown: 'Kochi' })
     expect(sanitizeForkPlan({ startDate: '2026-11-21', travellers: 3, startTown: '   ' }))
       .toEqual({ startDate: '2026-11-21', travellers: 3, startTown: null })
     expect(sanitizeForkPlan(null)).toBeNull()
     expect(sanitizeForkPlan({ startDate: '2026-11-21' })).toBeNull()
+  })
+
+  it.each(['2026-11-21garbage', '2026-02-30', '', '2026-11-21T08:00', '2026-11-21\n'])('rejects the stored date %j', startDate => {
+    expect(sanitizeForkPlan({ startDate, travellers: 4 })).toBeNull()
+    storage.set('yf.pending-publication-fork', JSON.stringify({
+      pubId: 'pub_bad', source: 'creator', campaign: null, at: Date.now(), plan: { startDate, travellers: 4 },
+    }))
+    expect(takeForkAttribution('pub_bad', false)?.plan).toBeUndefined()
   })
 })
