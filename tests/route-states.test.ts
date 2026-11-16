@@ -164,6 +164,10 @@ describe('the G3b migration draft', () => {
     expect(listed.length).toBe(36)
     expect([...listed].sort()).toEqual(INDIA_STATES.map(state => state.code).sort())
     expect(sql).toContain('cardinality(p_codes) <= 36')
+    // Gate: no duplicate codes, no nested arrays, and server writes keep EXECUTE.
+    expect(sql).toContain('coalesce(array_ndims(p_codes), 1) = 1')
+    expect(sql).toContain('cardinality(p_codes) = (select count(distinct c) from unnest(p_codes) c)')
+    expect(sql).toContain('to authenticated, service_role;')
   })
 
   it('backfills nothing and leaves the read policy alone', () => {

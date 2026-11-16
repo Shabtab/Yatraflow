@@ -2981,30 +2981,29 @@ function publishedHaveRefreshedAt(): Promise<boolean> {
 
 // G3/G3b: planned_km, best_months and reviewed_scope shipped with no probe, so a
 // publish on an un-migrated database could fail on a missing column. One probe now
-// covers those three and state_codes. A transient error reads as present and clears
-// the cache, so the next publish re-checks.
+// covers those three and state_codes. Only a confirmed missing column is dropped.
 let publishColumnsProbe: Promise<ReadonlySet<string>> | null = null
 function publishedOptionalColumns(): Promise<ReadonlySet<string>> {
   if (!isSupabaseConfigured) return Promise.resolve(new Set<string>())
   if (!publishColumnsProbe) {
     publishColumnsProbe = (async () => {
-      const present = new Set<string>()
-      try {
-        const results = await Promise.all(PUBLISH_OPTIONAL_COLUMNS.map(async column => {
+      // Each column is checked on its own. Only a confirmed missing-column error
+      // drops a column. A returned or thrown transient error keeps the column and
+      // clears the cache, so the next publish checks again.
+      const results = await Promise.all(PUBLISH_OPTIONAL_COLUMNS.map(async column => {
+        try {
           const { error } = await supabase.from('published_itineraries').select(column).limit(1)
-          return { column, error }
-        }))
-        let transient = false
-        for (const { column, error } of results) {
-          if (!error) present.add(column)
-          else if (!isMissingColumnError(error)) transient = true
+          if (!error) return { column, present: true, certain: true }
+          return isMissingColumnError(error)
+            ? { column, present: false, certain: true }
+            : { column, present: true, certain: false }
+        } catch {
+          return { column, present: true, certain: false }
         }
-        if (transient) publishColumnsProbe = null
-        return present
-      } catch {
-        publishColumnsProbe = null
-        return new Set<string>(PUBLISH_OPTIONAL_COLUMNS)
-      }
+      }))
+      const present = new Set<string>(results.filter(r => r.present).map(r => r.column))
+      if (results.some(r => !r.certain)) publishColumnsProbe = null
+      return present
     })()
   }
   return publishColumnsProbe

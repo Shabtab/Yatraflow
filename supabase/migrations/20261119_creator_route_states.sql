@@ -13,7 +13,8 @@ alter table public.published_itineraries add column if not exists state_codes te
 comment on column public.published_itineraries.state_codes is
   'ISO 3166-2:IN codes of the states and union territories this route covers. Null before G3b, or when a publish had no codes.';
 
--- Each element must be one of the 36 codes. Null elements fail. At most 36 items. A null array is allowed.
+-- Each element must be one of the 36 codes. Null elements, duplicates and nested arrays fail.
+-- At most 36 items. A null array is allowed. service_role gets EXECUTE too, so server writes pass the check.
 -- The constraint goes first, because it depends on the function. A re-run then drops cleanly.
 alter table public.published_itineraries drop constraint if exists published_state_codes_check;
 drop function if exists public.valid_route_state_codes(text[]);
@@ -22,6 +23,8 @@ returns boolean language sql immutable set search_path = public
 as $$
   select p_codes is null or (
     cardinality(p_codes) <= 36
+    and coalesce(array_ndims(p_codes), 1) = 1
+    and cardinality(p_codes) = (select count(distinct c) from unnest(p_codes) c)
     and coalesce((
       select bool_and(c is not null and c = any (array[
         'AN','AP','AR','AS','BR','CH','CT','DH','DL','GA','GJ','HP','HR','JH','JK','KA','KL','LA',
@@ -32,7 +35,7 @@ as $$
   )
 $$;
 revoke all on function public.valid_route_state_codes(text[]) from public, anon;
-grant execute on function public.valid_route_state_codes(text[]) to authenticated;
+grant execute on function public.valid_route_state_codes(text[]) to authenticated, service_role;
 
 alter table public.published_itineraries add constraint published_state_codes_check
   check (public.valid_route_state_codes(state_codes) is true);
