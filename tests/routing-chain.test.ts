@@ -28,20 +28,31 @@ const F = { lat: 10.5, lng: 77.5 }
 
 const asm = getAssumptions({ transportMode: 'car' })
 
+/** One OSRM chain body in the REAL shape. The road shape sits on the route, and
+ *  each leg carries its distance, duration and per-segment annotations, with no
+ *  geometry of its own. Each leg here spans two segments (A, midpoint, B). */
+interface ChainLeg {
+  distance: number
+  duration: number
+  annotation?: { distance?: number[]; duration?: number[] }
+}
+interface ChainBody {
+  code: string
+  routes: { distance: number; duration: number; geometry?: { type: string; coordinates: [number, number][] }; legs: ChainLeg[] }[]
+}
+
 /** OSRM chain response for a waypoint list: one leg per consecutive pair. */
-function chainResponse(points: { lat: number; lng: number }[]) {
-  const legs = [] as unknown[]
+function chainResponse(points: { lat: number; lng: number }[]): ChainBody {
+  const coordinates: [number, number][] = [[points[0].lng, points[0].lat]]
+  const legs: ChainLeg[] = []
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i]
     const b = points[i + 1]
-    legs.push({
-      distance: 10_000,
-      duration: 600,
-      geometry: { coordinates: [[a.lng, a.lat], [(a.lng + b.lng) / 2, (a.lat + b.lat) / 2], [b.lng, b.lat]] },
-      annotation: { distance: [5_000, 5_000], duration: [300, 300] },
-    })
+    coordinates.push([(a.lng + b.lng) / 2, (a.lat + b.lat) / 2], [b.lng, b.lat])
+    legs.push({ distance: 10_000, duration: 600, annotation: { distance: [5_000, 5_000], duration: [300, 300] } })
   }
-  return { code: 'Ok', routes: [{ legs }] }
+  const route = { distance: 10_000 * legs.length, duration: 600 * legs.length, geometry: { type: 'LineString', coordinates }, legs }
+  return { code: 'Ok', routes: [route] }
 }
 
 let fetchCalls: string[] = []
@@ -278,5 +289,78 @@ describe('coordinate boundary guard (Codacy SAST: user-controlled URL taint)', (
     expect(legs.filter(l => l.source === 'osrm').length).toBe(2)
     expect(fetchCalls.length).toBe(1)
     expect(fetchCalls[0]).toContain('180,-90')
+  })
+})
+
+describe('OSRM chain geometry is cut from the route shape', () => {
+  it('gives each leg the slice its own segment count names, not an even split', async () => {
+    // Leg 0 spans three segments (four coordinates); leg 1 spans two (three).
+    const shape: [number, number][] = [
+      [A.lng, A.lat], [77.02, 10.02], [77.03, 10.05], [B.lng, B.lat], [77.15, 10.18], [C.lng, C.lat],
+    ]
+    const body: ChainBody = {
+      code: 'Ok',
+      routes: [{
+        distance: 5_000,
+        duration: 360,
+        geometry: { type: 'LineString', coordinates: shape },
+        legs: [
+          { distance: 3_000, duration: 180, annotation: { distance: [1_000, 1_000, 1_000], duration: [60, 60, 60] } },
+          { distance: 2_000, duration: 180, annotation: { distance: [1_000, 1_000], duration: [90, 90] } },
+        ],
+      }],
+    }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      fetchCalls.push(String(input))
+      return new Response(JSON.stringify(body), { status: 200 })
+    }))
+    const legs = await routePath([A, B, C], asm)
+    expect(legs.map(l => l.source)).toEqual(['osrm', 'osrm'])
+    expect(legs[0].geometry).toEqual(shape.slice(0, 4))
+    expect(legs[1].geometry).toEqual(shape.slice(3))
+    expect(fetchCalls.length).toBe(1)
+  })
+
+  it('each leg starts where the one before it ends, and keeps its interior points', async () => {
+    vi.stubGlobal('fetch', vi.fn(echoOsrmFetch))
+    const pts = [A, B, C, D, E]
+    const legs = await routePath(pts, asm)
+    expect(legs.length).toBe(4)
+    legs.forEach((leg, i) => {
+      expect(leg.geometry.length).toBe(3) // A, midpoint, B: more than a chord
+      expect(leg.geometry[0]).toEqual([pts[i].lng, pts[i].lat])
+      expect(leg.geometry[2]).toEqual([pts[i + 1].lng, pts[i + 1].lat])
+      if (i > 0) expect(leg.geometry[0]).toEqual(legs[i - 1].geometry[2])
+    })
+  })
+
+  describe('a malformed chain answer falls back to per-leg measurement, never to chords', () => {
+    const chainUrl = `${A.lng},${A.lat};${B.lng},${B.lat};${C.lng},${C.lat}`
+    const cases: { name: string; mutate: (body: ChainBody) => void }[] = [
+      { name: 'the route has no geometry', mutate: b => { delete b.routes[0]!.geometry } },
+      { name: 'a leg has no annotation', mutate: b => { delete b.routes[0]!.legs[0]!.annotation } },
+      { name: 'a leg has an empty segment list', mutate: b => { b.routes[0]!.legs[0]!.annotation = { distance: [], duration: [] } } },
+      { name: 'the segment counts miss the coordinate count', mutate: b => { b.routes[0]!.legs[1]!.annotation = { distance: [5_000], duration: [300] } } },
+      { name: 'the distance and duration counts differ', mutate: b => { b.routes[0]!.legs[1]!.annotation = { distance: [5_000, 5_000], duration: [300] } } },
+    ]
+    it.each(cases)('falls back when $name', async ({ mutate }) => {
+      const bad = chainResponse([A, B, C])
+      mutate(bad)
+      vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+        // only the three-waypoint chain is malformed; the per-leg requests answer validly
+        if (String(input).includes(chainUrl)) {
+          fetchCalls.push(String(input))
+          return new Response(JSON.stringify(bad), { status: 200 })
+        }
+        return echoOsrmFetch(input)
+      }))
+      const legs = await routePath([A, B, C], asm)
+      expect(legs.length).toBe(2)
+      expect(legs.every(l => l.source === 'osrm')).toBe(true)
+      expect(legs.every(l => l.geometry.length === 3)).toBe(true) // no two-point chord
+      expect(legs[0].geometry[0]).toEqual([A.lng, A.lat])
+      expect(legs[1].geometry[2]).toEqual([C.lng, C.lat])
+      expect(fetchCalls.length).toBe(3) // 1 refused chain + 2 per-leg
+    })
   })
 })
