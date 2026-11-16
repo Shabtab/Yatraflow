@@ -7,6 +7,7 @@
 import { STOP_CATEGORIES, type CrewInterest, type DecisionOption, type ID, type TripDecision } from '../data/types'
 import type { CrewInterestSummary } from './crewPreferences'
 import { voteOutcome } from './decisionClock'
+import { formatHM, type TimeFormat } from './timefmt'
 
 /** Categories that name a logistics need, not an interest. The crew quiz leaves
  *  them out: a hotel or a transport hub is not something a member "wants more of". */
@@ -81,4 +82,27 @@ export function crewBars(summary: CrewInterestSummary): CrewBar[] {
     .filter(interest => summary.picks[interest] > 0)
     .map(interest => ({ interest, picks: summary.picks[interest], percent: Math.round(summary.shares[interest] * 100) }))
     .sort((a, b) => b.picks - a.picks)
+}
+
+/** The closing time as the reader's clock shows it: weekday and time, honouring
+ *  12h or 24h ("Thu 20:00"). A time six or more days away also names the date. */
+export function closingStamp(ms: number, fmt: TimeFormat, now: number): string {
+  const d = new Date(ms)
+  const hm = formatHM(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, fmt)
+  const day = d.toLocaleDateString('en-IN', ms - now >= 6 * 86_400_000
+    ? { weekday: 'short', day: 'numeric', month: 'short' }
+    : { weekday: 'short' })
+  return `${day.replace(',', '')} ${hm}`
+}
+
+/** A local "YYYY-MM-DDTHH:mm" value for a datetime-local input, for example its `min`. */
+export function localInputValue(ms: number): string {
+  const d = new Date(ms)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/** True when two interest lists hold the same interests, in any order. */
+export function sameInterests(a: readonly CrewInterest[], b: readonly CrewInterest[]): boolean {
+  return a.length === b.length && a.every(i => b.includes(i))
 }

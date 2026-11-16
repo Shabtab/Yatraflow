@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { STOP_CATEGORIES, type CrewPreference, type TripDecision } from '../src/data/types'
 import { summarizeCrewPreferences } from '../src/lib/crewPreferences'
 import {
-  CREW_QUIZ_INTERESTS, QUIZ_EXCLUDED_CATEGORIES, crewBars, dayOptionLabel, decisionDayLabel,
+  CREW_QUIZ_INTERESTS, QUIZ_EXCLUDED_CATEGORIES, closingStamp, crewBars, localInputValue, sameInterests, dayOptionLabel, decisionDayLabel,
   joinNames, optionLabelRefusal, parseClosesAt, votingClosedLine,
 } from '../src/lib/groupInputView'
 import { canAddOption } from '../src/lib/decisionOptions'
@@ -49,19 +49,53 @@ describe('the closing-time lock UI', () => {
     expect(tab).toContain("outcome.kind === 'tie' ? '. An editor picks the winner.' : ''")
     expect(tab).toMatch(/\{editable && \(\s*<div className="resolve-btns">/)
   })
-  it('resolves nothing on its own', () => {
-    expect(tab).not.toMatch(/useEffect\([^)]*resolveChoice/)
+  it('resolves nothing on its own: resolveChoice( is only called from an onClick handler', () => {
+    const calls = [...tab.matchAll(/resolveChoice\(/g)].map(m => m.index as number)
+      .filter(i => !tab.slice(Math.max(0, i - 16), i).includes('function '))
+    expect(calls.length).toBeGreaterThanOrEqual(2)
+    for (const i of calls) {
+      const before = tab.slice(Math.max(0, i - 220), i)
+      const handler = before.lastIndexOf('onClick={')
+      expect(handler, 'a call outside an onClick handler').toBeGreaterThanOrEqual(0)
+      expect(before.slice(handler)).not.toMatch(/useEffect|useMemo|useCallback/)
+    }
+  })
+  it('useNow clears its interval on unmount', () => {
+    const start = tab.indexOf('function useNow()')
+    const body = tab.slice(start, tab.indexOf('\n}\n', start))
+    expect(body).toContain('window.setInterval(')
+    expect(body).toMatch(/return \(\) => window\.clearInterval\(timer\)/)
+  })
+  it('names the lock "Closed" in the eyebrow and keeps the verdict line', () => {
+    expect(tab).toContain('{locked && <p className="gin-eyebrow">Closed</p>}')
+    expect(tab).not.toContain('<p className="gin-eyebrow">Voting closed</p>')
+    expect(tab).toContain('{votingClosedLine(d)}')
   })
   it('a closed decision no longer needs my vote', () => {
     expect(tab).toMatch(/d\.status === 'open' && !isVoteClosed\(d, now\) && !d\.votesByUserId\[me\.id\]/)
   })
   it('shows the closing time in the eyebrow, with or without my vote, and the day in the sub-line', () => {
-    expect(tab).toContain("Needs your vote{hasClosingTime(d) ? ` · closes in ${formatSpan((d.closesAt as number) - now)}` : ''}")
-    expect(tab).toContain('Open · closes in {formatSpan((d.closesAt as number) - now)}')
+    expect(tab).toContain("Needs your vote{hasClosingTime(d) ? ` · closes ${closingStamp(d.closesAt as number, timeFormat, now)} · in ${formatSpan((d.closesAt as number) - now)}` : ''}")
+    expect(tab).toContain('Open · closes {closingStamp(d.closesAt as number, timeFormat, now)} · in {formatSpan((d.closesAt as number) - now)}')
     expect(tab).toContain('Raised by {raiser}{dayLabel ? ` · ${dayLabel}` : \'\'} · {voterCount} of {memberCount} voted')
   })
   it('leaves a server refusal to the shared report path', () => {
     expect(tab).toMatch(/void voteOnDecision\(d\.id, pick\)\.then\(o => reportCollabOutcome\(o\)\)/)
+  })
+})
+
+describe('the closing stamp', () => {
+  const at = new Date(2026, 10, 19, 20, 5).getTime() // Thu 19 Nov 2026, local
+  const now = new Date(2026, 10, 17, 10, 0).getTime()
+  it('shows weekday and time in the reader clock', () => {
+    expect(closingStamp(at, '24h', now)).toBe('Thu 20:05')
+    expect(closingStamp(at, '12h', now)).toBe('Thu 8:05 PM')
+  })
+  it('names the date when the time is a week away', () => {
+    expect(closingStamp(at, '24h', at - 7 * 86_400_000)).toMatch(/^Thu 19 Nov 20:05$/)
+  })
+  it('writes a local datetime-local value', () => {
+    expect(localInputValue(at)).toBe('2026-11-19T20:05')
   })
 })
 
@@ -72,6 +106,11 @@ describe('the composer fields', () => {
     expect(parseClosesAt('2020-01-01T10:00', NOW)).toEqual({ ok: false, reason: 'past' })
     const ok = parseClosesAt('2099-01-01T10:00', NOW)
     expect(ok.ok && typeof ok.closesAt === 'number').toBe(true)
+  })
+  it('sets a min of now on Closes, and moves focus to it on a refused time', () => {
+    expect(tab).toContain('min={minCloses}')
+    expect(tab).toMatch(/closesRef\.current\?\.focus\(\)\n\s+return/)
+    expect(tab).toContain('<input ref={closesRef} className="input" type="datetime-local"')
   })
   it('wires Closes and Day into addDecision with the shared Field', () => {
     expect(tab).toContain('<Field label="Closes (optional)"')
@@ -106,6 +145,12 @@ describe('add option visibility', () => {
     expect(tab).toContain('optionClaim.claim()')
     expect(optionLabelRefusal('duplicate')).toBe('This decision already has that option.')
   })
+  it('returns focus to the trigger after a good add, and names the question on both buttons', () => {
+    expect(tab).toContain('<button ref={addTriggerRef}')
+    expect(tab).toMatch(/setAddingOption\(false\)\n\s+if \(stranded\) addTriggerRef\.current\?\.focus\(\)/)
+    expect(tab.match(/aria-label=\{`Add option to \$\{d\.question\}`\}/g)).toHaveLength(2)
+    expect(tab).toContain("aria-label={`Add option to ${q.trim() || 'this decision'}`}")
+  })
 })
 
 describe('the crew preferences card', () => {
@@ -123,7 +168,7 @@ describe('the crew preferences card', () => {
   })
   it('shows the quiz only after a good read, open until I answer and folded after', () => {
     expect(tab).toContain("read === 'ready' && isMember && (")
-    expect(tab).toContain('const quizOpen = !mine || editing')
+    expect(tab).toContain('const quizOpen = !mine || editing || pending')
     expect(tab).toContain('Edit your answers')
   })
   it('lists only interests with a pick, high to low, from the answered members', () => {
@@ -165,6 +210,20 @@ describe('the crew quiz', () => {
     expect(tab).toContain('<FilterChip key={interest} pressed={picked.includes(interest)}')
     expect(tab).toMatch(/void setMyCrewPreferences\(trip\.id, picked\)\.then\(o => \{\s*reportCollabOutcome\(o, 'Your answers are saved'\)/)
     expect(tab).toContain('const picked = draft ?? mine?.interests ?? []')
+  })
+  it('moves focus: first chip on Edit, the Edit button (or heading) after Save or Cancel', () => {
+    expect(tab).toContain('onClick={() => { setEditing(true); setFocusChip(true) }}')
+    expect(tab).toContain("querySelector<HTMLButtonElement>('button')?.focus()")
+    expect(tab).toContain('(editBtnRef.current ?? headingRef.current)?.focus()')
+    expect(tab).toContain('setEditing(false); setRestoreFocus(true) }')
+    expect(tab).toContain('onClick={() => { setDraft(null); setEditing(false); setRestoreFocus(true) }}')
+  })
+  it('enables Save only for a change, and offers None of these to a first-time answer', () => {
+    expect(sameInterests(['food', 'beach'], ['beach', 'food'])).toBe(true)
+    expect(sameInterests(['food'], ['food', 'beach'])).toBe(false)
+    expect(tab).toContain('const dirty = mine ? !sameInterests(picked, mine.interests) : picked.length > 0')
+    expect(tab).toContain('disabled={pending || !dirty}')
+    expect(tab).toMatch(/\{!mine && \(\s*<button type="button" className="gin-text-btn" disabled=\{pending\} onClick=\{\(\) => save\(\[\]\)\}>None of these/)
   })
   it('lets any trip member answer, viewers included', () => {
     const card = tab.slice(tab.indexOf('function CrewPreferencesCard'), tab.indexOf('function ShareBar'))

@@ -23,10 +23,11 @@ import { formatInr, minutesToHM } from '../../lib/engine'
 import { decisionContext, contextLine, recommendForDecision } from '../../lib/decisionGuide'
 import { emptyCopyFor, sliceState } from '../../lib/readState'
 import { formatSpan, hasClosingTime, isVoteClosed, voteOutcome } from '../../lib/decisionClock'
+import { useTimeFormat } from '../../lib/timefmt'
 import { canAddOption, checkNewOptionLabel } from '../../lib/decisionOptions'
 import { myCrewPreference, summarizeCrewPreferences } from '../../lib/crewPreferences'
 import {
-  CREW_QUIZ_INTERESTS, crewBars, dayOptionLabel, decisionDayLabel, optionLabelRefusal, parseClosesAt, votingClosedLine,
+  CREW_QUIZ_INTERESTS, closingStamp, crewBars, dayOptionLabel, localInputValue, sameInterests, decisionDayLabel, optionLabelRefusal, parseClosesAt, votingClosedLine,
 } from '../../lib/groupInputView'
 import { Avatar, Chip, Field, toast } from '../../components/ui'
 import { assignAvatarTones } from '../../lib/avatarTone'
@@ -392,6 +393,13 @@ function CrewPreferencesCard({ trip, meId }: { trip: Trip; meId: string }) {
   const [draft, setDraft] = useState<CrewInterest[] | null>(null)
   const [editing, setEditing] = useState(false)
   const [pending, setPending] = useState(false)
+  // After a Save or a Cancel the quiz folds. Focus then goes back to the
+  // "Edit your answers" button, or to the card heading when that button is absent.
+  const [restoreFocus, setRestoreFocus] = useState(false)
+  const [focusChip, setFocusChip] = useState(false)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const editBtnRef = useRef<HTMLButtonElement>(null)
+  const chipsRef = useRef<HTMLDivElement>(null)
   const memberIds = useMemo(() => (trip.members ?? []).map(m => m.userId), [trip.members])
   const isMember = memberIds.includes(meId)
   const retry = () => { void loadCrewPreferences(trip.id) }
@@ -407,8 +415,24 @@ function CrewPreferencesCard({ trip, meId }: { trip: Trip; meId: string }) {
   const mine = myCrewPreference(rows, trip.id, meId)
   const picked = draft ?? mine?.interests ?? []
   // A member who has not answered sees the quiz open. One who has sees it behind a button.
-  const quizOpen = !mine || editing
+  // The quiz stays open while a save is pending. A first save writes my row at once,
+  // and the quiz must not unmount before the server answers.
+  const quizOpen = !mine || editing || pending
   const hasRows = summary.answered > 0
+  // Save needs a change. A first answer needs at least one chip.
+  const dirty = mine ? !sameInterests(picked, mine.interests) : picked.length > 0
+
+  useEffect(() => {
+    if (!restoreFocus || quizOpen) return
+    ;(editBtnRef.current ?? headingRef.current)?.focus()
+    setRestoreFocus(false)
+  }, [restoreFocus, quizOpen])
+
+  useEffect(() => {
+    if (!focusChip || !quizOpen) return
+    chipsRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    setFocusChip(false)
+  }, [focusChip, quizOpen])
 
   function toggle(interest: CrewInterest) {
     setDraft(current => {
@@ -417,20 +441,20 @@ function CrewPreferencesCard({ trip, meId }: { trip: Trip; meId: string }) {
     })
   }
 
-  function save() {
+  function save(list: CrewInterest[] = picked) {
     if (pending) return
     setPending(true)
-    void setMyCrewPreferences(trip.id, picked).then(o => {
+    void setMyCrewPreferences(trip.id, list).then(o => {
       reportCollabOutcome(o, 'Your answers are saved')
       // The draft stays after a refusal, so the member keeps what they picked.
-      if (o.status === 'applied' || o.status === 'alreadyApplied') { setDraft(null); setEditing(false) }
+      if (o.status === 'applied' || o.status === 'alreadyApplied') { setDraft(null); setEditing(false); setRestoreFocus(true) }
       setPending(false)
     })
   }
 
   return (
     <Surface className="card gin-panel">
-      <h3 className="gin-card-title">Crew preferences</h3>
+      <h3 ref={headingRef} tabIndex={-1} className="gin-card-title">Crew preferences</h3>
       <p className="small muted gin-help">From each person’s answers.</p>
       <hr className="divider" />
       {read === 'failed' && hasRows && (
@@ -470,20 +494,25 @@ function CrewPreferencesCard({ trip, meId }: { trip: Trip; meId: string }) {
           {quizOpen ? (
             <>
               <p className="small gin-quiz-title" id={`gi-quiz-title-${trip.id}`}>Your answers</p>
-              <div className="gin-quiz-chips" role="group" aria-labelledby={`gi-quiz-title-${trip.id}`}>
+              <div ref={chipsRef} className="gin-quiz-chips" role="group" aria-labelledby={`gi-quiz-title-${trip.id}`}>
                 {CREW_QUIZ_INTERESTS.map(interest => (
                   <FilterChip key={interest} pressed={picked.includes(interest)} onClick={() => toggle(interest)}>{cap(interest)}</FilterChip>
                 ))}
               </div>
               <div className="gin-foot">
-                <button type="button" className="btn btn-primary btn-sm" disabled={pending} aria-busy={pending} onClick={save}>Save</button>
+                <button type="button" className="btn btn-primary btn-sm" disabled={pending || !dirty} aria-busy={pending} onClick={() => save()}>Save</button>
                 {mine && (
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setDraft(null); setEditing(false) }}>Cancel</button>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={pending}
+                    onClick={() => { setDraft(null); setEditing(false); setRestoreFocus(true) }}>Cancel</button>
+                )}
+                {!mine && (
+                  <button type="button" className="gin-text-btn" disabled={pending} onClick={() => save([])}>None of these</button>
                 )}
               </div>
             </>
           ) : (
-            <button type="button" className="gin-text-btn" aria-expanded={false} onClick={() => setEditing(true)}>Edit your answers</button>
+            <button ref={editBtnRef} type="button" className="gin-text-btn" aria-expanded={false}
+              onClick={() => { setEditing(true); setFocusChip(true) }}>Edit your answers</button>
           )}
         </div>
       )}
@@ -686,6 +715,8 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
   const [optionError, setOptionError] = useState<string | undefined>()
   const optionClaim = useBusyClaim(`${d.id}:add-option`)
   const optionRef = useRef<HTMLInputElement>(null)
+  const addTriggerRef = useRef<HTMLButtonElement>(null)
+  const timeFormat = useTimeFormat()
   const [stamped, setStamped] = useState(false)
   const [placementDayId, setPlacementDayId] = useState('')
   const [placementDays, setPlacementDays] = useState<Array<{ id: string; index: number; title?: string }> | null>(null)
@@ -736,7 +767,13 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
     if (!optionClaim.claim()) return
     void addDecisionOption(d.id, { label: checked.label }).then(o => {
       reportCollabOutcome(o, 'Option added')
-      if (o.status === 'applied' || o.status === 'alreadyApplied') { setOptionLabel(''); setAddingOption(false) }
+      if (o.status === 'applied' || o.status === 'alreadyApplied') {
+        // The field unmounts, so focus goes back to the trigger. A member who moved on keeps their place.
+        const active = document.activeElement
+        const stranded = !active || active === document.body || !!document.getElementById(`gi-add-option-${d.id}`)?.contains(active)
+        setOptionLabel(''); setAddingOption(false)
+        if (stranded) addTriggerRef.current?.focus()
+      }
     }).finally(() => optionClaim.release())
   }
 
@@ -750,14 +787,14 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
     <Surface id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-panel gin-decision${needsMe ? ' gi-needs-you' : ''}`}>
       {open ? (
         <>
-          {locked && <p className="gin-eyebrow">Voting closed</p>}
+          {locked && <p className="gin-eyebrow">Closed</p>}
           {!locked && needsMe && (
             <p className="gin-eyebrow gin-eyebrow--amber">
-              Needs your vote{hasClosingTime(d) ? ` · closes in ${formatSpan((d.closesAt as number) - now)}` : ''}
+              Needs your vote{hasClosingTime(d) ? ` · closes ${closingStamp(d.closesAt as number, timeFormat, now)} · in ${formatSpan((d.closesAt as number) - now)}` : ''}
             </p>
           )}
           {!locked && !needsMe && hasClosingTime(d) && (
-            <p className="gin-eyebrow">Open · closes in {formatSpan((d.closesAt as number) - now)}</p>
+            <p className="gin-eyebrow">Open · closes {closingStamp(d.closesAt as number, timeFormat, now)} · in {formatSpan((d.closesAt as number) - now)}</p>
           )}
           <h3 className="gin-card-title">{d.question}</h3>
           <p className="small muted gin-sub">Raised by {raiser}{dayLabel ? ` · ${dayLabel}` : ''} · {voterCount} of {memberCount} voted</p>
@@ -837,7 +874,8 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
               aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
               onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
             {editable && canAddOption(d, now) && (
-              <button type="button" className="btn btn-ghost btn-sm" aria-expanded={addingOption}
+              <button ref={addTriggerRef} type="button" className="btn btn-ghost btn-sm" aria-expanded={addingOption}
+                aria-label={`Add option to ${d.question}`}
                 aria-controls={addingOption ? `gi-add-option-${d.id}` : undefined}
                 onClick={() => setAddingOption(a => !a)}>
                 <Plus size={14} aria-hidden /> Add option
@@ -850,7 +888,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
                 <input ref={optionRef} className="input" value={optionLabel} maxLength={200}
                   onChange={e => { setOptionLabel(e.target.value); setOptionError(undefined) }} />
               </Field>
-              <button className="btn btn-sm btn-outline" disabled={optionClaim.busy} aria-busy={optionClaim.busy}>Add</button>
+              <button className="btn btn-sm btn-outline" aria-label={`Add option to ${d.question}`} disabled={optionClaim.busy} aria-busy={optionClaim.busy}>Add</button>
             </form>
           )}
           {editable && (
@@ -1149,6 +1187,9 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
   const [dayId, setDayId] = useState('')
   const [closesError, setClosesError] = useState<string | undefined>()
   const [pending, setPending] = useState(false)
+  const closesRef = useRef<HTMLInputElement>(null)
+  // The earliest closing time is now. It refreshes when the field takes focus.
+  const [minCloses, setMinCloses] = useState(() => localInputValue(Date.now()))
 
   function setOpt(i: number, key: 'label' | 'cost', v: string) {
     setOpts(list => list.map((o, j) => j === i ? { ...o, [key]: v } : o))
@@ -1172,6 +1213,7 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
     const closing = parseClosesAt(closes, Date.now())
     if (!closing.ok) {
       setClosesError(closing.reason === 'past' ? 'Pick a time in the future, or leave it empty.' : 'Enter a valid date and time.')
+      closesRef.current?.focus()
       return
     }
     setClosesError(undefined)
@@ -1202,7 +1244,8 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
       </Field>
       <div className="form-row">
         <Field label="Closes (optional)" error={closesError} hint="Your local time. After it, nobody can vote. An editor applies the winner.">
-          <input className="input" type="datetime-local" value={closes} onChange={e => { setCloses(e.target.value); setClosesError(undefined) }} />
+          <input ref={closesRef} className="input" type="datetime-local" min={minCloses} value={closes}
+            onFocus={() => setMinCloses(localInputValue(Date.now()))} onChange={e => { setCloses(e.target.value); setClosesError(undefined) }} />
         </Field>
         <Field label="Day (optional)">
           <select className="select" value={dayId} onChange={e => setDayId(e.target.value)}>
@@ -1223,7 +1266,8 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
             </span>
           ))}
           <span>
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => setOpts(list => [...list, { label: '', cost: '' }])}><Plus size={14} aria-hidden /> Add option</button>
+            <button type="button" className="btn btn-outline btn-sm" aria-label={`Add option to ${q.trim() || 'this decision'}`}
+              onClick={() => setOpts(list => [...list, { label: '', cost: '' }])}><Plus size={14} aria-hidden /> Add option</button>
           </span>
         </span>
       </Field>
