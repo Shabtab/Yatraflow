@@ -165,6 +165,7 @@ describe('loadCrewPreferences: failed, reading, ready-empty and ready-with-rows 
     const pending = store.loadCrewPreferences(tripId)
     expect(store.getSnapshot().crewPreferenceReads[tripId]).toBe('reading')
     expect(sliceState(store.getSnapshot().crewPreferenceReads, tripId)).toBe('reading')
+    await flush()
     release()
     expect(await pending).toBe('ok')
     expect(sliceState(store.getSnapshot().crewPreferenceReads, tripId)).toBe('ready')
@@ -178,6 +179,7 @@ describe('loadCrewPreferences: failed, reading, ready-empty and ready-with-rows 
     h.crewReads.push(() => new Promise(resolve => { release = () => resolve({ data: [], error: null }) }))
     const pending = store.loadCrewPreferences(tripId)
     expect(store.getSnapshot().crewPreferenceReads[tripId]).toBe('ok')
+    await flush()
     release()
     await pending
   })
@@ -275,6 +277,7 @@ describe('setMyCrewPreferences', () => {
     })
     const pending = store.setMyCrewPreferences(tripId, ['temple', 'food'])
     expect(store.getSnapshot().crewPreferences.find(p => p.tripId === tripId && p.userId === ownerId)?.interests).toEqual(['food', 'temple'])
+    await flush()
     release()
     expect(await pending).toMatchObject({ status: 'applied' })
     expect(store.getSnapshot().crewPreferences.find(p => p.tripId === tripId && p.userId === ownerId)?.updatedAt).toBe(77)
@@ -474,11 +477,90 @@ describe('the cache cascade drops crew preferences with the trip', () => {
       release = () => resolve({ data: [row(tripId, ownerId, ['food'])], error: null })
     }))
     const pending = store.loadCrewPreferences(tripId)
+    await flush()
     store._applyRealtimeEventForTest('trips', payload('DELETE', { id: tripId }))
     release()
     await pending
     const snap = store.getSnapshot()
     expect(snap.crewPreferences.filter(p => p.tripId === tripId)).toEqual([])
     expect(tripId in snap.crewPreferenceReads).toBe(false)
+  })
+})
+
+describe('crew channel lifecycle and ordering', () => {
+  const change = (eventType: 'INSERT' | 'UPDATE', next: Record<string, unknown>) =>
+    ({ eventType, schema: 'public', table: '', commit_timestamp: '', old: {}, new: next, errors: null }) as never
+  const crewChannels = () => h.channels.filter(c => c.name === 'yatraflow-crew')
+
+  it('connectRealtime reopens the crew channel when a crew read is ok', async () => {
+    const { store, tripId } = await freshStore()
+    h.crewReads.push(() => ({ data: [row(tripId, ownerId, ['food'])], error: null }))
+    await store.loadCrewPreferences(tripId)
+    expect(crewChannels()).toHaveLength(1)
+    store.connectRealtime(ownerId)
+    expect(crewChannels()).toHaveLength(2)
+    expect(h.channels.some(c => c.name === 'yatraflow-live')).toBe(true)
+    // The first crew channel was closed by the reconnect.
+    expect(h.removed.length).toBeGreaterThanOrEqual(1)
+    // Same user again: nothing is torn down or reopened.
+    store.connectRealtime(ownerId)
+    expect(crewChannels()).toHaveLength(2)
+  })
+
+  it('connectRealtime opens no crew channel when no crew read is ok', async () => {
+    const { store } = await freshStore()
+    store.connectRealtime(ownerId)
+    expect(crewChannels()).toHaveLength(0)
+  })
+
+  it('CLOSED forgets the crew channel and the next read opens a new one', async () => {
+    const { store, tripId } = await freshStore()
+    h.crewReads.push(() => ({ data: [], error: null }), () => ({ data: [], error: null }))
+    await store.loadCrewPreferences(tripId)
+    crewChannels()[0].cb?.('CLOSED')
+    await store.loadCrewPreferences(tripId)
+    expect(crewChannels()).toHaveLength(2)
+  })
+
+  it('logs a channel error once per channel lifetime', async () => {
+    const { store, tripId } = await freshStore()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    h.crewReads.push(() => ({ data: [], error: null }))
+    await store.loadCrewPreferences(tripId)
+    crewChannels()[0].cb?.('CHANNEL_ERROR')
+    crewChannels()[0].cb?.('CHANNEL_ERROR')
+    crewChannels()[0].cb?.('TIMED_OUT')
+    expect(error.mock.calls.filter(c => String(c[0]).includes('crew preferences channel'))).toHaveLength(1)
+    error.mockRestore()
+  })
+
+  it('a resync keeps the optimistic row of an own write still in flight', async () => {
+    const { store, tripId } = await freshStore()
+    h.crewReads.push(() => ({ data: [row(tripId, ownerId, ['food'], 5)], error: null }))
+    await store.loadCrewPreferences(tripId)
+    let release!: () => void
+    h.rpc.set_my_crew_preferences = () => new Promise(resolve => {
+      release = () => resolve({ data: { status: 'applied', preference: row(tripId, ownerId, ['temple'], 99) }, error: null })
+    })
+    const pending = store.setMyCrewPreferences(tripId, ['temple'])
+    await flush()
+    // The server still returns the old row while the write is in flight.
+    h.crewReads.push(() => ({ data: [row(tripId, ownerId, ['food'], 5)], error: null }))
+    crewChannels()[0].cb?.('SUBSCRIBED')
+    await flush()
+    expect(store.getSnapshot().crewPreferences.find(p => p.userId === ownerId)?.interests).toEqual(['temple'])
+    release()
+    await pending
+    expect(store.getSnapshot().crewPreferences.find(p => p.userId === ownerId)?.updatedAt).toBe(99)
+  })
+
+  it('a realtime upsert with an older updatedAt does not replace a newer cached row', async () => {
+    const { store, tripId } = await freshStore()
+    h.crewReads.push(() => ({ data: [row(tripId, ownerId, ['food'], 50)], error: null }))
+    await store.loadCrewPreferences(tripId)
+    store._applyRealtimeEventForTest('crew_preferences', change('UPDATE', row(tripId, ownerId, ['rest'], 10)))
+    expect(store.getSnapshot().crewPreferences.find(p => p.userId === ownerId)?.interests).toEqual(['food'])
+    store._applyRealtimeEventForTest('crew_preferences', change('UPDATE', row(tripId, ownerId, ['beach'], 60)))
+    expect(store.getSnapshot().crewPreferences.find(p => p.userId === ownerId)?.interests).toEqual(['beach'])
   })
 })

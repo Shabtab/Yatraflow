@@ -8636,6 +8636,9 @@ export function connectRealtime(userId: string): void {
     realtimeChannel = null
     realtimeIdentity = null
   }
+  // disconnectRealtime above closed the crew channel too. Reopen it for this
+  // user when any trip already read fine, or nothing would ever reopen it.
+  if (Object.values(cache.crewPreferenceReads).some(v => v === 'ok')) openCrewChannel(scope)
 }
 
 // ---------------- Crew preferences channel ----------------
@@ -8668,12 +8671,20 @@ function openCrewChannel(scope: IdentityScope): void {
     })
     crewChannel = channel
     crewChannelIdentity = scope
+    let errorLogged = false
     channel.subscribe(status => {
       if (!live()) return
+      if (status === 'CLOSED') {
+        // The channel is gone for good: forget it, so the next
+        // loadCrewPreferences or connectRealtime opens a fresh one.
+        crewChannel = null
+        crewChannelIdentity = null
+        return
+      }
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        // Log only. Nothing else depends on this channel, and the client library
-        // rejoins on its own.
-        console.error('[yatraflow] crew preferences channel', status)
+        // Log once per channel lifetime. Nothing else depends on this channel,
+        // and the client library rejoins on its own.
+        if (!errorLogged) { errorLogged = true; console.error('[yatraflow] crew preferences channel', status) }
         return
       }
       // Every SUBSCRIBED, the first one too, reads the trips again. The first
@@ -8701,12 +8712,18 @@ async function resyncCrewPreferences(scope: IdentityScope): Promise<void> {
     if (!live()) return
     if (error) throw error
     const rows = (data ?? []) as Record<string, unknown>[]
+    // An own write still in flight keeps its optimistic row, as in loadCrewPreferences.
+    const writing = (tripId: string, userId: string) => userId === scope.userId && crewWritesInFlight.has(`${userId}:${tripId}`)
     const fetchedKeys = new Set(rows.map(r => `${String(r.trip_id)}:${String(r.user_id)}`))
     for (const cached of cache.crewPreferences) {
       if (!read.includes(cached.tripId) || fetchedKeys.has(`${cached.tripId}:${cached.userId}`)) continue
+      if (writing(cached.tripId, cached.userId)) continue
       feedSynthetic('crew_preferences', 'DELETE', {}, { trip_id: cached.tripId, user_id: cached.userId })
     }
-    for (const row of rows) feedSynthetic('crew_preferences', 'INSERT', row)
+    for (const row of rows) {
+      if (writing(String(row.trip_id), String(row.user_id))) continue
+      feedSynthetic('crew_preferences', 'INSERT', row)
+    }
   } catch (e) {
     console.error('[yatraflow] crew preferences resync failed', e)
   }
@@ -9088,9 +9105,15 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       const tripId: string | undefined = row?.trip_id ?? oldRow?.trip_id
       const userId: string | undefined = row?.user_id ?? oldRow?.user_id
       if (!tripId || !userId || !(tripId in cache.crewPreferenceReads)) break
-      cache.crewPreferences = event === 'DELETE' || !row
-        ? removeCrewPreference(cache.crewPreferences, tripId, userId)
-        : upsertCrewPreference(cache.crewPreferences, crewPreferenceRowToEntry(row))
+      if (event === 'DELETE' || !row) {
+        cache.crewPreferences = removeCrewPreference(cache.crewPreferences, tripId, userId)
+        break
+      }
+      const incoming = crewPreferenceRowToEntry(row)
+      const held = myCrewPreference(cache.crewPreferences, tripId, userId)
+      // A late or replayed event must not put an older answer over a newer one.
+      if (held && incoming.updatedAt < held.updatedAt) break
+      cache.crewPreferences = upsertCrewPreference(cache.crewPreferences, incoming)
       break
     }
     case 'activity': {
