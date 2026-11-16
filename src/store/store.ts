@@ -57,6 +57,7 @@ import {
 } from './profileCatalog'
 import { toPublicUser, reviewedSocialLinks } from '../lib/publicProfile'
 import { publicationFacts, validPlanningNotes } from '../lib/creatorFacts'
+import { PUBLISH_OPTIONAL_COLUMNS, publishColumnPatch, type PublishColumnPatch } from '../lib/publishColumns'
 import type { Database } from '../types/database.generated'
 import {
   correlateSession, nextIncarnation, nextOperationId, sameSession,
@@ -2976,6 +2977,37 @@ function publishedHaveRefreshedAt(): Promise<boolean> {
     })()
   }
   return refreshedAtProbe
+}
+
+// G3/G3b: planned_km, best_months and reviewed_scope shipped with no probe, so a
+// publish on an un-migrated database could fail on a missing column. One probe now
+// covers those three and state_codes. A transient error reads as present and clears
+// the cache, so the next publish re-checks.
+let publishColumnsProbe: Promise<ReadonlySet<string>> | null = null
+function publishedOptionalColumns(): Promise<ReadonlySet<string>> {
+  if (!isSupabaseConfigured) return Promise.resolve(new Set<string>())
+  if (!publishColumnsProbe) {
+    publishColumnsProbe = (async () => {
+      const present = new Set<string>()
+      try {
+        const results = await Promise.all(PUBLISH_OPTIONAL_COLUMNS.map(async column => {
+          const { error } = await supabase.from('published_itineraries').select(column).limit(1)
+          return { column, error }
+        }))
+        let transient = false
+        for (const { column, error } of results) {
+          if (!error) present.add(column)
+          else if (!isMissingColumnError(error)) transient = true
+        }
+        if (transient) publishColumnsProbe = null
+        return present
+      } catch {
+        publishColumnsProbe = null
+        return new Set<string>(PUBLISH_OPTIONAL_COLUMNS)
+      }
+    })()
+  }
+  return publishColumnsProbe
 }
 
 // Third use of the same capability probe, for
@@ -7752,16 +7784,23 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
   // column fails the whole statement (PostgREST), which would break publishing
   // for every creator on an un-migrated project.
   const hasUnpublishedCol = await publishedHaveUnpublishedAt()
-  const { error } = await supabase.from('published_itineraries').upsert({
+  // planned_km, best_months, reviewed_scope and state_codes go out only when the
+  // probe finds the column. A write that names a missing column fails whole, and
+  // publishing must keep working before the new SQL runs.
+  const columnPatch: PublishColumnPatch = publishColumnPatch(await publishedOptionalColumns(), {
+    plannedKm: p.plannedKm, bestMonths: p.bestMonths, reviewedScope: p.reviewedScope, stateCodes: p.stateCodes,
+  })
+  const payload: Database['public']['Tables']['published_itineraries']['Insert'] & PublishColumnPatch = {
     id: p.id, trip_id: p.tripId, creator_id: p.creatorId, title: p.title, tagline: p.tagline,
     cover_image_url: p.coverImageUrl, route_summary: p.routeSummary, duration_days: p.durationDays,
     estimated_budget_per_person_inr: p.estimatedBudgetPerPersonInr, travel_style: p.travelStyle,
     best_season: p.bestSeason, travel_tips: p.travelTips, warnings_and_assumptions: p.warningsAndAssumptions,
-    planned_km: p.plannedKm ?? null, best_months: p.bestMonths, reviewed_scope: p.reviewedScope,
     free_day_indexes: p.freeDayIndexes, premium_price_inr: p.premiumPriceInr || undefined, subscriber_cta: p.subscriberCta,
     ...(hasRefreshedCol ? { refreshed_at: p.refreshedAt } : {}),
     ...(hasUnpublishedCol ? { unpublished_at: null } : {}),
-  } satisfies Database['public']['Tables']['published_itineraries']['Insert'])
+    ...columnPatch,
+  }
+  const { error } = await supabase.from('published_itineraries').upsert(payload)
   if (error) {
     console.error('[yatraflow] publish persist failed', error)
     const idx = cache.published.findIndex(x => x.id === p.id)

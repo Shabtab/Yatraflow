@@ -1,5 +1,6 @@
 import type { PublishedItinerary } from '../data/types'
 import { livePubs } from './livePubs'
+import { INDIA_STATE_COUNT, isIndiaStateCode } from '../data/indiaStates'
 
 export const ROUTE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -28,7 +29,16 @@ export function planningNotes(value: unknown): string[] | undefined {
   return value
 }
 
-export function publicationFacts(row: { planned_km?: unknown; best_months?: unknown; reviewed_at?: unknown; reviewed_scope?: unknown }) {
+/** The stored state codes, or undefined when the row has none. A bad list throws,
+ *  so a bad row cannot claim states it does not have. */
+function publicationStateCodes(value: unknown): string[] | undefined {
+  if (value == null) return undefined
+  if (!Array.isArray(value) || value.length > INDIA_STATE_COUNT) throw new Error('Invalid route states')
+  if (!value.every((code: unknown) => typeof code === 'string' && isIndiaStateCode(code))) throw new Error('Invalid route states')
+  return value
+}
+
+export function publicationFacts(row: { planned_km?: unknown; best_months?: unknown; reviewed_at?: unknown; reviewed_scope?: unknown; state_codes?: unknown }) {
   const km = row.planned_km
   const months = row.best_months
   const reviewed = row.reviewed_at
@@ -41,6 +51,7 @@ export function publicationFacts(row: { planned_km?: unknown; best_months?: unkn
     bestMonths: typeof months === 'number' ? months : undefined,
     reviewedAt: typeof reviewed === 'string' ? Date.parse(reviewed) : undefined,
     reviewedScope: typeof row.reviewed_scope === 'string' ? row.reviewed_scope : undefined,
+    stateCodes: publicationStateCodes(row.state_codes),
   }
 }
 
@@ -58,4 +69,17 @@ export function creatorPick(pubs: PublishedItinerary[], creatorId: string, id: s
 export function plannedKilometres(pubs: PublishedItinerary[]): number | undefined {
   const known = livePubs(pubs).filter(pub => pub.plannedKm !== undefined)
   return known.length ? known.reduce((sum, pub) => sum + (pub.plannedKm ?? 0), 0) : undefined
+}
+
+/** Live routes per state code, keyed by code. Undefined when no live route has
+ *  codes. The counts are route counts, never a distance. */
+export function coveredStates(pubs: PublishedItinerary[]): Map<string, number> | undefined {
+  const counts = new Map<string, number>()
+  for (const pub of livePubs(pubs)) {
+    for (const code of pub.stateCodes ?? []) {
+      if (isIndiaStateCode(code)) counts.set(code, (counts.get(code) ?? 0) + 1)
+    }
+  }
+  if (counts.size === 0) return undefined
+  return new Map([...counts].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
 }
