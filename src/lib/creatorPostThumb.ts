@@ -14,6 +14,10 @@ const PATH_KINDS: ReadonlySet<string> = new Set(['shorts', 'embed', 'live'])
 const THUMB_BASE = 'https://i.ytimg.com/vi/'
 const THUMB_NAME = '/hqdefault.jpg'
 
+export function postThumbnailUrl(post: { kind: string; url: string }, failedUrl: string | null = null): string | null {
+  return post.kind === 'youtube' && post.url !== failedUrl ? youtubeThumbUrl(post.url) : null
+}
+
 /** The path segments with empty ones removed, so a trailing slash is harmless. */
 function pathSegments(pathname: string): string[] {
   return pathname.split('/').filter(segment => segment.length > 0)

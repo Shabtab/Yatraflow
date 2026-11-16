@@ -114,6 +114,7 @@ Browsing Explore: filter by style/budget/duration, sort by popularity or **newes
 - **Earnings** — the real sales ledger: what each buyer actually paid at purchase time, the platform-fee split on each sale, and payout runs derived from it (disbursement itself is manual — the ledger says so). A **Projection** toggle does the honest what-if arithmetic for pages that haven't sold, clearly marked as *not money*.
 
 The creator page shows plan price and estimated trip cost as separate figures. The trip cost is a per-person estimate.
+YouTube post links can show a public thumbnail. A failed image uses the text card. Instagram and Threads use text cards.
 Confirmed best months appear on route cards. Use **Good in** to filter routes for the current month.
 The seasonal shelf lists up to four routes with confirmed months. Unknown months do not appear.
 Known planned distance appears in the identity statistics. A long name uses a wider identity layout.

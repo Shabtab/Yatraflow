@@ -163,8 +163,11 @@
 .cr-store-browse {
   justify-content: center;
 }
-.cr-store-divider {
-  display: none;
+.cr-store-socials {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--space-4);
+  max-width: 100%;
 }
 .cr-store-followers {
   margin: var(--space-3) 0 0;
@@ -605,9 +608,6 @@ p.cr-store-planning {
   }
   .cr-store-browse {
     flex: 1 1 100%;
-  }
-  .cr-store-divider {
-    display: none;
   }
   .cr-store-tabs {
     left: var(--space-5);
@@ -1704,6 +1704,7 @@ p.cr-store-planning {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--space-5);
+  align-items: start;
 }
 .cr-store-post {
   display: flex;
@@ -1754,6 +1755,57 @@ p.cr-store-planning {
   align-items: center;
   min-height: 44px;
   font: 600 13px/1.4 var(--font-body);
+}
+.cr-store-post-routebox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.cr-store-post.cr-store-post--image {
+  position: relative;
+  aspect-ratio: 308 / 380;
+  overflow: hidden;
+  padding: var(--space-5);
+  gap: var(--space-4a);
+}
+.cr-store-post-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cr-store-post--image::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(8,24,34,.15), rgba(8,24,34,0) 30%, rgba(8,24,34,.7));
+  pointer-events: none;
+}
+.cr-store-post--image .cr-store-post-link,
+.cr-store-post--image .cr-store-post-routebox {
+  position: relative;
+  z-index: 1;
+}
+.cr-store-post--image .cr-store-post-link {
+  flex: 1;
+  justify-content: space-between;
+  align-items: flex-start;
+  color: #FFFFFF;
+}
+.cr-store-post--image .cr-store-post-platform {
+  padding: var(--space-2) var(--space-4a);
+  border-radius: var(--radius-pill);
+  background: var(--pw-card);
+  color: var(--pw-ink);
+}
+.cr-store-post--image .cr-store-post-caption {
+  font: 800 18px/1.3 var(--font-body);
+}
+.cr-store-post--image .cr-store-post-routebox {
+  padding: var(--space-4) var(--space-4a);
+  border-radius: var(--radius-sm);
+  background: var(--pw-card);
 }
 
 /* The hub block reuses the cr-meter rows; only its note needs room. */

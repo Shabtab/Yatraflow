@@ -116,14 +116,13 @@ export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, 
                   )}
                   {follow}
                   <CopyButton text={shareUrl} label="Share" variant="outline" />
-                  {channels.length > 0 && <span className="cr-store-divider" aria-hidden="true" />}
-                  {channels.map(({ key, href, label }) => (
+                  {channels.length > 0 && <div className="cr-store-socials">{channels.map(({ key, href, label }) => (
                     <a key={key} className="btn btn-ghost" href={href} target="_blank" rel="noreferrer noopener"
                       aria-label={label}
                       onClick={e => { e.preventDefault(); openExternal(href) }}>
                       <SocialIcon kind={key} size={14} />{key === 'youtube' ? 'YouTube' : 'Instagram'}
                     </a>
-                  ))}
+                  ))}</div>}
                 </div>
               </div>
             </div>

@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { youtubeThumbUrl, youtubeVideoId } from '../src/lib/creatorPostThumb'
+import { postThumbnailUrl, youtubeThumbUrl, youtubeVideoId } from '../src/lib/creatorPostThumb'
 
 const ID = 'dQw4w9WgXcQ'
 const THUMB = 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg'
+
+describe('post thumbnail choice', () => {
+  const post = { kind: 'youtube', url: `https://youtu.be/${ID}` }
+  it('shows a valid YouTube thumbnail until that URL fails', () => {
+    expect(postThumbnailUrl(post)).toBe(THUMB)
+    expect(postThumbnailUrl(post, post.url)).toBeNull()
+    expect(postThumbnailUrl(post, 'https://youtu.be/another0001')).toBe(THUMB)
+  })
+  it('keeps other platforms and invalid links as text cards', () => {
+    for (const kind of ['instagram', 'threads']) expect(postThumbnailUrl({ ...post, kind })).toBeNull()
+    expect(postThumbnailUrl({ ...post, url: 'https://youtu.be/invalid' })).toBeNull()
+  })
+})
 
 describe('youtubeVideoId', () => {
   it('reads /watch?v=', () => {

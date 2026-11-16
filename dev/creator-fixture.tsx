@@ -69,8 +69,8 @@ const FIXTURE_POST_IDS = ['17110000-0000-4000-8000-0000000000a1', '17110000-0000
 let fixturePostRows: CreatorPost[] = POSTS === 'none' || POSTS === 'failed' || POSTS === 'reading' ? [] : [
   { id: FIXTURE_POST_IDS[0], creator: 'fixture-creator-0001', url: 'https://www.instagram.com/reel/fixture-hills', kind: 'instagram',
     pubId: 'fixture-pub-0', dayIndex: 1, caption: 'Day two of the hill drive, shot at the first chai halt', createdAt: 1_763_000_000_000 },
-  { id: FIXTURE_POST_IDS[1], creator: 'fixture-creator-0001', url: 'https://www.youtube.com/watch?v=fixture', kind: 'youtube',
-    pubId: 'fixture-pub-1', dayIndex: null, caption: 'The whole route in twelve minutes', createdAt: 1_762_000_000_000 },
+  { id: FIXTURE_POST_IDS[1], creator: 'fixture-creator-0001', url: 'https://www.youtube.com/watch?v=fixture0001', kind: 'youtube',
+    pubId: 'fixture-pub-1', dayIndex: null, caption: 'A synthetic video link', createdAt: 1_762_000_000_000 },
   { id: FIXTURE_POST_IDS[2], creator: 'fixture-creator-0001', url: 'https://www.threads.net/@fixture/post/abc', kind: 'threads',
     pubId: 'fixture-pub-2', dayIndex: 0, caption: null, createdAt: 1_761_000_000_000 },
 ]
