@@ -1,5 +1,5 @@
-// ============ Routing: one Google attempt per cold load ============
-// A signed-in trip page load used to fire 16 Google computeRoutes attempts:
+// ============ Routing: one Google request per cold load ============
+// A signed-in trip page load used to fire 16 Google computeRoutes requests:
 // two whole-chain requests (React StrictMode replays the workspace effect, and
 // nothing shared the pending request) plus fourteen per-leg requests (a chain
 // that failed in transport was "recovered" by splitting it, which cannot help).
