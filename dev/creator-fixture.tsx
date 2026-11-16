@@ -317,6 +317,8 @@ function pub(i: number, takenDown: boolean): PublishedItinerary {
     travelStyle: 'balanced',
     bestSeason: PICKS ? (i % 2 ? 'All year' : 'Dec - Feb') : 'Nov - Feb',
     plannedKm: PICKS ? 340 : undefined,
+    // G3b fixture data: the storefront grid needs codes. These are synthetic.
+    stateCodes: [['KL', 'TN', 'GA'], ['HP', 'LA', 'PB'], ['RJ', 'GJ', 'MH']][i % 3],
     bestMonths: PICKS ? (i % 2 ? 4095 : 2051) : undefined,
     reviewedAt: PICKS ? Date.parse('2026-10-14T00:00:00Z') : undefined,
     travelTips: ['Fixture tip — replace with a real one in production data.'],

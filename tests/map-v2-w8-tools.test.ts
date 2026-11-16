@@ -34,6 +34,18 @@ describe('W8 tools map controls', () => {
     expect(b).not.toContain("'TER'")
   })
 
+  it('puts Expand in the tools column on a tablet or desktop, and in the menu on a phone', () => {
+    const b = workspaceBranch()
+    // One card between the view switch and Layers. One button function, so the two places cannot drift.
+    expect(b).toContain('<div className="mv2-map-tools-card mv2-map-expand" role="group" aria-label="Map size">')
+    expect(b.indexOf('mv2-map-expand"')).toBeGreaterThan(b.indexOf('mv2-map-view"'))
+    expect(b.indexOf('mv2-map-expand"')).toBeLessThan(b.indexOf('aria-label="Layers"'))
+    expect(b).toContain("{mapExpandButton('mv2-map-expand-menu')}")
+    expect(tsx.match(/aria-label=\{expanded \? 'Shrink the map back into the page' : 'Expand the map to fill the screen'\}/g)).toHaveLength(2)
+    expect(css).toContain('  .mv2-workspace .map-toolbar .mv2-map-tools-card.mv2-map-expand { display: none; }')
+    expect(css).toContain('.mv2-workspace .mv2-tool-menu-body > .mv2-map-expand-menu { display: flex; }')
+  })
+
   it('drops the Filters text label', () => {
     expect(workspaceBranch()).not.toContain('>Filters')
   })
@@ -59,8 +71,10 @@ describe('W8 tools map controls', () => {
       'Recentre the map on the trip route',
       'Road milestones',
       'Directions for this day in Google Maps',
-      'Expand the map to fill the screen',
     ]) expect(b).toContain(label)
+    // Expand is drawn by one function, which both the column and the phone menu call.
+    const expandFn = tsx.slice(tsx.indexOf('function mapExpandButton('), tsx.indexOf('function collapseExpanded('))
+    expect(expandFn).toContain('Expand the map to fill the screen')
   })
 
   it('divides the buttons with a hairline', () => {

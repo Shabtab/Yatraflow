@@ -543,7 +543,7 @@ export async function roadLegBetween(
 }
 
 /**
- * Google Routes chain for a span: one request per chunk of up to 25 waypoints.
+ * Google Routes chain for a span: one request per chunk of up to 12 waypoints.
  * Throws on any failure; the caller classifies it. A chunk of exactly two points
  * (a short span, or the tail of a long one) has no intermediates, so Google
  * answers with ONE route and no `legs` — that is the whole answer, one leg.
@@ -604,8 +604,11 @@ async function measureSpanChain(span: LatLng[], mode: string, signal?: AbortSign
   return shareInFlight(pendingChains, key, s => measureSpanChainOnce(span, mode, s), signal, CHAIN_REFUSED)
 }
 
-/** Waypoints per Google Routes chain request (Google caps intermediates at 25). */
-const GOOGLE_CHAIN_WAYPOINTS = 25
+/**
+ * Points per Google Routes chain request: origin, up to 10 intermediates, destination.
+ * Essentials covers up to 10 intermediates, so 12 points keeps each request in that tier.
+ */
+const GOOGLE_CHAIN_WAYPOINTS = 12
 
 /**
  * Route every consecutive pair of points — the corridor as ONE chain request
