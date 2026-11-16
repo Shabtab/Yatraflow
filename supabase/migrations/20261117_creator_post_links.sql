@@ -1,4 +1,4 @@
--- G8. Not applied. The operator runs this file by hand after review.
+-- G8. The operator applied this file on 2026-11-16. Hosted access probes passed.
 begin;
 
 -- Post links: a creator links one public post to one of their own live routes.
