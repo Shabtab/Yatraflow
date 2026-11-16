@@ -23,6 +23,7 @@ import { FeaturedCard } from '../components/explore/FeaturedCard'
 import { StoreHero } from '../components/creator/StoreHero'
 import { StoreStatesGrid } from '../components/creator/StoreStatesGrid'
 import { StoreFeaturedFacts } from '../components/creator/StoreFeaturedFacts'
+import { StoreWeekend } from '../components/creator/StoreWeekend'
 import { CreatorIndiaRank } from '../components/creator/CreatorIndiaRank'
 import { creatorPick, plannedKilometres } from '../lib/creatorFacts'
 import { StoreLibrary } from '../components/creator/StoreLibrary'
@@ -235,6 +236,15 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
       )}
 
       <StoreStatesGrid pubs={pubs} read={pubsRead} />
+      {featured && (
+        <StoreWeekend
+          key={featured.id}
+          pub={featured}
+          creatorName={creator.profile.name}
+          signedIn={Boolean(me)}
+          onCopy={plan => { void forkPublication(featured, me, onNavigate, undefined, 'creator', null, plan) }}
+        />
+      )}
 
       {pubsRead === 'failed' ? <p className="cr-store-facts" role="status">Route facts: Unavailable</p>
         : null}
