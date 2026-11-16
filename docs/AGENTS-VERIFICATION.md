@@ -28,6 +28,8 @@ The direct-entry bridge ends at the next release. Existing Unreleased notes stay
 The promotion agent freezes the release input, reviews the diff, and applies the checked patch with editor primitives.
 Assembly must preserve the preamble and released bytes. The line count must include every inserted line.
 An uncommitted merge can fail the release-source ancestry check. Test the local merge commit before a push.
+Correct final fragment wording in the freeze commit immediately before assembly.
+Each corrected fragment must match the checked base in the freeze commit's parent. Earlier fragment drift still fails.
 See [the fragment guide](../changelog.d/README.md) for commands and receipt checks.
 
 Locate a named unpublished dependency before planning its replacement.
