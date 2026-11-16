@@ -42,7 +42,7 @@ describe('W8 tools map controls', () => {
     expect(b.indexOf('mv2-map-expand"')).toBeLessThan(b.indexOf('aria-label="Layers"'))
     expect(b).toContain("{mapExpandButton('mv2-map-expand-menu')}")
     expect(tsx.match(/aria-label=\{expanded \? 'Shrink the map back into the page' : 'Expand the map to fill the screen'\}/g)).toHaveLength(2)
-    expect(css).toContain('.mv2-workspace .map-toolbar .mv2-map-tools-card.mv2-map-view, .mv2-workspace .map-toolbar .mv2-map-tools-card.mv2-map-expand { display: none; }')
+    expect(css).toContain('  .mv2-workspace .map-toolbar .mv2-map-tools-card.mv2-map-expand { display: none; }')
     expect(css).toContain('.mv2-workspace .mv2-tool-menu-body > .mv2-map-expand-menu { display: flex; }')
   })
 

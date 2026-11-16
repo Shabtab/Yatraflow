@@ -1462,7 +1462,8 @@
 .mv2-map-view-glyph { display: inline-grid; place-items: center; animation: mv2-pick-pop var(--motion-med) var(--ease-paper) backwards; }
 .mv2-workspace .mv2-map-view-menu, .mv2-workspace .mv2-map-expand-menu { display: none; }
 @media (max-width: 760px) {
-  .mv2-workspace .map-toolbar .mv2-map-tools-card.mv2-map-view, .mv2-workspace .map-toolbar .mv2-map-tools-card.mv2-map-expand { display: none; }
+  .mv2-workspace .map-toolbar .mv2-map-tools-card.mv2-map-view { display: none; }
+  .mv2-workspace .map-toolbar .mv2-map-tools-card.mv2-map-expand { display: none; }
   .mv2-workspace .mv2-tool-menu-body > .mv2-map-view-menu { display: flex; font-size: 12px; font-weight: 800; }
   .mv2-workspace .mv2-tool-menu-body > .mv2-map-expand-menu { display: flex; }
 }
