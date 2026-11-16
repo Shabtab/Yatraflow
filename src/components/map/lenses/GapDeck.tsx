@@ -1,6 +1,6 @@
 // Presentational gap deck. It draws lens data and calls callbacks.
 // Phase texts follow the stay deck. They name this day, not the stay.
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GapPick, GapPicks } from '../../../pages/trip/map/gapLens'
 import type { JourneyRow } from '../../../lib/journeyProjection'
 import type { LensPhase } from '../../../lib/mapLensContracts'
@@ -82,13 +82,22 @@ export interface GapDeckProps {
   onRetry?: () => void
   /** Day actions in the header, such as Fill the day and Day plan. */
   aside?: ReactNode
+  /** The part the user opened from the day list. Null heads the deck with the first part. */
+  activeIndex?: number | null
 }
 
 export function GapDeck(props: GapDeckProps) {
-  const { dayNumber, phase, gaps, onOpenPick, onAddPick, clock, onShortlist, shortlistedOf, swapOf, onClose, onRetry, aside } = props
+  const { dayNumber, phase, gaps, onOpenPick, onAddPick, clock, onShortlist, shortlistedOf, swapOf, onClose, onRetry, aside, activeIndex } = props
   const timeFormat = useTimeFormat()
   const [chosen, setChosen] = useState<string | null>(null)
-  const first = gaps[0]
+  const focusAt = activeIndex != null && activeIndex >= 0 && activeIndex < gaps.length ? activeIndex : null
+  const first = gaps[focusAt ?? 0]
+  const sectionsRef = useRef<HTMLDivElement[]>([])
+  // The part opened from the day list comes into view, so Dinner opens on Dinner.
+  useEffect(() => {
+    if (focusAt == null) return
+    sectionsRef.current[focusAt]?.scrollIntoView({ block: 'nearest' })
+  }, [focusAt])
   const kicker = first == null ? 'Gap' : gapDeckKicker(first.title, first.windowText)
   if (phase !== 'ready' && phase !== 'empty') {
     return <section className="mv2-lens-deck" aria-label="Gaps in this day">
@@ -107,7 +116,7 @@ export function GapDeck(props: GapDeckProps) {
     {gaps.map((gap, index) => {
       const picks = gap.picks.picks.slice(0, 3)
       const selectedAt = selectedCardIndex(picks.map(pick => String(pick.candidate.hit.id)), chosen)
-      return <div className="mv2-lens-section" key={`${gap.title}-${index}`}>
+      return <div className={`mv2-lens-section${index === focusAt ? ' is-focus' : ''}`} key={`${gap.title}-${index}`} ref={node => { if (node) sectionsRef.current[index] = node }}>
         <p className="mv2-section-label mv2-lens-gap-label">{gap.title}</p>
         {picks.length > 0 && <ul className="mv2-lens-cards">
           {picks.map((pick, at) => {

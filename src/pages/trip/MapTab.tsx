@@ -1133,6 +1133,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   const journeyDay = journeyDays.byDay.get(activeDayIndex)
   const activeDayStops = journeyDay?.dayStops ?? []
   const activeDaySlots = journeyDay?.slots ?? []
+  // Every empty part, with or without a time window. The Gap deck lists only the
+  // parts with a window, so the Day plan button carries this count.
+  const openParts = activeDaySlots.filter(slot => slot.state === 'empty').length
   const activeDayReadiness = journeyDays.readinessByDay.get(activeDayIndex)
     ?? { dayIndex: activeDayIndex, filled: 0, total: 0, auto: 0, required: 0 }
   const tripReadinessRows = journeyDays.readinessRows
@@ -1303,6 +1306,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   const deckPresence = usePresence(deckOpen)
   // The one lens pill owns the map marks and the rail deck (W3-W).
   const [lens, setLens] = useState<MapLensId>('drive')
+  // The Gap part the user opened from a day-list row. Null means the first part.
+  const [gapFocusKey, setGapFocusKey] = useState<string | null>(null)
   const [driveTab, setDriveTab] = useState<DriveTab | null>(null)
   const [stayWindow, setStayWindow] = useState<string | null>(null)
   const [stayRing, setStayRing] = useState<RingId>('walk-15')
@@ -1499,6 +1504,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
       return hit.alongRouteKm ?? hit.cumKm ?? routeKmOf(hit.latitude, hit.longitude)
     }))
   }
+  const gapFocusIndex = gapFocusKey == null ? -1 : lenses.gap.view.rows.findIndex(row => row.slotKey === gapFocusKey)
   const gapRailWindows: ItineraryWindowRow[] = lenses.gap.view.rows.flatMap((row, index) => {
     if (row.windowMin == null || (dayStartMin > 0 && row.windowMin[1] <= dayStartMin)) return []
     const slot = activeDaySlots.find(entry => entry.key === row.slotKey)
@@ -1514,7 +1520,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
       endMin: row.windowMin[1],
       atMin: windowAtMin(row.windowMin[0], row.windowMin[1], slot?.segment?.etaMinutes),
       detail: detail === '' ? null : detail,
-      active: lens === 'gap' ? index === 0 : lens === 'drive' && driveGroup?.tab === 'meal' && index === firstMealGap,
+      active: lens === 'gap' ? index === (gapFocusIndex >= 0 ? gapFocusIndex : 0) : lens === 'drive' && driveGroup?.tab === 'meal' && index === firstMealGap,
       slotKey: row.slotKey,
     }]
   })
@@ -1816,7 +1822,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     requestAnimationFrame(() => listRef.current?.querySelector<HTMLButtonElement>('.mv2-lenses > button')?.focus({ preventScroll: true }))
   }
   /** A rail part row and the lens pill open the same Gap deck. */
-  function openGapDeck() {
+  function openGapDeck(row?: { slotKey?: string | null }) {
+    setGapFocusKey(row?.slotKey ?? null)
     setLens('gap'); setSheetTab('see'); setDetailId(null); setDeckOpen(true); setSnap('half')
   }
   /** The day plan detail: search, vote and the pinned rest for each part. */
@@ -2039,7 +2046,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
         <div className="mv2-lenses mv2-lens-pill" role="group" aria-label="Map planning panels">
           <button type="button" aria-label={phoneLensAriaLabel('Along the drive', lenses.counts.drive)} aria-controls="rail-see" aria-pressed={lens === 'drive' && sheetTab === 'see' && deckOpen && !selectedHit} onClick={() => { setLens('drive'); setSheetTab('see'); setDetailId(null); setDeckOpen(true); setSnap('half') }}><Route size={16} aria-hidden /><span>Drive</span></button>
           <button type="button" aria-label={phoneLensAriaLabel('Around the stay', lenses.counts.stay)} aria-controls="rail-see" aria-pressed={lens === 'stay' && sheetTab === 'see' && deckOpen && !selectedHit} onClick={() => { setLens('stay'); setSheetTab('see'); setDetailId(null); setDeckOpen(true); setSnap('half') }}><BedDouble size={16} aria-hidden /><span>Stay</span>{lenses.counts.stay != null && <b>{lenses.counts.stay}</b>}</button>
-          <button type="button" aria-label={phoneLensAriaLabel('Gaps in this day', lenses.counts.gap)} aria-controls="rail-see" aria-pressed={lens === 'gap' && sheetTab === 'see' && deckOpen && !selectedHit} onClick={() => { setLens('gap'); setSheetTab('see'); setDetailId(null); setDeckOpen(true); setSnap('half') }}><Sparkles size={16} aria-hidden /><span>Gap</span>{lenses.counts.gap != null && <b>{lenses.counts.gap}</b>}</button>
+          <button type="button" aria-label={phoneLensAriaLabel('Gaps in this day', lenses.counts.gap)} aria-controls="rail-see" aria-pressed={lens === 'gap' && sheetTab === 'see' && deckOpen && !selectedHit} onClick={() => openGapDeck()}><Sparkles size={16} aria-hidden /><span>Gap</span>{lenses.counts.gap != null && <b>{lenses.counts.gap}</b>}</button>
           <button type="button" aria-label={phoneLensAriaLabel('Fix this day', lenses.counts.fix)} aria-controls="rail-see" aria-pressed={lens === 'fix' && sheetTab === 'see' && deckOpen && !selectedHit} onClick={() => { setLens('fix'); setSheetTab('see'); setDetailId(null); setDeckOpen(true); setSnap('half') }} data-alert={routeAlert ? 'true' : undefined} title={routeAlert ? routeAlertText : undefined} aria-description={routeAlert ? routeAlertText : undefined}><Lightbulb size={16} aria-hidden /><span>Fix</span>{lenses.counts.fix != null && <b>{lenses.counts.fix}</b>}{routeAlert && <i className="mv2-lens-alert" aria-hidden="true" />}</button>
           {!deckOpen && <button type="button" aria-label="Show suggestions" onClick={() => setDeckOpen(true)}><PanelRightOpen size={18} /></button>}
         </div>
@@ -2053,7 +2060,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                 {/* The one home of the day's count. The rail and the Gap deck do not repeat it. */}
                 <span className="small muted">{activeDaySlots.length === 0 ? 'Drive plan · In progress' : `${activeReadinessLabel(activeDayReadiness)}`}{dayRainPct?.[activeDayIndex] != null && dayRainPct[activeDayIndex]! >= 40 ? ` · Rain ${Math.round(dayRainPct[activeDayIndex]!)}%` : ''}</span>
               </div>
-              <button type="button" className="chip chip-sm" onClick={openGapDeck} title="Back to the open parts and their picks">Gaps</button>
+              <button type="button" className="chip chip-sm" onClick={() => openGapDeck()} title="Back to the open parts and their picks">Gaps</button>
               <button
                 type="button"
                 className="chip chip-sm"
@@ -2485,7 +2492,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
               onAddStayPick={(pick, startMin) => addStayHit(pick.row.row.hit, activeDayIndex, startMin)}
               onSetStay={() => { setSheetTab('needs'); setDetailId(null); setDeckOpen(true); setSnap('half') }}
               onOpenGapPick={pick => inspectHit(pick.candidate.hit)}
-              gapAside={<>
+              gapActiveIndex={gapFocusIndex >= 0 ? gapFocusIndex : null}
+              gapAside={<div className="mv2-gap-actions">
                 {editable && dayCounts.fillable > 0 && batchSelection(dayPlan).items.length > 0 && (
                   <button
                     type="button"
@@ -2496,8 +2504,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                   >{fillingDay ? 'Planning…' : 'Fill the day'}</button>
                 )}
                 <button type="button" className="chip chip-sm mv2-gap-plan" aria-controls="rail-needs" onClick={openDayPlan}
-                  title="Every part of the day, with search, votes and the pinned rest">Day plan</button>
-              </>}
+                  title="Every part of the day, with search, votes and the pinned rest">Day plan{openParts > 0 ? ` · ${openParts} open` : ''}</button>
+              </div>}
               onAddGapPick={pick => addLensHit(pick.candidate.hit, activeDayIndex)}
               onApplyFix={applyLensFix}
               onPreviewFix={previewLensFix}

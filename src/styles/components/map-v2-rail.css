@@ -1075,6 +1075,13 @@
 @media (prefers-reduced-motion: reduce) { .mv2-lens-alert { animation: none; } }
 /* The Drive scope picker shares the deck title row. The edge tab closes the deck on a wide screen, so the round close button shows on the phone only. */
 .mv2-lens-deck-head:has(> .mv2-lens-scope-band) { align-items: center; }
+/* The Gap deck's day actions: Fill the day and Day plan. They wrap under each
+   other in a narrow deck instead of pushing the title out. */
+.mv2-gap-actions { display: flex; flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--space-2); min-width: 0; margin-left: auto; }
+@media (pointer: coarse) {
+  .mv2-gap-actions > .btn { --btn-min-height: 44px; }
+  .mv2-gap-actions > .chip { min-height: 44px; }
+}
 .mv2-workspace .mv2-lens-deck-head > .mv2-lens-scope-band { flex: 0 1 auto; flex-wrap: nowrap; gap: var(--space-4); width: auto; min-width: 0; margin-left: auto; padding: 0; border: 0; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
 @media (min-width: 761px) { .mv2-workspace .mv2-lens-deck-close { display: none; } }
 .mv2-lens-tab:hover:not(.is-active) { background: var(--bg-soft); color: var(--text); }
