@@ -12,7 +12,8 @@ const { calls } = vi.hoisted(() => ({
   calls: [] as Array<{ table: string; method: string }>,
 }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { tripWriteClient } = await import('./helpers/tripWriteClient')
   const makeBuilder = (table: string) => {
     let method: string | undefined
     const builder: Record<string, unknown> = {}
@@ -30,7 +31,7 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: false,
-    supabase: { from: (t: string) => makeBuilder(t) },
+    supabase: tripWriteClient({ from: (t: string) => makeBuilder(t) }),
   }
 })
 
@@ -138,12 +139,13 @@ describe('duplicateTripPublicPersisted premium stripping', () => {
     expect(copy.id).not.toBe(source.id)
     expect(copy.visibility).toBe('private')
     expect(copy.name).toBe(`${source.name} (copy)`)
-    expect(copy.members).toEqual([{ userId: ownerId, role: 'owner', joinedAt: expect.any(Number) }])
+    expect(copy.members).toEqual([{ userId: ownerId, role: 'owner', joinedAt: expect.any(Number), revision: 1 }])
     // Day ids are regenerated so the fork never shares row identity with the source.
     for (const d of copy.days) expect(source.days.some(x => x.id === d.id)).toBe(false)
     // Fire-and-forget persistence flushes to the mocked client.
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(calls.some(c => c.table === 'trips' && c.method === 'insert')).toBe(true)
+    expect(tripById(copy.id)?.members?.some(m => m.userId === ownerId && m.role === 'owner')).toBe(true)
     expect(calls.some(c => c.table === 'trip_members' && c.method === 'insert')).toBe(true)
     // The cached copy is the stripped one — re-read it from the store.
     expect(tripById(copy.id)!.days[1]!.stops).toEqual([])

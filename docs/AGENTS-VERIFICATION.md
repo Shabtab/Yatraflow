@@ -21,6 +21,8 @@ Sections:
 
 ## The gate
 
+Use `--depth=1` for a fixture that reads one historical commit. This keeps its data fixed and bounds the Git work. Keep its assertions and time limits.
+
 Change notes use `changelog.d/pending/`. `npm run changelog:check` checks format, STE prose, IDs, and PR coverage.
 `npm run verify` runs the check. A pull request run uses the event base and head SHAs. A push run checks format only.
 Local checks use the merge base with `origin/test` or an explicit `--base`. With no commit ahead of that base, the check covers format only.

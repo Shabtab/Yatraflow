@@ -531,7 +531,7 @@ function InvitesTab() {
       <ConfirmDialog
         open={!!confirmKick}
         title={`Remove ${confirmKick?.user.profile.name ?? ''}?`}
-        body="They lose access immediately. The last owner cannot be removed. Transfer ownership first."
+        body="Removal blocks private trip access and replaces the invite. The trip owner cannot be removed. Transfer ownership first."
         confirmLabel="Remove member"
         danger
         onConfirm={() => {

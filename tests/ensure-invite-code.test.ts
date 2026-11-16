@@ -1,69 +1,151 @@
-// ============ An invite code the server holds is never replaced ============
-// A cached trip without an invite code does not prove the server has none, so
-// the mint path reads the server first. The write only lands while the server
-// still holds no code. These pins read the source: the store needs the live
-// Supabase client, which the node test environment does not provide.
-import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { seedData } from '../src/data/seed'
+import type { MemberAccessState } from '../src/lib/memberAccess'
 
-/** Normalised: this repo checks out CRLF on Windows (`core.autocrlf=true`). */
-const readSource = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
-const STORE = readSource('../src/store/store.ts')
+const transport = vi.hoisted(() => ({
+  actor: 'owner', error: null as null | { message: string },
+  sessionThrows: false,
+  server: null as MemberAccessState | null, reply: null as unknown,
+  gate: null as Promise<void> | null,
+  calls: [] as Array<{ fn: string; args: Record<string, unknown>; header: string | null }>,
+}))
+const notice = vi.hoisted(() => vi.fn())
+vi.mock('../src/components/ui', () => ({ toast: notice }))
+vi.mock('../src/lib/supabase', () => ({
+  isSupabaseConfigured: false,
+  supabase: {
+    auth: { getSession: async () => {
+      if (transport.sessionThrows) throw new Error('Session check failed. Try again.')
+      return { data: { session: { user: { id: transport.actor }, access_token: `token-${transport.actor}` } } }
+    } },
+    from: () => { throw new Error('Membership commands must not use a direct write.') },
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      let header: string | null = null
+      return {
+        setHeader(name: string, value: string) { header = `${name}: ${value}`; return this },
+        then(resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) {
+          transport.calls.push({ fn, args, header })
+          const answer = fn === 'trip_access_state' ? structuredClone(transport.server) : structuredClone(transport.reply)
+          const error = transport.error
+          return (async () => {
+            if (fn === 'change_trip_access') await transport.gate
+            return { data: answer, error }
+          })().then(resolve, reject)
+        },
+      }
+    },
+  },
+}))
 
-/** The source of one top-level function, from its header through the closing brace. */
-function functionBody(src: string, header: string): string {
-  const start = src.indexOf(header)
-  expect(start, `${header} must exist`).toBeGreaterThan(-1)
-  return src.slice(start, src.indexOf('\n}\n', start) + 3)
-}
+let store: typeof import('../src/store/store')
+const state = (version = 1): MemberAccessState => ({
+  version, inviteCode: 'YATRA-ABCDEFGH',
+  members: [{ userId: 'owner', role: 'owner', joinedAt: 1, revision: 1 }, { userId: 'guest', role: 'viewer', joinedAt: 2, revision: 1 }],
+  removed: [],
+})
+const cached = () => store.tripById('member-fixture')!
 
-const MINT = functionBody(STORE, 'export async function ensureInviteCode(')
-const READ = functionBody(STORE, 'async function readServerInviteCode(')
-const PATCH = functionBody(STORE, 'async function persistTripMetadata(')
-
-describe('ensureInviteCode reads the server before it mints', () => {
-  it('reads the stored code before the first write', () => {
-    const read = MINT.indexOf('readServerInviteCode(tripId, token)')
-    const write = MINT.indexOf('persistTripMetadata(tripId, { invite_code: code }')
-    expect(read).toBeGreaterThan(-1)
-    expect(read).toBeLessThan(write)
-  })
-
-  it('caches a code the server holds and returns it without a write', () => {
-    expect(MINT).toMatch(/if \(held\) \{\s*mutateTrip\(tripId, draft => \{ draft\.inviteCode = held \}, \{ touch: false \}\)\s*return held\s*\}/)
-  })
-
-  it('mints nothing when the read fails', () => {
-    expect(MINT).toMatch(/if \(held === undefined \|\| !live\(\)\) return null/)
-    expect(READ).toMatch(/if \(error\) \{\s*console\.error\('\[yatraflow\] invite-code read failed', error\)\s*return undefined\s*\}/)
-  })
-
-  it('reads the code of one trip by id', () => {
-    expect(READ).toMatch(/from\('trips'\)\.select\('invite_code'\)\.eq\('id', tripId\)\.maybeSingle\(\)/)
-  })
+beforeEach(async () => {
+  vi.resetModules()
+  store = await import('../src/store/store')
+  transport.actor = 'owner'
+  transport.sessionThrows = false
+  transport.error = null
+  transport.gate = null
+  transport.server = state()
+  transport.reply = { status: 'applied', state: state(2) }
+  transport.calls.length = 0
+  notice.mockClear()
+  const db = store.getSnapshot()
+  db.sessionUserId = 'owner'
+  db.trips = [{ ...structuredClone(seedData.trips[0]), id: 'member-fixture', members: state().members, inviteCode: 'STALE-ABCDEFGH' }]
 })
 
-describe('the write only lands while the server holds no code', () => {
-  it('filters the update on a null invite_code and asks for the row back', () => {
-    expect(MINT).toContain("{ inviteCode: code }, 'invite_code'")
-    expect(PATCH).toContain(".update(payload).eq('id', tripId)")
-    expect(PATCH).toContain('query.is(nullColumn, null)')
-    expect(PATCH).toContain("query.select('id, updated_at, write_version')")
+describe('acknowledged trip membership and invites', () => {
+  it('checks the server even with a cached invite and binds the caller bearer', async () => {
+    expect(await store.ensureInviteCode('member-fixture')).toBe('YATRA-ABCDEFGH')
+    expect(cached().inviteCode).toBe('YATRA-ABCDEFGH')
+    expect(transport.calls).toEqual([{ fn: 'change_trip_access', args: { p_trip_id: 'member-fixture', p_action: 'invite' }, header: 'Authorization: Bearer token-owner' }])
   })
 
-  it('writes once in the loop, and a lost race re-reads without a second write', () => {
-    expect(MINT.match(/await persistTripMetadata\(/g)).toHaveLength(1)
-    expect(MINT).toMatch(/const again = await readServerInviteCode\(tripId, token\)[\s\S]*?if \(!uniqueClash\) return null/)
-  })
-})
-
-describe('the mint keeps its retry and its honest failure', () => {
-  it('retries a unique clash a bounded number of times', () => {
-    expect(MINT).toMatch(/\(let \w+ = 0; \w+ < 5; \w+\+\+\)/)
-    expect(MINT).toContain('duplicate key|unique')
+  it('does not invent an invite when server support is absent', async () => {
+    transport.error = { message: 'Function is unavailable' }
+    expect(await store.ensureInviteCode('member-fixture')).toBeNull()
+    expect(cached().inviteCode).toBe('STALE-ABCDEFGH')
   })
 
-  it('reports any other write failure and returns null', () => {
-    expect(MINT).toContain("console.error('[yatraflow] invite-code mint failed')")
+  it('reports a failed session check without rejecting the UI promise', async () => {
+    transport.sessionThrows = true
+    expect(await store.ensureInviteCode('member-fixture')).toBeNull()
+    expect(await store.readMemberAccess('member-fixture')).toBeNull()
+    expect(await store.setMemberRole('member-fixture', 'guest', 'editor')).toBe(false)
+    expect(notice).toHaveBeenCalledWith('Session check failed. Try again.', 'err')
+  })
+
+  it('acknowledges an unchanged role from the server without a mutation', async () => {
+    expect(await store.setMemberRole('member-fixture', 'guest', 'viewer')).toBe(true)
+    expect(transport.calls.map(c => c.fn)).toEqual(['trip_access_state'])
+    expect(cached().members?.find(m => m.userId === 'guest')?.revision).toBe(1)
+  })
+
+  it('waits for removal acknowledgement, then installs the rotated code and Undo revision', async () => {
+    let release = () => {}
+    transport.gate = new Promise<void>(resolve => { release = resolve })
+    const after = state(2)
+    after.inviteCode = 'YATRA-JKLMNPQR'
+    after.removed = [{ ...after.members[1], revision: 2 }]
+    after.members = [after.members[0]]
+    transport.reply = { status: 'applied', state: after }
+    const pending = store.removeMember('member-fixture', 'guest')
+    await vi.waitFor(() => expect(transport.calls.some(c => c.fn === 'change_trip_access')).toBe(true))
+    expect(cached().members?.some(m => m.userId === 'guest')).toBe(true)
+    release()
+    expect(await pending).toEqual(after.removed[0])
+    expect(cached().members?.some(m => m.userId === 'guest')).toBe(false)
+    expect(cached().inviteCode).toBe(after.inviteCode)
+    expect(transport.calls.every(c => c.header === 'Authorization: Bearer token-owner')).toBe(true)
+  })
+
+  it('keeps membership on refusal and makes the failure visible', async () => {
+    transport.reply = { status: 'stale', state: state(2) }
+    expect(await store.removeMember('member-fixture', 'guest')).toBeNull()
+    expect(cached().members?.find(m => m.userId === 'guest')?.role).toBe('viewer')
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining('membership changed'), 'err')
+  })
+
+  it('sends the acknowledged removal revision for Undo and later restore', async () => {
+    const removed = { userId: 'guest', role: 'viewer' as const, joinedAt: 2, revision: 7 }
+    transport.server = { ...state(7), members: [state().members[0]], removed: [removed] }
+    transport.reply = { status: 'applied', state: state(8) }
+    expect(await store.restoreMember('member-fixture', removed)).toBe(true)
+    expect(transport.calls.at(-1)?.args).toMatchObject({ p_action: 'restore', p_user_id: 'guest', p_expected_revision: 7 })
+  })
+
+  it('does not optimistically change a role and refuses malformed acknowledgements', async () => {
+    transport.reply = { status: 'applied', state: { ...state(2), members: [{ userId: 'guest', role: 'owner' }] } }
+    expect(await store.setMemberRole('member-fixture', 'guest', 'editor')).toBe(false)
+    expect(cached().members?.find(m => m.userId === 'guest')?.role).toBe('viewer')
+  })
+
+  it('retires a held response after the account changes', async () => {
+    let release = () => {}
+    transport.gate = new Promise<void>(resolve => { release = resolve })
+    const pending = store.removeMember('member-fixture', 'guest')
+    await vi.waitFor(() => expect(transport.calls.some(c => c.fn === 'change_trip_access')).toBe(true))
+    store.getSnapshot().sessionUserId = 'another-account'
+    release()
+    expect(await pending).toBeNull()
+    expect(notice).not.toHaveBeenCalled()
+  })
+
+  it('accepts the new role and rejects a stale Undo without reporting success', async () => {
+    const after = state(2)
+    after.members[1] = { ...after.members[1], role: 'commenter', revision: 2 }
+    transport.reply = { status: 'applied', state: after }
+    expect(await store.setMemberRole('member-fixture', 'guest', 'commenter')).toBe(true)
+    expect(cached().members?.find(m => m.userId === 'guest')?.role).toBe('commenter')
+    transport.reply = { status: 'stale', state: after }
+    expect(await store.restoreMember('member-fixture', { ...state().members[1], revision: 1 })).toBe(false)
+    expect(notice).toHaveBeenCalled()
   })
 })

@@ -20,8 +20,7 @@ const code = tab.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
 describe('P12 — the panels sit on the shared card skin', () => {
   it('every panel root is a Surface, and none is a bare card div', () => {
-    // Four panels: invite, danger zone, publish, snapshot.
-    expect([...code.matchAll(/<Surface className="card shr-panel">/g)]).toHaveLength(4)
+      expect([...code.matchAll(/<Surface className="card shr-panel">/g)]).toHaveLength(5)
     expect(code).not.toMatch(/<div className="card">/)
     expect(code).toContain("import { Surface } from '../../components/page/Surface'")
   })
@@ -42,7 +41,7 @@ describe('P12 — the panels sit on the shared card skin', () => {
 describe('P12 — the panel titles read R20', () => {
   it('every card title carries the shared rule, and the rule is the R20 one', () => {
     const titles = [...code.matchAll(/<h3 className="shr-card-title">/g)]
-    expect(titles).toHaveLength(5)
+      expect(titles).toHaveLength(6)
     expect(code).not.toMatch(/<h3>/)
     expect(css).toMatch(
       /\.shr-card-title \{ font-family: var\(--font-body\); font-size: 18px; font-weight: 800; line-height: 1\.3; color: var\(--text\); \}/,

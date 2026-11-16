@@ -1353,6 +1353,11 @@ export type Database = {
       purge_trashed_trip: { Args: { p_trip_id: string }; Returns: undefined }
       purge_trashed_trips: { Args: never; Returns: number }
       restore_trashed_trip: { Args: { p_trip_id: string }; Returns: undefined }
+      trip_access_state: { Args: { p_trip_id: string }; Returns: Json }
+      change_trip_access: {
+        Args: { p_trip_id: string; p_action: string; p_user_id?: string | null; p_role?: string | null; p_expected_revision?: number | null }
+        Returns: Json
+      }
       restore_trip_contributions: { Args: { p_trip_id: string }; Returns: Json }
       revoke_refunded_entitlement: {
         Args: { p_razorpay_order_id: string }
