@@ -15,7 +15,7 @@ import { FilterChip } from '../filters/FilterChip'
 import { CrSectionHead } from './CrSectionHead'
 import { StoreRouteStamp } from './StoreRouteStamp'
 import { StoreMonths } from './StoreMonths'
-import { bestMonthIndexes, routesForMonth, ROUTE_MONTHS } from '../../lib/creatorFacts'
+import { bestMonthIndexes, routesForMonth, routeMonthName } from '../../lib/creatorFacts'
 import { appLink } from '../../lib/appLink'
 import { ExploreCover } from '../explore/ExploreCover'
 import { formatInr } from '../../lib/engine'
@@ -100,8 +100,8 @@ export function StoreLibrary({ name, pubs, view, read, month, retry, creator, sa
         </div>
       )}
       {hasMonths && <div className="cr-store-filter" role="group" aria-label="Filter routes by month">
-        <FilterChip pressed={!thisMonth} onClick={() => setThisMonth(false)}>Any month</FilterChip>
-        <FilterChip pressed={thisMonth} count={seasonal.length} onClick={() => setThisMonth(true)}>Good in {ROUTE_MONTHS[month]}</FilterChip>
+        <FilterChip pressed={!thisMonth} onClick={() => { setThisMonth(false) }}>Any month</FilterChip>
+        <FilterChip pressed={thisMonth} count={seasonal.length} onClick={() => { setThisMonth(true) }}>Good in {routeMonthName(month)}</FilterChip>
       </div>}
       {rows.length === 0 && <StateBlock kind="empty" size="compact" title="No matching routes" body="Choose another filter." />}
       <div className="cr-store-grid">
@@ -116,7 +116,7 @@ export function StoreLibrary({ name, pubs, view, read, month, retry, creator, sa
       </div>
     </section>
     {seasonal.length > 0 && <section className="container cr-store-seasonal" aria-labelledby="creator-season-title">
-      <CrSectionHead kicker="Good this month" title={`Routes for ${ROUTE_MONTHS[month]}`} id="creator-season-title" />
+      <CrSectionHead kicker="Good this month" title={`Routes for ${routeMonthName(month)}`} id="creator-season-title" />
       <div className="cr-store-seasonal-grid">
         {seasonal.slice(0, 4).map(pub => <a key={pub.id} className="cr-store-seasonal-route" {...appLink(`/pub/${pub.id}`)}>
           <div className="cr-store-seasonal-cover"><ExploreCover pub={pub} sizes="64px" /></div>

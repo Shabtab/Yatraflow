@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bestMonthIndexes, routesForMonth, creatorPick, plannedKilometres, planningNotes, publicationFacts, publishablePlannedKm, validPlanningNotes } from '../src/lib/creatorFacts'
+import { bestMonthIndexes, routeMonthName, routesForMonth, creatorPick, plannedKilometres, planningNotes, publicationFacts, publishablePlannedKm, validPlanningNotes } from '../src/lib/creatorFacts'
 import { beginLedger, applyLedger, settleLedger } from '../src/store/fieldIntents'
 import type { PrivateUserProfile, PublishedItinerary } from '../src/data/types'
 
@@ -62,5 +62,16 @@ describe('creator facts', () => {
     ledger = settleLedger(ledger, 1, 'failed')
     ledger = settleLedger(ledger, 2, 'accepted')
     expect(applyLedger(ledger, base)).toEqual({ ...base, planningNotes: ['Start early.'] })
+  })
+})
+
+describe('routeMonthName', () => {
+  it('names months 0 to 11 and gives an empty string outside that range', () => {
+    expect(routeMonthName(0)).toBe('Jan')
+    expect(routeMonthName(10)).toBe('Nov')
+    expect(routeMonthName(11)).toBe('Dec')
+    expect(routeMonthName(12)).toBe('')
+    expect(routeMonthName(-1)).toBe('')
+    expect(routeMonthName(1.5)).toBe('')
   })
 })

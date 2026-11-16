@@ -13,7 +13,7 @@ function StorePostCard({ post, pub }: { post: CreatorPost; pub: PublishedItinera
   const day = postDayLabel(post, pub.durationDays)
   return <li className={`cr-store-post${thumbnail ? ' cr-store-post--image' : ''}`} data-kind={post.kind}>
     {thumbnail && <img className="cr-store-post-image" src={thumbnail} width={308} height={380}
-      loading="lazy" decoding="async" alt="" referrerPolicy="no-referrer" onError={() => setFailedUrl(post.url)} />}
+      loading="lazy" decoding="async" alt="" referrerPolicy="no-referrer" onError={() => { setFailedUrl(post.url) }} />}
     <a className="cr-store-post-link" href={post.url} target="_blank" rel="noopener noreferrer nofollow">
       <span className="cr-store-post-platform"><SocialIcon kind={post.kind} size={16} gap={6} />{label}</span>
       <span className="cr-store-post-caption">{post.caption ?? `${label} post`}</span>
