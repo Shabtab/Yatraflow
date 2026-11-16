@@ -1153,6 +1153,13 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    length through one helper for fit, card, saved stop, vote draft and slack.
    Keep an explicit visit override. When the fact is absent, keep each
    surface's existing fallback. Never turn an invalid fact into zero.
+6br. **A shared header gets one size, and every unbounded input gets a bound
+   (learned 2026-11-16, trip cover).** A per-tab `body:has(...)` height override
+   resized the cover after the tab mounted, so the tab pill moved. Give the
+   header one height per breakpoint. Bound each input that could grow it (title,
+   meta line) with a clamp and a `title` tooltip. Prove it with a probe that
+   fails first: the pill rect on every tab, a click sampler at 0 to 400ms, and
+   a long-name stress case.
 
 ## 2. Conventions (`AGENTS.md` §4)
 

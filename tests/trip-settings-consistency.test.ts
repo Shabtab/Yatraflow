@@ -191,12 +191,14 @@ describe('P12 — the measured artboard gaps stay closed', () => {
     expect(css).toContain('.tset-av--3 { background: var(--pw-time-stop); color: var(--pw-on-time-stop); }')
   })
 
-  it('the title wraps within a bounded height at every settings width', () => {
-    expect(css).toContain('body:has(.tset-grid) .yf-page .yf-trip-head .yf-trip-title {')
-    expect(css).toContain('-webkit-line-clamp: 4;')
-    expect(css).toContain('@media (min-width: 721px) and (max-width: 1023px)')
-    expect(css).toContain('body:has(.tset-grid) .yf-page .yf-trip-head {')
-    expect(css).toContain('height: 384px;')
+  it('the cover uses the shared height and title rule, and the touch targets stay 44px', () => {
+    // The Settings tab used to carry its own cover heights (304, 384, 352, 380)
+    // and a four-line title clamp. Those moved to one rule for every content tab
+    // (tests/workspace-header.test.ts), so the pill does not move on this tab.
+    expect(css).not.toContain('body:has(.tset-grid) .yf-page .yf-trip-head')
+    expect(css).not.toContain('-webkit-line-clamp: 4;')
+    // The grid stays wider than the cover: the cover is capped and centred.
+    expect(css).toContain('.container.yf-workspace.yf-workspace:has(.tset-grid) .yf-page {')
     expect(css).toContain('@media (pointer: coarse) {')
     expect(css).toMatch(/\.tsx-node > button,\s*\.tsx-node-tools button \{/)
     expect(css).toMatch(/\.tsx-node > button,[\s\S]*?width: 44px;\s*height: 44px;/)

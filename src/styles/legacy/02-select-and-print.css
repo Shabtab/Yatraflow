@@ -2717,27 +2717,9 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
   .tl-head { flex-wrap: wrap; gap: var(--space-5); }
   .tl-toolbar { width: 100%; }
 }
-/* The trip title above the Timeline is one nowrap line, so a long name ended in
-   an ellipsis mid-word ("Goa, North to the Q..."). A phone gives it two lines
-   before it clips. The selector keys on the Timeline's own head, so the other
-   tabs keep their single line, and desktop keeps it too. */
-@media (max-width: 720px) {
-  /* The cover is a fixed height, so the second line needs its 36px of room or
-     the member row slides under the tab rail. */
-  body:has(.tl-head) .yf-page .yf-trip-head { height: 324px; }
-  body:has(.tl-head) .yf-page .yf-trip-head .yf-trip-title {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    overflow: hidden;
-    white-space: normal;
-    line-height: 1.1;
-  }
-}
-@media (max-width: 440px) {
-  body:has(.tl-head) .yf-page .yf-trip-head { height: 332px; }
-}
+/* The Timeline's own two-line title and taller phone cover moved to the shared
+   cover rules in 16-motion-and-cover-v2.css: every content tab now has one
+   cover height and one title rule. */
 
 /* The artboard puts the collapse control at the RIGHT of the header, after the
    title block, so the eye reads date → title → state → fold. `order` moves it
