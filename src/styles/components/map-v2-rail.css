@@ -47,6 +47,13 @@
 .mv2-workspace .map-shell--workspace { height: 100%; border-radius: 0; box-shadow: none; border: 0; }
 .mv2-workspace .map-ideas-grid .map-ideas-map .map-shell--workspace:not(.map-shell--expanded) .map-frame { height: 100%; min-height: 0; }
 .mv2-workspace .yf-maplibre { height: 100%; }
+/* The expanded map is a fixed layer at --z-map-expanded, above the nav. The
+   canvas isolates its stack, so the canvas itself takes that rung while the map
+   is expanded. Otherwise the trip header bar and the tab pill paint over the map. */
+.mv2-workspace .map-ideas-grid:has(.map-shell--expanded) { z-index: var(--z-map-expanded); }
+/* The expanded map covers the day rail and the deck, so the map controls must
+   not keep space for them. */
+.mv2-workspace .map-shell--expanded { --mv2-day-width: 0px; --mv2-deck-width: 0px; --mv2-deck-gutter: 0px; }
 .mv2-workspace .map-shell--workspace .map-toolbar { position: absolute; z-index: 7; top: 86px; right: calc(var(--mv2-deck-width) + var(--mv2-inset) + var(--mv2-edge-tab-w) + var(--space-4)); width: 48px; display: flex; flex-direction: column; align-items: stretch; padding: 0; gap: var(--space-4); border: 0; border-radius: 0; background: transparent; color: var(--text); box-shadow: none; bottom: auto; overflow: visible; pointer-events: auto; }
 /* F1: the control column stays between the lens toolbar and the journey ribbon at every height.
    It ends above the ribbon. When its cards are taller than that space, the gaps close first and
