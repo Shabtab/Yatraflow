@@ -51,17 +51,16 @@ function osrmResponse(km = 10) {
   }), { status: 200 })
 }
 
-/** An OSRM CHAIN response for n waypoints (leg i carries its own geometry). */
+/** OSRM chain response for n waypoints, in the real shape. The road shape sits on the route; each leg carries its counts. */
 function osrmChainResponse(waypointCount: number) {
-  const legs = []
+  const coordinates: [number, number][] = []
+  for (let i = 0; i < waypointCount; i++) coordinates.push([77 + i * 0.1, 10 + i * 0.1])
+  const legs: { distance: number; duration: number; annotation: { distance: number[]; duration: number[] } }[] = []
   for (let i = 0; i < waypointCount - 1; i++) {
-    legs.push({
-      distance: 10_000,
-      duration: 600,
-      geometry: { coordinates: [[77 + i * 0.1, 10 + i * 0.1], [77 + (i + 1) * 0.1, 10 + (i + 1) * 0.1]] },
-    })
+    legs.push({ distance: 10_000, duration: 600, annotation: { distance: [10_000], duration: [600] } })
   }
-  return new Response(JSON.stringify({ code: 'Ok', routes: [{ legs }] }), { status: 200 })
+  const route = { distance: 10_000 * legs.length, duration: 600 * legs.length, geometry: { type: 'LineString', coordinates }, legs }
+  return new Response(JSON.stringify({ code: 'Ok', routes: [route] }), { status: 200 })
 }
 
 function leg(km: number, min: number): RoadLeg {

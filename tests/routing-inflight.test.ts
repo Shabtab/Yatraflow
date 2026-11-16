@@ -61,11 +61,13 @@ function googleBody(body: Body, legCount?: number, polylinePoints?: LatLng[]): R
   return new Response(JSON.stringify({ routes: [(body.intermediates ?? []).length ? { ...base, legs } : base] }), { status: 200 })
 }
 
-/** An OSRM chain response for the coordinates named in the URL. */
+/** An OSRM chain response for the coordinates named in the URL, in the real
+ *  shape: the road shape sits on the route, and each leg carries its own counts. */
 function osrmChain(url: string): Response {
   const pts = url.split('/route/v1/driving/')[1]!.split('?')[0]!.split(';').map(s => s.split(',').map(Number))
-  const legs = pts.slice(0, -1).map((p, i) => ({ distance: 5000, duration: 300, geometry: { coordinates: [p, pts[i + 1]] } }))
-  return new Response(JSON.stringify({ code: 'Ok', routes: [{ legs }] }), { status: 200 })
+  const legs = pts.slice(0, -1).map(() => ({ distance: 5000, duration: 300, annotation: { distance: [5000], duration: [300] } }))
+  const route = { distance: 5000 * legs.length, duration: 300 * legs.length, geometry: { type: 'LineString', coordinates: pts }, legs }
+  return new Response(JSON.stringify({ code: 'Ok', routes: [route] }), { status: 200 })
 }
 
 interface Calls { google: Body[]; googleSignals: (AbortSignal | undefined)[]; osrm: string[] }

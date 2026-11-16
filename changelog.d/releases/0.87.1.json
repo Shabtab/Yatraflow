@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "version": "0.87.1",
+  "date": "2026-11-16",
+  "source": "472d2282715e68215516415a190e7911404ff400",
+  "fragments": [
+    {
+      "id": "6b15000d-d1b8-42d0-bcd8-9f60f214502c",
+      "sha256": "fd47d4e9571c63e85377689d48db87f425d852c1d4fdbf8468abdf4f46621164"
+    }
+  ],
+  "blockHash": "6eb9e699a1177544c279c2e5cad5fb331686aecf323914024cb1392115db1e54",
+  "changelogHash": "027b3c43029517b16445060f8a9afa743f10748fdddbd44ee06cb4f8bc91c73a"
+}
