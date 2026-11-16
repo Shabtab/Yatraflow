@@ -3925,157 +3925,94 @@ async function restoreTripData(snap: TripSnapshot, retry: boolean): Promise<void
 
 /** Move a trip to trash. Optimistic: removes from the live list, then stamps the
  *  tombstone; a failed write puts the trip back. */
-export function trashTrip(trip: Trip): void {
+export async function trashTrip(trip: Trip): Promise<boolean> {
   const scope = identityScope()
-  if (!scope || !isCurrentIdentity(scope)) return
-  if (!cache.trips.some(t => t.id === trip.id)) return
-  // #566 — trash is a WITHDRAW, never a revoke. A trip whose publication is
-  // still on sale must stop selling WITH it: Explore, the sitemap, the share
-  // card and checkout all read `unpublished_at is null`, so a tombstone alone
-  // leaves the removed trip's plan selling from a page its owner just took
-  // down. The stamp is OWNER-written — `published write` RLS is
-  // `auth.uid() = creator_id` while `trips update` is `is_editor`, so an editor
-  // cannot write it (deliberately no trigger: withdrawing the sale is the
-  // creator's action, not a side effect of a tombstone). An editor asked to
-  // trash a still-selling trip is REFUSED outright rather than half-served.
+  if (!scope || !isCurrentIdentity(scope) || !tripById(trip.id)) return false
+  if (roleOf(trip, scope.userId) !== 'owner' && !isAdminCached()) {
+    toast('Only the trip owner can move this trip to trash.', 'err')
+    return false
+  }
   const pubs = cache.published.filter(p => p.tripId === trip.id)
   const onSale = pubs.filter(p => !p.unpublishedAt)
-  if (onSale.length) {
-    const me = cache.sessionUserId
-    if (!me || onSale.some(p => p.creatorId !== me)) {
-      toast('Only the trip owner can trash a published trip. Its public page has to stop selling with it.', 'err')
-      return
-    }
+  if (onSale.some(p => p.creatorId !== scope.userId)) {
+    toast('Only the creator can withdraw a published trip.', 'err')
+    return false
   }
   revokeTripWork(trip.id)
   const accessEpoch = tripAccessEpochs.get(trip.id)
   const live = () => isCurrentIdentity(scope) && tripAccessEpochs.get(trip.id) === accessEpoch
-  // A refusal before any server write puts the trip back. Its saved edit was never removed.
-  const refuseTrash = () => {
-    if (!live() || tripById(trip.id)) return
-    cache.trips = [...cache.trips, trip]
-    commit()
-    toast('Could not move to trash.', 'err')
+  const refuse = () => {
+    if (live()) {
+      if (!tripById(trip.id)) cache.trips = [...cache.trips, trip]
+      commit()
+      toast('Could not move to trash.', 'err')
+    }
+    return false
   }
   cache.trips = cache.trips.filter(t => t.id !== trip.id)
   commit()
-  void serializeTripWrite(`${scope.epoch}:${scope.userId}:${trip.id}`, async () => {
+  return serializeTripWrite(`${scope.epoch}:${scope.userId}:${trip.id}`, async () => {
     const token = await tripWriteToken(scope)
-    if (!token || !live()) return refuseTrash()
+    if (!token || !live()) return refuse()
     const cols = await tripsHaveOptionalColumns()
-    if (!live()) return
-    if (!cols.deleted) {
-      // Legacy hard delete (a database without the trash column):
-      // `published_itineraries` cascades off the trip and the money rows
-      // cascade off the publication — a published trip here would be a
-      // confiscation, so it is refused like the purge RPC refuses it.
-      if (pubs.length) {
-        cache.trips = [...cache.trips, trip]
-        commit()
-        toast('This database has no trash column. A published trip cannot be deleted here without destroying its buyers’ records.', 'err')
-        return
-      }
-      await supabase.from('trips').delete().eq('id', trip.id)
-        .setHeader('Authorization', `Bearer ${token}`).then(async ({ error }) => {
-        if (!live()) return
-        if (error) { cache.trips = [...cache.trips, trip]; commit() }
-        else await discardTripEdits(scope, trip.id)
-        // #387: the bin never refreshed in place — re-issue the RPC after every
-        // resolution so a resident Trash view moves on its own. Failure surfaces
-        // through the bin's own error branch, not stale data.
-        void fetchTrashedTrips()
-      })
-      return
-    }
-    // #566 — withdraw FIRST, tombstone second: if the plan cannot stop
-    // selling, the trip stays where it is rather than half-moving. The marker
-    // is stamped optimistically and rolled back together with the trip if the
-    // tombstone write fails. Probe-gated: without the column (a pre-#350
-    // database) there is no marker vocabulary to speak, and the readers that
-    // would need it cannot run there either.
-    const prevPubs = cache.published
-    let stamp: number | null = null
-    const canWithdraw = onSale.length && (await publishedHaveUnpublishedAt())
-    if (!live()) return
-    if (canWithdraw) {
-      const s = Date.now()
-      stamp = s
-      cache.published = cache.published.map(p => (onSale.some(o => o.id === p.id) ? { ...p, unpublishedAt: s } : p))
+    if (!live()) return false
+    if (!cols.deleted && pubs.length) return refuse()
+    if (onSale.length) {
+      if (!await publishedHaveUnpublishedAt() || !live()) return refuse()
+      const stamp = Date.now()
+      const { error } = await supabase.from('published_itineraries').update({ unpublished_at: stamp })
+        .in('id', onSale.map(p => p.id)).setHeader('Authorization', `Bearer ${token}`)
+      if (!live()) return false
+      if (error) return refuse()
+      cache.published = cache.published.map(p => onSale.some(o => o.id === p.id) ? { ...p, unpublishedAt: stamp } : p)
       commit()
-      const { error: stampError } = await supabase.from('published_itineraries')
-        .update({ unpublished_at: s }).in('id', onSale.map(p => p.id))
-        .setHeader('Authorization', `Bearer ${token}`)
-      if (!live()) return
-      if (stampError) {
-        cache.published = prevPubs
-        cache.trips = [...cache.trips, trip]
-        commit()
-        toast('Could not stop the plan from selling. The trip was not moved to trash.', 'err')
-        return
-      }
-      for (const p of onSale) markLocalWrite('published_itineraries', p.id)
     }
+    const query = cols.deleted
+      ? supabase.from('trips').update({ deleted_at: new Date().toISOString() })
+      : supabase.from('trips').delete()
+    const { data, error } = await query.eq('id', trip.id).select('id').setHeader('Authorization', `Bearer ${token}`)
+    if (!live()) return false
+    if (error || !Array.isArray(data) || data.length !== 1 || data[0].id !== trip.id) return refuse()
     markLocalWrite('trips', trip.id)
-    await supabase.from('trips').update({ deleted_at: new Date().toISOString() }).eq('id', trip.id)
-      .setHeader('Authorization', `Bearer ${token}`).then(async ({ error }) => {
-      if (!live()) return
-      if (error) {
-        cache.trips = [...cache.trips, trip]
-        if (stamp !== null) cache.published = prevPubs
-        commit()
-        toast('Could not move to trash.')
-      } else {
-        // The server confirmed the tombstone, so the saved edit can go.
-        await discardTripEdits(scope, trip.id)
-      }
-      void fetchTrashedTrips()
-    })
-  }).catch(() => {
-    if (!live()) return
-    if (!tripById(trip.id)) cache.trips = [...cache.trips, trip]
-    commit()
-    toast('Could not move to trash.', 'err')
-  })
+    await discardTripEdits(scope, trip.id)
+    if (!live()) return false
+    void fetchTrashedTrips()
+    return true
+  }).catch(refuse)
 }
 
-/** Undo a trash *within the session* (the delete toast): put the trip back and
- *  clear the tombstone. The Trash view's restore after a reload goes through
- *  restoreTrashedTripById. */
-export function restoreTrashedTrip(trip: Trip): void {
+export async function restoreTrashedTrip(trip: Trip): Promise<boolean> {
   const scope = identityScope()
-  if (!scope || !isCurrentIdentity(scope)) return
+  if (!scope || !isCurrentIdentity(scope)) return false
   const accessEpoch = (tripAccessEpochs.get(trip.id) ?? 0) + 1
   tripAccessEpochs.set(trip.id, accessEpoch)
   const live = () => isCurrentIdentity(scope) && (tripAccessEpochs.get(trip.id) ?? 0) === accessEpoch
-  if (!cache.trips.some(t => t.id === trip.id)) {
-    cache.trips = [...cache.trips, { ...trip, deletedAt: undefined }]
-    commit()
+  const refuse = () => {
+    if (live()) toast('Could not restore that trip.', 'err')
+    return false
   }
-  void serializeTripWrite(`${scope.epoch}:${scope.userId}:${trip.id}`, async () => {
+  return serializeTripWrite(`${scope.epoch}:${scope.userId}:${trip.id}`, async () => {
     const token = await tripWriteToken(scope)
-    if (!token || !live()) return
+    if (!token || !live()) return refuse()
     const cols = await tripsHaveOptionalColumns()
-    if (!cols.deleted || !live()) return
-    markLocalWrite('trips', trip.id)
+    if (!cols.deleted || !live()) return refuse()
     const { data, error } = await supabase.from('trips').update({ deleted_at: null }).eq('id', trip.id)
       .select('*').setHeader('Authorization', `Bearer ${token}`)
-    if (!live()) return
-    {
-      if (error) toast('Could not restore that trip.')
-      else if (Array.isArray(data) && data.length === 1) {
-        const shared = keepCurrentInvite(rowToTrip(data[0] as TripRow, tripById(trip.id)?.members ?? trip.members ?? []), tripById(trip.id))
-        const pending = await pendingWrites()
-        if (!live()) return
-        const displayed = overlayQueuedTrips([shared], pending, scope.userId)[0]
-        cache.trips = cache.trips.map(t => t.id === trip.id ? displayed : t)
-        commit()
-      }
-      // #387: session-undo resolves while a Trash view may be resident — same
-      // refetch contract as the RPC restore, success and failure both.
-      void fetchTrashedTrips()
-    }
-  }).catch(() => { if (live()) toast('Could not restore that trip.', 'err') })
+    if (!live()) return false
+    if (error || !Array.isArray(data) || data.length !== 1 || data[0].id !== trip.id) return refuse()
+    const shared = keepCurrentInvite(rowToTrip(data[0] as TripRow, tripById(trip.id)?.members ?? trip.members ?? []), tripById(trip.id))
+    const pending = await pendingWrites()
+    if (!live()) return false
+    const displayed = overlayQueuedTrips([shared], pending, scope.userId)[0]
+    cache.trips = cache.trips.some(t => t.id === trip.id)
+      ? cache.trips.map(t => t.id === trip.id ? displayed : t) : [...cache.trips, displayed]
+    markLocalWrite('trips', trip.id)
+    commit()
+    void fetchTrashedTrips()
+    return true
+  }).catch(refuse)
 }
+
 
 /** Fetch the current user's trashed trips (owner-scoped SECURITY DEFINER RPC).
  *

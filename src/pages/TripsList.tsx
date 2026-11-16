@@ -223,13 +223,12 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   // with no trips, and when there are no trips at all.
   const showsOtherTripsHeader = !isTrashView && tripsReady && !(trips.length === 0 && !hasFilters)
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!pendingDelete) return
     const doomed = pendingDelete
-    trashTrip(doomed)
+    if (!await trashTrip(doomed)) return
     undoToast(`Moved “${doomed.name}” to trash`, () => {
-      restoreTrashedTrip(doomed)
-      toast(`Restored “${doomed.name}”`)
+      void restoreTrashedTrip(doomed).then(ok => { if (ok) toast(`Restored “${doomed.name}”`) })
     })
   }
 

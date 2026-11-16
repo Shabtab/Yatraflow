@@ -64,9 +64,9 @@ export function TripCard({ trip, today, budget, totalTravelMinutes, users, meId,
         </div>
         <div className="mt-card-foot">
           <Planners trip={trip} users={users} meId={meId} />
-          <button type="button" className="icon-btn mt-del" aria-label={`Delete ${trip.name}`} onClick={() => onDelete(trip)}>
+          {trip.members?.some(m => m.userId === meId && m.role === 'owner') && <button type="button" className="icon-btn mt-del" aria-label={`Delete ${trip.name}`} onClick={() => onDelete(trip)}>
             <Trash2 size={16} aria-hidden />
-          </button>
+          </button>}
         </div>
       </div>
     </article>

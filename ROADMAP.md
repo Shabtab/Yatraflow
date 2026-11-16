@@ -39,6 +39,35 @@ number collides with a shipped release, the ledger wins.
 
 ---
 
+## Issue #932: owner-only trip columns
+
+Status: the user confirmed local changes. Implementation and verification are in progress.
+
+Only the owner, an enabled authorized admin, or a trusted backend may change visibility and trash state.
+An editor may still change the trip plan. A refused mixed update must change nothing.
+An unchanged protected value must not prevent a valid plan save.
+Ordinary queued plan writes must omit owner-only settings, including stale visibility and trash values.
+Keep explicit owner publication, trash, restore, and authorized admin operations working.
+Do not treat a missing user ID as proof of trusted backend access.
+
+Preserve the checked invite commands from #931, including ordinary member sharing.
+Do not reopen direct invite writes or weaken removal, demotion, and owner-restore rules.
+Suggestions, decisions, and activity must be readable only by members and authorized admins.
+Public itinerary readers and paid entitlements must keep their existing access rules.
+Permission refusals must not report a successful save or trash operation.
+
+Use an additive migration, its schema mirror, and RLS-contract tests.
+Prove direct editor refusals, valid editor saves, owner operations, and invite-command compatibility with actual local SQL.
+Cover disabled, anonymous, admin, trusted service, stale queue, and concurrent ownership cases.
+Check the affected user flows in a browser and run the full gate before completion.
+Keep dependencies, prices, releases, and unrelated product features unchanged.
+
+The task branch includes current test and the preserved #931 work from PR #957.
+That pull request remains a separate dependency until its changes reach the target branch.
+Codex will make the changes in its owned clone. Existing agents will independently review fixed candidates.
+MiniMax is unavailable because its provider subscription failed. Its old work remains protected.
+This specification grants no push, pull request, merge, deployment, or hosted SQL action.
+
 ## Issue #931: durable trip-member access
 
 Status: implemented locally. Independent source review passed. Hosted verification and publication are not approved.
