@@ -7789,7 +7789,7 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
   const columnPatch: PublishColumnPatch = publishColumnPatch(await publishedOptionalColumns(), {
     plannedKm: p.plannedKm, bestMonths: p.bestMonths, reviewedScope: p.reviewedScope, stateCodes: p.stateCodes,
   })
-  const payload: Database['public']['Tables']['published_itineraries']['Insert'] & PublishColumnPatch = {
+  const { error } = await supabase.from('published_itineraries').upsert({
     id: p.id, trip_id: p.tripId, creator_id: p.creatorId, title: p.title, tagline: p.tagline,
     cover_image_url: p.coverImageUrl, route_summary: p.routeSummary, duration_days: p.durationDays,
     estimated_budget_per_person_inr: p.estimatedBudgetPerPersonInr, travel_style: p.travelStyle,
@@ -7798,8 +7798,7 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
     ...(hasRefreshedCol ? { refreshed_at: p.refreshedAt } : {}),
     ...(hasUnpublishedCol ? { unpublished_at: null } : {}),
     ...columnPatch,
-  }
-  const { error } = await supabase.from('published_itineraries').upsert(payload)
+  } satisfies Database['public']['Tables']['published_itineraries']['Insert'])
   if (error) {
     console.error('[yatraflow] publish persist failed', error)
     const idx = cache.published.findIndex(x => x.id === p.id)
