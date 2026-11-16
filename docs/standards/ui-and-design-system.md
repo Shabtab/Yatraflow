@@ -11,6 +11,9 @@ That layout sets `--search-field-flex` and `--select-leading-space` for composit
 The entry imports select after legacy section 04 and search before section 10.
 Other legacy sections keep their order. Shared tokens and motion remain in legacy files.
 
+- Keep non-interactive grid tiles square with `aspect-ratio` and zero minimum dimensions.
+  A minimum height can exceed a phone column and make adjacent tiles overlap.
+
 - Give segmented answer controls a dedicated class.
   Shared form layout classes must not generate selection decoration.
 

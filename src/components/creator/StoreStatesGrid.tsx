@@ -19,33 +19,38 @@ export function StoreStatesGrid({ pubs, read }: {
   const covered = counts.size
   return (
     <section className="container cr-states" aria-label="States covered">
-      <div className="cr-states-head">
-        <h2 className="cr-states-title">States covered · {covered} of {INDIA_STATE_COUNT}</h2>
-        <span className="cr-states-note">Planned routes</span>
-      </div>
-      <div className="cr-states-grid" role="list">
-        {INDIA_STATES.map(state => {
-          const routes = counts.get(state.code) ?? 0
-          const isCovered = routes > 0
-          return (
-            <div
-              key={state.code}
-              role="listitem"
-              className="cr-states-tile"
-              data-covered={isCovered}
-              style={{ gridColumn: state.col + 1, gridRow: state.row + 1 }}
-              aria-label={isCovered ? `${state.name}: ${routes} planned ${routes === 1 ? 'route' : 'routes'}` : `${state.name}: not yet`}
-              title={isCovered ? `${state.name}: ${routes} planned ${routes === 1 ? 'route' : 'routes'}` : `${state.name}: not yet`}
-            >
-              <span className="cr-states-code" aria-hidden="true">{state.code}</span>
-              {isCovered && <span className="cr-states-count" aria-hidden="true">{routes}</span>}
-            </div>
-          )
-        })}
-      </div>
-      <div className="cr-states-legend">
-        <span><i className="cr-states-mark" data-covered="true" aria-hidden="true" />Planned</span>
-        <span><i className="cr-states-mark" data-covered="false" aria-hidden="true" />Not yet</span>
+      <div className="cr-states-card">
+        <div className="cr-states-head">
+          <h2 className="cr-states-title">States covered · {covered} of {INDIA_STATE_COUNT}</h2>
+          <span className="cr-states-note">One square per state, placed roughly where it sits</span>
+        </div>
+        <div className="cr-states-grid" role="list" aria-label="Planned routes by state and union territory">
+          {INDIA_STATES.map(state => {
+            const routes = counts.get(state.code) ?? 0
+            const isCovered = routes > 0
+            return (
+              <div
+                key={state.code}
+                role="listitem"
+                className="cr-states-tile"
+                data-covered={isCovered}
+                style={{ gridColumn: state.col + 1, gridRow: state.row + 1 }}
+                aria-label={isCovered ? `${state.name}: ${routes} planned ${routes === 1 ? 'route' : 'routes'}` : `${state.name}: Not yet`}
+                title={isCovered ? `${state.name}: ${routes} planned ${routes === 1 ? 'route' : 'routes'}` : `${state.name}: Not yet`}
+              >
+                <span className="cr-states-code" aria-hidden="true">{state.code}</span>
+                {isCovered && <span className="cr-states-count" aria-hidden="true">{routes}</span>}
+              </div>
+            )
+          })}
+        </div>
+        <div className="cr-states-legend">
+          <div className="cr-states-key">
+            <span><i className="cr-states-mark" data-covered="false" aria-hidden="true" />Not yet</span>
+            <span><i className="cr-states-mark" data-covered="true" aria-hidden="true" />Planned</span>
+          </div>
+          <span className="cr-states-note">Planned routes in each state</span>
+        </div>
       </div>
     </section>
   )

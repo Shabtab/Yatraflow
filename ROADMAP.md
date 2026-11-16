@@ -1222,7 +1222,9 @@ The operator applied both migrations by hand on 2026-11-15. Client work remains 
 
 G3 and G4 have SQL migrations dated 2026-11-16. The operator applied both migrations by hand on 2026-11-15.
 G3 client reads show route facts, review stamps, creator picks, and planning notes. The hub can save picks and notes.
-State codes remain in G3b. The applied G3 schema has no state field.
+G3b records state codes on publish. The storefront shows planned route counts in a framed state grid.
+Teal tiles and pale dashed empty tiles keep the same square size in both themes and fit phone screens.
+The applied G3 schema has no state field. G3b has its own migration.
 G4 clients can follow and unfollow creators. Public pages and the hub show counts or an unavailable state.
 G8 has a SQL migration dated 2026-11-17 and client code. The operator applied it on 2026-11-16.
 Hosted probes passed. Public posts are readable, while anonymous inserts and private visit reads return `42501`.
