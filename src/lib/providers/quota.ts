@@ -7,9 +7,14 @@
 // the free stack serves only when no key is configured. Counters key by UTC
 // month and roll over automatically.
 //
-// This is insurance, not a billing tool: the key is expected to be
-// HTTP-referrer-restricted to the deployment domain (Google Cloud console),
-// the quota guard is the second net if the key ever leaks.
+// Two counters, two jobs:
+//  - Local counter (below): a per-device runaway guard. Each browser counts its own events.
+//  - Shared counter (reserveSharedQuota): the account-wide bill cap, kept in Supabase.
+//    Only the routes SKU uses it in this change.
+// The key is expected to be HTTP-referrer-restricted to the deployment domain
+// (Google Cloud console). The quota guards are the second net if the key leaks.
+
+import { isSupabaseConfigured, supabase } from '../supabase'
 
 export type QuotaSku = 'autocomplete' | 'placeDetails' | 'textSearchPro' | 'nearbySearch' | 'routes'
 
@@ -82,6 +87,28 @@ export function quotaCount(sku: QuotaSku): void {
 /** events fired this month for `sku` (for diagnostics / tests) */
 export function quotaUsed(sku: QuotaSku): number {
   return readCount(sku)
+}
+
+/** SKUs that also draw on the account-wide counter in Supabase. */
+const SHARED_SKUS: ReadonlySet<QuotaSku> = new Set<QuotaSku>(['routes'])
+
+/**
+ * Takes one unit of the account-wide monthly quota for `sku`. Returns true only
+ * when Supabase grants the unit. The check fails closed: no configured client,
+ * an RPC error, a non-boolean answer or an abort all return false, and the
+ * caller then takes its non-Google fallback. A SKU outside SHARED_SKUS returns
+ * true without a call, so the local quotaAllows check still decides for it.
+ */
+export async function reserveSharedQuota(sku: QuotaSku, signal?: AbortSignal): Promise<boolean> {
+  if (!SHARED_SKUS.has(sku)) return true
+  if (!isSupabaseConfigured || signal?.aborted) return false
+  try {
+    const call = supabase.rpc('consume_provider_quota', { p_sku: sku })
+    const { data, error } = await (signal ? call.abortSignal(signal) : call)
+    return !error && data === true
+  } catch {
+    return false
+  }
 }
 
 /** True when any of the supplied SKUs has reached its safety pause. */

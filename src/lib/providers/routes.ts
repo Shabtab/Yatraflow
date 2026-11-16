@@ -9,11 +9,11 @@
 // catches and falls back to OSRM. The Phase-B quota guard (quota.ts) gates
 // each call BEFORE it goes out, so the app silently drops to the free stack
 // long before paid events can fire.
-import { quotaAllows, quotaCount, type QuotaSku } from './quota'
+import { quotaAllows, quotaCount, reserveSharedQuota, type QuotaSku } from './quota'
 import { decodePolyline } from './polyline'
 import { requestSignal } from './requestSignal'
 
-const ROUTES = 'https://routes.googleapis.com/v2:computeRoutes'
+const ROUTES = 'https://routes.googleapis.com/directions/v2:computeRoutes'
 
 /** Read lazily (not at module load) so tests can stub the env. */
 function apiKey(): string {
@@ -24,23 +24,16 @@ export function routesEnabled(): boolean {
   return apiKey().length > 0
 }
 
-/** Maps an engine transport mode to a Google Routes travelMode. */
+/**
+ * Maps an engine transport mode to a Google Routes travelMode. Every mode is
+ * DRIVE. Routes accepts DRIVE, BICYCLE, WALK, TWO_WHEELER and TRANSIT. BUS, TRAIN
+ * and FLYING answer HTTP 400. A 400 makes the app retry each leg, and each retry
+ * spends a shared quota unit. TWO_WHEELER is billed as Enterprise. DRIVE matches
+ * the OSRM driving geometry.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- every mode is DRIVE; the parameter keeps one call shape
 export function travelModeFor(mode: string | undefined): string {
-  switch (mode) {
-    case 'car':
-    case 'taxi':
-      return 'DRIVE'
-    case 'motorcycle':
-      return 'TWO_WHEELER'
-    case 'bus':
-      return 'BUS'
-    case 'train':
-      return 'TRAIN'
-    case 'flight':
-      return 'FLYING' // rare for intra-city legs; OSRM geometry won't represent it
-    default:
-      return 'DRIVE'
-  }
+  return 'DRIVE'
 }
 
 export interface RouteResult {
@@ -84,7 +77,7 @@ export { decodePolyline }
 /**
  * Road route between two points via Google Routes API computeRoutes.
  * Throws on any failure (quota, network, non-OK) so the facade can fall back.
- * `via` waypoints (up to 25 total points per Google's limit) make this a
+ * `via` waypoints (at most 12 total points, the Essentials tier cap) make this a
  * corridor measurement: ONE quota event covers the whole chain (#polylines).
  * The returned per-leg split is aligned with the requested legs.
  * `signal` is the caller's cancellation; it is combined with the request
@@ -101,6 +94,8 @@ export async function googleRoute(
   if (!routesEnabled()) throw new Error('routes: no Google key configured')
   if (signal?.aborted) throw new DOMException('routes: caller aborted', 'AbortError')
   if (!quotaAllows(sku)) throw new QuotaExhaustedError(sku)
+  // Account-wide cap: one unit from Supabase before the request goes out. Fails closed.
+  if (!(await reserveSharedQuota(sku, signal))) throw new QuotaExhaustedError(sku)
   const res = await fetch(ROUTES, {
     method: 'POST',
     headers: {

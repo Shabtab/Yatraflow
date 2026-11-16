@@ -1054,6 +1054,7 @@ export type Database = {
         Args: { p_identity: Json }
         Returns: boolean
       }
+      consume_provider_quota: { Args: { p_sku: string }; Returns: boolean }
       get_creator_funnel: {
         Args: { p_days?: number }
         Returns: {
