@@ -101,6 +101,12 @@ describe('applying a plan to the copy', () => {
     const copy = applyForkPlan(broken, { startDate: '2026-11-21', travellers: 30, startTown: null })
     expect(copy).toMatchObject({ startDate: '', endDate: '', travellers: 20 })
   })
+
+  it('takes the span from the day count when the source has no date range', () => {
+    const dayless = { ...source, startDate: '', endDate: '', days: [{}, {}, {}, {}] } as unknown as Trip
+    const copy = applyForkPlan(dayless, { startDate: '2026-11-21', travellers: 4, startTown: null })
+    expect(copy).toMatchObject({ startDate: '2026-11-21', endDate: '2026-11-24', travellers: 4 })
+  })
 })
 
 describe('plan through sign-in', () => {

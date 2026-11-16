@@ -2233,8 +2233,8 @@ p.cr-store-planning {
   background: var(--pw-lagoon-100);
 }
 .cr-weekend-pin-body {
-  fill: var(--pw-lagoon-100);
-  stroke: var(--pw-sea);
+  fill: var(--pw-route);
+  stroke: var(--pw-sea-700);
 }
 .cr-weekend-pin-dot {
   fill: var(--pw-marigold-500);
@@ -2265,13 +2265,13 @@ p.cr-store-planning {
   padding: 0 var(--space-4);
   /* Stays dark in both themes: --pw-sea-900 turns into a light tint in dark mode. */
   background: #0B3F44;
-  color: #FCFEFD;
+  color: #FFFFFF;
 }
 .cr-weekend-ticket-brand {
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 700;
-  color: #FCFEFD;
+  color: #FFFFFF;
 }
 .cr-weekend-ticket-brand span {
   color: #6CCAB3;

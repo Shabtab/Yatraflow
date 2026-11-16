@@ -122,10 +122,12 @@ export function sanitizeForkPlan(raw: unknown): ForkPlan | null {
 }
 
 /** The copy takes the chosen start and keeps the source trip's own length. Days are numbered from the start,
- *  so moving the start needs no day edits. A source with no usable span keeps its dates. The party always applies.
+ *  so moving the start needs no day edits. With no usable date range, the day count sets the span. A source with neither keeps its dates. The party always applies.
  *  The start town is not written: the copy already starts where the route does. */
 export function applyForkPlan(trip: Trip, plan: ForkPlan): Trip {
-  const span = dayCountForRange(trip.startDate, trip.endDate)
+  // No usable date range: the day count sets the span, the same count the publication shows.
+  const range = dayCountForRange(trip.startDate, trip.endDate)
+  const span = range >= 1 ? range : trip.days.length
   const endDate = span >= 1 ? endForSpan(plan.startDate, span) : null
   return {
     ...trip,
