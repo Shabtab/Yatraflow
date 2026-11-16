@@ -36,7 +36,7 @@ const GOOGLE_OK = {
   status: 200,
   json: async () => ({ routes: [{ distanceMeters: 1000, duration: '120s', polyline: { encodedPolyline: '' } }] }),
 }
-const fetchMock = vi.fn(async () => GOOGLE_OK)
+const fetchMock = vi.fn<(input: string, init?: RequestInit) => Promise<unknown>>(async () => GOOGLE_OK)
 
 beforeEach(() => {
   h.rpc.mockReset()
@@ -109,6 +109,19 @@ describe('reserveSharedQuota', () => {
 })
 
 describe('googleRoute and the shared cap', () => {
+  it('calls the computeRoutes address on the directions path', async () => {
+    h.rpc.mockReturnValue(answer({ data: true, error: null }))
+    await googleRoute(A, B, 'car')
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://routes.googleapis.com/directions/v2:computeRoutes')
+  })
+
+  it('sends travelMode DRIVE in the request body, even for a bus leg', async () => {
+    h.rpc.mockReturnValue(answer({ data: true, error: null }))
+    await googleRoute(A, B, 'bus')
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { travelMode?: string }
+    expect(body.travelMode).toBe('DRIVE')
+  })
+
   it('sends the Google request only after the shared cap grants a unit', async () => {
     h.rpc.mockReturnValue(answer({ data: true, error: null }))
     const r = await googleRoute(A, B, 'car')

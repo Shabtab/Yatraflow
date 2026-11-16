@@ -46,14 +46,10 @@ describe('decodePolyline', () => {
 })
 
 describe('travelModeFor', () => {
-  it('maps the engine modes to Google travelModes', () => {
-    expect(travelModeFor('car')).toBe('DRIVE')
-    expect(travelModeFor('taxi')).toBe('DRIVE')
-    expect(travelModeFor('motorcycle')).toBe('TWO_WHEELER')
-    expect(travelModeFor('bus')).toBe('BUS')
-    expect(travelModeFor('train')).toBe('TRAIN')
-    expect(travelModeFor('flight')).toBe('FLYING')
-    expect(travelModeFor(undefined)).toBe('DRIVE')
+  it('maps every engine mode to DRIVE', () => {
+    for (const mode of ['car', 'taxi', 'motorcycle', 'bus', 'train', 'flight', undefined]) {
+      expect(travelModeFor(mode)).toBe('DRIVE')
+    }
   })
 })
 
