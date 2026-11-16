@@ -2984,7 +2984,8 @@ function publishedHaveRefreshedAt(): Promise<boolean> {
 // covers those three and state_codes. Only a confirmed missing column is dropped.
 let publishColumnsProbe: Promise<ReadonlySet<string>> | null = null
 function publishedOptionalColumns(): Promise<ReadonlySet<string>> {
-  if (!isSupabaseConfigured) return Promise.resolve(new Set<string>())
+  // With no backend there is nothing to probe. Keep every column, as before G3b.
+  if (!isSupabaseConfigured) return Promise.resolve(new Set<string>(PUBLISH_OPTIONAL_COLUMNS))
   if (!publishColumnsProbe) {
     publishColumnsProbe = (async () => {
       // Each column is checked on its own. Only a confirmed missing-column error
