@@ -2,7 +2,7 @@
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InlineIcon, CatIcon } from '../../components/icons'
-import { BedDouble, ChevronDown, ChevronLeft, ChevronRight, Coffee, Fuel, Lightbulb, Pause, Plus, RefreshCw, RotateCcw, Sparkles, Utensils, Route, List, PanelLeftOpen, PanelRightOpen, Clock } from 'lucide-react'
+import { BedDouble, ChevronDown, ChevronLeft, ChevronRight, Coffee, Fuel, Lightbulb, Pause, Plus, RefreshCw, RotateCcw, Sparkles, Utensils, Route, PanelLeftOpen, PanelRightOpen, Clock } from 'lucide-react'
 import type { Trip } from '../../data/types'
 import { removeStopWithUndo, type ApplyChange } from '../../lib/mutationLifecycle'
 import { mapRoadViewFromLegs, mapReturnGeometryFromLegs, outboundLegs, type TripRoadView } from '../../lib/tripRoad'
@@ -1182,9 +1182,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     slotGuard.current.reset()
     slotAbort.current?.abort()
   }, [openSlotKey, activeDayId, trip.id])
-  // Plan P2.5's mobile slots summary: collapsed to a count + open on phones,
-  // desktop hides the summary so this state never touches it there.
-  const [slotsPeek, setSlotsPeek] = useState(false)
   /** m5: `DaySlotKind` is exactly the four keys the hints are built for, so an
    *  unknown kind yields nothing. The old ternary's last branch fell through to
    *  the stretch hint, which would quietly mislabel any future kind. */
@@ -1518,6 +1515,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
       atMin: windowAtMin(row.windowMin[0], row.windowMin[1], slot?.segment?.etaMinutes),
       detail: detail === '' ? null : detail,
       active: lens === 'gap' ? index === 0 : lens === 'drive' && driveGroup?.tab === 'meal' && index === firstMealGap,
+      slotKey: row.slotKey,
     }]
   })
   const stayBaseId = lens === 'stay' && activeDayIndex != null ? (() => { const base = resolveStayBase(trip, activeDayIndex); return base.kind === 'stop' ? base.stopId : null })() : null
@@ -1817,6 +1815,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     setDeckOpen(false)
     requestAnimationFrame(() => listRef.current?.querySelector<HTMLButtonElement>('.mv2-lenses > button')?.focus({ preventScroll: true }))
   }
+  /** A rail part row and the lens pill open the same Gap deck. */
+  function openGapDeck() {
+    setLens('gap'); setSheetTab('see'); setDetailId(null); setDeckOpen(true); setSnap('half')
+  }
+  /** The day plan detail: search, vote and the pinned rest for each part. */
+  function openDayPlan() {
+    setSheetTab('needs'); setDetailId(null); setDeckOpen(true); setSnap('half')
+  }
+
   function toggleItinerary(open: boolean) {
     setItineraryOpen(open)
     requestAnimationFrame(() => listRef.current?.querySelector<HTMLButtonElement>(open ? '.mv2-fold-day' : '.mv2-reopen-day')?.focus({ preventScroll: true }))
@@ -2019,7 +2026,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
       )}
       <div className={'map-ideas-grid' + (folded.needs ? ' is-needs-folded' : '') + (folded.see ? ' is-see-folded' : '')} ref={listRef}>
         <MapPhoneDay trip={trip} journey={journey} activeDay={activeDayIndex} allDays={mapShowsAll} onShowAll={showAllMapDays} onDayChange={chooseDay} onBack={onBackToTrip} endTown={headerEndTown} ribbonOpen={ribbonShown} onToggleRibbon={toggleRibbon} />
-        {railPresence.mounted && <div className={`map-edit-keys${railPresence.leaving ? ' is-leaving' : ''}`} aria-hidden={railPresence.leaving || undefined} onKeyDown={e => edit.onReorderKey(e, selectedStop, selectedStop == null ? null : trip.days.find(d => d.stops.some(st => st.id === selectedStop))?.index ?? null)}><MapItinerary trip={trip} journey={journey} corrections={legCorrections} activeDay={activeDayIndex} budgetMin={mapBudget} selectedStop={selectedStop} allDays={mapShowsAll} onShowAll={showAllMapDays} onDayChange={chooseDay} onSelect={selectPoint} onOpenDay={onOpenDay} onFold={() => toggleItinerary(false)} railExtras={<LensRailExtras lens={lens} ringId={stayRing} onRing={setStayRing} />} windowRows={railWindows} daysCaption={daysCaption} fixStopId={fixStopId} fixSubLine={lens === 'fix' ? fixRowLine : null} fixProblem={lens === 'fix' ? fixProblem : null} budgetBar={budgetBar} clock={lensClock} previewChip={previewChip} stayView={stayView} hotelSub={stayTownSub} hideBudget={lens === 'stay' || budgetBar == null || driveBudget?.kind === 'empty'} endTown={headerEndTown} clockRange={phoneSheet || journey == null ? null : { text: dayClockRange, expanded: ribbonShown, onToggle: toggleRibbon }} /></div>}
+        {railPresence.mounted && <div className={`map-edit-keys${railPresence.leaving ? ' is-leaving' : ''}`} aria-hidden={railPresence.leaving || undefined} onKeyDown={e => edit.onReorderKey(e, selectedStop, selectedStop == null ? null : trip.days.find(d => d.stops.some(st => st.id === selectedStop))?.index ?? null)}><MapItinerary trip={trip} journey={journey} corrections={legCorrections} activeDay={activeDayIndex} budgetMin={mapBudget} selectedStop={selectedStop} allDays={mapShowsAll} onShowAll={showAllMapDays} onDayChange={chooseDay} onSelect={selectPoint} onOpenDay={onOpenDay} onFold={() => toggleItinerary(false)} railExtras={<LensRailExtras lens={lens} ringId={stayRing} onRing={setStayRing} />} windowRows={railWindows} daysCaption={daysCaption} fixStopId={fixStopId} fixSubLine={lens === 'fix' ? fixRowLine : null} fixProblem={lens === 'fix' ? fixProblem : null} budgetBar={budgetBar} clock={lensClock} previewChip={previewChip} stayView={stayView} hotelSub={stayTownSub} hideBudget={lens === 'stay' || budgetBar == null || driveBudget?.kind === 'empty'} endTown={headerEndTown} onOpenWindow={openGapDeck} clockRange={phoneSheet || journey == null ? null : { text: dayClockRange, expanded: ribbonShown, onToggle: toggleRibbon }} /></div>}
         {!itineraryOpen && <button className="mv2-reopen-day mv2-icon-btn" type="button" aria-label="Show day itinerary" onClick={() => toggleItinerary(true)}><PanelLeftOpen size={19} /></button>}
         {/* Edge tabs: one handle at the middle of each panel's outer edge opens and closes it,
             as in most map apps. The corner buttons stay for the phone sheet only. */}
@@ -2034,7 +2041,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
           <button type="button" aria-label={phoneLensAriaLabel('Around the stay', lenses.counts.stay)} aria-controls="rail-see" aria-pressed={lens === 'stay' && sheetTab === 'see' && deckOpen && !selectedHit} onClick={() => { setLens('stay'); setSheetTab('see'); setDetailId(null); setDeckOpen(true); setSnap('half') }}><BedDouble size={16} aria-hidden /><span>Stay</span>{lenses.counts.stay != null && <b>{lenses.counts.stay}</b>}</button>
           <button type="button" aria-label={phoneLensAriaLabel('Gaps in this day', lenses.counts.gap)} aria-controls="rail-see" aria-pressed={lens === 'gap' && sheetTab === 'see' && deckOpen && !selectedHit} onClick={() => { setLens('gap'); setSheetTab('see'); setDetailId(null); setDeckOpen(true); setSnap('half') }}><Sparkles size={16} aria-hidden /><span>Gap</span>{lenses.counts.gap != null && <b>{lenses.counts.gap}</b>}</button>
           <button type="button" aria-label={phoneLensAriaLabel('Fix this day', lenses.counts.fix)} aria-controls="rail-see" aria-pressed={lens === 'fix' && sheetTab === 'see' && deckOpen && !selectedHit} onClick={() => { setLens('fix'); setSheetTab('see'); setDetailId(null); setDeckOpen(true); setSnap('half') }} data-alert={routeAlert ? 'true' : undefined} title={routeAlert ? routeAlertText : undefined} aria-description={routeAlert ? routeAlertText : undefined}><Lightbulb size={16} aria-hidden /><span>Fix</span>{lenses.counts.fix != null && <b>{lenses.counts.fix}</b>}{routeAlert && <i className="mv2-lens-alert" aria-hidden="true" />}</button>
-          <button type="button" aria-label={phoneLensAriaLabel('Day plan', activeDaySlots.length)} aria-controls="rail-needs" aria-pressed={sheetTab === 'needs' && deckOpen && !selectedHit} onClick={() => { setSheetTab('needs'); setDetailId(null); setDeckOpen(true); setSnap('half') }}><List size={16} aria-hidden /><span>Plan</span><b>{activeDaySlots.length}</b></button>
           {!deckOpen && <button type="button" aria-label="Show suggestions" onClick={() => setDeckOpen(true)}><PanelRightOpen size={18} /></button>}
         </div>
         <div tabIndex={-1} className={'poi-col poi-col--needs' + sheetHiddenClass('needs', sheetTab, sheetApplies) + (deckPresence.leaving ? ' is-leaving' : '')} id="rail-needs" hidden={!deckPresence.mounted || sheetTab !== 'needs' || !!selectedHit}>
@@ -2042,11 +2048,12 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
 
 
             <div className="poi-col-head">
-              <span className="poi-col-head-ico"><Fuel size={13} aria-hidden /></span>
               <div className="poi-col-head-txt">
-                <b>Day {activeDayIndex + 1} · {activeDayLabel(trip.days, activeDayIndex)}</b>
-                <span className="small muted">{activeDaySlots.length === 0 ? 'Drive plan · In progress' : `${activeReadinessLabel(activeDayReadiness)}`}</span>
+                <b>Day {activeDayIndex + 1} plan</b>
+                {/* The one home of the day's count. The rail and the Gap deck do not repeat it. */}
+                <span className="small muted">{activeDaySlots.length === 0 ? 'Drive plan · In progress' : `${activeReadinessLabel(activeDayReadiness)}`}{dayRainPct?.[activeDayIndex] != null && dayRainPct[activeDayIndex]! >= 40 ? ` · Rain ${Math.round(dayRainPct[activeDayIndex]!)}%` : ''}</span>
               </div>
+              <button type="button" className="chip chip-sm" onClick={openGapDeck} title="Back to the open parts and their picks">Gaps</button>
               <button
                 type="button"
                 className="chip chip-sm"
@@ -2054,16 +2061,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                 title={shapeView ? 'Back to the list' : 'See the day as a shape: drives and parts on one clock'}
                 onClick={() => setShapeView(v => !v)}
               >{shapeView ? 'List' : 'Shape'}</button>
-              {editable && dayCounts.fillable > 0 && batchSelection(dayPlan).items.length > 0 && (
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  disabled={fillingDay}
-                  onClick={() => { void fillTheDay() }}
-                  title="Add the top candidate for every empty part of the day"
-                >{fillingDay ? 'Planning…' : 'Fill the day'}</button>
-              )}
-              <span className="poi-col-count">{`${activeDayReadiness.filled}/${activeDayReadiness.required}`}</span>
               <button
                 type="button"
                 className="poi-fold"
@@ -2075,72 +2072,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                 <ChevronDown size={13} aria-hidden />
               </button>
             </div>
-            {/* S9: this was `role="tablist"` / `role="tab"` with no tabpanel and
-                no arrow-key roving focus — a screen reader was told these are
-                tabs and told to use the arrow keys, and nothing happened. A
-                group of pressed buttons says what is actually true. */}
-            <div className="slots-daystrip" role="group" aria-label="Which day to plan">
-              <span className="map-scope-lbl">Plan this day</span>
-              {trip.days.map(d => {
-                const r = tripReadinessRows.find(x => x.dayIndex === d.index)
-                const filled = r?.filled ?? 0
-                // `required` (total minus engine-managed) is the honest
-                // denominator: a stretch break the user is told demands nothing
-                // should not sit in the count they are measured against.
-                const required = r?.required ?? 0
-                const auto = r?.auto ?? 0
-                return (
-                  <button
-                    key={d.index}
-                    type="button"
-                    aria-pressed={d.index === activeDayIndex}
-                    aria-label={`Day ${d.index + 1}: ${filled} of ${required} planned${auto > 0 ? `, ${auto} added by the app` : ''}`}
-                    className={'slots-daychip' + (d.index === activeDayIndex ? ' is-on' : '')}
-                    onClick={() => { setLocalDay(d.index); onDayFocusChange?.(d.index); setOpenSlotKey(null) }}
-                  >
-                    Day {d.index + 1} <span className="slots-daychip-rd">{filled}/{required}</span>
-                    {dayRainPct?.[d.index] != null && dayRainPct[d.index]! >= 40 && (
-                      <span className="slots-daychip-rain" title={`${Math.round(dayRainPct[d.index]!)}% rain chance`}>Rain</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="slots-railmeta">
-              {quotaOut && (
+            {quotaOut && (
+              <div className="slots-railmeta">
                 <span className="chip chip-sm" title="Google search quota reached - suggestions pause until the counter rolls over">Suggestions paused</span>
-              )}
-              <details className="slots-legend">
-                <summary className="chip chip-sm">Legend</summary>
-                <div className="slots-legend-body">
-                  <p><b>✓</b> Planned part · Solid line</p>
-                  <p><b>○</b> Unplanned part · Picks inside</p>
-                  <p><b>Dashed ring</b> Break · Suggested</p>
-                  <p><b>Violet dot</b> Extra pick</p>
-                </div>
-              </details>
-            </div>
-            {activeDaySlots.length > 0 && (
-              <div className="slots-meter" role="status" aria-label={`Day ${activeDayIndex + 1}: ${activeDayReadiness.filled} of ${activeDayReadiness.required} parts of the day planned${activeDayReadiness.auto > 0 ? `, ${activeDayReadiness.auto} added by the app` : ''}`}>
-                {activeDaySlots.map(s => (
-                  <i key={s.key} className={s.state === 'filled' ? 'is-filled' : s.state === 'auto' ? 'is-auto' : 'is-empty'} />
-                ))}
-                <span className="slots-meter-lbl">{activeDayReadiness.filled} of {activeDayReadiness.required} planned{activeDayReadiness.auto > 0 ? ` · ${activeDayReadiness.auto} auto` : ''}</span>
-              </div>
-            )}
-            {activeDaySlots.length > 0 && (
-              <div className="slots-mobile-sum">
-                <button
-                  type="button"
-                  className="chip chip-sm"
-                  aria-expanded={slotsPeek}
-                  aria-controls="slots-list"
-                  onClick={() => setSlotsPeek(p => !p)}
-                >
-                  {slotsPeek ? 'Hide' : activeDaySlots.some(s => s.state === 'empty')
-                    ? `${activeDaySlots.filter(s => s.state === 'empty').length} empty, open`
-                    : 'Open'}
-                </button>
               </div>
             )}
             {shapeView && shapeBlocks.length > 0 ? (
@@ -2168,7 +2102,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                     : `Day ${activeDayIndex + 1} · No stops`}</p>
               </div>
             ) : (
-              <div className={'slots-list' + (slotsPeek ? ' is-peek' : '')} id="slots-list">
+              <div className="slots-list" id="slots-list">
               {mapScopeNote(mapFilter, activeDayIndex) && (
                 <span className="sr-only">{mapScopeNote(mapFilter, activeDayIndex)}</span>
               )}
@@ -2267,11 +2201,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                             </div>
                           ) : (
                             <div className="day-slot-hint">
-                              Nothing planned yet
+                              Open
                               <span className="n">
                                 {slotRowsOf(dayPlan, slot.key).length > 0
-                                  ? ` · ${slotRowsOf(dayPlan, slot.key).length} candidate${slotRowsOf(dayPlan, slot.key).length === 1 ? '' : 's'} inside, tap to compare`
-                                  : ' · search the map to source one'}
+                                  ? ` · ${slotRowsOf(dayPlan, slot.key).length} pick${slotRowsOf(dayPlan, slot.key).length === 1 ? '' : 's'}`
+                                  : ' · Search the map'}
                               </span>
                             </div>
                           )}
@@ -2284,7 +2218,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                           <span className="day-slot-val">
                             {slot.state === 'filled'
                               ? <b>{slot.filledStop?.title ?? slot.segment?.label ?? 'Planned'}</b>
-                              : <small>{slot.reason ?? 'Engine-managed'}</small>}
+                              : <small>Added by the app</small>}
                           </span>
                         </div>
                       )}
@@ -2551,6 +2485,19 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
               onAddStayPick={(pick, startMin) => addStayHit(pick.row.row.hit, activeDayIndex, startMin)}
               onSetStay={() => { setSheetTab('needs'); setDetailId(null); setDeckOpen(true); setSnap('half') }}
               onOpenGapPick={pick => inspectHit(pick.candidate.hit)}
+              gapAside={<>
+                {editable && dayCounts.fillable > 0 && batchSelection(dayPlan).items.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm mv2-gap-fill"
+                    disabled={fillingDay}
+                    onClick={() => { void fillTheDay() }}
+                    title="Add the top pick for every open part of the day"
+                  >{fillingDay ? 'Planning…' : 'Fill the day'}</button>
+                )}
+                <button type="button" className="chip chip-sm mv2-gap-plan" aria-controls="rail-needs" onClick={openDayPlan}
+                  title="Every part of the day, with search, votes and the pinned rest">Day plan</button>
+              </>}
               onAddGapPick={pick => addLensHit(pick.candidate.hit, activeDayIndex)}
               onApplyFix={applyLensFix}
               onPreviewFix={previewLensFix}

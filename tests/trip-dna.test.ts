@@ -115,11 +115,11 @@ describe('slot pattern hints (plan P7.2)', () => {
   })
   it('speaks once the crew has taken the kind three times', () => {
     const log = [ev('accept', 'food', 8, 'meal'), ev('accept', 'food', 10, 'meal'), ev('accept', 'cafe', 6, 'meal'), ev('decline', 'food', 40, 'meal')]
-    expect(slotPatternHint(log, 'meal')).toBe('you usually accept about +8 min for these')
+    expect(slotPatternHint(log, 'meal')).toBe('Usual detour · +8 min')
   })
   it('reads a no-detour habit', () => {
     const log = [ev('accept', 'transport-hub', 0, 'fuel'), ev('accept', 'transport-hub', 1, 'fuel'), ev('accept', 'transport-hub', 0, 'fuel')]
-    expect(slotPatternHint(log, 'fuel')).toBe('you usually take these without a detour')
+    expect(slotPatternHint(log, 'fuel')).toBe('Usual detour · None')
   })
   it('food accepts do not speak for the fuel part', () => {
     const log = [ev('accept', 'food', 5, 'meal'), ev('accept', 'food', 5, 'meal'), ev('accept', 'food', 5, 'meal')]
@@ -137,14 +137,14 @@ describe('slot pattern hints (plan P7.2)', () => {
   })
   it('a recovery break counts as a stretch, since that is the slot it fills', () => {
     const log = [ev('accept', 'rest', 2, 'rest'), ev('accept', 'rest', 2, 'rest'), ev('accept', 'rest', 2, 'rest')]
-    expect(slotPatternHint(log, 'stretch')).toBe('you usually take these without a detour')
+    expect(slotPatternHint(log, 'stretch')).toBe('Usual detour · None')
   })
   // Events written before `haltKind` existed fall back to the engine's own
   // category list (derived from PURPOSE_FIT) rather than the hand-written one,
   // which had listed `cafe` under meal despite a fit of 1 against a gate of 2.
   it('legacy events still read through the engine category list', () => {
     const legacy = [ev('accept', 'food', 5), ev('accept', 'food', 5), ev('accept', 'rest', 5)]
-    expect(slotPatternHint(legacy, 'meal')).toBe('you usually accept about +5 min for these')
+    expect(slotPatternHint(legacy, 'meal')).toBe('Usual detour · +5 min')
     // #344 aligned the pool gate with the scorer's floor (MIN_PURPOSE_FIT),
     // so a cafe (meal fit 1) is now OFFERABLE as a meal and the hint speaks
     // for it — the old null here was the gate-2 disagreement this wave fixed.

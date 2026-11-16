@@ -83,6 +83,8 @@ export interface ItineraryWindowRow {
   nextDayLabel?: string | null
   /** A free-time window the strip shows as a box only. Absent draws the dashed mark too. */
   boxOnly?: boolean
+  /** The day part this window belongs to. A row with a key opens its picks. */
+  slotKey?: string | null
 }
 
 export interface ItineraryPreviewChip {
@@ -103,7 +105,7 @@ export interface ItineraryStayView {
   baseSub: string | null
 }
 
-export function MapItinerary({ trip, journey, corrections, activeDay, budgetMin, selectedStop, allDays, onShowAll, onDayChange, onSelect, onOpenDay, onFold, railExtras, windowRows, windowRow, daysCaption, fixStopId, fixSubLine, fixProblem: fixProblemProp, budgetBar, clock, previewChip, stayView, hotelSub, hideBudget, endTown, clockRange }: {
+export function MapItinerary({ trip, journey, corrections, activeDay, budgetMin, selectedStop, allDays, onShowAll, onDayChange, onSelect, onOpenDay, onFold, railExtras, windowRows, windowRow, daysCaption, fixStopId, fixSubLine, fixProblem: fixProblemProp, budgetBar, clock, previewChip, stayView, hotelSub, hideBudget, endTown, clockRange, onOpenWindow }: {
   trip: Trip; journey: Journey | null; activeDay: number; budgetMin: number; selectedStop: string | null
   corrections?: Record<string, LegEstimate>
   allDays: boolean; onShowAll: () => void
@@ -138,6 +140,8 @@ export function MapItinerary({ trip, journey, corrections, activeDay, budgetMin,
   endTown?: string | null
   /** The day's time range. It sits in the info line and opens the journey clock. Absent hides it. */
   clockRange?: { text: string; expanded: boolean; onToggle: () => void } | null
+  /** Opens the picks for one open part of the day. Absent keeps the rows static. */
+  onOpenWindow?: (row: ItineraryWindowRow) => void
 }) {
   const timeFormat = useTimeFormat()
   const days = [...trip.days].sort((a, b) => a.index - b.index)
@@ -227,7 +231,10 @@ export function MapItinerary({ trip, journey, corrections, activeDay, budgetMin,
         ? [`${clock?.(row.startMin)}–${clock?.(row.endMin)}`, row.detail]
         : [`${clock?.(row.startMin)}–${clock?.(row.endMin)}`, duration, row.detail]
       const sub = parts.filter(part => part != null && part !== '').join(' · ')
-      return <li key={`window-${row.startMin}-${row.label}`} className={`mv2-window-row${row.active ? ' is-active-window' : ''}`}>
+      const opens = onOpenWindow != null && row.slotKey != null
+      return <li key={`window-${row.startMin}-${row.label}`} className={`mv2-window-row${row.active ? ' is-active-window' : ''}${opens ? ' is-openable' : ''}`}>
+        {/* The whole row is the target. The button covers the row, so the row keeps its own layout. */}
+        {opens && <button type="button" className="mv2-window-open" aria-label={`${row.label} · ${sub} · Show picks`} onClick={() => onOpenWindow(row)} />}
         <time className="mv2-lens-window-time">{row.nextDayLabel ?? clock?.(row.startMin)}</time>
         <span className="mv2-window-ring" aria-hidden="true" />
         <span className="mv2-stop-copy"><strong>{row.label}</strong><small>{sub}</small></span>

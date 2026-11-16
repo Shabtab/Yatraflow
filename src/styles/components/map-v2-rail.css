@@ -800,6 +800,15 @@
   border: 2.5px dashed var(--pw-marigold-500); border-radius: 50%; box-sizing: border-box;
 }
 .mv2-window-row .mv2-stop-copy { gap: 0; }
+/* An open part of the day opens its picks. The button covers the row, so the
+   row keeps its grid. The active fill and the focus ring stay on the row. */
+.mv2-stops .mv2-window-row.is-openable { position: relative; cursor: pointer; transition: background-color var(--motion-fast) var(--ease-paper); }
+.mv2-stops .mv2-window-row.is-openable:hover { background: var(--pw-marigold-50); }
+.mv2-window-open { position: absolute; inset: 0; z-index: 1; width: 100%; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+.mv2-window-open:focus-visible { outline: none; box-shadow: var(--ring); }
+@media (prefers-reduced-motion: reduce) {
+  .mv2-stops .mv2-window-row.is-openable { transition: none; }
+}
 .mv2-window-row .mv2-stop-copy strong { display: block; color: var(--pw-marigold-ink); font-size: 13.5px; line-height: 1.3; }
 .mv2-window-row .mv2-stop-copy small { display: block; font-size: 11.5px; line-height: 1.3; color: var(--pw-ink-3); }
 .mv2-stop.is-fix-problem { background: var(--pw-risk-100); border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--pw-risk) 50%, transparent); }

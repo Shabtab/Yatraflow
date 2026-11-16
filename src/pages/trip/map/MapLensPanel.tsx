@@ -45,6 +45,8 @@ export interface MapLensPanelProps {
   onSetStay: () => void
   onOpenGapPick: (pick: GapPick) => void
   onAddGapPick: (pick: GapPick) => void
+  /** Day actions for the Gap deck header. */
+  gapAside?: ReactNode
   onApplyFix: (set: FixChangeSet) => void
   onPreviewFix: (set: FixChangeSet) => void
   /** The Keep action of the deck cards. Absent hides the heart. */
@@ -153,6 +155,7 @@ export function MapLensPanel(props: MapLensPanelProps) {
       gaps={lenses.gap.gaps}
       onOpenPick={props.onOpenGapPick}
       onAddPick={props.onAddGapPick}
+      aside={props.gapAside}
       {...(props.onShortlist == null ? {} : { onShortlist: props.onShortlist })}
       {...(props.shortlistedOf == null ? {} : { shortlistedOf: props.shortlistedOf })}
       clock={props.clock}

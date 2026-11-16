@@ -82,12 +82,13 @@ describe('MapTab renders the sheet (A415)', () => {
   })
 
   it('is a pressed-state switcher, not inert tabs', () => {
-    // Each option still reports its own pressed state: the See rail is pressed
-    // when its lens, that rail and the open deck all hold; Plan when its tab does.
+    // Each lens reports its own pressed state: it is pressed when its lens,
+    // the See rail and the open deck all hold. The pill carries the four
+    // mockup lenses. The day plan opens from the Gap deck and the rail rows.
     expect(tab).toMatch(/aria-pressed=\{lens === 'drive' && sheetTab === 'see' && deckOpen && !selectedHit\}/)
-    expect(tab).toMatch(/aria-pressed=\{sheetTab === 'needs' && deckOpen && !selectedHit\}/)
+    expect(tab).not.toMatch(/phoneLensAriaLabel\('Day plan'/)
     expect(tab).toContain('aria-controls="rail-see"')
-    expect(tab).toContain('aria-controls="rail-needs"')
+    expect(tab).toMatch(/aria-controls="rail-needs" onClick=\{openDayPlan\}/)
   })
 
   it('hides the inactive rail through the model, passing the band flag', () => {
@@ -155,7 +156,8 @@ describe('the phone top row (Phone 390 board, one row on top)', () => {
     // is never hidden, and every lens button keeps its own name for assistive tech.
     expect(phone).not.toMatch(/\.mv2-lenses\s*\{[^}]*display:\s*none/)
     expect(phone).toMatch(/\.mv2-workspace \.mv2-lenses > button > span \{ display: none; \}/)
-    expect(tab.match(/<button type="button" aria-label=\{phoneLensAriaLabel\(/g)).toHaveLength(5)
+    // The four mockup lenses: Drive, Stay, Gap and Fix. The day plan opens from the Gap deck.
+    expect(tab.match(/<button type="button" aria-label=\{phoneLensAriaLabel\(/g)).toHaveLength(4)
   })
 
   it('lets Find yield only while the query is empty and the field is usable', () => {

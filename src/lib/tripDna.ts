@@ -141,10 +141,10 @@ export function slotPatternHint(log: DnaEvent[], kind: SlotKind): string | null 
   if (detours.length >= 3) {
     const avg = Math.round(detours.reduce((a, b) => a + b, 0) / detours.length)
     return avg <= 2
-      ? 'you usually take these without a detour'
-      : `you usually accept about +${avg} min for these`
+      ? 'Usual detour · None'
+      : `Usual detour · +${avg} min`
   }
-  return `you have accepted ${accepts.length} of these`
+  return `Accepted before · ${accepts.length}`
 }
 // ---- best-effort log (impure; UI layer only) ----
 const DNA_KEY = 'yatraflow_dna_log'
