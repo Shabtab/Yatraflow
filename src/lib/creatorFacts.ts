@@ -1,6 +1,22 @@
 import type { PublishedItinerary } from '../data/types'
 import { livePubs } from './livePubs'
 
+export const ROUTE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** The short name of month index 0-11, or an empty string outside that range. */
+export function routeMonthName(index: number): string {
+  return Number.isInteger(index) && index >= 0 ? ROUTE_MONTHS.slice(index, index + 1).join('') : ''
+}
+
+export function bestMonthIndexes(mask: number | undefined): number[] {
+  if (mask === undefined || !Number.isInteger(mask) || mask <= 0 || mask > 4095) return []
+  return ROUTE_MONTHS.flatMap((_, index) => mask & (1 << index) ? [index] : [])
+}
+
+export function routesForMonth(pubs: PublishedItinerary[], month: number): PublishedItinerary[] {
+  return livePubs(pubs).filter(pub => bestMonthIndexes(pub.bestMonths).includes(month))
+}
+
 export function validPlanningNotes(value: unknown): value is string[] {
   return Array.isArray(value) && value.length <= 3
     && value.every((note: unknown) => typeof note === 'string' && /[^\t\n\v\f\r ]/u.test(note) && [...note].length <= 140)

@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CreatorPicksEditor } from '../components/creator/CreatorPicksEditor'
 import { CreatorPostsEditor } from '../components/creator/CreatorPostsEditor'
 import { HubPostVisits } from '../components/creator/HubPostVisits'
+import { CreatorIndiaRank } from '../components/creator/CreatorIndiaRank'
 import { useCreatorPosts, useCreatorPostVisits } from '../hooks/useCreatorPosts'
 import { creatorPostsApi, type CreatorPostsApi } from '../lib/creatorPosts'
 import { useCreatorFollowerCount } from '../hooks/useCreatorFollows'
@@ -280,6 +281,7 @@ export function CreatorHubPage({ onNavigate, followsApi, postsApi = creatorPosts
         ) : undefined}
       />
 
+      {me.profile.isCreator && <CreatorIndiaRank creatorId={me.id} />}
       {!me.profile.isCreator ? (
         <StateBlock kind="empty" titleLevel="h2" title="Creator mode is off"
           body="Creator mode is a branding badge. Your bio and social links appear on the itineraries you publish. You get a public creator page others can follow."

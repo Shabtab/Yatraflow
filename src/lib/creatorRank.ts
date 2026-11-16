@@ -10,6 +10,7 @@
 import type { CachedUser, PublishedItinerary, TravelStyle } from '../data/types'
 import { creatorList, type CreatorTile } from './explorePage'
 import { livePubs } from './livePubs'
+import type { ReadState } from './readState'
 
 export interface CreatorRankRow extends CreatorTile {
   /** 1-based position in `creatorList`'s order (forks, plans, name, id). */
@@ -64,6 +65,14 @@ export interface RankPosition {
   total: number
   /** Forks between this row and the row one place better; 0 for rank 1. */
   forksToNext: number
+}
+
+export function creatorRankSummary(pubs: PublishedItinerary[], users: CachedUser[], id: string, pubsRead: ReadState, profilesRead: ReadState):
+  { kind: 'reading' | 'failed' | 'unranked' } | { kind: 'ready'; position: RankPosition } {
+  if (pubsRead === 'failed' || profilesRead === 'failed') return { kind: 'failed' }
+  if (pubsRead === 'reading' || profilesRead === 'reading') return { kind: 'reading' }
+  const position = rankOf(rankCreators(pubs, users), id)
+  return position ? { kind: 'ready', position } : { kind: 'unranked' }
 }
 
 export function rankTableRows(rows: CreatorRankRow[]) {

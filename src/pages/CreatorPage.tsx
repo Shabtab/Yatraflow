@@ -21,9 +21,9 @@ import {
 } from '../lib/creatorStorefront'
 import { FeaturedCard } from '../components/explore/FeaturedCard'
 import { StoreHero } from '../components/creator/StoreHero'
-import { StoreRouteStamp } from '../components/creator/StoreRouteStamp'
+import { StoreFeaturedFacts } from '../components/creator/StoreFeaturedFacts'
+import { CreatorIndiaRank } from '../components/creator/CreatorIndiaRank'
 import { creatorPick, plannedKilometres } from '../lib/creatorFacts'
-import { CrStatTile } from '../components/creator/CrStatTile'
 import { StoreLibrary } from '../components/creator/StoreLibrary'
 import { StoreBand } from '../components/creator/StoreBand'
 import { StorePosts } from '../components/creator/StorePosts'
@@ -116,6 +116,7 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
   const pick = creatorPick(pubs, creatorId, creator?.profile.featuredPubId)
   const featured = pick ?? leadRoute(pubs, 3)
   const km = plannedKilometres(pubs)
+  const [month] = useState(() => new Date().getMonth())
   const sections = useMemo(
     // The read model takes the public shape. When the viewer IS the creator the
     // cached row is the account's own private row, so the page hands over a
@@ -205,6 +206,8 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
           {follows.error && <span role="status">{follows.error}</span>}
         </div> : undefined}
         figures={{ liveRoutes: figures.liveRoutes, views: figures.views, forks: figures.forks }}
+        plannedKm={pubsRead === 'ready' ? km : undefined}
+        rank={<CreatorIndiaRank creatorId={creatorId} />}
         routeCount={pubs.length}
         showBrowse={pubs.length > 0}
         tabs={sections?.coverTabs === true && sections.pubsView !== 'empty'}
@@ -220,6 +223,8 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
             creator={creator}
             kicker={featuredKicker}
             reason={pick ? `Selected by ${creator.profile.name}` : undefined}
+            showPriceTag={false}
+            facts={<StoreFeaturedFacts pub={featured} month={month} showMonths={pubsRead === 'ready'} />}
             saved={isSaved(featured.id)}
             needsLogin={!me}
             onFork={() => { void forkPublication(featured, me, onNavigate, undefined, 'creator') }}
@@ -228,15 +233,8 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
         </section>
       )}
 
-      {featured && featured.bestSeason && <p className="cr-store-season">{featured.bestSeason}</p>}
-      {featured && (
-        <StoreRouteStamp pub={featured} />
-      )}
-
       {pubsRead === 'failed' ? <p className="cr-store-facts" role="status">Route facts: Unavailable</p>
-        : pubsRead === 'ready' && km !== undefined && <div className="container cr-store-facts">
-            <CrStatTile value={km.toLocaleString('en-IN')} label="Km planned" note="Live routes with distance data." />
-          </div>}
+        : null}
       {profileRead === 'failed' ? <p className="cr-store-planning" role="status">Planning notes: Unavailable</p>
         : profileRead === 'ready' && !!creator.profile.planningNotes?.length && <section className="container cr-store-planning" aria-label="Planning notes">
             <h2>How {creator.profile.name} plans</h2>
@@ -248,6 +246,7 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
         pubs={pubs}
         view={pubsView}
         read={pubsRead}
+        month={month}
         retry={retry}
         creator={creator}
         savedIds={isSaved}

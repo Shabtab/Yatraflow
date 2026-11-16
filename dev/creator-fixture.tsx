@@ -69,8 +69,8 @@ const FIXTURE_POST_IDS = ['17110000-0000-4000-8000-0000000000a1', '17110000-0000
 let fixturePostRows: CreatorPost[] = POSTS === 'none' || POSTS === 'failed' || POSTS === 'reading' ? [] : [
   { id: FIXTURE_POST_IDS[0], creator: 'fixture-creator-0001', url: 'https://www.instagram.com/reel/fixture-hills', kind: 'instagram',
     pubId: 'fixture-pub-0', dayIndex: 1, caption: 'Day two of the hill drive, shot at the first chai halt', createdAt: 1_763_000_000_000 },
-  { id: FIXTURE_POST_IDS[1], creator: 'fixture-creator-0001', url: 'https://www.youtube.com/watch?v=fixture', kind: 'youtube',
-    pubId: 'fixture-pub-1', dayIndex: null, caption: 'The whole route in twelve minutes', createdAt: 1_762_000_000_000 },
+  { id: FIXTURE_POST_IDS[1], creator: 'fixture-creator-0001', url: 'https://www.youtube.com/watch?v=fixture0001', kind: 'youtube',
+    pubId: 'fixture-pub-1', dayIndex: null, caption: 'A synthetic video link', createdAt: 1_762_000_000_000 },
   { id: FIXTURE_POST_IDS[2], creator: 'fixture-creator-0001', url: 'https://www.threads.net/@fixture/post/abc', kind: 'threads',
     pubId: 'fixture-pub-2', dayIndex: 0, caption: null, createdAt: 1_761_000_000_000 },
 ]
@@ -315,9 +315,9 @@ function pub(i: number, takenDown: boolean): PublishedItinerary {
     durationDays: 5,
     estimatedBudgetPerPersonInr: 18000,
     travelStyle: 'balanced',
-    bestSeason: 'Nov - Feb',
+    bestSeason: PICKS ? (i % 2 ? 'All year' : 'Dec - Feb') : 'Nov - Feb',
     plannedKm: PICKS ? 340 : undefined,
-    bestMonths: PICKS ? 2051 : undefined,
+    bestMonths: PICKS ? (i % 2 ? 4095 : 2051) : undefined,
     reviewedAt: PICKS ? Date.parse('2026-10-14T00:00:00Z') : undefined,
     travelTips: ['Fixture tip — replace with a real one in production data.'],
     warningsAndAssumptions: ['Fixture warning.'],
@@ -378,10 +378,11 @@ db.published = seededPubs
 db.suggestions = []
 db.ready = true
 db.sessionUserId = sessionUserId
-const reads: Record<string, 'ok' | 'failed'> = {
-  trips: tripsVerdict ?? 'ok',
-  profiles: effectivePubsVerdict ?? 'ok',
-  'suggested itineraries': effectivePubsVerdict ?? 'ok',
+const reads: Record<string, 'ok' | 'failed'> = {}
+if (tripsVerdict !== undefined) reads.trips = tripsVerdict
+if (effectivePubsVerdict !== undefined) {
+  reads.profiles = effectivePubsVerdict
+  reads['suggested itineraries'] = effectivePubsVerdict
 }
 db.sliceReads = reads
 

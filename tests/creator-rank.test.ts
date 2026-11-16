@@ -4,7 +4,7 @@
 // counted, forksToNext 0 for rank 1, and the style filter. No markup.
 import { describe, expect, it } from 'vitest'
 import type { CachedUser, PublishedItinerary, PublicUser } from '../src/data/types'
-import { rankCreators, rankOf, rankTableRows } from '../src/lib/creatorRank'
+import { creatorRankSummary, rankCreators, rankOf, rankTableRows } from '../src/lib/creatorRank'
 
 const NOW = Date.UTC(2026, 10, 15, 12)
 
@@ -48,6 +48,22 @@ function privateUser(id: string): CachedUser {
 }
 
 describe('rankCreators', () => {
+  it('summarises the same India ranking and hides creators without a rank', () => {
+    const pubs = [pub(), pub({ id: 'p2', creatorId: 'c2', copies: 20 })]
+    const users = [user('c1'), user('c2')]
+    expect(creatorRankSummary(pubs, users, 'c1', 'ready', 'ready')).toEqual({
+      kind: 'ready', position: rankOf(rankCreators(pubs, users), 'c1'),
+    })
+    expect(creatorRankSummary([], users, 'c1', 'ready', 'ready')).toEqual({ kind: 'unranked' })
+    expect(creatorRankSummary(pubs, [user('c1', { creatorAvailable: false })], 'c1', 'ready', 'ready')).toEqual({ kind: 'unranked' })
+  })
+  it('does not rank retained rows when either catalogue read fails or is pending', () => {
+    for (const state of ['failed', 'reading'] as const) {
+      expect(creatorRankSummary([pub()], [user('c1')], 'c1', state, 'ready')).toEqual({ kind: state })
+      expect(creatorRankSummary([pub()], [user('c1')], 'c1', 'ready', state)).toEqual({ kind: state })
+    }
+    expect(creatorRankSummary([], [], 'c1', 'reading', 'failed')).toEqual({ kind: 'failed' })
+  })
   it('a disabled creator never ranks', () => {
     const users = [user('c1'), user('c2', { creatorAvailable: false })]
     const pubs = [pub({ creatorId: 'c1' }), pub({ id: 'p2', creatorId: 'c2', copies: 100 })]
