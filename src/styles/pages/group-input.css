@@ -38,6 +38,8 @@
 .gin-composer-hint { margin: 6px 0 12px; }
 .gin-submit { width: 100%; }
 .gin-option-grid { display: grid; gap: 8px; }
+.gin-option-form { display: flex; align-items: flex-end; gap: 8px; margin-top: 10px; }
+.gin-option-form > :first-child { flex: 1; min-width: 0; }
 
 /* Decision cards: option rows, vote bars and the footer */
 .gin-decision { display: grid; gap: 10px; }
@@ -81,6 +83,15 @@
 .gin-resolved { display: grid; gap: 4px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .gin-disclosure { justify-self: start; padding: 6px 0; border: 0; background: none; color: var(--ink-teal); font: inherit; font-weight: 600; cursor: pointer; }
 .gin-text-btn { justify-self: start; padding: 6px 0; border: 0; background: none; color: var(--ink-teal); font: inherit; font-weight: 600; cursor: pointer; }
+
+/* Crew preferences: share bars, the answered count and the quiz */
+.gin-crew-count { margin: 0 0 8px; }
+.gin-crew-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.gin-crew-row { display: grid; grid-template-columns: minmax(72px, 0.5fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.gin-crew-label { font-weight: 600; }
+.gin-quiz { display: grid; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.gin-quiz-title { margin: 0; font-weight: 600; }
+.gin-quiz-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Reduced motion: the vote bar and the stamp stop moving */
 @media (prefers-reduced-motion: reduce) {

@@ -1159,6 +1159,19 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    meta line) with a clamp and a `title` tooltip. Prove it with a probe that
    fails first: the pill rect on every tab, a click sampler at 0 to 400ms, and
    a long-name stress case.
+6bs. **Collab migration, types and live-channel pitfalls (learned 2026-11-17,
+   group input phase 2).**
+   - A new collab function in a migration needs the same body in
+     `supabase/schema.sql`, or `collab-command-parity` fails.
+   - Each literal `.from('x')` or `.rpc('x')` needs its name in
+     `src/types/database.generated.ts`, or `database-types.test.ts` fails.
+     Regenerate the file after the migration is live.
+   - `changelog:new --message` bolds the whole message. End it with `.`, `!` or
+     `?`, use no `*`, and add the detail afterwards.
+   - A source-guard grep for a class prefix such as `gin-` also matches
+     `margin-`. Anchor it with a dot or a lookbehind.
+   - A realtime binding for a new table goes on its own channel, so a missing
+     or unpublished table cannot break the shared live channel.
 
 ## 2. Conventions (`AGENTS.md` §4)
 

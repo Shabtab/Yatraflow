@@ -67,7 +67,7 @@ describe('Group input tab: S9 layout classes', () => {
 
   it('keeps one inline style: the vote bar width, which depends on data', () => {
     expect(tab.match(/style=\{\{/g) ?? []).toHaveLength(1)
-    expect(tab).toContain('style={{ width: `${pct}%` }}')
+    expect(tab).toContain("style={{ width: `${percent}%` }}")
   })
 
   it('keeps the two item cards on the shared focus target', () => {

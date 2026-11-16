@@ -9,20 +9,28 @@ import { scrollBehavior } from '../../lib/motion'
 import type { FormEvent } from 'react'
 import { Car, ChevronDown, ChevronUp, ClipboardList, Clock, Heart, Lightbulb, MapPin, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
 import { PillNav } from '../../components/PillNav'
-import type { StopCategory, StopSuggestion, Trip, TripDecision } from '../../data/types'
+import type { CrewInterest, StopCategory, StopSuggestion, Trip, TripDecision } from '../../data/types'
 import type { AcceptanceOutcome, CollabOutcome } from '../../store/collabCommand'
 import { STOP_CATEGORIES } from '../../data/types'
 import {
   useDb, userById, currentUser, addSuggestion, voteSuggestion, addCommentToSuggestion,
   acceptSuggestionIntoTimeline, declineSuggestion, addDecision, voteOnDecision, resolveDecision,
-  addCommentToDecision,
+  addCommentToDecision, addDecisionOption,
+  loadCrewPreferences, setMyCrewPreferences, useCrewPreferenceRows, useCrewPreferenceReads,
   activityFor, resumeSync,
 } from '../../store/store'
 import { formatInr, minutesToHM } from '../../lib/engine'
 import { decisionContext, contextLine, recommendForDecision } from '../../lib/decisionGuide'
 import { emptyCopyFor, sliceState } from '../../lib/readState'
+import { formatSpan, hasClosingTime, isVoteClosed, voteOutcome } from '../../lib/decisionClock'
+import { canAddOption, checkNewOptionLabel } from '../../lib/decisionOptions'
+import { myCrewPreference, summarizeCrewPreferences } from '../../lib/crewPreferences'
+import {
+  CREW_QUIZ_INTERESTS, crewBars, dayOptionLabel, decisionDayLabel, optionLabelRefusal, parseClosesAt, votingClosedLine,
+} from '../../lib/groupInputView'
 import { Avatar, Chip, Field, toast } from '../../components/ui'
 import { assignAvatarTones } from '../../lib/avatarTone'
+import { FilterChip } from '../../components/filters/FilterChip'
 import { StateBlock } from '../../components/page/StateBlock'
 import { Surface } from '../../components/page/Surface'
 import { refuseWhileStaged } from '../../lib/mutationLifecycle'
@@ -124,6 +132,17 @@ function useBusyClaim(key: string): { busy: boolean; claim: () => boolean; relea
   return { busy: isClaimed(claims, key), claim, release }
 }
 
+/** The clock, read again every 30 seconds. It only words the page (the closing
+ *  label and the lock). The server decides whether a ballot is late. */
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+  return now
+}
+
 export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution }: {
   trip: Trip
   editable: boolean
@@ -135,6 +154,7 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   slotResolution: SlotResolutionContext | null
 }) {
   const db = useDb()
+  const now = useNow()
   const memberCount = (trip.members ?? []).length
   const [view, setView] = useState<View>('needs')
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null)
@@ -165,7 +185,8 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
 
   // "Needs you" spans both kinds: an open item I haven't voted on.
   const suggestionNeedsMe = (sg: StopSuggestion) => sg.status === 'open' && !sg.votes.some(v => v.userId === me.id)
-  const decisionNeedsMe = (d: TripDecision) => d.status === 'open' && !d.votesByUserId[me.id]
+  // A decision past its closing time takes no ballot, so it no longer needs my vote.
+  const decisionNeedsMe = (d: TripDecision) => d.status === 'open' && !isVoteClosed(d, now) && !d.votesByUserId[me.id]
   const itemNeedsMe = (i: GroupItem) => i.kind === 'idea' ? suggestionNeedsMe(i.sg) : decisionNeedsMe(i.d)
 
   // Unified list: needs-you first, then newest first. Both columns keep this order.
@@ -282,7 +303,7 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
           )}
           {[...openDecisions, ...resolvedDecisions].map(d => (
             <DecisionCard key={d.id} d={d} me={me} editable={editable} memberCount={memberCount}
-              needsMe={decisionNeedsMe(d)} trip={trip} previewOpen={previewOpen} slotResolution={slotResolution} />
+              needsMe={decisionNeedsMe(d)} now={now} trip={trip} previewOpen={previewOpen} slotResolution={slotResolution} />
           ))}
         </div>
 
@@ -355,9 +376,127 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
               </button>
             )}
           </Surface>
+          <CrewPreferencesCard trip={trip} meId={me.id} />
         </div>
       </div>
     </div>
+  )
+}
+
+// ================= Crew preferences card =================
+
+function CrewPreferencesCard({ trip, meId }: { trip: Trip; meId: string }) {
+  const rows = useCrewPreferenceRows()
+  const reads = useCrewPreferenceReads()
+  const read = sliceState(reads, trip.id)
+  const [draft, setDraft] = useState<CrewInterest[] | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [pending, setPending] = useState(false)
+  const memberIds = useMemo(() => (trip.members ?? []).map(m => m.userId), [trip.members])
+  const isMember = memberIds.includes(meId)
+  const retry = () => { void loadCrewPreferences(trip.id) }
+
+  // The answers of one trip are read when the tab opens, and again after a failure.
+  useEffect(() => { void loadCrewPreferences(trip.id) }, [trip.id])
+
+  const summary = useMemo(
+    () => summarizeCrewPreferences(rows, { tripId: trip.id, memberIds }),
+    [rows, trip.id, memberIds],
+  )
+  const bars = crewBars(summary)
+  const mine = myCrewPreference(rows, trip.id, meId)
+  const picked = draft ?? mine?.interests ?? []
+  // A member who has not answered sees the quiz open. One who has sees it behind a button.
+  const quizOpen = !mine || editing
+  const hasRows = summary.answered > 0
+
+  function toggle(interest: CrewInterest) {
+    setDraft(current => {
+      const base = current ?? mine?.interests ?? []
+      return base.includes(interest) ? base.filter(i => i !== interest) : [...base, interest]
+    })
+  }
+
+  function save() {
+    if (pending) return
+    setPending(true)
+    void setMyCrewPreferences(trip.id, picked).then(o => {
+      reportCollabOutcome(o, 'Your answers are saved')
+      // The draft stays after a refusal, so the member keeps what they picked.
+      if (o.status === 'applied' || o.status === 'alreadyApplied') { setDraft(null); setEditing(false) }
+      setPending(false)
+    })
+  }
+
+  return (
+    <Surface className="card gin-panel">
+      <h3 className="gin-card-title">Crew preferences</h3>
+      <p className="small muted gin-help">From each person’s answers.</p>
+      <hr className="divider" />
+      {read === 'failed' && hasRows && (
+        <StateBlock kind="kept" size="compact" title="Couldn’t refresh crew preferences. Showing what was loaded."
+          actions={<button className="btn btn-outline btn-sm" onClick={retry}>Try again</button>} />
+      )}
+      {read === 'failed' && !hasRows && (
+        <StateBlock kind="failed" size="compact" title="Couldn’t load crew preferences."
+          actions={<button className="btn btn-outline btn-sm" onClick={retry}>Try again</button>} />
+      )}
+      {read === 'reading' && !hasRows && (
+        <StateBlock kind="loading" size="compact" title="Loading crew preferences…" art={<div className="spinner" />} />
+      )}
+      {read === 'ready' && !hasRows && (
+        <StateBlock kind="empty" size="compact" title="No answers yet." body="Pick the interests you want on this trip. The bars appear after the first answer." />
+      )}
+      {hasRows && (
+        <>
+          <p className="small muted gin-crew-count">{summary.answered} of {memberIds.length} answered</p>
+          {bars.length > 0 ? (
+            <ul className="gin-crew-list">
+              {bars.map(b => (
+                <li key={b.interest} className="gin-crew-row">
+                  <span className="gin-crew-label">{cap(b.interest)}</span>
+                  <ShareBar percent={b.percent} lead />
+                  <span className="gin-option-pct num">{b.percent}%</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="small muted">Nobody picked an interest yet.</p>
+          )}
+        </>
+      )}
+      {read === 'ready' && isMember && (
+        <div className="gin-quiz">
+          {quizOpen ? (
+            <>
+              <p className="small gin-quiz-title" id={`gi-quiz-title-${trip.id}`}>Your answers</p>
+              <div className="gin-quiz-chips" role="group" aria-labelledby={`gi-quiz-title-${trip.id}`}>
+                {CREW_QUIZ_INTERESTS.map(interest => (
+                  <FilterChip key={interest} pressed={picked.includes(interest)} onClick={() => toggle(interest)}>{cap(interest)}</FilterChip>
+                ))}
+              </div>
+              <div className="gin-foot">
+                <button type="button" className="btn btn-primary btn-sm" disabled={pending} aria-busy={pending} onClick={save}>Save</button>
+                {mine && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setDraft(null); setEditing(false) }}>Cancel</button>
+                )}
+              </div>
+            </>
+          ) : (
+            <button type="button" className="gin-text-btn" aria-expanded={false} onClick={() => setEditing(true)}>Edit your answers</button>
+          )}
+        </div>
+      )}
+    </Surface>
+  )
+}
+
+/** One 6px share bar. The fill uses the vote-bar motion token. */
+function ShareBar({ percent, lead }: { percent: number; lead?: boolean }) {
+  return (
+    <span className="gin-track" aria-hidden>
+      <span className={`gin-fill${lead ? ' gin-fill--lead' : ''}`} style={{ width: `${percent}%` }} />
+    </span>
   )
 }
 
@@ -510,12 +649,14 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
 
 // ================= Decision card =================
 
-function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen, slotResolution }: {
+function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previewOpen, slotResolution }: {
   d: TripDecision
   me: { id: string }
   editable: boolean
   needsMe: boolean
   memberCount: number
+  /** The clock, for the closing label and the lock. The server decides a late ballot. */
+  now: number
   trip: Trip
   previewOpen?: boolean
   slotResolution: SlotResolutionContext | null
@@ -527,6 +668,10 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
   const voterCount = Object.keys(d.votesByUserId).length
   const myOptionId: string | undefined = d.votesByUserId[me.id]
   const open = d.status === 'open'
+  // Past the closing time the vote is locked. Nothing resolves on its own: an editor applies the winner.
+  const locked = open && isVoteClosed(d, now)
+  const outcome = voteOutcome(d)
+  const dayLabel = decisionDayLabel(trip.days, d.dayId)
   const raiser = userById(d.raisedBy)?.profile.name ?? 'Traveller'
   // Grounded trip context + offline recommendation (§6.8): the deterministic
   // guide, using the same engine data the Overview shows. Recomputed when the
@@ -536,6 +681,11 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
   const { busy, claim, release } = useBusyClaim(d.id)
   const [pick, setPick] = useState<string | null>(null)
   const [commenting, setCommenting] = useState(false)
+  const [addingOption, setAddingOption] = useState(false)
+  const [optionLabel, setOptionLabel] = useState('')
+  const [optionError, setOptionError] = useState<string | undefined>()
+  const optionClaim = useBusyClaim(`${d.id}:add-option`)
+  const optionRef = useRef<HTMLInputElement>(null)
   const [stamped, setStamped] = useState(false)
   const [placementDayId, setPlacementDayId] = useState('')
   const [placementDays, setPlacementDays] = useState<Array<{ id: string; index: number; title?: string }> | null>(null)
@@ -575,6 +725,21 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
     setOpenDayOptionId(flow.kind === 'settled' && flow.needsDayPicker ? (d.resolvedOptionId ?? optionId) : null)
   }
 
+  // The add-option field takes the focus when it opens.
+  useEffect(() => { if (addingOption) optionRef.current?.focus() }, [addingOption])
+
+  /** Add one option. The same duplicate check the server runs shows its reason at once. */
+  function submitOption() {
+    const checked = checkNewOptionLabel(d.options, optionLabel)
+    if (!checked.ok) { setOptionError(optionLabelRefusal(checked.reason)); return }
+    setOptionError(undefined)
+    if (!optionClaim.claim()) return
+    void addDecisionOption(d.id, { label: checked.label }).then(o => {
+      reportCollabOutcome(o, 'Option added')
+      if (o.status === 'applied' || o.status === 'alreadyApplied') { setOptionLabel(''); setAddingOption(false) }
+    }).finally(() => optionClaim.release())
+  }
+
   /** Send my ballot. A ballot change is a set, so a repeat of my own option does nothing. */
   function castVote() {
     if (!pick || pick === myOptionId) return
@@ -585,9 +750,17 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
     <Surface id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-panel gin-decision${needsMe ? ' gi-needs-you' : ''}`}>
       {open ? (
         <>
-          {needsMe && <p className="gin-eyebrow gin-eyebrow--amber">Needs your vote</p>}
+          {locked && <p className="gin-eyebrow">Voting closed</p>}
+          {!locked && needsMe && (
+            <p className="gin-eyebrow gin-eyebrow--amber">
+              Needs your vote{hasClosingTime(d) ? ` · closes in ${formatSpan((d.closesAt as number) - now)}` : ''}
+            </p>
+          )}
+          {!locked && !needsMe && hasClosingTime(d) && (
+            <p className="gin-eyebrow">Open · closes in {formatSpan((d.closesAt as number) - now)}</p>
+          )}
           <h3 className="gin-card-title">{d.question}</h3>
-          <p className="small muted gin-sub">Raised by {raiser} · {voterCount} of {memberCount} voted</p>
+          <p className="small muted gin-sub">Raised by {raiser}{dayLabel ? ` · ${dayLabel}` : ''} · {voterCount} of {memberCount} voted</p>
           {d.context && <p className="small muted gin-decision-context">{d.context}</p>}
           <div className="gin-decision-options" role="radiogroup" aria-label={`Options for ${d.question}`}>
             {d.options.map((o, i) => {
@@ -604,16 +777,14 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
                   <input type="radio" className="gin-radio" name={`vote-${d.id}`} value={o.id}
                     aria-labelledby={`gi-opt-${d.id}-${o.id}-label`}
                     aria-describedby={[detail ? `gi-opt-${d.id}-${o.id}-detail` : '', `gi-opt-${d.id}-${o.id}-pct`].filter(Boolean).join(' ')}
-                    checked={(pick ?? myOptionId) === o.id} onChange={() => setPick(o.id)} />
+                    checked={(pick ?? myOptionId) === o.id} disabled={locked} onChange={() => setPick(o.id)} />
                   <span className="gin-option-main">
                     <span className="gin-option-title">
                       <span id={`gi-opt-${d.id}-${o.id}-label`} className="gin-option-label">{o.label}</span>
                       {rec?.optionId === o.id && <Chip tone="teal">Best fit · engine</Chip>}
                     </span>
                     {detail && <span id={`gi-opt-${d.id}-${o.id}-detail`} className="gin-option-detail small muted num">{detail}</span>}
-                    <span className="gin-track" aria-hidden>
-                      <span className={`gin-fill${leading ? ' gin-fill--lead' : ''}`} style={{ width: `${pct}%` }} />
-                    </span>
+                    <ShareBar percent={pct} lead={leading} />
                   </span>
                   <span className="gin-option-end">
                     {voters.length > 0 && (
@@ -647,22 +818,45 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
               </p>
             )}
           </div>
-          {totalVotes > 0 && (
+          {locked && (
+            <p className="small verdict-line">
+              {votingClosedLine(d)}{outcome.kind === 'tie' ? '. An editor picks the winner.' : ''}
+            </p>
+          )}
+          {!locked && totalVotes > 0 && (
             <p className="small muted verdict-line">
               Tally leans <b>{d.options[leadingIdx]?.label}</b>{needsMe ? '. Your vote could flip it' : '. Editors resolve'}.
             </p>
           )}
           <div className="gin-foot">
-            <button type="button" className="btn btn-primary btn-sm" disabled={!pick || pick === myOptionId}
-              onClick={castVote}>Vote</button>
+            {!locked && (
+              <button type="button" className="btn btn-primary btn-sm" disabled={!pick || pick === myOptionId}
+                onClick={castVote}>Vote</button>
+            )}
             <button type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
               aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
               onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
+            {editable && canAddOption(d, now) && (
+              <button type="button" className="btn btn-ghost btn-sm" aria-expanded={addingOption}
+                aria-controls={addingOption ? `gi-add-option-${d.id}` : undefined}
+                onClick={() => setAddingOption(a => !a)}>
+                <Plus size={14} aria-hidden /> Add option
+              </button>
+            )}
           </div>
+          {addingOption && editable && canAddOption(d, now) && (
+            <form id={`gi-add-option-${d.id}`} className="gin-option-form" onSubmit={e => { e.preventDefault(); submitOption() }}>
+              <Field label="New option" error={optionError}>
+                <input ref={optionRef} className="input" value={optionLabel} maxLength={200}
+                  onChange={e => { setOptionLabel(e.target.value); setOptionError(undefined) }} />
+              </Field>
+              <button className="btn btn-sm btn-outline" disabled={optionClaim.busy} aria-busy={optionClaim.busy}>Add</button>
+            </form>
+          )}
           {editable && (
             <div className="resolve-btns">
               {d.options.map(o => (
-                <button key={o.id} className="btn btn-sm btn-outline" disabled={busy} aria-busy={busy}
+                <button key={o.id} className={`btn btn-sm ${locked && outcome.kind === 'winner' && outcome.option.id === o.id ? 'btn-primary' : 'btn-outline'}`} disabled={busy} aria-busy={busy}
                   onClick={() => {
                     if (refuseWhileStaged(previewOpen)) return
                     void resolveChoice(o.id)
@@ -951,6 +1145,9 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
   const [q, setQ] = useState('')
   const [context, setContext] = useState('')
   const [opts, setOpts] = useState([{ label: '', cost: '' }, { label: '', cost: '' }])
+  const [closes, setCloses] = useState('')
+  const [dayId, setDayId] = useState('')
+  const [closesError, setClosesError] = useState<string | undefined>()
   const [pending, setPending] = useState(false)
 
   function setOpt(i: number, key: 'label' | 'cost', v: string) {
@@ -960,6 +1157,7 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
   /** Cancel clears the draft. The card stays on the page. */
   function clearDraft() {
     setQ(''); setContext(''); setOpts([{ label: '', cost: '' }, { label: '', cost: '' }])
+    setCloses(''); setDayId(''); setClosesError(undefined)
   }
 
   function create(e: FormEvent) {
@@ -970,9 +1168,18 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
       .map(o => ({ label: o.label.trim(), cost: Number(o.cost) || 0 }))
       .filter(o => o.label)
     if (built.length < 2) { toast('Give at least two options.', 'err'); return }
+    // The closing time is the device's local time. It must be in the future.
+    const closing = parseClosesAt(closes, Date.now())
+    if (!closing.ok) {
+      setClosesError(closing.reason === 'past' ? 'Pick a time in the future, or leave it empty.' : 'Enter a valid date and time.')
+      return
+    }
+    setClosesError(undefined)
     setPending(true)
     void addDecision(trip.id, {
       question: q.trim(),
+      ...(closing.closesAt !== undefined ? { closesAt: closing.closesAt } : {}),
+      ...(dayId ? { dayId } : {}),
       context: context.trim() || undefined,
       // #335: no placeholder ids — a hand-typed poll gets real ones from the
       // store, which preserves an id a caller does supply (the Map rail's
@@ -993,6 +1200,17 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
       <Field label="Context (optional)" hint="Why the group is deciding: e.g. “forecast says one beach afternoon is a washout”.">
         <input className="input" value={context} onChange={e => setContext(e.target.value)} />
       </Field>
+      <div className="form-row">
+        <Field label="Closes (optional)" error={closesError} hint="Your local time. After it, nobody can vote. An editor applies the winner.">
+          <input className="input" type="datetime-local" value={closes} onChange={e => { setCloses(e.target.value); setClosesError(undefined) }} />
+        </Field>
+        <Field label="Day (optional)">
+          <select className="select" value={dayId} onChange={e => setDayId(e.target.value)}>
+            <option value="">No day</option>
+            {trip.days.map(day => <option key={day.id} value={day.id}>{dayOptionLabel(day)}</option>)}
+          </select>
+        </Field>
+      </div>
       <Field label="Options" hint="At least two. Cost impact is optional.">
         <span className="gin-option-grid">
           {opts.map((o, i) => (
