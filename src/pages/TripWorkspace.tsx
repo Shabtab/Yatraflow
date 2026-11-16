@@ -939,6 +939,9 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
     startLocation: trip.startLocation,
   })
   const members = trip.members ?? []
+  // One string, so the cover can clamp the line and still offer the whole text
+  // as the tooltip (the cover height is sized for a bounded line).
+  const headerMeta = `${trip.startLocation} → ${trip.destinations.join(' → ')} · ${fmtDateRange(trip.startDate, trip.endDate)} · ${trip.travellers} travellers · ${cap(trip.transportMode)} · ${cap(trip.travelStyle)}`
   const viewingMemberIds = new Set(presenceRow.kind === 'peers'
     ? presenceRow.peers.map(peer => peer.userId)
     : [])
@@ -972,12 +975,10 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
             </div>
             <div className="yf-head-row">
               <div className="yf-head-text">
-                <h1 className="yf-header-title yf-trip-title">{trip.name}</h1>
+                <h1 className="yf-header-title yf-trip-title" title={trip.name}>{trip.name}</h1>
                 <div className="yf-fold">
                   <div className="yf-fold-in">
-                    <p className="yf-head-meta yf-fade">
-                      {trip.startLocation} → {trip.destinations.join(' → ')} · {fmtDateRange(trip.startDate, trip.endDate)} · {trip.travellers} travellers · {cap(trip.transportMode)} · {cap(trip.travelStyle)}
-                    </p>
+                    <p className="yf-head-meta yf-fade" title={headerMeta}>{headerMeta}</p>
                   </div>
                 </div>
               </div>

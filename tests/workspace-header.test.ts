@@ -11,6 +11,7 @@ import {
   workspaceTabId,
 } from '../src/lib/workspaceHeader'
 import { DEFAULT_COVER_EMOJI, coverPlanFor, isChosenCoverEmoji } from '../src/lib/regionArt'
+import { readCssSource } from '../scripts/css-source-graph.mjs'
 
 function tripFixture(): Trip {
   return {
@@ -217,5 +218,82 @@ describe('the workspace markup consumes the rules', () => {
     const timeline = codeOf('../src/pages/trip/TimelineTab.tsx')
     expect(timeline).toMatch(/if \(focusBlock !== 'trip-wide'\) return/)
     expect(timeline).toMatch(/const block = document\.getElementById\('timeline-trip-wide'\)[\s\S]{0,500}onFocusConsumed\?\.\(\)/)
+  })
+})
+
+describe('PW-05: one cover height across the content tabs, a slim bar on Map', () => {
+  // CRLF to LF, so the multi-line patterns below hold on a Windows checkout.
+  const css = readCssSource('src/styles.css').replace(/\r\n/g, '\n')
+  const ws = codeOf('../src/pages/TripWorkspace.tsx')
+
+  /** The declaration block of the first rule whose selector list equals `selector`. */
+  function ruleBody(selector: string): string {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const match = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`).exec(css)
+    expect(match, `rule not found: ${selector}`).not.toBeNull()
+    return match![1]
+  }
+
+  it('gives Settings and Timeline no cover height or title clamp of their own', () => {
+    // These `body:has(...)` overrides resized the cover after the tab switched
+    // (and again after the lazy mount), which moved the tab pill.
+    expect(css).not.toContain('body:has(.tset-grid) .yf-page .yf-trip-head')
+    expect(css).not.toContain('body:has(.tl-head) .yf-page .yf-trip-head')
+  })
+
+  it('sets one cover height per breakpoint and never animates it', () => {
+    const base = ruleBody('.yf-page .yf-trip-head')
+    expect(base).toMatch(/height:\s*308px;/)
+    expect(base).toMatch(/transition:\s*box-shadow var\(--motion-slow\) var\(--ease-glide\);/)
+    expect(base).not.toMatch(/transition:[^;]*height/)
+    // Phone steps: 306px up to 720px, and 324px below 380px where the member row wraps.
+    expect(css).toMatch(/@media \(max-width: 720px\) \{[\s\S]*?\.yf-page \.yf-trip-head \{\s*height: 306px;/)
+    expect(css).toMatch(/@media \(max-width: 380px\) \{\s*\.yf-page \.yf-trip-head \{\s*height: 324px;/)
+  })
+
+  it('holds the Settings cover at the common width so the pill cannot slide', () => {
+    const body = ruleBody('.container.yf-workspace.yf-workspace:has(.tset-grid) .yf-page')
+    expect(body).toMatch(/max-width:\s*1140px;/)
+    expect(body).toMatch(/margin-inline:\s*auto;/)
+  })
+
+  it('bounds the title and the meta line so the member row never reaches the pill', () => {
+    const title = ruleBody(".yf-page[data-compact='false'] .yf-trip-head .yf-trip-title")
+    expect(title).toMatch(/-webkit-line-clamp:\s*2;/)
+    expect(title).toMatch(/line-clamp:\s*2;/)
+    const meta = ruleBody(".yf-page[data-compact='false'] .yf-head-meta")
+    expect(meta).toMatch(/-webkit-line-clamp:\s*1;/)
+    // The folded Board header keeps its full wrap: the clamp is scoped to the open cover.
+    expect(css).not.toMatch(/\.yf-page\[data-compact='true'\] \.yf-trip-head \.yf-trip-title \{[^}]*line-clamp/)
+    // The full name and the full meta line stay reachable.
+    expect(ws).toContain('<h1 className="yf-header-title yf-trip-title" title={trip.name}>{trip.name}</h1>')
+    expect(ws).toContain('<p className="yf-head-meta yf-fade" title={headerMeta}>{headerMeta}</p>')
+  })
+
+  it('anchors the title block on the pill floor instead of the top', () => {
+    expect(ruleBody('.yf-page .yf-head-row')).toMatch(/margin-top:\s*auto;/)
+    expect(ruleBody('.yf-page .yf-trip-head > .yf-cover-content')).toMatch(
+      /padding:\s*var\(--space-7\) var\(--space-11\) calc\(var\(--space-7a\) \+ var\(--yf-pill-h\) \+ var\(--space-7a\)\);/,
+    )
+  })
+
+  it('keeps the pill left-aligned at the mockup offset on the cover', () => {
+    const pill = ruleBody('.yf-page .yf-cover-content > .yf-tabbar')
+    expect(pill).toMatch(/left:\s*var\(--space-9\);/)
+    expect(pill).toMatch(/bottom:\s*var\(--space-7a\);/)
+  })
+
+  it('turns the cover into a slim bar on Map by hiding the parts with display none', () => {
+    const scope = ".yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true']"
+    const hidden = ruleBody(
+      `${scope} .yf-trip-head > .yf-cover-media,\n${scope} .yf-fold,\n${scope} .yf-extra,\n${scope} .yf-cover-top .yf-invite`,
+    )
+    // `display: none` takes the member avatars and the invite button out of the tab order.
+    expect(hidden).toMatch(/display:\s*none;/)
+    expect(hidden).not.toMatch(/visibility/)
+    expect(ruleBody(`${scope} .yf-trip-head`)).toMatch(/height:\s*auto;/)
+    // The tab rail stays inside the bar, in the same tablist (no second tree).
+    expect(ruleBody(`${scope} .yf-cover-content > .yf-tabbar`)).toMatch(/margin:\s*0;/)
+    expect(ws.match(/<SegmentedTabs className="tabbar yf-tabbar"/g)).toHaveLength(1)
   })
 })

@@ -221,6 +221,15 @@
   max-width: 1220px;
 }
 
+/* The cover keeps the common 1140px width on Settings too. The grid below it
+   may be 40px wider, but a wider cover moved the tab pill 20px sideways when
+   the user switched here, and it slid again while the container width
+   animated after the lazy mount. A capped, centred cover cannot move. */
+.container.yf-workspace.yf-workspace:has(.tset-grid) .yf-page {
+  max-width: 1140px;
+  margin-inline: auto;
+}
+
 .container.yf-workspace.yf-workspace[data-wide='true'] {
   max-width: 1720px;
 }
@@ -233,9 +242,16 @@
      does not change with the theme, so the ink must not follow the card tone. */
   --pw-cover-ink: var(--pw-on-cover);
   --pw-cover-ink-soft: color-mix(in srgb, var(--pw-on-cover) 90%, transparent);
+  /* The tab pill: a 38px tab, a 6px inset and a 1px border on each side. */
+  --yf-pill-h: 52px;
   position: relative;
   display: block;
-  height: 260px;
+  /* ONE cover height for every content tab (Overview, Timeline, Group input,
+     Budget, Share, Settings). It fits the two-line title, the meta line, the
+     member row and the tab pill. The old per-tab overrides gave Timeline and
+     Settings their own heights, so the pill jumped when the user switched tabs.
+     Height is not in the transition list: nothing resizes between tabs. */
+  height: 308px;
   margin: 0 0 var(--space-7);
   padding: 0;
   overflow: visible;
@@ -243,9 +259,7 @@
   border-radius: var(--radius-xl);
   background: var(--pw-sea-700);
   box-shadow: var(--elev-3);
-  transition:
-    height var(--motion-slow) var(--ease-glide),
-    box-shadow var(--motion-slow) var(--ease-glide);
+  transition: box-shadow var(--motion-slow) var(--ease-glide);
 }
 
 .yf-page .yf-trip-head::after {
@@ -332,7 +346,11 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  padding: var(--space-7) var(--space-11) var(--space-7a);
+  /* The bottom padding reserves the tab pill: its 18px offset, its 52px height
+     (38px tab, 6px inset each side, 1px border each side) and an 18px gap. The
+     title block sits on this floor (see `.yf-head-row`), so the gap between the
+     member row and the pill stays 18px for one-line and two-line titles. */
+  padding: var(--space-7) var(--space-11) calc(var(--space-7a) + var(--yf-pill-h) + var(--space-7a));
   color: var(--pw-cover-ink);
 }
 
@@ -397,7 +415,11 @@
 
 .yf-page .yf-head-row {
   display: block;
-  margin-top: var(--space-1);
+  /* `auto` pushes the title block to the floor the cover content reserves for
+     the pill. The spare room of a short title sits under the back link, not
+     between the member row and the pill. The folded Board header sets its own
+     margin below. */
+  margin-top: auto;
 }
 
 .yf-page .yf-head-text {
@@ -428,6 +450,45 @@
 .yf-page[data-compact='true'] .yf-trip-head .yf-trip-title {
   font-size: 32px;
   transform: none;
+}
+
+/* ONE title rule for every content tab: two lines, then an ellipsis. The
+   trip's `title` attribute (TripWorkspace.tsx) keeps the full name reachable.
+   The cover height is sized for exactly this box, so a long name never pushes
+   the member row under the tab pill. Font size and width come from the base
+   and phone rules above. The folded Board header (`data-compact='true'`) keeps
+   its own full wrap. */
+.yf-page[data-compact='false'] .yf-trip-head .yf-trip-title {
+  display: -webkit-box;
+  width: min(100%, 900px);
+  height: auto;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
+
+/* The meta line is the second unbounded input to the cover height. One line on
+   a tablet or desktop and two on a phone, then an ellipsis; the `title`
+   attribute carries the whole line. The padding is on top only, so the clamp
+   hides the next line cleanly. */
+.yf-page[data-compact='false'] .yf-head-meta {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+@media (max-width: 720px) {
+  .yf-page[data-compact='false'] .yf-head-meta {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
 }
 
 .yf-page .yf-cover-content > .yf-head-row + .yf-extra {
@@ -674,6 +735,74 @@
   inset: auto;
   flex-shrink: 0;
   margin-top: var(--space-7);
+}
+
+/* ---------- Map tab: the cover gives way to a slim bar ----------
+   The Map tab shows NO cover: no photo, veil, meta line, member row or invite
+   button. The same <header> and the same tab rail stay mounted (nothing
+   remounts, so the tab keeps focus), restyled into one bar: "All trips", the
+   trip name and the tab rail. The bar does not resize between visits. The map
+   canvas measures its own top edge against the viewport (MapTab.tsx), so the
+   freed height goes to the map without a change there.
+   Hidden parts use `display: none`, not the fold: nothing inside stays in the
+   tab order, and nothing animates. The phone keeps its full-screen map, which
+   hides the whole page block (map-v2-rail.css), so the bar is a tablet and
+   desktop element. The selectors carry the container flag and doubled class
+   names so they outrank every folded-header rule above without `!important`. */
+.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head {
+  height: auto;
+  min-height: 0;
+}
+
+.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head > .yf-cover-media,
+.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-fold,
+.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-extra,
+.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top .yf-invite {
+  display: none;
+}
+
+.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-content {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-7);
+  height: auto;
+  min-height: 0;
+  padding: var(--space-4) var(--space-9);
+}
+
+.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top {
+  flex: none;
+}
+
+.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top .yf-back {
+  margin: 0 0 0 calc(-1 * var(--space-5));
+}
+
+/* The name takes the room between the link and the rail. Its basis is the
+   narrowest useful name; below that the rail wraps to its own row, left-aligned
+   with the link and the name, like the cover's rail. */
+.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-head-row {
+  flex: 1 1 200px;
+  min-width: 0;
+  margin: 0;
+}
+
+.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head .yf-trip-title {
+  width: 100%;
+  overflow: hidden;
+  font-size: 20px;
+  line-height: 1.3;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-content > .yf-tabbar {
+  flex: none;
+  max-width: 100%;
+  margin: 0;
 }
 
 @keyframes yfCoverSettle {
@@ -1589,13 +1718,14 @@
   }
 
   .yf-page .yf-trip-head {
-    height: 288px;
+    height: 306px;
     margin-bottom: var(--space-5);
     border-radius: var(--radius-lg);
   }
 
+  /* Bottom padding: the pill's 12px offset, its 52px height and a 20px gap. */
   .yf-page .yf-trip-head > .yf-cover-content {
-    padding: var(--space-7) var(--space-7) var(--space-7a);
+    padding: var(--space-7) var(--space-7) calc(var(--space-5) + var(--yf-pill-h) + var(--space-8));
   }
 
   .yf-page .yf-cover-top {
@@ -1728,11 +1858,15 @@
   }
 }
 
-@media (max-width: 440px) {
+/* Below 380px the member row and the "Just you viewing" note wrap onto a second
+   line (measured at 320px), so the cover needs one more row of room. */
+@media (max-width: 380px) {
   .yf-page .yf-trip-head {
-    height: 296px;
+    height: 324px;
   }
+}
 
+@media (max-width: 440px) {
   .yf-page .yf-cover-top .yf-back {
     font-size: 11px;
   }
@@ -1775,54 +1909,11 @@
   }
 }
 
-/* Settings titles wrap instead of disappearing behind an ellipsis. Four lines
-   cover the long-trip fixture at every width. The 721-1023px band gets a
-   smaller title and a taller cover, because 40px type needs three lines there
-   and the member row otherwise reaches the tab rail. */
-body:has(.tset-grid) .yf-page .yf-trip-head {
-  height: 304px;
-}
-
-body:has(.tset-grid) .yf-page .yf-trip-head .yf-trip-title {
-  display: -webkit-box;
-  width: min(100%, 900px);
-  height: auto;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-  line-clamp: 4;
-  text-overflow: clip;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  line-height: 1.2;
-}
-
-@media (min-width: 721px) and (max-width: 1023px) {
-  body:has(.tset-grid) .yf-page .yf-trip-head {
-    height: 384px;
-  }
-
-  body:has(.tset-grid) .yf-page .yf-trip-head .yf-trip-title {
-    font-size: 32px;
-  }
-}
-
-@media (max-width: 720px) {
-  body:has(.tset-grid) .yf-page .yf-trip-head {
-    height: 352px;
-  }
-
-  body:has(.tset-grid) .yf-page .yf-trip-head .yf-trip-title {
-    width: 100%;
-    font-size: 28px;
-  }
-}
-
-@media (max-width: 440px) {
-  body:has(.tset-grid) .yf-page .yf-trip-head {
-    height: 380px;
-  }
-}
+/* Settings and Timeline no longer set a cover height or a title clamp of their
+   own. The `body:has(.tset-grid)` and `body:has(.tl-head)` overrides gave those
+   tabs a different cover height, which resized the cover (and moved the tab
+   pill) a second time after the lazy mount. Every content tab now shares the
+   one height and the one two-line title rule above. */
 
 /* The compact day list is a full-row button, not an inline reset. */
 @media (max-width: 720px) {
