@@ -17,7 +17,8 @@
 .gin-grid { display: grid; grid-template-columns: 1.15fr 1fr 0.8fr; gap: 18px; align-items: start; }
 .gin-col { display: grid; align-content: start; gap: 14px; }
 .gin-col--decisions, .gin-col--ideas, .gin-col--activity { min-width: 0; }
-.gin-col:focus { outline: none; }
+.gin-col:focus { border-radius: var(--radius); box-shadow: var(--ring); }
+.gin-row.gi-needs-you { padding-left: 12px; }
 @media (max-width: 1180px) {
   .gin-grid { grid-template-columns: 1.15fr 1fr; }
   .gin-col--activity { grid-column: 1 / -1; }

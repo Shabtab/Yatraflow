@@ -58,12 +58,18 @@ type GroupItem = { kind: 'idea'; sg: StopSuggestion } | { kind: 'decision'; d: T
 const EMPTY_COPY = {
   all: { title: 'Nothing waiting on the group', body: 'Propose stops for everyone to vote on, or raise a decision. Both land here with the activity feed.' },
   ideas: { title: 'No stop ideas here yet', body: 'Use Add an idea above. The group votes and comments on each row.' },
+  ideasOpen: { title: 'No open stop ideas', body: 'Every idea has an answer. Use Add an idea for the next one.' },
   decisions: { title: 'No open questions', body: 'Raise a decision to turn a group-chat debate into one clear vote.' },
 } as const
 
 function itemId(i: GroupItem): string { return i.kind === 'idea' ? i.sg.id : i.d.id }
 function newestOf(i: GroupItem): number {
   return i.kind === 'idea' ? i.sg.createdAt : i.d.createdAt
+}
+
+/** A pill label. The count shows only after its read has settled, and never when it is zero. */
+function pillLabel(base: string, count: number, ready: boolean): string {
+  return ready && count > 0 ? `${base} · ${count}` : base
 }
 
 /** Up to two initials from a display name, the way the avatar draws them. */
@@ -133,6 +139,11 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   const [view, setView] = useState<View>('needs')
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null)
   const [ideaComposerOpen, setIdeaComposerOpen] = useState(false)
+  const ideaComposerRef = useRef<HTMLDivElement>(null)
+  // The composer takes the focus on its first field when it opens.
+  useEffect(() => {
+    if (ideaComposerOpen) ideaComposerRef.current?.querySelector<HTMLElement>('input, textarea, select')?.focus()
+  }, [ideaComposerOpen])
   const [showResolvedIdeas, setShowResolvedIdeas] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
 
@@ -147,6 +158,7 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   const decisionsRead = sliceState(db.sliceReads, 'decisions')
   const listFailed = suggestionsRead === 'failed' || decisionsRead === 'failed'
   const listReading = !listFailed && (suggestionsRead === 'reading' || decisionsRead === 'reading')
+  const listReady = suggestionsRead === 'ready' && decisionsRead === 'ready'
   const activityRead = sliceState(db.sliceReads, 'activity')
   // Retry re-issues the read through the same re-hydrate that app resume runs.
   const retryGroupInput = () => { void resumeSync() }
@@ -230,11 +242,11 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
         </div>
         <PillNav className="mode-pillbar gin-pillbar" role="group" aria-label="Jump to a section" activeKey={view}>
           <button type="button" data-pill-key="needs" className={`tab-btn${view === 'needs' ? ' active' : ''}`}
-            onClick={() => jump('needs')} aria-pressed={view === 'needs'}>Needs you · {needsYouCount}</button>
+            onClick={() => jump('needs')} aria-pressed={view === 'needs'}>{pillLabel('Needs you', needsYouCount, listReady)}</button>
           <button type="button" data-pill-key="decisions" className={`tab-btn${view === 'decisions' ? ' active' : ''}`}
-            onClick={() => jump('decisions')} aria-pressed={view === 'decisions'}>Decisions · {openDecisions.length}</button>
+            onClick={() => jump('decisions')} aria-pressed={view === 'decisions'}>{pillLabel('Decisions', openDecisions.length, decisionsRead === 'ready')}</button>
           <button type="button" data-pill-key="ideas" className={`tab-btn${view === 'ideas' ? ' active' : ''}`}
-            onClick={() => jump('ideas')} aria-pressed={view === 'ideas'}>Stop ideas · {openIdeas.length}</button>
+            onClick={() => jump('ideas')} aria-pressed={view === 'ideas'}>{pillLabel('Stop ideas', openIdeas.length, suggestionsRead === 'ready')}</button>
           <button type="button" data-pill-key="activity" className={`tab-btn${view === 'activity' ? ' active' : ''}`}
             onClick={() => jump('activity')} aria-pressed={view === 'activity'}>Activity</button>
         </PillNav>
@@ -261,8 +273,9 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
       )}
 
       <div className="gin-grid">
-        <div id="gi-section-decisions" tabIndex={-1}
+        <div id="gi-section-decisions" tabIndex={-1} role="region" aria-labelledby="gi-heading-decisions"
           className={`gin-col gin-col--decisions${sectionOnScreen === 'decisions' ? ' gin-col--shown' : ''}`}>
+          <h3 id="gi-heading-decisions" className="sr-only">Decisions</h3>
           {items.length > 0 && decisionsRead === 'ready' && sortedDecisions.length === 0 && (
             <StateBlock kind="empty" size="compact" title={EMPTY_COPY.decisions.title} body={EMPTY_COPY.decisions.body}
               icon={<Scale size={38} aria-hidden />} />
@@ -273,24 +286,28 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
           ))}
         </div>
 
-        <div id="gi-section-ideas" tabIndex={-1}
+        <div id="gi-section-ideas" tabIndex={-1} role="region" aria-labelledby="gi-heading-ideas"
           className={`gin-col gin-col--ideas${sectionOnScreen === 'ideas' ? ' gin-col--shown' : ''}`}>
           <Surface className="card gin-panel">
             <div className="gin-card-head">
               <div>
-                <h3 className="gin-card-title">Stop ideas</h3>
-                <p className="small muted gin-help">Anyone can suggest. Editors add the ones the group likes; the engine says where each one fits.</p>
+                <h3 id="gi-heading-ideas" className="gin-card-title">Stop ideas</h3>
+                <p className="small muted gin-help">Anyone can suggest. Editors add the ones the group likes to the timeline.</p>
               </div>
               <button type="button" className="btn btn-outline btn-sm" aria-expanded={ideaComposerOpen}
                 aria-controls="gi-idea-composer" onClick={() => setIdeaComposerOpen(open => !open)}>
                 <Plus size={14} aria-hidden /> Add an idea
               </button>
             </div>
-            <div id="gi-idea-composer" className="gin-composer" hidden={!ideaComposerOpen}>
+            <div id="gi-idea-composer" ref={ideaComposerRef} className="gin-composer" hidden={!ideaComposerOpen}>
               <SuggestionComposerForm trip={trip} />
             </div>
             {items.length > 0 && suggestionsRead === 'ready' && sortedIdeas.length === 0 && (
               <StateBlock kind="empty" size="compact" title={EMPTY_COPY.ideas.title} body={EMPTY_COPY.ideas.body}
+                icon={<Lightbulb size={38} aria-hidden />} />
+            )}
+            {items.length > 0 && suggestionsRead === 'ready' && sortedIdeas.length > 0 && openIdeas.length === 0 && (
+              <StateBlock kind="empty" size="compact" title={EMPTY_COPY.ideasOpen.title} body={EMPTY_COPY.ideasOpen.body}
                 icon={<Lightbulb size={38} aria-hidden />} />
             )}
             {openIdeas.map(renderIdea)}
@@ -308,10 +325,10 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
           </Surface>
         </div>
 
-        <div id="gi-section-activity" tabIndex={-1}
+        <div id="gi-section-activity" tabIndex={-1} role="region" aria-labelledby="gi-heading-activity"
           className={`gin-col gin-col--activity${sectionOnScreen === 'activity' ? ' gin-col--shown' : ''}`}>
           <Surface className="card gin-panel">
-            <h3 className="gin-card-title">Activity</h3>
+            <h3 id="gi-heading-activity" className="gin-card-title">Activity</h3>
             <hr className="divider" />
             {activityRead === 'failed' && tripActivity.length > 0 && (
               <StateBlock kind="kept" size="compact" title="Couldn’t refresh activity. Showing what was loaded."
@@ -403,6 +420,7 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
         <span className="gin-row-main">
           <span className="gin-row-title">
             {sg.title}
+            {needsMe && <Chip tone="saffron">Needs your vote</Chip>}
             {!open && <Chip tone={sg.status === 'accepted' ? 'ok' : 'danger'}>{cap(sg.status)}</Chip>}
           </span>
           <span className="gin-row-meta small muted num">{ideaMeta(sg)}</span>
@@ -553,7 +571,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
     }
     setRoadRefusal(null)
     // The stamp plays only for a resolution this card made, so a page load never replays it.
-    if (flow.kind === 'settled') setStamped(true)
+    if (flow.kind === 'settled' && (flow.outcome.status === 'applied' || flow.outcome.status === 'alreadyApplied')) setStamped(true)
     setOpenDayOptionId(flow.kind === 'settled' && flow.needsDayPicker ? (d.resolvedOptionId ?? optionId) : null)
   }
 
@@ -584,13 +602,15 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
               return (
                 <label key={o.id} className="gin-option">
                   <input type="radio" className="gin-radio" name={`vote-${d.id}`} value={o.id}
+                    aria-labelledby={`gi-opt-${d.id}-${o.id}-label`}
+                    aria-describedby={[detail ? `gi-opt-${d.id}-${o.id}-detail` : '', `gi-opt-${d.id}-${o.id}-pct`].filter(Boolean).join(' ')}
                     checked={(pick ?? myOptionId) === o.id} onChange={() => setPick(o.id)} />
                   <span className="gin-option-main">
                     <span className="gin-option-title">
-                      <span className="gin-option-label">{o.label}</span>
+                      <span id={`gi-opt-${d.id}-${o.id}-label`} className="gin-option-label">{o.label}</span>
                       {rec?.optionId === o.id && <Chip tone="teal">Best fit · engine</Chip>}
                     </span>
-                    {detail && <span className="gin-option-detail small muted num">{detail}</span>}
+                    {detail && <span id={`gi-opt-${d.id}-${o.id}-detail`} className="gin-option-detail small muted num">{detail}</span>}
                     <span className="gin-track" aria-hidden>
                       <span className={`gin-fill${leading ? ' gin-fill--lead' : ''}`} style={{ width: `${pct}%` }} />
                     </span>
@@ -609,7 +629,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
                         {voters.length > 4 && <span className="who-more">+{voters.length - 4}</span>}
                       </span>
                     )}
-                    <span className="gin-option-pct num">{pct}%</span>
+                    <span id={`gi-opt-${d.id}-${o.id}-pct`} className="gin-option-pct num">{pct}%</span>
                   </span>
                 </label>
               )
@@ -636,12 +656,13 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
             <button type="button" className="btn btn-primary btn-sm" disabled={!pick || pick === myOptionId}
               onClick={castVote}>Vote</button>
             <button type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
+              aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
               onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
           </div>
           {editable && (
             <div className="resolve-btns">
-              {d.options.map((o, i) => (
-                <button key={o.id} className={`btn btn-sm ${i === leadingIdx ? 'btn-primary' : 'btn-outline'}`} disabled={busy} aria-busy={busy}
+              {d.options.map(o => (
+                <button key={o.id} className="btn btn-sm btn-outline" disabled={busy} aria-busy={busy}
                   onClick={() => {
                     if (refuseWhileStaged(previewOpen)) return
                     void resolveChoice(o.id)
@@ -657,15 +678,17 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
         <>
           <div className="gin-decided">
             <div>
-              <p className="gin-eyebrow gin-eyebrow--ok">Decided · {timeAgo(d.resolvedAt ?? d.createdAt)}</p>
+              <p className="gin-eyebrow gin-eyebrow--ok">{d.resolvedAt ? `Decided · ${timeAgo(d.resolvedAt)}` : 'Decided'}</p>
               <h3 className="gin-card-title">{resolvedOption?.label ?? d.question}</h3>
-              <p className="small muted gin-sub">{d.question}</p>
-              <p className="small muted gin-sub">{agreed} of {memberCount} agreed</p>
+              {resolvedOption && <p className="small muted gin-sub">{d.question}</p>}
+              {resolvedOption && <p className="small muted gin-sub">{agreed} of {memberCount} agreed</p>}
+              {d.context && <p className="small muted gin-decision-context">{d.context}</p>}
             </div>
             <span className={`chip chip-ok${stamped ? ' gin-stamp' : ''}`}>Chosen</span>
           </div>
           <div className="gin-foot">
             <button type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
+              aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
               onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
           </div>
         </>
@@ -720,7 +743,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen
         </div>
       )}
       {commenting && (
-        <CommentForm onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
+        <CommentForm id={`gi-comment-${d.id}`} focusOnMount onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
       )}
     </Surface>
   )
@@ -822,11 +845,14 @@ export function SuggestionFollowUpPanel({ followUp, days, busy, previewOpen, onP
   )
 }
 
-function CommentForm({ onSubmit }: { onSubmit: (text: string) => Promise<CollabOutcome> }) {
+function CommentForm({ id, focusOnMount, onSubmit }: { id?: string; focusOnMount?: boolean; onSubmit: (text: string) => Promise<CollabOutcome> }) {
   const [text, setText] = useState('')
   const [pending, setPending] = useState(false)
+  const fieldRef = useRef<HTMLInputElement>(null)
+  // A form the reader opened on purpose takes the focus, so typing can start.
+  useEffect(() => { if (focusOnMount) fieldRef.current?.focus() }, [focusOnMount])
   return (
-    <form className="gin-comment-form" onSubmit={e => {
+    <form id={id} className="gin-comment-form" onSubmit={e => {
       e.preventDefault()
       const trimmed = text.trim()
       if (!trimmed || pending) return
@@ -839,7 +865,7 @@ function CommentForm({ onSubmit }: { onSubmit: (text: string) => Promise<CollabO
         setPending(false)
       })
     }}>
-      <input className="input" placeholder="Add a comment…" aria-label="Add a comment" value={text} onChange={e => setText(e.target.value)} />
+      <input ref={fieldRef} className="input" placeholder="Add a comment…" aria-label="Add a comment" value={text} onChange={e => setText(e.target.value)} />
       <button className="btn btn-sm btn-outline" disabled={pending} aria-busy={pending}>Post</button>
     </form>
   )

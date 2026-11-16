@@ -1742,13 +1742,10 @@ a.creator-line:focus-visible { outline: 2px solid var(--teal); outline-offset: 2
 [data-theme='dark'] .map-idea-chip.on .yf-idea-chip-count { background: rgba(6,37,31,.28); }
 
 /* ---------- Suggestions & votes ---------- */
-.vote-col { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 46px; }
 .vote-btn { width: 34px; height: 30px; border-radius: 9px; border: 1.5px solid var(--line); background: var(--card); font-size: 14px; color: var(--text-2); }
 .vote-btn:hover { border-color: var(--teal); color: var(--teal-deep); }
 .vote-btn.on { background: var(--teal-deep); border-color: var(--teal-deep); color: #fff; }
 .vote-count { font-weight: 800; font-size: 15px; font-family: var(--font-display); font-variant-numeric: tabular-nums; }
-.consensus-bar { height: 7px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; display: flex; }
-.consensus-bar > div { height: 100%; }
 .comment { display: flex; gap: 9px; padding: 9px 0; border-top: 1px dashed var(--line); }
 .comment-body { font-size: 13.5px; }
 .comment-author { font-weight: 700; font-size: 12.5px; }
@@ -1940,7 +1937,6 @@ a.creator-line:focus-visible { outline: 2px solid var(--teal); outline-offset: 2
 [data-theme='dark'] .notif-showall { color: var(--teal); }
 
 /* ---------- Decisions ---------- */
-.decision-option-row { display: flex; align-items: center; gap: 9px; padding: 7px 0; font-size: 13.5px; }
 .resolve-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
 /* ---------- Public page ---------- */
