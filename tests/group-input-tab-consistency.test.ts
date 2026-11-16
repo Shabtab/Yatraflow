@@ -15,13 +15,13 @@ const css = readCssSource('src/styles.css')
 describe('Group input tab: panels, titles and states follow the page pattern', () => {
   it('puts every panel and item card on Surface, and leaves no bare card div', () => {
     expect(tab).toContain("import { Surface } from '../../components/page/Surface'")
-    expect(tab.match(/<Surface\b/g)).toHaveLength(5)
-    expect(tab.match(/<\/Surface>/g)).toHaveLength(5)
+    expect(tab.match(/<Surface\b/g)).toHaveLength(4)
+    expect(tab.match(/<\/Surface>/g)).toHaveLength(4)
     expect(tab).not.toMatch(/<div className="card/)
   })
 
   it('gives every card title the shared title class, and no bare h3', () => {
-    expect(tab.match(/<h3 className="gin-card-title">/g)).toHaveLength(6)
+    expect(tab.match(/<h3 className="gin-card-title">/g)).toHaveLength(5)
     expect(tab).not.toMatch(/<h3>/)
     expect(css).toContain('.gin-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }')
   })
@@ -30,7 +30,7 @@ describe('Group input tab: panels, titles and states follow the page pattern', (
     expect(tab.match(/<StateBlock kind="kept" size="compact"/g)).toHaveLength(2)
     expect(tab.match(/<StateBlock kind="failed" size="compact"/g)).toHaveLength(2)
     expect(tab.match(/<StateBlock kind="loading" size="compact"/g)).toHaveLength(1)
-    expect(tab.match(/<StateBlock kind="empty" size="compact"/g)).toHaveLength(3)
+    expect(tab.match(/<StateBlock kind="empty" size="compact"/g)).toHaveLength(4)
   })
 
   it('keeps the old ad-hoc state markup out of the tab', () => {
@@ -49,8 +49,7 @@ describe('Group input tab: panels, titles and states follow the page pattern', (
   })
 
   it('adds no raw millisecond value in the new CSS section', () => {
-    expect(css).toContain('P12: Group input tab')
-    const section = css.slice(css.indexOf('P12: Group input tab'), css.indexOf('/* Papercut foundations */'))
+    const section = readFileSync(new URL('../src/styles/pages/group-input.css', import.meta.url), 'utf8')
     expect(section).not.toMatch(/\d+ms\b/)
   })
 })

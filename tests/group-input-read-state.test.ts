@@ -52,7 +52,8 @@ describe('#704 — Group input reads its verdicts before it renders', () => {
     expect(component).toMatch(/items\.length === 0 && listReading && \(\s*<StateBlock kind="loading"/)
     expect(component).not.toMatch(/listFailed \?/)
     expect(component).not.toMatch(/listReading \?/)
-    expect(component).toMatch(/\{shown\.map\(item => item\.kind === 'idea'/)
+    expect(component).toMatch(/\{\[\.\.\.openDecisions, \.\.\.resolvedDecisions\]\.map\(d => \(/)
+    expect(component).toMatch(/\{openIdeas\.map\(renderIdea\)\}/)
   })
 
   it('the all-empty copy is gated on a ready, empty list, and comes after the failed and reading branches', () => {
@@ -89,7 +90,8 @@ describe('#704 — Group input reads its verdicts before it renders', () => {
     expect(component).toMatch(/activityRead === 'failed' && tripActivity\.length > 0 && \(\s*<StateBlock kind="kept" size="compact" title="Couldn’t refresh activity\. Showing what was loaded\./)
     expect(component).toMatch(/activityRead === 'failed' && tripActivity\.length === 0 && \(\s*<StateBlock kind="failed" size="compact" title="Couldn’t load activity\./)
     expect(component).toMatch(/activityRead === 'ready' && tripActivity\.length === 0 && \(\s*<StateBlock kind="empty" size="compact" title="No activity yet\./)
-    expect(component).toMatch(/\{tripActivity\.slice\(0, 20\)\.map\(a => \(/)
+    expect(component).toMatch(/const feed = tripActivity\.slice\(0, 20\)/)
+    expect(component).toMatch(/\{feedRows\.map\(a => \(/)
     expect(component).not.toMatch(/activityRead === '[a-z]+' \?/)
   })
 })

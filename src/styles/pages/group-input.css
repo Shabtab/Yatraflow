@@ -1,0 +1,88 @@
+/* Group input tab, S9 "Decide together". This file owns the gin- classes that
+   docs/css-ownership.json lists. The gi- classes and the gin-followup entrance
+   stay in the legacy files. Spacing stays on the ladder. Colour and motion use
+   tokens only. */
+
+/* Header and summary */
+.gin-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.gin-head-text { min-width: 0; }
+.gin-eyebrow { margin: 0; font: var(--pw-kicker); letter-spacing: var(--pw-kicker-tracking); text-transform: uppercase; color: var(--ink-teal); }
+.gin-eyebrow--amber { color: var(--ink-amber); }
+.gin-eyebrow--ok { color: var(--ink-ok); }
+.gin-title { margin: 4px 0 0; }
+.gin-summary { margin: 4px 0 0; }
+.gin-pillbar { flex-wrap: wrap; }
+
+/* Three columns: decisions, stop ideas and composers, activity */
+.gin-grid { display: grid; grid-template-columns: 1.15fr 1fr 0.8fr; gap: 18px; align-items: start; }
+.gin-col { display: grid; align-content: start; gap: 14px; }
+.gin-col--decisions, .gin-col--ideas, .gin-col--activity { min-width: 0; }
+.gin-col:focus { outline: none; }
+@media (max-width: 1180px) {
+  .gin-grid { grid-template-columns: 1.15fr 1fr; }
+  .gin-col--activity { grid-column: 1 / -1; }
+}
+@media (max-width: 860px) {
+  .gin-grid { grid-template-columns: minmax(0, 1fr); }
+  .gin-col { display: none; }
+  .gin-col.gin-col--shown { display: grid; }
+}
+
+/* Card skin for the panels and the decision cards */
+.gin-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
+.yf-surface.gin-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); }
+.gin-card-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.gin-help { margin: 4px 0 0; }
+.gin-composer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.gin-composer-hint { margin: 6px 0 12px; }
+.gin-submit { width: 100%; }
+.gin-option-grid { display: grid; gap: 8px; }
+
+/* Decision cards: option rows, vote bars and the footer */
+.gin-decision { display: grid; gap: 10px; }
+.gin-sub { margin: 0; }
+.gin-decision-context { margin: 6px 0 10px; }
+.gin-decision-options { display: grid; gap: 8px; margin: 8px 0; }
+.gin-option { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); cursor: pointer; }
+.gin-radio { margin: 0; width: 16px; height: 16px; accent-color: var(--teal); }
+.gin-option-main { display: grid; gap: 6px; min-width: 0; }
+.gin-option-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.gin-option-label { font-weight: 600; }
+.gin-option-detail { margin: 0; }
+.gin-track { display: block; height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--line); }
+.gin-fill { display: block; height: 100%; width: 0; border-radius: var(--radius-pill); background: var(--teal); opacity: 0.35; transition: width var(--motion-med) var(--ease-paper); }
+.gin-fill--lead { opacity: 1; }
+.gin-option-end { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.gin-option-pct { min-width: 40px; text-align: right; font-weight: 600; }
+.gin-guide-block { margin-top: 10px; }
+.gin-guide-note { margin: 0; }
+.gin-guide-rec { margin: 4px 0 0; }
+.gin-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gin-decided { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.gin-stamp { animation: gin-stamp-in var(--motion-med) var(--ease-settle) both; }
+@keyframes gin-stamp-in { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: none; } }
+
+/* Stop idea rows: a category tile, the title block and the upvote tally */
+.gin-row { border-top: 1px solid var(--line); }
+.gin-row-head { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.gin-cat-tile { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--bg-soft); color: var(--ink-teal); }
+.gin-row-main { display: grid; gap: 4px; min-width: 0; }
+.gin-row-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: 600; }
+.gin-row-meta { margin: 0; }
+.gin-row-by { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.gin-heart { display: inline-flex; align-items: center; gap: 4px; min-width: 40px; justify-content: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-weight: 600; }
+.gin-row-panel { display: grid; gap: 10px; padding: 0 0 14px 56px; }
+.stop-meta.gin-stop-meta { margin-top: 8px; }
+.gin-vote-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gin-item-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.gin-comments { margin-top: 8px; }
+.gin-comment-form { display: flex; gap: 8px; margin-top: 10px; }
+.gin-resolved { display: grid; gap: 4px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.gin-disclosure { justify-self: start; padding: 6px 0; border: 0; background: none; color: var(--ink-teal); font: inherit; font-weight: 600; cursor: pointer; }
+.gin-text-btn { justify-self: start; padding: 6px 0; border: 0; background: none; color: var(--ink-teal); font: inherit; font-weight: 600; cursor: pointer; }
+
+/* Reduced motion: the vote bar and the stamp stop moving */
+@media (prefers-reduced-motion: reduce) {
+  .gin-fill { transition: none; }
+  .gin-stamp { animation: none; }
+}

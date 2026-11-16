@@ -454,6 +454,25 @@
       "owned": [],
       "configClasses": [],
       "variables": []
+    },
+    {
+      "id": "group-input",
+      "file": "src/styles/pages/group-input.css",
+      "owned": [
+        "gin-head", "gin-head-text", "gin-eyebrow", "gin-eyebrow--amber", "gin-eyebrow--ok", "gin-title",
+        "gin-summary", "gin-pillbar", "gin-grid", "gin-col", "gin-col--decisions", "gin-col--ideas",
+        "gin-col--activity", "gin-col--shown", "gin-card-title", "gin-panel", "gin-card-head", "gin-help",
+        "gin-composer", "gin-composer-hint", "gin-submit", "gin-option-grid", "gin-decision", "gin-sub",
+        "gin-decision-context", "gin-decision-options", "gin-option", "gin-radio", "gin-option-main",
+        "gin-option-title", "gin-option-label", "gin-option-detail", "gin-option-end", "gin-option-pct",
+        "gin-track", "gin-fill", "gin-fill--lead", "gin-guide-block", "gin-guide-note", "gin-guide-rec",
+        "gin-foot", "gin-decided", "gin-stamp", "gin-row", "gin-row-head", "gin-cat-tile", "gin-row-main",
+        "gin-row-title", "gin-row-meta", "gin-row-by", "gin-heart", "gin-row-panel", "gin-stop-meta",
+        "gin-vote-row", "gin-item-actions", "gin-comments", "gin-comment-form", "gin-resolved",
+        "gin-disclosure", "gin-text-btn"
+      ],
+      "configClasses": [],
+      "variables": []
     }
   ],
   "legacy": [

@@ -274,7 +274,7 @@ describe('#335 — one quorum, on both surfaces', () => {
     const groupSource = readFileSync(new URL('../src/pages/trip/GroupInputTab.tsx', import.meta.url), 'utf8')
     // Group Input already read the denominator off members; it stays there.
     expect(groupSource).toMatch(/const memberCount = \(trip\.members \?\? \[\]\)\.length/)
-    expect(groupSource).toMatch(/ups \/ memberCount\)/)
+    expect(groupSource).toMatch(/of \{memberCount\} (voted|agreed|upvoted)/)
 
     const storeSource = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8')
     expect(storeSource).not.toMatch(/id: uid\('o'\)\s*\}\)\)/)   // the old rewrite

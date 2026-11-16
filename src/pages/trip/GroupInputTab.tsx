@@ -1,16 +1,13 @@
 // ============ Trip workspace — Group input tab ============
-// Merges the former Suggestions and Decisions tabs into one group-input
-// surface. v0.36: a one-row stat strip + filters, needs-you cards float up
-// with an amber edge and a digest in the sidebar that scrolls to them,
-// decision options show WHO voted what with a tally verdict, the composer
-// gains real Day/Category pickers, a visible transport-cost field and
-// decision context, and per-filter empty states each get an exit.
-// The underlying data model (two tables) and store actions are unchanged.
+// S9 "Decide together": one header with a segmented pill bar, then three columns.
+// Decisions sit in the first column. Stop ideas and their composers sit in the
+// second. The activity feed sits in the third. The data model and the store
+// actions are unchanged.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { InlineIcon } from '../../components/icons'
+import { CatIcon, InlineIcon } from '../../components/icons'
 import { scrollBehavior } from '../../lib/motion'
 import type { FormEvent } from 'react'
-import { Car, ChevronDown, ChevronUp, ClipboardList, Clock, Lightbulb, MapPin, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
+import { Car, ChevronDown, ChevronUp, ClipboardList, Clock, Heart, Lightbulb, MapPin, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
 import { PillNav } from '../../components/PillNav'
 import type { StopCategory, StopSuggestion, Trip, TripDecision } from '../../data/types'
 import type { AcceptanceOutcome, CollabOutcome } from '../../store/collabCommand'
@@ -44,23 +41,44 @@ import {
 
 // ================= Group input tab =================
 
-type Filter = 'all' | 'open' | 'ideas' | 'decisions' | 'mine' | 'resolved'
-type ComposerMode = 'idea' | 'question'
+/** The three content sections: decisions, stop ideas and the activity feed. */
+type Section = 'decisions' | 'ideas' | 'activity'
+/** The pill bar keys. "needs" opens the section that holds the first item needing my vote. */
+type View = 'needs' | Section
+/** The DOM id of each section, so the pill bar can scroll to and focus it. */
+const SECTION_DOM: Record<Section, string> = {
+  decisions: 'gi-section-decisions',
+  ideas: 'gi-section-ideas',
+  activity: 'gi-section-activity',
+}
 /** One interleaved list entry: either a stop suggestion or a trip decision. */
 type GroupItem = { kind: 'idea'; sg: StopSuggestion } | { kind: 'decision'; d: TripDecision }
 
-/** Per-filter empty states — each with its own way out ("Show everything"). */
-const EMPTY_COPY: Record<Filter, { icon: 'idea' | 'question'; title: string; body: string }> = {
-  all: { icon: 'idea', title: 'Nothing waiting on the group', body: 'Propose stops for everyone to vote on, or raise a decision. Both land here with the activity feed.' },
-  open: { icon: 'idea', title: 'Nothing open right now', body: 'Every idea and question has landed. Propose the next one from the composer.' },
-  ideas: { icon: 'idea', title: 'No stop ideas here yet', body: 'Propose one from the composer. The group votes and comments right on the card.' },
-  decisions: { icon: 'question', title: 'No open questions', body: 'Raise a decision to turn a group-chat debate into one clear vote.' },
-  mine: { icon: 'idea', title: 'You’re all caught up', body: 'Nothing on this trip needs your vote right now.' },
-  resolved: { icon: 'question', title: 'Nothing resolved yet', body: 'Once a decision is settled or a suggestion lands on the timeline, it shows up here.' },
-}
+/** Empty copy. Each one shows only after its read has settled with no rows. */
+const EMPTY_COPY = {
+  all: { title: 'Nothing waiting on the group', body: 'Propose stops for everyone to vote on, or raise a decision. Both land here with the activity feed.' },
+  ideas: { title: 'No stop ideas here yet', body: 'Use Add an idea above. The group votes and comments on each row.' },
+  decisions: { title: 'No open questions', body: 'Raise a decision to turn a group-chat debate into one clear vote.' },
+} as const
 
 function itemId(i: GroupItem): string { return i.kind === 'idea' ? i.sg.id : i.d.id }
-function itemTitle(i: GroupItem): string { return i.kind === 'idea' ? i.sg.title : i.d.question }
+function newestOf(i: GroupItem): number {
+  return i.kind === 'idea' ? i.sg.createdAt : i.d.createdAt
+}
+
+/** Up to two initials from a display name, the way the avatar draws them. */
+function initialsOf(name: string | undefined): string {
+  const initials = (name ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('')
+  return initials.toUpperCase() || '?'
+}
+
+/** Day, visit time and the costs an idea records. A zero cost is left out. */
+function ideaMeta(sg: StopSuggestion): string {
+  const parts = [`Day ${sg.dayIndex + 1}`, minutesToHM(sg.visitMinutes)]
+  if (sg.estimatedEntryFeeInr > 0) parts.push(`₹${sg.estimatedEntryFeeInr}/person`)
+  if (sg.estimatedTransportInr > 0) parts.push(`₹${sg.estimatedTransportInr} transport`)
+  return parts.join(' · ')
+}
 
 // #334: accepting a suggestion and resolving a decision are written straight to
 // the cache (`addStop` / `decisions`), never staged into an open preview — a crew
@@ -112,8 +130,11 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
 }) {
   const db = useDb()
   const memberCount = (trip.members ?? []).length
-  const [filter, setFilter] = useState<Filter>('all')
-  const [composerMode, setComposerMode] = useState<ComposerMode>('idea')
+  const [view, setView] = useState<View>('needs')
+  const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null)
+  const [ideaComposerOpen, setIdeaComposerOpen] = useState(false)
+  const [showResolvedIdeas, setShowResolvedIdeas] = useState(false)
+  const [showAllActivity, setShowAllActivity] = useState(false)
 
   const suggestions = db.suggestions.filter(s => s.tripId === trip.id)
   const decisions = db.decisions.filter(d => d.tripId === trip.id)
@@ -134,15 +155,8 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   const suggestionNeedsMe = (sg: StopSuggestion) => sg.status === 'open' && !sg.votes.some(v => v.userId === me.id)
   const decisionNeedsMe = (d: TripDecision) => d.status === 'open' && !d.votesByUserId[me.id]
   const itemNeedsMe = (i: GroupItem) => i.kind === 'idea' ? suggestionNeedsMe(i.sg) : decisionNeedsMe(i.d)
-  const itemResolved = (i: GroupItem) => i.kind === 'idea' ? i.sg.status !== 'open' : i.d.status === 'resolved'
 
-  const openSuggestions = suggestions.filter(s => s.status === 'open')
-  const openDecisions = decisions.filter(d => d.status === 'open')
-  const needsYouCount = openSuggestions.filter(suggestionNeedsMe).length + openDecisions.filter(decisionNeedsMe).length
-  const openCount = openSuggestions.length + openDecisions.length
-  const resolvedCount = (suggestions.length - openSuggestions.length) + (decisions.length - openDecisions.length)
-
-  // Unified interleaved list: needs-you first, then newest first.
+  // Unified list: needs-you first, then newest first. Both columns keep this order.
   const items: GroupItem[] = [
     ...suggestions.map(sg => ({ kind: 'idea' as const, sg })),
     ...decisions.map(d => ({ kind: 'decision' as const, d })),
@@ -150,94 +164,154 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
     if (itemNeedsMe(a) !== itemNeedsMe(b)) return itemNeedsMe(a) ? -1 : 1
     return newestOf(b) - newestOf(a)
   })
-
-  const shown = filter === 'ideas' ? items.filter(i => i.kind === 'idea')
-    : filter === 'decisions' ? items.filter(i => i.kind === 'decision')
-    : filter === 'open' ? items.filter(i => !itemResolved(i))
-    : filter === 'mine' ? items.filter(itemNeedsMe)
-    : filter === 'resolved' ? items.filter(itemResolved)
-    : items
-
+  const sortedIdeas = items.flatMap(i => (i.kind === 'idea' ? [i.sg] : []))
+  const sortedDecisions = items.flatMap(i => (i.kind === 'decision' ? [i.d] : []))
+  const openIdeas = sortedIdeas.filter(sg => sg.status === 'open')
+  const resolvedIdeas = sortedIdeas.filter(sg => sg.status !== 'open')
+  const openDecisions = sortedDecisions.filter(d => d.status === 'open')
+  const resolvedDecisions = sortedDecisions.filter(d => d.status === 'resolved')
   const needsYou = items.filter(itemNeedsMe)
+  const needsYouCount = needsYou.length
+
+  // The header sentence. A zero count is left out, and the sentence still reads.
+  const summary: string[] = []
+  if (needsYouCount > 0) summary.push(`${needsYouCount} ${needsYouCount === 1 ? 'vote needs' : 'votes need'} you`)
+  if (resolvedDecisions.length > 0) summary.push(`${resolvedDecisions.length} decided`)
+  if (openIdeas.length > 0) summary.push(`${openIdeas.length} stop ${openIdeas.length === 1 ? 'idea' : 'ideas'}`)
+
+  // "Needs you" opens the section that holds the first item that needs my vote.
+  const needsSection: 'decisions' | 'ideas' = needsYou[0]?.kind === 'idea' ? 'ideas' : 'decisions'
+  // Below 860px one column shows at a time. Wider, every column shows.
+  const sectionOnScreen: Section = view === 'needs' ? needsSection : view
+  const feed = tripActivity.slice(0, 20)
+  const feedRows = showAllActivity ? feed : feed.slice(0, 4)
+
+  /** One tap opens an idea row and its actions. A second tap closes it. */
+  function toggleIdea(id: string) {
+    setSelectedIdeaId(current => (current === id ? null : id))
+  }
+
+  const renderIdea = (sg: StopSuggestion) => (
+    <IdeaRow key={sg.id} sg={sg} trip={trip} me={me} editable={editable} memberCount={memberCount}
+      needsMe={suggestionNeedsMe(sg)} previewOpen={previewOpen}
+      selected={selectedIdeaId === sg.id} onSelect={toggleIdea} />
+  )
 
   const [pendingTarget, setPendingTarget] = useState<string | null>(null)
   useEffect(() => {
     if (!pendingTarget) return
-    const el = document.getElementById(`gi-item-${pendingTarget}`)
+    const el = document.getElementById(pendingTarget)
     if (!el) return
     el.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
     el.focus({ preventScroll: true })
     setPendingTarget(null)
-  }, [pendingTarget, shown])
+  }, [pendingTarget, items])
 
-  /** Park the digest request until its card is rendered, even behind a filter. */
-  function focusItem(id: string) {
-    setPendingTarget(id)
-    if (!shown.some(item => itemId(item) === id)) setFilter('all')
+  /** Park the focus request until its row renders, then scroll to it and focus it. */
+  function focusItem(id: string) { setPendingTarget(`gi-item-${id}`) }
+
+  /** One pill press: show that section (one column below 860px) and focus it. */
+  function jump(next: View) {
+    setView(next)
+    if (next !== 'needs') { setPendingTarget(SECTION_DOM[next]); return }
+    const first = needsYou[0]
+    if (!first) { setPendingTarget(SECTION_DOM[needsSection]); return }
+    if (first.kind === 'idea') setSelectedIdeaId(first.sg.id)
+    focusItem(itemId(first))
   }
 
   return (
     <div>
-      <h2 className="sr-only">Group input</h2>
-      {/* ONE filter bar (workspace tab-rail look) — the old count-pill row was
-          the same filters in a second visual language. Counts live inside the
-          pills; "All" carries the open count, Need you its amber hot badge. */}
-      <div className="gi-strip">
-        <PillNav className="filter-pillbar" role="group" aria-label="Filter group input" activeKey={filter}>
-          <button type="button" data-pill-key="all" className={`clickable-chip chip${filter === 'all' ? ' on-teal' : ''}`}
-            onClick={() => setFilter('all')} aria-pressed={filter === 'all'}>
-            All{openCount > 0 && <span className="tab-count">{openCount} open</span>}
-          </button>
-          <button type="button" data-pill-key="ideas" className={`clickable-chip chip${filter === 'ideas' ? ' on-teal' : ''}`}
-            onClick={() => setFilter('ideas')} aria-pressed={filter === 'ideas'}>Stop ideas</button>
-          <button type="button" data-pill-key="decisions" className={`clickable-chip chip${filter === 'decisions' ? ' on-teal' : ''}`}
-            onClick={() => setFilter('decisions')} aria-pressed={filter === 'decisions'}>Decisions</button>
-          <button type="button" data-pill-key="mine" className={`clickable-chip chip${filter === 'mine' ? ' on-teal' : ''}`}
-            onClick={() => setFilter('mine')} aria-pressed={filter === 'mine'}>
-            Need you{needsYouCount > 0 && <span className="tab-count tab-count--hot">{needsYouCount}</span>}
-          </button>
-          <button type="button" data-pill-key="resolved" className={`clickable-chip chip${filter === 'resolved' ? ' on-teal' : ''}`}
-            onClick={() => setFilter('resolved')} aria-pressed={filter === 'resolved'}>
-            Resolved{resolvedCount > 0 && <span className="tab-count tab-count--muted">{resolvedCount}</span>}
-          </button>
+      <div className="gin-head">
+        <div className="gin-head-text">
+          <p className="gin-eyebrow">Crew · group input</p>
+          <h2 className="gin-title">Decide together</h2>
+          {summary.length > 0 && <p className="small muted gin-summary">{summary.join(' · ')}</p>}
+        </div>
+        <PillNav className="mode-pillbar gin-pillbar" role="group" aria-label="Jump to a section" activeKey={view}>
+          <button type="button" data-pill-key="needs" className={`tab-btn${view === 'needs' ? ' active' : ''}`}
+            onClick={() => jump('needs')} aria-pressed={view === 'needs'}>Needs you · {needsYouCount}</button>
+          <button type="button" data-pill-key="decisions" className={`tab-btn${view === 'decisions' ? ' active' : ''}`}
+            onClick={() => jump('decisions')} aria-pressed={view === 'decisions'}>Decisions · {openDecisions.length}</button>
+          <button type="button" data-pill-key="ideas" className={`tab-btn${view === 'ideas' ? ' active' : ''}`}
+            onClick={() => jump('ideas')} aria-pressed={view === 'ideas'}>Stop ideas · {openIdeas.length}</button>
+          <button type="button" data-pill-key="activity" className={`tab-btn${view === 'activity' ? ' active' : ''}`}
+            onClick={() => jump('activity')} aria-pressed={view === 'activity'}>Activity</button>
         </PillNav>
       </div>
 
-      <div className="two-col">
-        <div>
-          {items.length > 0 && listFailed && (
-            <StateBlock kind="kept" size="compact" title="Couldn’t refresh group input. Showing what was loaded."
-              actions={<button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button>} />
-          )}
-          {items.length === 0 && listFailed && (() => {
-            const copy = emptyCopyFor('failed', 'group input', retryGroupInput)
-            return (
-              <StateBlock kind="failed" size="compact" title={copy.title} body={copy.body}
-                icon={<Lightbulb size={38} aria-hidden />}
-                actions={<button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button>} />
-            )
-          })()}
-          {items.length === 0 && listReading && (
-            <StateBlock kind="loading" size="compact" title="Loading group input…" art={<div className="spinner" />} />
-          )}
-          {items.length === 0 && !listFailed && !listReading && (
-            <StateBlock kind="empty" size="compact" title={EMPTY_COPY.all.title} body={EMPTY_COPY.all.body}
-              icon={<Lightbulb size={38} aria-hidden />} />
-          )}
-          {items.length > 0 && shown.length === 0 && (
-            <StateBlock kind="empty" size="compact" title={EMPTY_COPY[filter].title} body={EMPTY_COPY[filter].body}
-              icon={EMPTY_COPY[filter].icon === 'idea' ? <Lightbulb size={38} aria-hidden /> : <Scale size={38} aria-hidden />}
-              actions={<button className="btn btn-outline btn-sm" onClick={() => setFilter('all')}>Show everything</button>} />
-          )}
-          {shown.map(item => item.kind === 'idea'
-            ? <SuggestionCard key={item.sg.id} sg={item.sg} trip={trip} me={me} editable={editable} memberCount={memberCount}
-                needsMe={suggestionNeedsMe(item.sg)} previewOpen={previewOpen} />
-            : <DecisionCard key={item.d.id} d={item.d} me={me} editable={editable}
-                needsMe={decisionNeedsMe(item.d)} trip={trip} previewOpen={previewOpen} slotResolution={slotResolution} />
-          )}
+      {items.length > 0 && listFailed && (
+        <StateBlock kind="kept" size="compact" title="Couldn’t refresh group input. Showing what was loaded."
+          actions={<button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button>} />
+      )}
+      {items.length === 0 && listFailed && (() => {
+        const copy = emptyCopyFor('failed', 'group input', retryGroupInput)
+        return (
+          <StateBlock kind="failed" size="compact" title={copy.title} body={copy.body}
+            icon={<Lightbulb size={38} aria-hidden />}
+            actions={<button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button>} />
+        )
+      })()}
+      {items.length === 0 && listReading && (
+        <StateBlock kind="loading" size="compact" title="Loading group input…" art={<div className="spinner" />} />
+      )}
+      {items.length === 0 && !listFailed && !listReading && (
+        <StateBlock kind="empty" size="compact" title={EMPTY_COPY.all.title} body={EMPTY_COPY.all.body}
+          icon={<Lightbulb size={38} aria-hidden />} />
+      )}
 
+      <div className="gin-grid">
+        <div id="gi-section-decisions" tabIndex={-1}
+          className={`gin-col gin-col--decisions${sectionOnScreen === 'decisions' ? ' gin-col--shown' : ''}`}>
+          {items.length > 0 && decisionsRead === 'ready' && sortedDecisions.length === 0 && (
+            <StateBlock kind="empty" size="compact" title={EMPTY_COPY.decisions.title} body={EMPTY_COPY.decisions.body}
+              icon={<Scale size={38} aria-hidden />} />
+          )}
+          {[...openDecisions, ...resolvedDecisions].map(d => (
+            <DecisionCard key={d.id} d={d} me={me} editable={editable} memberCount={memberCount}
+              needsMe={decisionNeedsMe(d)} trip={trip} previewOpen={previewOpen} slotResolution={slotResolution} />
+          ))}
+        </div>
+
+        <div id="gi-section-ideas" tabIndex={-1}
+          className={`gin-col gin-col--ideas${sectionOnScreen === 'ideas' ? ' gin-col--shown' : ''}`}>
           <Surface className="card gin-panel">
-            <h3 className="gin-card-title">Activity feed</h3>
+            <div className="gin-card-head">
+              <div>
+                <h3 className="gin-card-title">Stop ideas</h3>
+                <p className="small muted gin-help">Anyone can suggest. Editors add the ones the group likes; the engine says where each one fits.</p>
+              </div>
+              <button type="button" className="btn btn-outline btn-sm" aria-expanded={ideaComposerOpen}
+                aria-controls="gi-idea-composer" onClick={() => setIdeaComposerOpen(open => !open)}>
+                <Plus size={14} aria-hidden /> Add an idea
+              </button>
+            </div>
+            <div id="gi-idea-composer" className="gin-composer" hidden={!ideaComposerOpen}>
+              <SuggestionComposerForm trip={trip} />
+            </div>
+            {items.length > 0 && suggestionsRead === 'ready' && sortedIdeas.length === 0 && (
+              <StateBlock kind="empty" size="compact" title={EMPTY_COPY.ideas.title} body={EMPTY_COPY.ideas.body}
+                icon={<Lightbulb size={38} aria-hidden />} />
+            )}
+            {openIdeas.map(renderIdea)}
+            {resolvedIdeas.length > 0 && (
+              <div className="gin-resolved">
+                <button type="button" className="gin-disclosure" aria-expanded={showResolvedIdeas}
+                  aria-controls={showResolvedIdeas ? 'gi-resolved-ideas' : undefined}
+                  onClick={() => setShowResolvedIdeas(open => !open)}>Resolved ideas · {resolvedIdeas.length}</button>
+                {showResolvedIdeas && <div id="gi-resolved-ideas">{resolvedIdeas.map(renderIdea)}</div>}
+              </div>
+            )}
+          </Surface>
+          <Surface className="card gin-panel">
+            <DecisionComposerForm trip={trip} />
+          </Surface>
+        </div>
+
+        <div id="gi-section-activity" tabIndex={-1}
+          className={`gin-col gin-col--activity${sectionOnScreen === 'activity' ? ' gin-col--shown' : ''}`}>
+          <Surface className="card gin-panel">
+            <h3 className="gin-card-title">Activity</h3>
             <hr className="divider" />
             {activityRead === 'failed' && tripActivity.length > 0 && (
               <StateBlock kind="kept" size="compact" title="Couldn’t refresh activity. Showing what was loaded."
@@ -250,41 +324,19 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
             {activityRead === 'ready' && tripActivity.length === 0 && (
               <StateBlock kind="empty" size="compact" title="No activity yet." />
             )}
-            {tripActivity.slice(0, 20).map(a => (
+            {feedRows.map(a => (
               <div key={a.id} className="feed-item">
                 <Avatar user={userById(a.actorId)} />
                 <span><b>{userById(a.actorId)?.profile.name}</b> {a.verb}{a.target ? ` · ${a.target}` : ''}</span>
                 <span className="feed-time">{timeAgo(a.at)}</span>
               </div>
             ))}
-          </Surface>
-        </div>
-
-        <div>
-          {needsYou.length > 0 && (
-            <Surface className="card gin-digest-card gin-panel">
-              <h3 className="gin-card-title">Needs you</h3>
-              <hr className="divider" />
-              {needsYou.map(i => (
-                <button key={itemId(i)} type="button" className="digest-row"
-                  onClick={() => focusItem(itemId(i))}>
-                  {i.kind === 'idea' ? <Lightbulb size={14} aria-hidden /> : <Scale size={14} aria-hidden />}
-                  <span className="digest-title">{itemTitle(i)}</span>
-                  <span className="digest-sub num">{digestSub(i)}</span>
-                </button>
-              ))}
-            </Surface>
-          )}
-          <Surface className="card gin-panel">
-            <PillNav className="mode-pillbar" role="group" aria-label="What do you want to add?" activeKey={composerMode}>
-              {([['idea', 'Stop idea'], ['question', 'Question']] as const).map(([k, label]) => (
-                <button key={k} type="button" data-pill-key={k} className={`tab-btn${composerMode === k ? ' active' : ''}`}
-                  onClick={() => setComposerMode(k)} aria-pressed={composerMode === k}>{label}</button>
-              ))}
-            </PillNav>
-            {composerMode === 'idea'
-              ? <SuggestionComposerForm trip={trip} />
-              : <DecisionComposerForm trip={trip} />}
+            {tripActivity.length > 4 && (
+              <button type="button" className="gin-text-btn" aria-expanded={showAllActivity}
+                onClick={() => setShowAllActivity(open => !open)}>
+                {showAllActivity ? 'Show less' : 'Show everything'}
+              </button>
+            )}
           </Surface>
         </div>
       </div>
@@ -292,23 +344,9 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   )
 }
 
-function newestOf(i: GroupItem): number {
-  return i.kind === 'idea' ? i.sg.createdAt : i.d.createdAt
-}
+// ================= Stop idea row =================
 
-/** Sidebar digest subtitle: where my vote is missing. */
-function digestSub(i: GroupItem): string {
-  if (i.kind === 'idea') {
-    const ups = i.sg.votes.filter(v => v.value === 1).length
-    return `Day ${i.sg.dayIndex + 1} · ${ups} upvoted so far`
-  }
-  const votes = Object.keys(i.d.votesByUserId).length
-  return votes > 0 ? `${votes} voted so far` : 'Be the first to vote'
-}
-
-// ================= Suggestion card =================
-
-function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewOpen }: {
+function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, selected, onSelect }: {
   sg: StopSuggestion
   trip: Trip
   me: NonNullable<ReturnType<typeof currentUser>>
@@ -316,12 +354,14 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
   memberCount: number
   needsMe: boolean
   previewOpen?: boolean
+  selected: boolean
+  onSelect: (id: string) => void
 }) {
   const ups = sg.votes.filter(v => v.value === 1).length
   const downs = sg.votes.length - ups
   const myVote = sg.votes.find(v => v.userId === me.id)?.value
-  const consensusPct = memberCount ? Math.round((ups / memberCount) * 100) : 0
   const author = userById(sg.proposedBy)
+  const open = sg.status === 'open'
   const { busy, claim, release } = useBusyClaim(sg.id)
   // Only the user's CHOICE lives here. The day list is read from the trip at
   // render time: a day removed while the panel was open must disappear from the
@@ -336,6 +376,8 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
   const followUp: SuggestionFollowUp | null = retarget
     ? { kind: 'retarget', ...retarget }
     : duplicate ? { kind: 'duplicate', ...duplicate } : null
+  // A follow-up question or a held claim keeps the row open, so it cannot be hidden.
+  const expanded = selected || followUp !== null || busy
 
   async function accept(opts: { dayId?: string; dayIndex?: number; allowDuplicate?: boolean } = {}) {
     try {
@@ -352,102 +394,334 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
       release()
     }
   }
+
   return (
-    <Surface id={`gi-item-${sg.id}`} tabIndex={-1} className={`card gi-item gin-item-card gin-panel${needsMe ? ' gi-needs-you' : ''}`}>
-      <div className="gin-item-layout">
-      <div className="vote-col">
-        <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} disabled={sg.status !== 'open'} onClick={() => void voteSuggestion(trip.id, sg.id, 1).then(o => reportCollabOutcome(o))} aria-label="Upvote" aria-pressed={myVote === 1}><ChevronUp size={13} aria-hidden /></button>
-        <span className="vote-count">{ups - downs}</span>
-        <button className={`vote-btn ${myVote === -1 ? 'on' : ''}`} disabled={sg.status !== 'open'} onClick={() => void voteSuggestion(trip.id, sg.id, -1).then(o => reportCollabOutcome(o))} aria-label="Downvote" aria-pressed={myVote === -1}><ChevronDown size={13} aria-hidden /></button>
-      </div>
-      <div>
-        <div className="row-between">
-          <h3 className="gin-card-title">{sg.title}</h3>
-          <span className="gin-chip-group">
-            {needsMe && <Chip tone="saffron">Needs your vote</Chip>}
-            {sg.status === 'open' && consensusPct >= 60 && <Chip tone="teal">Best fit</Chip>}
-            <Chip tone={sg.status === 'accepted' ? 'ok' : sg.status === 'declined' ? 'danger' : 'teal'}>{cap(sg.status)}</Chip>
+    <div id={`gi-item-${sg.id}`} tabIndex={-1} className={`gin-row gi-item${needsMe ? ' gi-needs-you' : ''}`}>
+      <button type="button" className="gin-row-head" aria-expanded={expanded}
+        aria-controls={expanded ? `gi-row-panel-${sg.id}` : undefined} onClick={() => onSelect(sg.id)}>
+        <span className="gin-cat-tile"><CatIcon category={sg.category} size={18} /></span>
+        <span className="gin-row-main">
+          <span className="gin-row-title">
+            {sg.title}
+            {!open && <Chip tone={sg.status === 'accepted' ? 'ok' : 'danger'}>{cap(sg.status)}</Chip>}
           </span>
-        </div>
-        <div className="creator-line gin-creator-line">
-          <Avatar user={author} /> {author?.profile.name ?? 'Traveller'} suggested for Day {sg.dayIndex + 1}
-        </div>
-        {sg.description && <p className="small muted">{sg.description}</p>}
-        <div className="stop-meta gin-stop-meta">
-          <span><MapPin size={13} aria-hidden /> {sg.locationName}</span>
-          <span><Clock size={13} aria-hidden /> {minutesToHM(sg.visitMinutes)}</span>
-          <span><Ticket size={13} aria-hidden /> ₹{sg.estimatedEntryFeeInr}/person</span>
-          <span><Car size={13} aria-hidden /> ₹{sg.estimatedTransportInr} transport</span>
-        </div>
-        <div className="gin-consensus-row">
-          <div className="consensus-bar gin-consensus-track" role="img" aria-label={`Consensus ${consensusPct}% of members upvoted`}>
-            {/* neutral → amber → green, each clearing 3:1 on the --bg-soft track
-                in both themes (was --line 1.18 / --saffron 1.85 / --ok 3.67 — the
-                low segment was invisible and mid failed the non-text floor). */}
-            <div style={{ width: `${consensusPct}%`, background: consensusPct >= 60 ? 'var(--ink-ok)' : consensusPct >= 35 ? 'var(--ink-amber)' : 'var(--text-3)' }} />
+          <span className="gin-row-meta small muted num">{ideaMeta(sg)}</span>
+          <span className="gin-row-by small muted"><Avatar user={author} /> suggested by {initialsOf(author?.profile.name)}</span>
+        </span>
+        <span className="gin-heart"><Heart size={13} aria-hidden /> {ups}</span>
+      </button>
+      {expanded && (
+        <div id={`gi-row-panel-${sg.id}`} className="gin-row-panel">
+          <div className="stop-meta gin-stop-meta">
+            <span><MapPin size={13} aria-hidden /> {sg.locationName}</span>
+            <span><Clock size={13} aria-hidden /> {minutesToHM(sg.visitMinutes)}</span>
+            <span><Ticket size={13} aria-hidden /> ₹{sg.estimatedEntryFeeInr}/person</span>
+            <span><Car size={13} aria-hidden /> ₹{sg.estimatedTransportInr} transport</span>
           </div>
-          <span className="small muted num gin-consensus-count">{ups} of {memberCount} upvoted</span>
-        </div>
-
-        {editable && sg.status === 'open' && (
-          // off-ladder 11px: stays inline until the page redesign
-          <div className="gin-item-actions" style={{ marginTop: 11 }}>
-            <button className="btn btn-primary btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
-              if (refuseWhileStaged(previewOpen)) return
-              if (!claim()) return
-              accept()
-            }}>Add to timeline</button>
-            <button className="btn btn-danger btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
-              if (refuseWhileStaged(previewOpen)) return
-              if (!claim()) return
-              void declineSuggestion(trip.id, sg.id).then(o => {
-                reportCollabOutcome(o, 'Suggestion declined')
-                // A refused receipt leaves the row on screen with its status
-                // unchanged — free the claim or the buttons strand disabled.
-                if (o.status !== 'applied' && o.status !== 'alreadyApplied') release()
-              })
-            }}>Decline</button>
+          {sg.description && <p className="small muted">{sg.description}</p>}
+          <div className="gin-vote-row">
+            <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} disabled={!open}
+              onClick={() => void voteSuggestion(trip.id, sg.id, 1).then(o => reportCollabOutcome(o))}
+              aria-label="Upvote" aria-pressed={myVote === 1}><ChevronUp size={13} aria-hidden /></button>
+            <span className="vote-count">{ups - downs}</span>
+            <button className={`vote-btn ${myVote === -1 ? 'on' : ''}`} disabled={!open}
+              onClick={() => void voteSuggestion(trip.id, sg.id, -1).then(o => reportCollabOutcome(o))}
+              aria-label="Downvote" aria-pressed={myVote === -1}><ChevronDown size={13} aria-hidden /></button>
+            <span className="small muted num">{ups} of {memberCount} upvoted</span>
           </div>
-        )}
 
-        {followUp && (
-          <SuggestionFollowUpPanel
-            followUp={followUp}
-            days={liveDays}
-            busy={busy}
-            previewOpen={previewOpen}
-            onPickDay={dayId => setRetarget(r => (r ? { ...r, dayId } : r))}
-            onConfirm={() => {
-              if (!claim()) return
-              if (followUp.kind === 'retarget') accept({ dayId: followUp.dayId })
-              else accept({ dayId: followUp.dayId, allowDuplicate: true })
-            }}
-            onCancel={() => {
-              if (followUp.kind === 'retarget') setRetarget(null)
-              else setDuplicate(null)
-              if (followUp.kind === 'retarget') setRetargetDays(null)
-              release()
-            }}
-          />
-        )}
-
-        {sg.comments.length > 0 && (
-          <div className="gin-comments">
-            {sg.comments.map(c => (
-              <div key={c.id} className="comment">
-                <Avatar user={userById(c.authorId)} />
-                <div className="comment-body">
-                  <span className="comment-author">{userById(c.authorId)?.profile.name}</span>
-                  <span className="comment-time">{timeAgo(c.createdAt)}</span>
-                  <div>{c.text}</div>
+          {editable && open && (
+            <div className="gin-item-actions">
+              <button className="btn btn-primary btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
+                if (refuseWhileStaged(previewOpen)) return
+                if (!claim()) return
+                accept()
+              }}>Add to timeline</button>
+              <button className="btn btn-ghost btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
+                if (refuseWhileStaged(previewOpen)) return
+                if (!claim()) return
+                void declineSuggestion(trip.id, sg.id).then(o => {
+                  reportCollabOutcome(o, 'Suggestion declined')
+                  // A refused receipt leaves the row on screen with its status
+                  // unchanged, so the claim is freed or the buttons stay disabled.
+                  if (o.status !== 'applied' && o.status !== 'alreadyApplied') release()
+                })
+              }}>Decline</button>
+            </div>
+          )}
+          {followUp && (
+            <SuggestionFollowUpPanel
+              followUp={followUp}
+              days={liveDays}
+              busy={busy}
+              previewOpen={previewOpen}
+              onPickDay={dayId => setRetarget(r => (r ? { ...r, dayId } : r))}
+              onConfirm={() => {
+                if (!claim()) return
+                if (followUp.kind === 'retarget') accept({ dayId: followUp.dayId })
+                else accept({ dayId: followUp.dayId, allowDuplicate: true })
+              }}
+              onCancel={() => {
+                if (followUp.kind === 'retarget') setRetarget(null)
+                else setDuplicate(null)
+                if (followUp.kind === 'retarget') setRetargetDays(null)
+                release()
+              }}
+            />
+          )}
+          {sg.comments.length > 0 && (
+            <div className="gin-comments">
+              {sg.comments.map(c => (
+                <div key={c.id} className="comment">
+                  <Avatar user={userById(c.authorId)} />
+                  <div className="comment-body">
+                    <span className="comment-author">{userById(c.authorId)?.profile.name}</span>
+                    <span className="comment-time">{timeAgo(c.createdAt)}</span>
+                    <div>{c.text}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          )}
+          <CommentForm onSubmit={text => addCommentToSuggestion(trip.id, sg.id, text).then(o => { reportCollabOutcome(o); return o })} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ================= Decision card =================
+
+function DecisionCard({ d, me, editable, needsMe, memberCount, trip, previewOpen, slotResolution }: {
+  d: TripDecision
+  me: { id: string }
+  editable: boolean
+  needsMe: boolean
+  memberCount: number
+  trip: Trip
+  previewOpen?: boolean
+  slotResolution: SlotResolutionContext | null
+}) {
+  const tally = d.options.map(o => Object.values(d.votesByUserId).filter(v => v === o.id).length)
+  const totalVotes = tally.reduce((s, t) => s + t, 0)
+  const leadingIdx = totalVotes > 0 ? tally.indexOf(Math.max(...tally)) : -1
+  const votersOf = (optionId: string) => Object.entries(d.votesByUserId).filter(([, o]) => o === optionId).map(([u]) => u)
+  const voterCount = Object.keys(d.votesByUserId).length
+  const myOptionId: string | undefined = d.votesByUserId[me.id]
+  const open = d.status === 'open'
+  const raiser = userById(d.raisedBy)?.profile.name ?? 'Traveller'
+  // Grounded trip context + offline recommendation (§6.8): the deterministic
+  // guide, using the same engine data the Overview shows. Recomputed when the
+  // trip or decision changes (a new vote can flip the tie-break).
+  const ctx = useMemo(() => decisionContext(trip), [trip])
+  const rec = useMemo(() => recommendForDecision(trip, d, ctx), [trip, d, ctx])
+  const { busy, claim, release } = useBusyClaim(d.id)
+  const [pick, setPick] = useState<string | null>(null)
+  const [commenting, setCommenting] = useState(false)
+  const [stamped, setStamped] = useState(false)
+  const [placementDayId, setPlacementDayId] = useState('')
+  const [placementDays, setPlacementDays] = useState<Array<{ id: string; index: number; title?: string }> | null>(null)
+  const [openDayOptionId, setOpenDayOptionId] = useState<string | null>(null)
+  const [roadRefusal, setRoadRefusal] = useState<{ copy: string; recoverable: boolean } | null>(null)
+  const resolvedOption = d.options.find(o => o.id === d.resolvedOptionId)
+  const agreed = d.resolvedOptionId ? votersOf(d.resolvedOptionId).length : 0
+  const needsPlacement = d.status === 'resolved' && !!d.resolvedOptionId && !d.resolvedStopId && !!resolvedOption?.place
+  // An open legacy poll can reach this picker after a missing-day refusal.
+  const pickerOptionId = needsPlacement ? (d.resolvedOptionId ?? null) : openDayOptionId
+  const pickerOption = pickerOptionId ? d.options.find(o => o.id === pickerOptionId) : undefined
+  const availablePlacementDays = placementDays ?? trip.days.map(day => ({
+    id: day.id, index: day.index, ...(day.title ? { title: day.title } : {}),
+  }))
+
+  // The orchestration captures day, route, anchor and revision as one snapshot.
+  // It is pure, so no await can lend a newer trip to an older measurement.
+  // Every resolve route goes through it, including the day-picker retry.
+  async function resolveChoice(optionId: string, target: LegacyResolutionTarget = {}) {
+    const flow = await runDecisionResolution(
+      { context: slotResolution, decision: d, optionId, target, previewOpen },
+      {
+        resolveDecision, toast, reportCollabOutcome, refuseWhileStaged,
+        claim, release, onPlacementDays: setPlacementDays, onPlacementDayId: setPlacementDayId,
+      },
+    )
+    if (flow.kind === 'refused') {
+      setRoadRefusal(flow.reason === 'missing-road' || flow.reason === 'stale-road' || flow.reason === 'road-unavailable'
+        ? { copy: flow.copy, recoverable: flow.recoverable }
+        : null)
+      setOpenDayOptionId(flow.reason === 'missing-day' ? optionId : null)
+      return
+    }
+    setRoadRefusal(null)
+    // The stamp plays only for a resolution this card made, so a page load never replays it.
+    if (flow.kind === 'settled') setStamped(true)
+    setOpenDayOptionId(flow.kind === 'settled' && flow.needsDayPicker ? (d.resolvedOptionId ?? optionId) : null)
+  }
+
+  /** Send my ballot. A ballot change is a set, so a repeat of my own option does nothing. */
+  function castVote() {
+    if (!pick || pick === myOptionId) return
+    void voteOnDecision(d.id, pick).then(o => reportCollabOutcome(o))
+  }
+
+  return (
+    <Surface id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-panel gin-decision${needsMe ? ' gi-needs-you' : ''}`}>
+      {open ? (
+        <>
+          {needsMe && <p className="gin-eyebrow gin-eyebrow--amber">Needs your vote</p>}
+          <h3 className="gin-card-title">{d.question}</h3>
+          <p className="small muted gin-sub">Raised by {raiser} · {voterCount} of {memberCount} voted</p>
+          {d.context && <p className="small muted gin-decision-context">{d.context}</p>}
+          <div className="gin-decision-options" role="radiogroup" aria-label={`Options for ${d.question}`}>
+            {d.options.map((o, i) => {
+              const pct = totalVotes > 0 ? Math.round((tally[i] / totalVotes) * 100) : 0
+              const leading = i === leadingIdx && tally[i] > 0
+              const voters = votersOf(o.id)
+              const detail = [
+                o.place?.locationName,
+                o.timeImpactMin ? `≈${o.timeImpactMin} min detour` : '',
+                o.costImpactInr ? `${o.costImpactInr > 0 ? '+' : ''}${formatInr(o.costImpactInr)}` : '',
+              ].filter(Boolean).join(' · ')
+              return (
+                <label key={o.id} className="gin-option">
+                  <input type="radio" className="gin-radio" name={`vote-${d.id}`} value={o.id}
+                    checked={(pick ?? myOptionId) === o.id} onChange={() => setPick(o.id)} />
+                  <span className="gin-option-main">
+                    <span className="gin-option-title">
+                      <span className="gin-option-label">{o.label}</span>
+                      {rec?.optionId === o.id && <Chip tone="teal">Best fit · engine</Chip>}
+                    </span>
+                    {detail && <span className="gin-option-detail small muted num">{detail}</span>}
+                    <span className="gin-track" aria-hidden>
+                      <span className={`gin-fill${leading ? ' gin-fill--lead' : ''}`} style={{ width: `${pct}%` }} />
+                    </span>
+                  </span>
+                  <span className="gin-option-end">
+                    {voters.length > 0 && (
+                      <span className="who-voted" role="img"
+                        aria-label={`Voted for this: ${voters.map(v => userById(v)?.profile.name ?? 'Traveller').join(', ')}`}>
+                        {(() => {
+                          const first = voters.slice(0, 4)
+                          const tones = assignAvatarTones(first)
+                          return first.map((v, index) => (
+                            <Avatar key={v} user={userById(v)} tone={tones[index]} />
+                          ))
+                        })()}
+                        {voters.length > 4 && <span className="who-more">+{voters.length - 4}</span>}
+                      </span>
+                    )}
+                    <span className="gin-option-pct num">{pct}%</span>
+                  </span>
+                </label>
+              )
+            })}
           </div>
-        )}
-        <CommentForm onSubmit={text => addCommentToSuggestion(trip.id, sg.id, text).then(o => { reportCollabOutcome(o); return o })} />
-      </div>
-      </div>
+          <div className="gi-guide gin-guide-block">
+            <p className="small muted gin-guide-note">
+              <InlineIcon icon={ClipboardList} size={12} gap={4} />
+              {contextLine(ctx)}
+            </p>
+            {rec && (
+              <p className="small gin-guide-rec">
+                <InlineIcon icon={Sparkles} size={12} gap={4} />
+                <b>{rec.label}</b>: {rec.reason} <Chip tone="info">offline</Chip>
+              </p>
+            )}
+          </div>
+          {totalVotes > 0 && (
+            <p className="small muted verdict-line">
+              Tally leans <b>{d.options[leadingIdx]?.label}</b>{needsMe ? '. Your vote could flip it' : '. Editors resolve'}.
+            </p>
+          )}
+          <div className="gin-foot">
+            <button type="button" className="btn btn-primary btn-sm" disabled={!pick || pick === myOptionId}
+              onClick={castVote}>Vote</button>
+            <button type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
+              onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
+          </div>
+          {editable && (
+            <div className="resolve-btns">
+              {d.options.map((o, i) => (
+                <button key={o.id} className={`btn btn-sm ${i === leadingIdx ? 'btn-primary' : 'btn-outline'}`} disabled={busy} aria-busy={busy}
+                  onClick={() => {
+                    if (refuseWhileStaged(previewOpen)) return
+                    void resolveChoice(o.id)
+                  }}>
+                  Resolve: {o.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+
+        <>
+          <div className="gin-decided">
+            <div>
+              <p className="gin-eyebrow gin-eyebrow--ok">Decided · {timeAgo(d.resolvedAt ?? d.createdAt)}</p>
+              <h3 className="gin-card-title">{resolvedOption?.label ?? d.question}</h3>
+              <p className="small muted gin-sub">{d.question}</p>
+              <p className="small muted gin-sub">{agreed} of {memberCount} agreed</p>
+            </div>
+            <span className={`chip chip-ok${stamped ? ' gin-stamp' : ''}`}>Chosen</span>
+          </div>
+          <div className="gin-foot">
+            <button type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
+              onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
+          </div>
+        </>
+      )}
+      {pickerOptionId && pickerOption?.place && (
+        <div className="gin-item-actions gin-followup" role="group" aria-label="Choose a day for the winning stop">
+          <p className="small muted">{needsPlacement
+            ? `${pickerOption.place.title} won the vote. Choose a current day to place it.`
+            : 'This slot vote has no day. Choose a current day, then place it.'}</p>
+          {availablePlacementDays.length === 0 ? (
+            <p className="small">This trip has no days. Add a day in the timeline, then choose a day here.</p>
+          ) : (
+            <>
+              <select className="select" aria-label="Day for the winning stop" value={placementDayId}
+                onChange={e => setPlacementDayId(e.target.value)}>
+                <option value="">Pick a day</option>
+                {availablePlacementDays.map(day => <option key={day.id} value={day.id}>
+                  Day {day.index + 1}{day.title ? ` · ${day.title}` : ''}
+                </option>)}
+              </select>
+              <button className="btn btn-primary btn-sm" disabled={busy || !placementDayId} aria-busy={busy}
+                onClick={() => { void resolveChoice(pickerOptionId, { dayId: placementDayId }) }}>
+                {needsPlacement ? 'Place winning stop' : 'Place on chosen day'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {roadRefusal && (
+        <div className="gin-item-actions gin-followup" role="group" aria-label="Route for ordered placement">
+          <p className="small muted">{roadRefusal.copy}</p>
+          {roadRefusal.recoverable && slotResolution?.road?.retry && (
+            <button className="btn btn-outline btn-sm"
+              onClick={() => slotResolution?.road?.retry()}>
+              {slotResolution?.road?.status === 'failed' ? 'Retry measurement' : 'Measure route'}
+            </button>
+          )}
+        </div>
+      )}
+      {d.comments.length > 0 && (
+        <div className="gin-comments">
+          {d.comments.map(c => (
+            <div key={c.id} className="comment">
+              <Avatar user={userById(c.authorId)} />
+              <div className="comment-body">
+                <span className="comment-author">{userById(c.authorId)?.profile.name}</span>
+                <span className="comment-time">{timeAgo(c.createdAt)}</span>
+                <div>{c.text}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {commenting && (
+        <CommentForm onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
+      )}
     </Surface>
   )
 }
@@ -571,192 +845,6 @@ function CommentForm({ onSubmit }: { onSubmit: (text: string) => Promise<CollabO
   )
 }
 
-// ================= Decision card =================
-
-function DecisionCard({ d, me, editable, needsMe, trip, previewOpen, slotResolution }: {
-  d: TripDecision
-  me: { id: string }
-  editable: boolean
-  needsMe: boolean
-  trip: Trip
-  previewOpen?: boolean
-  slotResolution: SlotResolutionContext | null
-}) {
-  const tally = d.options.map(o => Object.values(d.votesByUserId).filter(v => v === o.id).length)
-  const totalVotes = tally.reduce((s, t) => s + t, 0)
-  const leadingIdx = totalVotes > 0 ? tally.indexOf(Math.max(...tally)) : -1
-  const votersOf = (optionId: string) => Object.entries(d.votesByUserId).filter(([, o]) => o === optionId).map(([u]) => u)
-  // Grounded trip context + offline recommendation (§6.8): the deterministic
-  // guide, using the same engine data the Overview shows. Recomputed when the
-  // trip or decision changes (a new vote can flip the tie-break).
-  const ctx = useMemo(() => decisionContext(trip), [trip])
-  const rec = useMemo(() => recommendForDecision(trip, d, ctx), [trip, d, ctx])
-  const { busy, claim, release } = useBusyClaim(d.id)
-  const [placementDayId, setPlacementDayId] = useState('')
-  const [placementDays, setPlacementDays] = useState<Array<{ id: string; index: number; title?: string }> | null>(null)
-  const [openDayOptionId, setOpenDayOptionId] = useState<string | null>(null)
-  const [roadRefusal, setRoadRefusal] = useState<{ copy: string; recoverable: boolean } | null>(null)
-  const resolvedOption = d.options.find(o => o.id === d.resolvedOptionId)
-  const needsPlacement = d.status === 'resolved' && !!d.resolvedOptionId && !d.resolvedStopId && !!resolvedOption?.place
-  // An open legacy poll can reach this picker after a missing-day refusal.
-  const pickerOptionId = needsPlacement ? (d.resolvedOptionId ?? null) : openDayOptionId
-  const pickerOption = pickerOptionId ? d.options.find(o => o.id === pickerOptionId) : undefined
-  const availablePlacementDays = placementDays ?? trip.days.map(day => ({
-    id: day.id, index: day.index, ...(day.title ? { title: day.title } : {}),
-  }))
-
-  // The orchestration captures day, route, anchor and revision as one snapshot.
-  // It is pure, so no await can lend a newer trip to an older measurement.
-  // Every resolve route goes through it, including the day-picker retry.
-  async function resolveChoice(optionId: string, target: LegacyResolutionTarget = {}) {
-    const flow = await runDecisionResolution(
-      { context: slotResolution, decision: d, optionId, target, previewOpen },
-      {
-        resolveDecision, toast, reportCollabOutcome, refuseWhileStaged,
-        claim, release, onPlacementDays: setPlacementDays, onPlacementDayId: setPlacementDayId,
-      },
-    )
-    if (flow.kind === 'refused') {
-      setRoadRefusal(flow.reason === 'missing-road' || flow.reason === 'stale-road' || flow.reason === 'road-unavailable'
-        ? { copy: flow.copy, recoverable: flow.recoverable }
-        : null)
-      setOpenDayOptionId(flow.reason === 'missing-day' ? optionId : null)
-      return
-    }
-    setRoadRefusal(null)
-    setOpenDayOptionId(flow.kind === 'settled' && flow.needsDayPicker ? (d.resolvedOptionId ?? optionId) : null)
-  }
-
-  return (
-    <Surface id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-item-card gin-panel${needsMe ? ' gi-needs-you' : ''}`}>
-      <div className="row-between">
-        <h3 className="gin-card-title">{d.question}</h3>
-        <span className="gin-chip-group">
-          {needsMe && <Chip tone="saffron">Needs your vote</Chip>}
-          <Chip tone={d.status === 'open' ? 'saffron' : 'ok'}>{cap(d.status)}</Chip>
-        </span>
-      </div>
-      {d.context && <p className="small muted gin-decision-context">{d.context}</p>}
-      <div className="gin-decision-options">
-        {d.options.map((o, i) => {
-          const mine = d.votesByUserId[me.id] === o.id
-          const voters = votersOf(o.id)
-          const leading = d.status === 'open' && i === leadingIdx && tally[i] > 0
-          return (
-            <div key={o.id} className={`decision-option-row${leading ? ' leading' : ''}`}>
-              <button className={`vote-btn ${mine ? 'on' : ''}`} disabled={d.status === 'resolved'} aria-pressed={mine}
-                onClick={() => void voteOnDecision(d.id, o.id).then(o2 => reportCollabOutcome(o2))} aria-label={`Vote for ${o.label}`}><ChevronUp size={13} aria-hidden /></button>
-              <span className="gin-option-label">
-                {o.label}
-                {o.timeImpactMin ? <span className="muted small num"> · ≈{o.timeImpactMin} min detour</span> : null}
-                {o.costImpactInr ? <span className="muted small num"> · {o.costImpactInr > 0 ? '+' : ''}{formatInr(o.costImpactInr)}</span> : null}
-              </span>
-              {voters.length > 0 && (
-                <span className="who-voted" role="img" aria-label={`Voted for this: ${voters.map(v => userById(v)?.profile.name ?? 'Traveller').join(', ')}`}>
-                  {(() => {
-                    const shown = voters.slice(0, 4)
-                    const tones = assignAvatarTones(shown)
-                    return shown.map((v, index) => (
-                      <Avatar key={v} user={userById(v)} tone={tones[index]} />
-                    ))
-                  })()}
-                  {voters.length > 4 && <span className="who-more">+{voters.length - 4}</span>}
-                </span>
-              )}
-              {tally[i] > 0 && <Chip tone="info">{tally[i]} vote{tally[i] !== 1 ? 's' : ''}</Chip>}
-              {d.status === 'resolved' && d.resolvedOptionId === o.id && <Chip tone="ok">Chosen</Chip>}
-            </div>
-          )
-        })}
-      </div>
-      {d.status === 'open' && (
-        <div className="gi-guide gin-guide-block">
-          <p className="small muted gin-guide-note">
-            <InlineIcon icon={ClipboardList} size={12} gap={4} />
-            {contextLine(ctx)}
-          </p>
-          {rec && (
-            <p className="small gin-guide-rec">
-              <InlineIcon icon={Sparkles} size={12} gap={4} />
-              <b>{rec.label}</b>: {rec.reason} <Chip tone="info">offline</Chip>
-            </p>
-          )}
-        </div>
-      )}
-      {d.status === 'open' && totalVotes > 0 && (
-        <p className="small muted verdict-line">
-          Tally leans <b>{d.options[leadingIdx]?.label}</b>{needsMe ? '. Your vote could flip it' : '. Editors resolve'}.
-        </p>
-      )}
-      {editable && d.status === 'open' && (
-        <div className="resolve-btns">
-          {d.options.map((o, i) => (
-            <button key={o.id} className={`btn btn-sm ${i === leadingIdx ? 'btn-primary' : 'btn-outline'}`} disabled={busy} aria-busy={busy}
-              onClick={() => {
-                if (refuseWhileStaged(previewOpen)) return
-                void resolveChoice(o.id)
-              }}>
-              Resolve: {o.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {pickerOptionId && pickerOption?.place && (
-        <div className="gin-item-actions gin-followup" role="group" aria-label="Choose a day for the winning stop">
-          <p className="small muted">{needsPlacement
-            ? `${pickerOption.place.title} won the vote. Choose a current day to place it.`
-            : 'This slot vote has no day. Choose a current day, then place it.'}</p>
-          {availablePlacementDays.length === 0 ? (
-            <p className="small">This trip has no days. Add a day in the timeline, then choose a day here.</p>
-          ) : (
-            <>
-              <select className="select" aria-label="Day for the winning stop" value={placementDayId}
-                onChange={e => setPlacementDayId(e.target.value)}>
-                <option value="">Pick a day</option>
-                {availablePlacementDays.map(day => <option key={day.id} value={day.id}>
-                  Day {day.index + 1}{day.title ? ` · ${day.title}` : ''}
-                </option>)}
-              </select>
-              <button className="btn btn-primary btn-sm" disabled={busy || !placementDayId} aria-busy={busy}
-                onClick={() => { void resolveChoice(pickerOptionId, { dayId: placementDayId }) }}>
-                {needsPlacement ? 'Place winning stop' : 'Place on chosen day'}
-              </button>
-            </>
-          )}
-        </div>
-      )}
-      {roadRefusal && (
-        <div className="gin-item-actions gin-followup" role="group" aria-label="Route for ordered placement">
-          <p className="small muted">{roadRefusal.copy}</p>
-          {roadRefusal.recoverable && slotResolution?.road?.retry && (
-            <button className="btn btn-outline btn-sm"
-              onClick={() => slotResolution?.road?.retry()}>
-              {slotResolution?.road?.status === 'failed' ? 'Retry measurement' : 'Measure route'}
-            </button>
-          )}
-        </div>
-      )}
-      {/* Discussion, same card language as suggestions (I-7): comments stay
-          visible on a resolved decision — the record of why it was chosen. */}
-      {d.comments.length > 0 && (
-        <div className="gin-comments">
-          {d.comments.map(c => (
-            <div key={c.id} className="comment">
-              <Avatar user={userById(c.authorId)} />
-              <div className="comment-body">
-                <span className="comment-author">{userById(c.authorId)?.profile.name}</span>
-                <span className="comment-time">{timeAgo(c.createdAt)}</span>
-                <div>{c.text}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      <CommentForm onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
-    </Surface>
-  )
-}
-
 // ================= Composer forms =================
 
 function SuggestionComposerForm({ trip }: {
@@ -803,7 +891,6 @@ function SuggestionComposerForm({ trip }: {
 
   return (
     <form onSubmit={submit}>
-      <h3 className="gin-card-title">Add to the plan</h3>
       <p className="hint-text gin-composer-hint">Others can vote and comment; editors can accept it into the timeline.</p>
       <Field label="Idea"><input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Pothamedu viewpoint" /></Field>
       <div className="form-row">
@@ -844,6 +931,11 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
     setOpts(list => list.map((o, j) => j === i ? { ...o, [key]: v } : o))
   }
 
+  /** Cancel clears the draft. The card stays on the page. */
+  function clearDraft() {
+    setQ(''); setContext(''); setOpts([{ label: '', cost: '' }, { label: '', cost: '' }])
+  }
+
   function create(e: FormEvent) {
     e.preventDefault()
     if (pending) return
@@ -862,9 +954,7 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
       options: built.map(o => ({ label: o.label, costImpactInr: o.cost || undefined })),
     }).then(o => {
       reportCollabOutcome(o, 'Decision posted for the group')
-      if (o.status === 'applied' || o.status === 'alreadyApplied') {
-        setQ(''); setContext(''); setOpts([{ label: '', cost: '' }, { label: '', cost: '' }])
-      }
+      if (o.status === 'applied' || o.status === 'alreadyApplied') clearDraft()
       setPending(false)
     })
   }
@@ -872,7 +962,7 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
   return (
     <form onSubmit={create}>
       <h3 className="gin-card-title">Raise a decision</h3>
-      <p className="hint-text gin-composer-hint">Turn endless group-chat debates into one clear vote.</p>
+      <p className="hint-text gin-composer-hint">Turn a group-chat debate into one clear vote.</p>
       <Field label="Question"><input className="input" value={q} onChange={e => setQ(e.target.value)} placeholder="e.g. Beach day or backwater day on Day 3?" /></Field>
       <Field label="Context (optional)" hint="Why the group is deciding: e.g. “forecast says one beach afternoon is a washout”.">
         <input className="input" value={context} onChange={e => setContext(e.target.value)} />
@@ -893,7 +983,10 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
           </span>
         </span>
       </Field>
-      <button className="btn btn-primary gin-submit">Post decision</button>
+      <div className="gin-foot">
+        <button className="btn btn-primary btn-sm">Post decision</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={clearDraft}>Cancel</button>
+      </div>
     </form>
   )
 }
