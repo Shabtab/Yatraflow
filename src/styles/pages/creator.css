@@ -1722,6 +1722,30 @@ p.cr-store-planning {
   transform: translateY(-2px);
   box-shadow: var(--shadow-card-hover);
 }
+.cr-store-post:not(.cr-store-post--image) {
+  --cr-post-accent: var(--pw-ink);
+  background: color-mix(in srgb, var(--cr-post-accent) 5%, var(--pw-card));
+}
+.cr-store-post:not(.cr-store-post--image)[data-kind="instagram"] {
+  --cr-post-accent: var(--pw-bloom-700);
+}
+.cr-store-post-glyph {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: .09;
+  color: var(--cr-post-accent);
+}
+.cr-store-post-glyph svg {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+}
+@media (max-width: 699px) {
+  .cr-store-post-glyph { display: none; }
+}
 .cr-store-post-link {
   display: flex;
   flex-direction: column;

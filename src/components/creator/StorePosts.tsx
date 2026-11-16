@@ -19,6 +19,7 @@ function StorePostCard({ post, pub }: { post: CreatorPost; pub: PublishedItinera
       <span className="cr-store-post-caption">{post.caption ?? `${label} post`}</span>
       <span className="sr-only">Opens in a new tab</span>
     </a>
+    {!thumbnail && <span className="cr-store-post-glyph" aria-hidden="true"><SocialIcon kind={post.kind} size={160} gap={0} /></span>}
     <div className="cr-store-post-routebox">
       <p className="cr-store-post-meta">{pub.title}{day ? ` · ${day}` : ''}</p>
       <a className="cr-store-post-route" {...appLink(`/pub/${pub.id}`)}>Open this route</a>
