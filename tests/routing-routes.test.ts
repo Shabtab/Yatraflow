@@ -1,3 +1,20 @@
+// The account-wide Routes quota asks Supabase before each Google request. These
+// tests drive the Google path, so the shared counter always grants here. The
+// fail-closed cases are covered in tests/shared-routes-quota.test.ts.
+vi.mock('../src/lib/supabase', () => {
+  const granted = () => {
+    const b: {
+      abortSignal: () => unknown
+      then: (ok: (v: unknown) => unknown, fail?: (e: unknown) => unknown) => Promise<unknown>
+    } = {
+      abortSignal: () => b,
+      then: (ok, fail) => Promise.resolve({ data: true, error: null }).then(ok, fail),
+    }
+    return b
+  }
+  return { isSupabaseConfigured: true, supabase: { rpc: () => granted() } }
+})
+
 // ============ Routing facade: Google-first, OSRM fallback (issue #6) ============
 // Verified without any real network: the polyline codec against Google's own
 // test vector, the Google→OSRM→estimate fallback chain with a stubbed fetch,

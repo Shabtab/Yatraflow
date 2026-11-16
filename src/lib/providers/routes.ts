@@ -9,7 +9,7 @@
 // catches and falls back to OSRM. The Phase-B quota guard (quota.ts) gates
 // each call BEFORE it goes out, so the app silently drops to the free stack
 // long before paid events can fire.
-import { quotaAllows, quotaCount, type QuotaSku } from './quota'
+import { quotaAllows, quotaCount, reserveSharedQuota, type QuotaSku } from './quota'
 import { decodePolyline } from './polyline'
 import { requestSignal } from './requestSignal'
 
@@ -101,6 +101,8 @@ export async function googleRoute(
   if (!routesEnabled()) throw new Error('routes: no Google key configured')
   if (signal?.aborted) throw new DOMException('routes: caller aborted', 'AbortError')
   if (!quotaAllows(sku)) throw new QuotaExhaustedError(sku)
+  // Account-wide cap: one unit from Supabase before the request goes out. Fails closed.
+  if (!(await reserveSharedQuota(sku, signal))) throw new QuotaExhaustedError(sku)
   const res = await fetch(ROUTES, {
     method: 'POST',
     headers: {
