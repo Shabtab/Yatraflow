@@ -95,9 +95,15 @@ _Recent release highlights, newest first. See [CHANGELOG.md](CHANGELOG.md) for t
 
 Pending notes live in [change fragments](changelog.d/README.md). The release owner assembles them into the public record.
 
+## The v0.87.1 release
+
+The repository is at v0.87.1. See the [release record](CHANGELOG.md) for its full scope.
+
+- **Map route lines follow the roads again.** Each leg of a trip follows its own section of the road route.
+
 ## The v0.87.0 release
 
-The repository is at v0.87.0. See the [release record](CHANGELOG.md) for its full scope.
+The previous release. Its highlights stay here until the next release.
 
 - **Creators get a storefront, an owner hub and a rankings page.** The pages show route facts, saved picks, follows and private owner activity. A failed read never shows as zero.
 - **Creators can link public posts to their routes.** The hub counts the visits that each post brings. The app stores links only and keeps no visitor identity.

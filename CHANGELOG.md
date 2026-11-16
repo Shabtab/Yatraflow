@@ -16,6 +16,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.87.1] - 2026-11-16
+
+### Fixed
+
+- **Map route lines follow the roads again.** Each leg of a trip follows its own section of the road route. If the routing service cannot give a road shape, the app measures each leg again or estimates it.
+
 ## [0.87.0] - 2026-11-16
 
 ### Added
