@@ -1,6 +1,7 @@
 import campaigns from '../data/growthCampaigns.json'
 import { shareRefFromSearch, type ShareSource } from './shareUrl'
 import { randomToken } from './randomId'
+import { sanitizeForkPlan, type ForkPlan } from './weekendPlan'
 
 /** These fixed pilot slots contain no participant identities. Never reuse a slot for another pilot. */
 export const PILOT_CAMPAIGNS = campaigns
@@ -26,7 +27,7 @@ export function withCampaign(url: string, value: unknown): string {
   return `${base}${base.includes('?') ? '&' : '?'}campaign=${id}${hash.length ? `#${hash.join('#')}` : ''}`
 }
 
-export interface ForkAttribution { source: ShareSource | null; campaign: CampaignId | null }
+export interface ForkAttribution { source: ShareSource | null; campaign: CampaignId | null; plan?: ForkPlan | null }
 export interface ForkOrigin { publicationId: string; campaign?: CampaignId | null; requestId: string }
 const PENDING_KEY = 'yf.pending-publication-fork'
 const MAX_AGE = 30 * 60 * 1000
@@ -75,9 +76,11 @@ export function takeForkAttribution(pubId: string, consume = true): ForkAttribut
     }
     if (value.pubId !== pubId) return null
     if (consume) sessionStorage.removeItem(PENDING_KEY)
+    const plan = sanitizeForkPlan(value.plan)
     return {
       source: shareRefFromSearch(`?ref=${encodeURIComponent(value.source ?? '')}`),
       campaign: campaignId(value.campaign),
+      ...(plan ? { plan } : {}),
     }
   } catch { return null }
 }

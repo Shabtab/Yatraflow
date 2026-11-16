@@ -59,6 +59,8 @@ Query changes can remount a form when its page key includes the full URL. Exclud
 Payment grants and refunds must lock the same order row before they check state or change access.
 Webhook adapters must not grant access through a separate table insert.
 
+Weekend tickets and fork dates must use the copied itinerary day count. Source date ranges and publication summaries can differ from that count.
+
 Flight records can exist without stored stops. Protect their days during date reconciliation and preserve them through imports and snapshots.
 Use resolved journey points for exports and insertion origins. Stored stops can omit airports and arrival anchors.
 Settings previews must use validated draft fields. Reuse road measurements only while the route and day assignment still match.
