@@ -86,13 +86,16 @@ export interface GapDeckProps {
   activeIndex?: number | null
 }
 
+/** The deck's part sections, keyed by the part index. */
+type SectionNodes = Map<number, HTMLDivElement>
+
 export function GapDeck(props: GapDeckProps) {
   const { dayNumber, phase, gaps, onOpenPick, onAddPick, clock, onShortlist, shortlistedOf, swapOf, onClose, onRetry, aside, activeIndex } = props
   const timeFormat = useTimeFormat()
   const [chosen, setChosen] = useState<string | null>(null)
   const focusAt = activeIndex != null && activeIndex >= 0 && activeIndex < gaps.length ? activeIndex : null
   const first = gaps[focusAt ?? 0]
-  const sectionsRef = useRef(new Map<number, HTMLDivElement>())
+  const sectionsRef = useRef<SectionNodes>(new Map())
   // The part opened from the day list comes into view, so Dinner opens on Dinner.
   useEffect(() => {
     if (focusAt == null) return
