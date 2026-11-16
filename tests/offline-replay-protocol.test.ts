@@ -23,6 +23,7 @@ const { state } = vi.hoisted(() => ({ state: {
   offlineReads: false,
   response: 'normal' as 'normal' | 'missing' | 'wrong-id' | 'same-version',
   queueGate: null as Promise<void> | null,
+  queueReads: 0,
   memberGate: null as Promise<void> | null,
   readGate: null as Promise<void> | null,
   optionalGate: null as Promise<void> | null,
@@ -49,6 +50,7 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
     && (entry.revision !== undefined || revision !== undefined ? entry.revision === revision : entry.capturedAt === at)
   const memory: WriteQueueStore = {
     list: async () => {
+      state.queueReads += 1
       const rows = structuredClone([...state.disk.values()])
       await state.queueGate
       return rows
@@ -273,6 +275,7 @@ beforeEach(() => {
   state.queueGate = state.memberGate = state.readGate = state.optionalGate = state.updateGate = state.tokenGate = null
   state.beforeUpdate = null
   state.authHandler = null
+  state.queueReads = 0
   vi.stubGlobal('navigator', { onLine: false })
   vi.clearAllMocks()
 })
@@ -738,6 +741,33 @@ describe('#783 offline replay protocol', () => {
 
 
 describe('#783 metadata and plan ordering', () => {
+  it('hydrates a queued plan without restoring its expired invite metadata', async () => {
+    const first = await fresh()
+    first.tripById('shared')!.inviteCode = 'YATRA-ABCDEFGH'
+    first.tripById('shared')!.accessVersion = 1
+    await capture(first)
+    Object.assign(state.rows.get('shared')!, { invite_code: null, access_version: 2 })
+    const restarted = await fresh(true)
+    expect(restarted.tripById('shared')).toMatchObject({ name: 'My offline plan', accessVersion: 2 })
+    expect(restarted.tripById('shared')?.inviteCode).toBeUndefined()
+  })
+
+  it('keeps a rotation observed during the final pending-storage await on hydrate', async () => {
+    Object.assign(state.rows.get('shared')!, { invite_code: 'YATRA-ABCDEFGH', access_version: 1 })
+    const store = await fresh(true)
+    const held = gate()
+    state.queueGate = held.promise
+    const before = state.queueReads
+    const resuming = store.resumeSync()
+    await vi.waitFor(() => expect(state.queueReads).toBeGreaterThan(before))
+    store._applyRealtimeEventForTest('trips', change({ eventType: 'UPDATE',
+      new: { ...state.rows.get('shared')!, invite_code: 'YATRA-JKLMNPQR', access_version: 9 }, old: {} }))
+    held.release()
+    state.queueGate = null
+    await resuming
+    expect(store.tripById('shared')).toMatchObject({ inviteCode: 'YATRA-JKLMNPQR', accessVersion: 9 })
+  })
+
   it('boots offline from its last clean snapshot, overlays edits, then confirms server state on reconnect', async () => {
     const first = await fresh()
     const clean = structuredClone(first.getSnapshot().trips[0])

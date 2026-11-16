@@ -1369,7 +1369,8 @@ function isHeldCopy(write: QueuedWrite): boolean {
 }
 
 function overlayQueuedTrips(trips: Trip[], writes: QueuedWrite[], userId: string): Trip[] {
-  return trips.map(trip => {
+  return trips.map(incoming => {
+    const trip = keepCurrentInvite(incoming, tripById(incoming.id))
     const write = writes.find(w => w.tripId === trip.id && w.ownerId === userId)
     if (!write) return trip
     if (!isHeldCopy(write)) {
@@ -1383,7 +1384,7 @@ function overlayQueuedTrips(trips: Trip[], writes: QueuedWrite[], userId: string
     const local = write.trip as Partial<Trip>
     if (local.id !== trip.id || !Array.isArray(local.days)) return trip
     queuedLocalTrips.set(trip.id, write)
-    return { ...trip, ...local, members: trip.members }
+    return { ...trip, ...local, members: trip.members, inviteCode: trip.inviteCode, accessVersion: trip.accessVersion }
   })
 }
 
