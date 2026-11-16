@@ -52,6 +52,11 @@ It applies both drafts twice on PGlite and runs their fixture-only role checks f
 It checks owner writes, public projection fields, invalid shapes, stale picks, private follows and public counts.
 It also checks server review stamps, publication renames, blank notes and disabled follower counts.
 No hosted database is used. This proves local SQL behaviour, not hosted migration status or a PostgREST client journey.
+Run `node scripts/integration/creator-g8-db.mjs` for the local G8 post-link SQL contracts.
+It applies prior creator migrations and runs G8 twice on PGlite, with two creators and live and unpublished routes.
+It enables the G8 fixture checks, with a real foreign post for attribution denial.
+It checks shorter routes, publication renames, public visibility, date limits, owner writes and the older visit call.
+It reads no environment file and accepts no database URL. Hosted execution stays manual.
 Run `node scripts/integration/growth-db.mjs` for the isolated growth SQL checks.
 This local fixture does not establish production migration status or the full Supabase role contract.
 

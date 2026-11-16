@@ -83,6 +83,53 @@ describe('visitor attribution and session claims', () => {
     await bumpCreatorPageView('visitor-page', 'ig', null)
     expect(supabase.rpc).toHaveBeenCalledExactlyOnceWith('bump_creator_page_view', { p_creator: 'visitor-page', p_source: null })
   })
+  it.each(['PGRST202', '42883'])('counts one visit through the old schema after %s', async code => {
+    const rpc = vi.mocked(supabase.rpc)
+    rpc.mockReset()
+    rpc.mockResolvedValueOnce({ success: false, data: null,
+      error: new PostgrestError({ code, message: 'Missing signature', details: '', hint: '' }),
+      count: null, status: 404, statusText: 'Not Found' })
+    rpc.mockResolvedValueOnce({ success: true, data: null, error: null, count: null, status: 204, statusText: 'No Content' })
+    const creator = `old-schema-${code}`
+    const post = '17110000-0000-4000-8000-0000000000a1'
+    await bumpCreatorPageView(creator, 'post', null, post)
+    await bumpCreatorPageView(creator, 'post', null, post)
+    expect(rpc.mock.calls).toEqual([
+      ['bump_creator_page_view', { p_creator: creator, p_source: 'post', p_post: post }],
+      ['bump_creator_page_view', { p_creator: creator, p_source: 'post' }],
+    ])
+    const responses = await Promise.all(rpc.mock.results.map(result => result.value))
+    expect(responses.filter(response => response.error === null)).toHaveLength(1)
+  })
+  it.each(['42501', '23514'])('does not retry a tagged visit after %s', async code => {
+    const rpc = vi.mocked(supabase.rpc)
+    rpc.mockReset()
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      rpc.mockResolvedValue({ success: false, data: null,
+        error: new PostgrestError({ code, message: 'Rejected', details: '', hint: '' }),
+        count: null, status: 403, statusText: 'Forbidden' })
+      await bumpCreatorPageView(`rejected-${code}`, 'post', null, '17110000-0000-4000-8000-0000000000a1')
+      expect(rpc).toHaveBeenCalledTimes(1)
+      expect(log).toHaveBeenCalledTimes(1)
+    } finally { log.mockRestore() }
+  })
+  it('names a post only for a post-tagged visit with a real post id', async () => {
+    const rpc = vi.mocked(supabase.rpc)
+    rpc.mockClear()
+    rpc.mockResolvedValue({ success: true, data: null, error: null, count: null, status: 204, statusText: 'No Content' })
+    const post = '17110000-0000-4000-8000-0000000000a1'
+    await bumpCreatorPageView('tagged-a', 'post', null, post)
+    await bumpCreatorPageView('tagged-b', 'ig', null, post)
+    await bumpCreatorPageView('tagged-c', 'post', null, 'not-a-uuid')
+    await bumpCreatorPageView('tagged-d', 'post', null)
+    expect(rpc.mock.calls).toEqual([
+      ['bump_creator_page_view', { p_creator: 'tagged-a', p_source: 'post', p_post: post }],
+      ['bump_creator_page_view', { p_creator: 'tagged-b', p_source: 'ig' }],
+      ['bump_creator_page_view', { p_creator: 'tagged-c', p_source: 'post' }],
+      ['bump_creator_page_view', { p_creator: 'tagged-d', p_source: 'post' }],
+    ])
+  })
 })
 
 it('exports the meter counts without feed truncation or buyer fields', () => {

@@ -14,6 +14,7 @@
 //   links=none|youtube|both       read=ok|reading|failed|kept
 //   viewer=owner|nonowner|signedout        theme=light|dark
 //   owner=ready|failed|kept                owner-layer reads only
+//   posts=none|some|failed|reading|visits-failed   G8 post links (none = default)
 //
 // "read=kept" means: the publications read FAILED but rows were already on
 // screen, so `rowsView` returns 'kept' — the hub keeps its rows and adds the
@@ -44,6 +45,7 @@ import { Chip } from '../src/components/ui'
 import { Eye } from 'lucide-react'
 import type { OwnerRead, OwnerReads } from '../src/lib/creatorOwnerReads'
 import type { CreatorFollowApi } from '../src/lib/creatorFollows'
+import type { CreatorPost, CreatorPostsApi } from '../src/lib/creatorPosts'
 
 const params = new URLSearchParams(location.search)
 const THEME = params.get('theme') === 'dark' ? 'dark' : 'light'
@@ -60,6 +62,42 @@ const fixtureFollows: CreatorFollowApi = {
   isFollowing: async () => { if (FOLLOW === 'failed') throw new Error('Fixture follow read failed'); return fixtureFollowing },
   follow: async () => { if (FOLLOW === 'write-failed') throw new Error('Fixture write failed'); fixtureFollowing = true },
   unfollow: async () => { if (FOLLOW === 'write-failed') throw new Error('Fixture write failed'); fixtureFollowing = false },
+}
+// ---- G8 post links: synthetic rows behind the same api seam the pages use ----
+const POSTS = params.get('posts') ?? 'none'
+const FIXTURE_POST_IDS = ['17110000-0000-4000-8000-0000000000a1', '17110000-0000-4000-8000-0000000000a2', '17110000-0000-4000-8000-0000000000a3']
+let fixturePostRows: CreatorPost[] = POSTS === 'none' || POSTS === 'failed' || POSTS === 'reading' ? [] : [
+  { id: FIXTURE_POST_IDS[0], creator: 'fixture-creator-0001', url: 'https://www.instagram.com/reel/fixture-hills', kind: 'instagram',
+    pubId: 'fixture-pub-0', dayIndex: 1, caption: 'Day two of the hill drive, shot at the first chai halt', createdAt: 1_763_000_000_000 },
+  { id: FIXTURE_POST_IDS[1], creator: 'fixture-creator-0001', url: 'https://www.youtube.com/watch?v=fixture', kind: 'youtube',
+    pubId: 'fixture-pub-1', dayIndex: null, caption: 'The whole route in twelve minutes', createdAt: 1_762_000_000_000 },
+  { id: FIXTURE_POST_IDS[2], creator: 'fixture-creator-0001', url: 'https://www.threads.net/@fixture/post/abc', kind: 'threads',
+    pubId: 'fixture-pub-2', dayIndex: 0, caption: null, createdAt: 1_761_000_000_000 },
+]
+const fixturePosts: CreatorPostsApi = {
+  list: async () => {
+    if (POSTS === 'failed') throw new Error('Fixture posts read failed')
+    if (POSTS === 'reading') return new Promise<CreatorPost[]>(() => {})
+    return fixturePostRows
+  },
+  add: async insert => {
+    const row: CreatorPost = { id: `17110000-0000-4000-8000-${String(fixturePostRows.length + 16).padStart(12, '0')}`, creator: insert.creator,
+      url: insert.url, kind: insert.kind === 'instagram' ? 'instagram' : insert.kind === 'threads' ? 'threads' : 'youtube', pubId: insert.pub_id,
+      dayIndex: insert.day_index ?? null, caption: insert.caption ?? null, createdAt: Date.now() }
+    fixturePostRows = [row, ...fixturePostRows]
+    return row
+  },
+  setCaption: async (id, _creator, caption) => {
+    fixturePostRows = fixturePostRows.map(row => row.id === id ? { ...row, caption } : row)
+    const row = fixturePostRows.find(item => item.id === id)
+    if (!row) throw new Error('Fixture post missing')
+    return row
+  },
+  remove: async id => { fixturePostRows = fixturePostRows.filter(row => row.id !== id) },
+  visits: async () => {
+    if (POSTS === 'failed' || POSTS === 'visits-failed') throw new Error('Fixture visits read failed')
+    return fixturePostRows.length ? [{ postId: FIXTURE_POST_IDS[0], visits: 14 }, { postId: FIXTURE_POST_IDS[1], visits: 6 }] : []
+  },
 }
 const PAGE = params.get('page')
 if (PAGE === 'hub') {
@@ -386,6 +424,15 @@ const INDEX_CASES: { label: string; query: string }[] = [
   { label: 'owner reads: failed', query: '?viewer=owner&owner=failed' },
   { label: 'owner reads: kept', query: '?viewer=owner&owner=kept' },
   { label: 'viewer: non-owner (signed in)', query: '?case=live-3&viewer=nonowner' },
+  { label: 'post links: none (visitor)', query: '?case=live-3&viewer=nonowner&posts=none' },
+  { label: 'post links: three posts (visitor)', query: '?case=live-3&viewer=nonowner&posts=some' },
+  { label: 'post links: read failed (visitor)', query: '?case=live-3&viewer=nonowner&posts=failed' },
+  { label: 'post links: three posts (owner)', query: '?case=live-3&viewer=owner&posts=some' },
+  { label: 'post links: read failed (owner)', query: '?case=live-3&viewer=owner&posts=failed' },
+  { label: 'post links: hub editor and visits block', query: '?page=hub&posts=some' },
+  { label: 'post links: hub with no posts', query: '?page=hub&posts=none' },
+  { label: 'post links: hub read failed', query: '?page=hub&posts=failed' },
+  { label: 'post links: hub visits failed', query: '?page=hub&posts=visits-failed' },
   { label: 'viewer: signed out', query: '?case=live-3&viewer=signedout' },
   { label: 'disabled creator', query: '?case=disabled' },
   { label: 'rankings: 0 creators', query: '?page=rankings&case=rank-0' },
@@ -593,7 +640,7 @@ function FixtureCreatorPage() {
     visits: ownerRead([{ day: OWNER_DAY, source: 'Direct link', visits: 100 }], mode),
   }
   return <CreatorPage creatorId={CREATOR_ID} onNavigate={navigate} ownerReads={reads}
-    onOwnerRetry={() => setMode('ready')} onPageVisit={fixturePageVisit} followsApi={fixtureFollows} />
+    onOwnerRetry={() => setMode('ready')} onPageVisit={fixturePageVisit} followsApi={fixtureFollows} postsApi={fixturePosts} />
 }
 
 const root = document.getElementById('root')
@@ -602,17 +649,17 @@ ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <>
       {PAGE === 'hub' ? (
-        <CreatorHubPage onNavigate={navigate} followsApi={fixtureFollows} />
+        <CreatorHubPage onNavigate={navigate} followsApi={fixtureFollows} postsApi={fixturePosts} />
       ) : PAGE === 'rankings' ? (
         <Suspense fallback={<StateBlockLoading />}>
           <CreatorRankingsPage />
         </Suspense>
       ) : CASE === 'kit' ? (
         <KitGallery />
-      ) : params.has('case') || params.has('viewer') || params.has('read') || params.has('links') || params.has('owner') || params.has('picks') || params.has('follow') ? (
+      ) : params.has('case') || params.has('viewer') || params.has('read') || params.has('links') || params.has('owner') || params.has('picks') || params.has('follow') || params.has('posts') ? (
         <>
           <FixtureCreatorPage />
-          <CreatorHubPage onNavigate={navigate} followsApi={fixtureFollows} />
+          <CreatorHubPage onNavigate={navigate} followsApi={fixtureFollows} postsApi={fixturePosts} />
         </>
       ) : (
         <FixtureIndex />

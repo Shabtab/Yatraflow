@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 describe('creator write column contracts', () => {
   const store = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   const follows = readFileSync(new URL('../src/lib/creatorFollows.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  const posts = readFileSync(new URL('../src/lib/creatorPosts.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   it.each([
     ['profiles', 'update', 'Update'],
     ['published_itineraries', 'upsert', 'Insert'],
@@ -20,5 +21,9 @@ describe('creator write column contracts', () => {
   })
   it('checks the follow insert with the compiler', () => {
     expect(follows).toContain("insert({ follower, creator } satisfies Database['public']['Tables']['creator_follows']['Insert'])")
+  })
+  it('checks the post insert and caption update with the compiler', () => {
+    expect(posts).toContain("insert satisfies Database['public']['Tables']['creator_posts']['Insert']")
+    expect(posts).toContain("{ caption } satisfies Database['public']['Tables']['creator_posts']['Update']")
   })
 })

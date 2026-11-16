@@ -27,6 +27,15 @@ export type Database = {
           { foreignKeyName: "creator_follows_creator_fkey"; columns: ["creator"]; isOneToOne: false; referencedRelation: "profiles"; referencedColumns: ["id"] },
         ]
       }
+      creator_posts: {
+        Row: { id: string; creator: string; url: string; kind: string; pub_id: string; day_index: number | null; caption: string | null; created_at: string }
+        Insert: { creator: string; url: string; kind: string; pub_id: string; day_index?: number | null; caption?: string | null }
+        Update: { caption?: string | null }
+        Relationships: [
+          { foreignKeyName: "creator_posts_creator_fkey"; columns: ["creator"]; isOneToOne: false; referencedRelation: "profiles"; referencedColumns: ["id"] },
+          { foreignKeyName: "creator_posts_pub_id_fkey"; columns: ["pub_id"]; isOneToOne: false; referencedRelation: "published_itineraries"; referencedColumns: ["id"] },
+        ]
+      }
       activity: {
         Row: {
           actor_id: string
@@ -1020,7 +1029,7 @@ export type Database = {
         Returns: string
       }
       bump_creator_page_view: {
-        Args: { p_creator: string; p_source?: string }
+        Args: { p_creator: string; p_source?: string; p_post?: string }
         Returns: undefined
       }
       bump_published_stats: {
@@ -1132,6 +1141,10 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      get_creator_post_visits: {
+        Args: { p_days?: number }
+        Returns: { post_id: string; visits: number }[]
       }
       get_creator_follower_count: {
         Args: { p_creator: string }

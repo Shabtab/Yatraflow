@@ -1527,3 +1527,200 @@ p.cr-store-planning {
   background: var(--danger-soft);
   color: var(--ink-coral);
 }
+
+/* ============ Post links (G8) ============ */
+.cr-store-posts {
+  margin-top: var(--space-9);
+}
+.cr-store-posts-retry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  font: var(--pw-caption);
+  color: var(--pw-ink-3);
+}
+.cr-store-posts-retry .btn {
+  min-height: 44px;
+}
+.cr-store-posts-list {
+  list-style: none;
+  margin: var(--space-5) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-5);
+}
+.cr-store-post {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-6);
+  border: 1px solid var(--pw-line-soft);
+  border-radius: var(--radius-lg);
+  background: var(--pw-card);
+  transition: transform var(--motion-fast) var(--ease-paper),
+              box-shadow var(--motion-fast) var(--ease-paper);
+}
+.cr-store-post:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+.cr-store-post-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 44px;
+  color: var(--pw-ink);
+  text-decoration: none;
+}
+.cr-store-post-link:hover .cr-store-post-caption {
+  text-decoration: underline;
+}
+.cr-store-post-platform {
+  display: inline-flex;
+  align-items: center;
+  font: 800 12px/1.3 var(--font-body);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--pw-ink-3);
+}
+.cr-store-post-caption {
+  font: 700 15px/1.4 var(--font-body);
+  overflow-wrap: anywhere;
+}
+.cr-store-post-meta {
+  margin: 0;
+  font: var(--pw-caption);
+  color: var(--pw-ink-3);
+}
+.cr-store-post-route {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font: 600 13px/1.4 var(--font-body);
+}
+
+/* The hub block reuses the cr-meter rows; only its note needs room. */
+.cr-hub-post-visits > .cr-tile__note {
+  margin: var(--space-3) 0 var(--space-5);
+}
+/* The aside is narrow: the note goes under the bar instead of a fourth column. */
+.cr-hub-post-visits .cr-meter {
+  grid-template-columns: 112px 1fr 52px;
+}
+.cr-hub-post-visits .cr-meter .cr-tile__note {
+  grid-column: 1 / -1;
+}
+.cr-hub-post-visits .cr-meter + .cr-meter {
+  margin-top: var(--space-5);
+}
+.cr-hub-post-visits > .cr-tile__note:last-child {
+  margin-bottom: 0;
+}
+
+/* The owner editor sits under the creator picks, in the Profile tab. */
+.cr-own-posts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-top: var(--space-9);
+  padding-top: var(--space-7);
+  border-top: 1px solid var(--pw-line-soft);
+}
+.cr-own-posts h3 {
+  margin: 0;
+  font: 800 18px/1.3 var(--font-body);
+  letter-spacing: -.02em;
+  color: var(--pw-ink);
+}
+.cr-own-posts h4 {
+  margin: 0;
+  font: 800 14px/1.3 var(--font-body);
+  color: var(--pw-ink-2);
+}
+.cr-own-posts > p:not(.cr-own-posts-feedback) {
+  margin: 0;
+  font: var(--pw-caption);
+  color: var(--pw-ink-3);
+}
+.cr-own-posts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.cr-own-post,
+.cr-own-posts-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-6);
+  border: 1px solid var(--pw-line-soft);
+  border-radius: var(--radius-lg);
+  background: var(--pw-card);
+}
+.cr-own-post-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  font: 700 14px/1.4 var(--font-body);
+  color: var(--pw-ink);
+}
+.cr-own-post-head span:last-child {
+  color: var(--pw-ink-3);
+  font-weight: 600;
+}
+.cr-own-post-url {
+  margin: 0;
+  font: var(--pw-caption);
+  color: var(--pw-ink-3);
+  overflow-wrap: anywhere;
+}
+.cr-own-post-note {
+  margin: 0;
+  font: 600 13px/1.4 var(--font-body);
+  color: var(--pw-ink-2);
+}
+.cr-own-post-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.cr-own-posts .btn,
+.cr-own-posts .input {
+  min-height: 44px;
+}
+.cr-own-posts-add > .btn {
+  align-self: flex-start;
+}
+.cr-own-posts-feedback {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--pw-line);
+  border-radius: var(--radius);
+  background: var(--pw-sunken);
+  font: 600 13px/1.4 var(--font-body);
+  color: var(--pw-ink);
+  overflow-wrap: anywhere;
+}
+.cr-own-posts-feedback[data-kind="error"] {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--ink-coral);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cr-store-post,
+  .cr-store-post:hover {
+    transition: none;
+    transform: none;
+  }
+}
