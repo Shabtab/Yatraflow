@@ -14,13 +14,19 @@ import { StateBlock } from '../page/StateBlock'
 import { FilterChip } from '../filters/FilterChip'
 import { CrSectionHead } from './CrSectionHead'
 import { StoreRouteStamp } from './StoreRouteStamp'
+import { StoreMonths } from './StoreMonths'
+import { bestMonthIndexes, routesForMonth, ROUTE_MONTHS } from '../../lib/creatorFacts'
+import { appLink } from '../../lib/appLink'
+import { ExploreCover } from '../explore/ExploreCover'
+import { formatInr } from '../../lib/engine'
 
-export function StoreLibrary({ name, pubs, view, read, retry, creator, savedIds, needsLogin, onFork, onToggleSave, onNavigate, emptyIsNotCreator }: {
+export function StoreLibrary({ name, pubs, view, read, month, retry, creator, savedIds, needsLogin, onFork, onToggleSave, onNavigate, emptyIsNotCreator }: {
   name: string
   pubs: PublishedItinerary[]
   /** The rowsView verdict for the publications slice, decided by the page. */
   view: RowsView
   read: ReadState
+  month: number
   retry: () => void
   creator: CachedUser
   savedIds: (id: string) => boolean
@@ -32,8 +38,11 @@ export function StoreLibrary({ name, pubs, view, read, retry, creator, savedIds,
   emptyIsNotCreator: boolean
 }) {
   const [start, setStart] = useState<string | null>(null)
+  const [thisMonth, setThisMonth] = useState(false)
   const places = startPlaces(pubs)
-  const rows = filterByStart(pubs, start)
+  const hasMonths = read === 'ready' && pubs.some(pub => bestMonthIndexes(pub.bestMonths).length > 0)
+  const seasonal = hasMonths ? routesForMonth(pubs, month) : []
+  const rows = filterByStart(thisMonth && hasMonths ? seasonal : pubs, start)
   const anyPrice = pubs.some(pub => !!pub.premiumPriceInr)
   if (view === 'reading') {
     return (
@@ -65,7 +74,7 @@ export function StoreLibrary({ name, pubs, view, read, retry, creator, savedIds,
       </section>
     )
   }
-  return (
+  return (<>
     <section className="container cr-store-library" id="creator-library" tabIndex={-1}
       aria-labelledby="creator-library-title">
       <CrSectionHead
@@ -90,13 +99,33 @@ export function StoreLibrary({ name, pubs, view, read, retry, creator, savedIds,
           ))}
         </div>
       )}
+      {hasMonths && <div className="cr-store-filter" role="group" aria-label="Filter routes by month">
+        <FilterChip pressed={!thisMonth} onClick={() => setThisMonth(false)}>Any month</FilterChip>
+        <FilterChip pressed={thisMonth} count={seasonal.length} onClick={() => setThisMonth(true)}>Good in {ROUTE_MONTHS[month]}</FilterChip>
+      </div>}
+      {rows.length === 0 && <StateBlock kind="empty" size="compact" title="No matching routes" body="Choose another filter." />}
       <div className="cr-store-grid">
         {rows.map((pub, index) => (
           <PubCard key={pub.id} pub={pub} creator={creator} saved={savedIds(pub.id)} enterIndex={index}
-            footer={<StoreRouteStamp pub={pub} />}
+            footer={<div className="cr-store-card-facts">
+              {hasMonths && <StoreMonths mask={pub.bestMonths} month={month} />}
+              <StoreRouteStamp pub={pub} />
+            </div>}
             onFork={() => { onFork(pub) }} onToggleSave={() => { onToggleSave(pub.id) }} needsLogin={needsLogin} />
         ))}
       </div>
     </section>
-  )
+    {seasonal.length > 0 && <section className="container cr-store-seasonal" aria-labelledby="creator-season-title">
+      <CrSectionHead kicker="Good this month" title={`Routes for ${ROUTE_MONTHS[month]}`} id="creator-season-title" />
+      <div className="cr-store-seasonal-grid">
+        {seasonal.slice(0, 4).map(pub => <a key={pub.id} className="cr-store-seasonal-route" {...appLink(`/pub/${pub.id}`)}>
+          <div className="cr-store-seasonal-cover"><ExploreCover pub={pub} sizes="64px" /></div>
+          <div className="cr-store-seasonal-body"><h3>{pub.title}</h3>
+            <span>{pub.premiumPriceInr ? formatInr(pub.premiumPriceInr) : 'Free'}</span>
+            <StoreMonths mask={pub.bestMonths} month={month} />
+          </div>
+        </a>)}
+      </div>
+    </section>}
+  </>)
 }

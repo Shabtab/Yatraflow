@@ -14,12 +14,14 @@ import { ExploreFacts } from './ExploreFacts'
 import { ExplorePriceTag } from './ExplorePriceTag'
 import { RouteTrail } from './RouteTrail'
 
-export function FeaturedCard({ pub, creator, kicker, reason, healthScore, saved, needsLogin, onFork, onToggleSave }: {
+export function FeaturedCard({ pub, creator, kicker, reason, healthScore, facts, showPriceTag = true, saved, needsLogin, onFork, onToggleSave }: {
   pub: PublishedItinerary
   creator?: CachedUser
   /** The kicker line. The page builds it, because it states the filter case. */
   kicker: ReactNode
   reason?: ReactNode
+  facts?: ReactNode
+  showPriceTag?: boolean
   /** Trip health out of 100, when the plan's trip is in this browser. */
   healthScore?: number
   saved: boolean
@@ -33,14 +35,14 @@ export function FeaturedCard({ pub, creator, kicker, reason, healthScore, saved,
       <div className="ex-feature-cover">
         <ExploreCover pub={pub} sizes={EX_FEATURE_SIZES} eager />
         <span className="ex-style-tag">{cap(pub.travelStyle)}</span>
-        <ExplorePriceTag pub={pub} />
+        {showPriceTag && <ExplorePriceTag pub={pub} />}
       </div>
       <div className="ex-feature-body">
         <p className="ex-kicker"><Star size={12} aria-hidden />{kicker}</p>
         <h3 className="ex-feature-title"><a className="ex-feature-link" {...appLink(`/pub/${pub.id}`)}>{pub.title}</a></h3>
         <p className="ex-feature-tagline">{pub.tagline}</p>
         <RouteTrail routeSummary={pub.routeSummary} />
-        <ExploreFacts pub={pub} />
+        {facts ?? <ExploreFacts pub={pub} />}
         <p className="ex-credibility">
           Why featured: {reason ?? (pub.copies >= 1
             ? `${pub.copies} fork${pub.copies === 1 ? '' : 's'}, the most of any plan here`

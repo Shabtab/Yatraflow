@@ -16,3 +16,11 @@
 .avatar.tone-marigold { background: var(--pw-marigold-500, #F2A33A); color: var(--pw-on-marigold, #142329); }
 
 .avatar.tone-bloom { background: var(--pw-bloom-500, #C9475E); color: var(--pw-on-bloom, #FFFFFF); }
+.cr-store-avatar span.avatar {
+  background: var(--pw-sea-700);
+  color: var(--pw-on-sea);
+  font: 800 52px/1 var(--font-display);
+}
+@media (max-width: 699px) {
+  .cr-store-avatar span.avatar { font-size: 40px; }
+}

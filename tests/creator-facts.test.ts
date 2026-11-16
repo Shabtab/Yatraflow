@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { creatorPick, plannedKilometres, planningNotes, publicationFacts, publishablePlannedKm, validPlanningNotes } from '../src/lib/creatorFacts'
+import { bestMonthIndexes, routesForMonth, creatorPick, plannedKilometres, planningNotes, publicationFacts, publishablePlannedKm, validPlanningNotes } from '../src/lib/creatorFacts'
 import { beginLedger, applyLedger, settleLedger } from '../src/store/fieldIntents'
 import type { PrivateUserProfile, PublishedItinerary } from '../src/data/types'
 
@@ -10,6 +10,19 @@ const route: PublishedItinerary = {
 }
 
 describe('creator facts', () => {
+  it('decodes January and December without inventing unknown months', () => {
+    expect(bestMonthIndexes(2049)).toEqual([0, 11])
+    expect(bestMonthIndexes(4095)).toHaveLength(12)
+    for (const mask of [undefined, 0, -1, 4096, 1.5, Number.NaN]) expect(bestMonthIndexes(mask)).toEqual([])
+  })
+  it('selects only live routes with confirmed months', () => {
+    const january = { ...route, bestMonths: 1 }
+    const december = { ...route, id: 'december', bestMonths: 2048 }
+    const hidden = { ...january, id: 'hidden', unpublishedAt: 1 }
+    expect(routesForMonth([route, january, december, hidden], 0)).toEqual([january])
+    expect(routesForMonth([january], 11)).toEqual([])
+    expect(routesForMonth([january], -1)).toEqual([])
+  })
   it('sends only a planned distance the SQL check accepts', () => {
     expect(publishablePlannedKm(0)).toBe(0)
     expect(publishablePlannedKm(340.6)).toBe(341)

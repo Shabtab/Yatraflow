@@ -5,7 +5,7 @@
 // track-record tiles. Styling lives with the page CSS owner (`cr-store-*`).
 import { countNoun } from '../../lib/creatorCopy'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
-import { Eye, GitFork, Route } from 'lucide-react'
+import { Eye, GitFork, Route, Milestone } from 'lucide-react'
 import type { CachedUser, PublishedItinerary } from '../../data/types'
 import { appLinkHref, shouldHandleAppLink } from '../../lib/appLink'
 import { openExternal } from '../../lib/native'
@@ -50,7 +50,7 @@ function scrollToLibrary(event: ReactMouseEvent<HTMLAnchorElement>): void {
   library.focus({ preventScroll: true })
 }
 
-export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, routeCount, showBrowse, tabs, heading, follow, followerCount }: {
+export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, plannedKm, rank, routeCount, showBrowse, tabs, heading, follow, followerCount }: {
   /** A public row, or the account's own row when the viewer is the creator.
    *  Only `profile`'s public fields are read. */
   creator: CachedUser
@@ -63,6 +63,8 @@ export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, 
   shareUrl: string
   /** A null figure is not a zero: the tile shows "Unavailable". */
   figures: HeroFigures
+  plannedKm?: number
+  rank?: ReactNode
   /** The live count behind the "Browse N routes" label. */
   routeCount: number
   showBrowse: boolean
@@ -93,7 +95,7 @@ export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, 
           )}
         </div>
         <div className="cr-store-card">
-          <div className="cr-store-cardgrid">
+          <div className={`cr-store-cardgrid${name.length > 24 ? ' cr-store-cardgrid--long' : ''}`}>
             <div className="cr-store-ident">
               <div className="cr-store-avatar"><Avatar user={creator} size="lg" /></div>
               <div className="cr-store-id">
@@ -113,7 +115,7 @@ export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, 
                     </a>
                   )}
                   {follow}
-                  <CopyButton text={shareUrl} label="Share" />
+                  <CopyButton text={shareUrl} label="Share" variant="outline" />
                   {channels.length > 0 && <span className="cr-store-divider" aria-hidden="true" />}
                   {channels.map(({ key, href, label }) => (
                     <a key={key} className="btn btn-ghost" href={href} target="_blank" rel="noreferrer noopener"
@@ -127,12 +129,14 @@ export function StoreHero({ creator, cover, publishingSince, shareUrl, figures, 
             </div>
             <div className="cr-store-track">
               <p className="cr-store-track-label">Track record</p>
-              <div className="cr-tilegrid">
+              <div className={`cr-tilegrid${plannedKm === undefined ? ' cr-store-tiles--three' : ''}`}>
                 <CrStatTile icon={<Route size={18} aria-hidden />} value={figures.liveRoutes} label="Live routes" />
                 <CrStatTile icon={<Eye size={18} aria-hidden />} value={figures.views} label="Route views" />
                 <CrStatTile icon={<GitFork size={18} aria-hidden />} value={figures.forks} label="Forks" />
+                {plannedKm !== undefined && <CrStatTile icon={<Milestone size={18} aria-hidden />} value={plannedKm.toLocaleString('en-IN')} label="Planned km" note="Known route distances" />}
               </div>
               <p className="cr-store-note">Figures count live public routes only.</p>
+              {rank}
             </div>
           </div>
         </div>

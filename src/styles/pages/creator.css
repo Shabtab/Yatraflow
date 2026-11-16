@@ -96,15 +96,16 @@
 }
 
 .cr-store-ident {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-8);
+  min-width: 0;
 }
 .cr-store-avatar {
+  position: absolute;
+  top: 0;
+  left: var(--space-12);
+  transform: translateY(-50%);
   flex: 0 0 auto;
   width: 128px;
   height: 128px;
-  margin-top: calc(-1 * (var(--space-16) + var(--space-11)));
   border-radius: 50%;
   box-shadow: 0 0 0 4px var(--pw-card);
 }
@@ -116,6 +117,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  padding-top: var(--space-14);
 }
 .cr-store-name {
   display: flex;
@@ -162,12 +164,7 @@
   justify-content: center;
 }
 .cr-store-divider {
-  /* A full-width zero-height item. It starts the social links on their own line,
-     so the rule never dangles at the end of the button row. */
-  flex: 0 0 100%;
-  height: 0;
-  margin-block: calc(-1 * var(--space-2));
-  border-top: 1px solid var(--pw-line-soft);
+  display: none;
 }
 .cr-store-followers {
   margin: var(--space-3) 0 0;
@@ -231,6 +228,41 @@
   text-transform: uppercase;
   color: var(--pw-ink-3);
 }
+.cr-store-tiles--three {
+  --cr-cols: 3;
+}
+.cr-store-tiles--three .cr-tile {
+  grid-template-columns: 1fr;
+}
+.cr-store-cardgrid--long {
+  grid-template-columns: minmax(0, 1fr);
+}
+.cr-store-cardgrid--long .cr-store-track .cr-tilegrid {
+  --cr-cols: 4;
+}
+.cr-store-cardgrid--long .cr-store-track .cr-store-tiles--three {
+  --cr-cols: 3;
+}
+.cr-india-rank {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-block: var(--space-5);
+  font: var(--pw-meta);
+  color: var(--pw-ink-2);
+}
+.cr-india-rank a {
+  color: var(--pw-sea-700);
+  text-underline-offset: var(--space-2);
+  transition: color var(--motion-fast) var(--ease-paper);
+}
+.cr-india-rank a:hover { color: var(--pw-ink); }
+.cr-india-rank a:focus-visible,
+.cr-store-seasonal-route:focus-visible {
+  outline: 2px solid var(--pw-sea-700);
+  outline-offset: var(--space-2);
+}
 .cr-store-note {
   margin: 0;
   font: var(--pw-caption);
@@ -238,7 +270,6 @@
 }
 
 /* ---- Featured route stamps ---- */
-.cr-store-season,
 .cr-store-page > .cr-store-route-stamp,
 p.cr-store-facts,
 p.cr-store-planning {
@@ -249,7 +280,7 @@ p.cr-store-planning {
   box-sizing: border-box;
 }
 .cr-store-season {
-  margin-top: var(--space-5);
+  margin: 0;
   font: 600 13px/1.4 var(--font-body);
   color: var(--pw-ink-2);
 }
@@ -262,7 +293,7 @@ p.cr-store-planning {
   margin-top: var(--space-2);
 }
 .cr-store-grid .cr-store-route-stamp {
-  padding: 0 var(--space-5) var(--space-5);
+  padding: 0;
 }
 p.cr-store-facts,
 p.cr-store-planning {
@@ -326,6 +357,123 @@ p.cr-store-planning {
 .cr-store-featured .ex-feature-body {
   gap: var(--space-4);
   padding: var(--space-8) var(--space-9);
+}
+.cr-store-featured .ex-feature-title,
+.cr-store-grid .ex-card-title,
+.cr-hub-publications .hub-card-title,
+.cr-store-seasonal-route h3 {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.cr-store-prices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+  margin: var(--space-3) 0;
+}
+.cr-store-price {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  border: 1px solid var(--pw-line);
+  border-radius: var(--radius);
+  background: var(--pw-lagoon-50);
+  color: var(--pw-ink-2);
+  min-width: 0;
+}
+.cr-store-price--paid {
+  border-color: var(--pw-marigold-300);
+  background: var(--pw-marigold-50);
+  color: var(--pw-marigold-ink);
+}
+.cr-store-price dt {
+  font: var(--pw-kicker);
+  text-transform: uppercase;
+}
+.cr-store-price dd {
+  margin: 0;
+  font: 700 26px/1.1 var(--font-display);
+  color: var(--pw-ink);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.cr-store-price > span { font: var(--pw-caption); }
+.cr-store-feature-summary {
+  margin: 0;
+  font: var(--pw-meta);
+  color: var(--pw-ink-2);
+}
+.cr-store-route-facts {
+  display: grid;
+  gap: var(--space-3);
+}
+.cr-store-card-facts {
+  display: grid;
+  gap: var(--space-3);
+  padding: 0 var(--space-5) var(--space-5);
+}
+.cr-store-months {
+  display: flex;
+  gap: var(--space-2);
+  padding-block: var(--space-1);
+}
+.cr-store-months > span {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 19px;
+  border-radius: var(--radius-mark);
+  background: var(--pw-sunken);
+  color: var(--pw-ink-3);
+  font: 800 11px/1 var(--font-body);
+}
+.cr-store-months > span[data-best="true"] {
+  background: var(--pw-lagoon-600);
+  color: var(--pw-on-sea);
+}
+.cr-store-months > span[data-current="true"] {
+  outline: 1.5px solid var(--pw-ink);
+  outline-offset: 1px;
+}
+.cr-store-seasonal { margin-top: var(--space-12); }
+.cr-store-seasonal-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-5);
+  margin-top: var(--space-7);
+}
+.cr-store-seasonal-route {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4a);
+  border: 1px solid var(--pw-line);
+  border-radius: var(--radius);
+  background: var(--pw-card);
+  color: var(--pw-ink);
+  text-decoration: none;
+  transition: transform var(--motion-fast) var(--ease-paper), border-color var(--motion-fast) var(--ease-paper);
+}
+.cr-store-seasonal-route:hover {
+  transform: translateY(-2px);
+  border-color: var(--pw-sea-700);
+}
+.cr-store-seasonal-cover {
+  flex: 0 0 64px;
+  height: 52px;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+.cr-store-seasonal-body { min-width: 0; flex: 1; }
+.cr-store-seasonal-body > span { font: var(--pw-caption); }
+@media (prefers-reduced-motion: reduce) {
+  .cr-store-seasonal-route:hover { transform: none; }
 }
 @container ex-main (min-width: 640px) {
   .cr-store-featured .ex-feature {
@@ -408,8 +556,10 @@ p.cr-store-planning {
     gap: var(--space-8);
   }
   .cr-store-track .cr-tilegrid {
-    --cr-cols: 3;
+    --cr-cols: 4;
   }
+  .cr-store-track .cr-store-tiles--three { --cr-cols: 3; }
+  .cr-store-seasonal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 700px) and (max-width: 899px) {
   .cr-store-grid {
@@ -418,6 +568,9 @@ p.cr-store-planning {
 }
 
 @media (max-width: 699px) {
+  .cr-store-seasonal-grid { grid-template-columns: minmax(0, 1fr); }
+  .cr-store-cardgrid--long .cr-store-track .cr-tilegrid { --cr-cols: 2; }
+  .cr-store-tiles--three > :last-child { grid-column: 1 / -1; }
   .cr-store-cover {
     height: 200px;
   }
@@ -431,18 +584,18 @@ p.cr-store-planning {
     gap: var(--space-8);
   }
   .cr-store-ident {
-    flex-direction: column;
-    gap: var(--space-5);
+    min-width: 0;
   }
   .cr-store-avatar {
     width: 96px;
     height: 96px;
-    margin-top: calc(-1 * (var(--space-14) + var(--space-8)));
+    left: var(--space-7);
   }
   .cr-store-avatar .avatar {
     width: 96px;
     height: 96px;
   }
+  .cr-store-id { padding-top: var(--space-12); }
   .cr-store-name h1 {
     font-size: 32px;
     line-height: 1.1;
@@ -481,7 +634,7 @@ p.cr-store-planning {
   .cr-store-avatar {
     width: 80px;
     height: 80px;
-    margin-top: calc(-1 * (var(--space-13) + var(--space-7)));
+    left: var(--space-5);
   }
   .cr-store-avatar .avatar {
     width: 80px;

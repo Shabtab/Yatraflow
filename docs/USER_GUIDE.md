@@ -113,6 +113,13 @@ Browsing Explore: filter by style/budget/duration, sort by popularity or **newes
 - **Overview** — a lifetime figures strip and a recorded-traffic trend. The trend covers visits, forks and unlocks over 7, 30 or 90 days. One row per publication shows its funnel and its actions. **Edit** is always there. A **"Needs update"** flag adds an **Update page** shortcut after you change a trip. Unpublish takes a page down without touching the trip.
 - **Earnings** — the real sales ledger: what each buyer actually paid at purchase time, the platform-fee split on each sale, and payout runs derived from it (disbursement itself is manual — the ledger says so). A **Projection** toggle does the honest what-if arithmetic for pages that haven't sold, clearly marked as *not money*.
 
+The creator page shows plan price and estimated trip cost as separate figures. The trip cost is a per-person estimate.
+Confirmed best months appear on route cards. Use **Good in** to filter routes for the current month.
+The seasonal shelf lists up to four routes with confirmed months. Unknown months do not appear.
+Known planned distance appears in the identity statistics. A long name uses a wider identity layout.
+India rank appears on the creator page and in the hub when the creator has a rank.
+Rankings use forks of live public routes across India, for all time. Failed reads show **Unavailable**.
+
 ## FAQ
 
 **Are the times and costs real?**

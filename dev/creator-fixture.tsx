@@ -315,9 +315,9 @@ function pub(i: number, takenDown: boolean): PublishedItinerary {
     durationDays: 5,
     estimatedBudgetPerPersonInr: 18000,
     travelStyle: 'balanced',
-    bestSeason: 'Nov - Feb',
+    bestSeason: PICKS ? (i % 2 ? 'All year' : 'Dec - Feb') : 'Nov - Feb',
     plannedKm: PICKS ? 340 : undefined,
-    bestMonths: PICKS ? 2051 : undefined,
+    bestMonths: PICKS ? (i % 2 ? 4095 : 2051) : undefined,
     reviewedAt: PICKS ? Date.parse('2026-10-14T00:00:00Z') : undefined,
     travelTips: ['Fixture tip — replace with a real one in production data.'],
     warningsAndAssumptions: ['Fixture warning.'],
@@ -378,10 +378,11 @@ db.published = seededPubs
 db.suggestions = []
 db.ready = true
 db.sessionUserId = sessionUserId
-const reads: Record<string, 'ok' | 'failed'> = {
-  trips: tripsVerdict ?? 'ok',
-  profiles: effectivePubsVerdict ?? 'ok',
-  'suggested itineraries': effectivePubsVerdict ?? 'ok',
+const reads: Record<string, 'ok' | 'failed'> = {}
+if (tripsVerdict !== undefined) reads.trips = tripsVerdict
+if (effectivePubsVerdict !== undefined) {
+  reads.profiles = effectivePubsVerdict
+  reads['suggested itineraries'] = effectivePubsVerdict
 }
 db.sliceReads = reads
 
