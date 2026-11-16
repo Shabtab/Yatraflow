@@ -24,6 +24,9 @@
 .map-ideas-grid .poi-col-head-txt > .small {
   display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* The Day plan's count line carries the planned count and the rain chance.
+   It wraps on a narrow sheet instead of cutting the rain off. */
+.map-ideas-grid .poi-col--needs .poi-col-head-txt > .small { white-space: normal; }
 
 /* The numbers the rail asks a decision from were its smallest type. The day
    chip's fill count also carried .78 opacity — 4.30:1 on the chip's own white

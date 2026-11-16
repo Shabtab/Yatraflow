@@ -2504,7 +2504,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                   >{fillingDay ? 'Planning…' : 'Fill the day'}</button>
                 )}
                 <button type="button" className="chip chip-sm mv2-gap-plan" aria-controls="rail-needs" onClick={openDayPlan}
-                  title="Every part of the day, with search, votes and the pinned rest">Day plan{openParts > 0 ? ` · ${openParts} open` : ''}</button>
+                  aria-label={openParts > 0 ? `Day plan, ${openParts} open part${openParts === 1 ? '' : 's'}` : 'Day plan'}
+                  title="Every part of the day, with search, votes and the pinned rest"><span className="mv2-gap-plan-txt">Day plan{openParts > 0 && <b>{openParts}</b>}</span></button>
               </div>}
               onAddGapPick={pick => addLensHit(pick.candidate.hit, activeDayIndex)}
               onApplyFix={applyLensFix}
