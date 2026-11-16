@@ -1704,7 +1704,7 @@ p.cr-store-planning {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--space-5);
-  align-items: start;
+  align-items: stretch;
 }
 .cr-store-post {
   display: flex;
@@ -1760,6 +1760,7 @@ p.cr-store-planning {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  margin-top: auto;
 }
 .cr-store-post.cr-store-post--image {
   position: relative;
@@ -1774,6 +1775,9 @@ p.cr-store-planning {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
+  /* Remove the baked-in top and bottom bars from the public thumbnail. */
+  transform: scale(1.34);
 }
 .cr-store-post--image::after {
   content: '';

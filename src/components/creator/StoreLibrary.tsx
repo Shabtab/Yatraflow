@@ -122,7 +122,6 @@ export function StoreLibrary({ name, pubs, view, read, month, retry, creator, sa
           <div className="cr-store-seasonal-cover"><ExploreCover pub={pub} sizes="64px" /></div>
           <div className="cr-store-seasonal-body"><h3>{pub.title}</h3>
             <span>{pub.premiumPriceInr ? formatInr(pub.premiumPriceInr) : 'Free'}</span>
-            <StoreMonths mask={pub.bestMonths} month={month} />
           </div>
         </a>)}
       </div>

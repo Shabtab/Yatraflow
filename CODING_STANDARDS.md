@@ -43,6 +43,8 @@ Stay free windows must exclude scheduled stops after check-in. A missing window 
 Fixture query parameters must change the rendered state or fail explicitly.
 A form fixture cannot prove failed or retained reads owned by its parent.
 
+YouTube hqdefault thumbnails can contain black bars. Check a loaded image and the error fallback.
+
 Budget guidance must compare the target with the current plan estimate.
 It must not promise room or transport choices from a spending target alone.
 
