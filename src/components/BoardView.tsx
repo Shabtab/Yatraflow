@@ -433,6 +433,16 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, tr
   const [moveStop, setMoveStop] = useState<ItineraryStop | null>(null)
   const ordered = useMemo(() => activeStopsInOrder(day), [day])
   const stopsRef = useRef<HTMLDivElement>(null)
+  // A live carry unclips the stop list so the card can cross into the next
+  // day. A list that is scrolled must keep its clip: without it the list loses
+  // its scroll offset, the rows jump by that offset, and the card and the drop
+  // slot leave the pointer. At offset 0 nothing moves, so that list (a phone
+  // column with 5 stops is often one) still unclips. Measure on press
+  // (capture phase), before the drag render.
+  const [keepsScroll, setKeepsScroll] = useState(false)
+  const measureListScroll = useCallback(() => {
+    setKeepsScroll((stopsRef.current?.scrollTop ?? 0) > 0)
+  }, [])
   // Liquid drag pattern (bencho-style, Timeline parity): the DOM order NEVER
   // changes mid-drag. The carried card is pinned to the pointer by the engine
   // (lib/touchDnd.ts) and its skin warps with the throw; cards between the
@@ -562,7 +572,8 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, tr
         {sev && <span className={`day-warn-pill sev-${sev}`} title={warningLines(warnings)}><InlineIcon icon={TriangleAlert} size={12} gap={3} />{warnings[0].title.replace(/^Day \d+:\s*/, '')}{warnings.length > 1 ? ` · +${warnings.length - 1} more` : ''}</span>}
       </button>
 
-      <div className={`board-col-stops${dragging !== null ? ' is-dragging' : ''}`} ref={stopsRef} data-yf-list={listId}>
+      <div className={`board-col-stops${dragging !== null ? ' is-dragging' : ''}${dragging !== null && keepsScroll ? ' keeps-scroll' : ''}`}
+        ref={stopsRef} data-yf-list={listId} onPointerDownCapture={measureListScroll}>
         {flightJourney && <BoardFlightJourney journey={flightJourney} flight={flight} />}
         {ordered.map((s, i) => {
           const { kind, label, mode } = stopPresentation(s, transportMode)

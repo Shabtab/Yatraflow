@@ -67,7 +67,7 @@ function stubClient(opts: { rpcError?: { message: string } | null; rpcRejects?: 
     if (opts.rpcRejects) return Promise.reject(new Error('offline'))
     return Promise.resolve({ data: null, error: opts.rpcError ?? null })
   }) as never)
-  return { bumps, restore: () => { rpcSpy.mockRestore(); fromSpy.mockRestore() } }
+  return { bumps, upsert, restore: () => { rpcSpy.mockRestore(); fromSpy.mockRestore() } }
 }
 
 /** Let the bump's promise chain settle — the rollback is deliberately async. */
@@ -79,6 +79,22 @@ const rowOf = (store: { getSnapshot: () => { published: PublishedItinerary[] } }
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+it('omits the server review stamp from a publish and a republish', async () => {
+  const { upsert } = stubClient()
+  const store = await import('../src/store/store')
+  const payload = { ...pubPayload('g3-review-trip', 'g3-creator'), reviewedAt: 1, plannedKm: 340 }
+  const row = await publishRow(store, payload)
+  expect(upsert).toHaveBeenLastCalledWith(expect.objectContaining({ planned_km: 340 }))
+  expect(upsert.mock.calls.at(-1)?.[0]).not.toHaveProperty('reviewed_at')
+  row.reviewedAt = Date.parse('2026-10-14T00:00:00Z')
+  await publishRow(store, payload)
+  expect(upsert.mock.calls.at(-1)?.[0]).not.toHaveProperty('reviewed_at')
+  expect(rowOf(store, row.id).reviewedAt).toBe(row.reviewedAt)
+  await publishRow(store, { ...payload, plannedKm: undefined })
+  expect(upsert.mock.calls.at(-1)?.[0]).toHaveProperty('planned_km', null)
+  expect(upsert.mock.calls.at(-1)?.[0]).not.toHaveProperty('reviewed_at')
 })
 
 describe('#363 — forks are counted once per session, like views', () => {

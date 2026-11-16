@@ -47,6 +47,7 @@ describe('pageTitle', () => {
     ['/trips', 'Your trips'],
     ['/new', 'New trip'],
     ['/explore', 'Explore itineraries'],
+    ['/creators', 'Creator rankings'],
     ['/creator-hub', 'Creator hub'],
     ['/purchases', 'My purchases'],
     ['/admin', 'Admin'],

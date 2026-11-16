@@ -40,6 +40,7 @@ export const ROUTED_SEGMENTS: readonly string[] = [
   'invite',
   'creator',
   'explore',
+  'creators',
   'auth',
   CREATE_SEGMENT,
   'created',

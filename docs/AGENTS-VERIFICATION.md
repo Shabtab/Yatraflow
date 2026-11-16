@@ -28,6 +28,8 @@ The direct-entry bridge ends at the next release. Existing Unreleased notes stay
 The promotion agent freezes the release input, reviews the diff, and applies the checked patch with editor primitives.
 Assembly must preserve the preamble and released bytes. The line count must include every inserted line.
 An uncommitted merge can fail the release-source ancestry check. Test the local merge commit before a push.
+Correct final fragment wording in the freeze commit immediately before assembly.
+Each corrected fragment must match the checked base in the freeze commit's parent. Earlier fragment drift still fails.
 See [the fragment guide](../changelog.d/README.md) for commands and receipt checks.
 
 Locate a named unpublished dependency before planning its replacement.
@@ -42,6 +44,21 @@ It does not prove production RLS or a signed-in device journey.
 See [the replay audit](OFFLINE-REPLAY-783.md) for the remaining device checks and rollout order.
 
 Test analytics writes under anonymous and authenticated roles. An insert mock cannot prove RLS access.
+Run `node scripts/integration/creator-g1-g2-db.mjs` for the local G1 and G2 SQL contracts.
+It applies both drafts twice on PGlite and runs the G1/G2 sections from `supabase/tests/rls_contract.test.sql` with fixtures.
+The full contract checks metadata by default. The local probe also enables its fixture-only role checks.
+It checks source tags, disabled accounts, owner scope, direct table denial, UTC days, date limits and service-only retention.
+No hosted database is used. This proves local SQL behaviour, not hosted migration status or a PostgREST client journey.
+Run `node scripts/integration/creator-g3-g4-db.mjs` for the local G3 and G4 SQL contracts.
+It applies both drafts twice on PGlite and runs their fixture-only role checks from `supabase/tests/rls_contract.test.sql`.
+It checks owner writes, public projection fields, invalid shapes, stale picks, private follows and public counts.
+It also checks server review stamps, publication renames, blank notes and disabled follower counts.
+No hosted database is used. This proves local SQL behaviour, not hosted migration status or a PostgREST client journey.
+Run `node scripts/integration/creator-g8-db.mjs` for the local G8 post-link SQL contracts.
+It applies prior creator migrations and runs G8 twice on PGlite, with two creators and live and unpublished routes.
+It enables the G8 fixture checks, with a real foreign post for attribution denial.
+It checks shorter routes, publication renames, public visibility, date limits, owner writes and the older visit call.
+It reads no environment file and accepts no database URL. Hosted execution stays manual.
 Run `node scripts/integration/growth-db.mjs` for the isolated growth SQL checks.
 This local fixture does not establish production migration status or the full Supabase role contract.
 
@@ -76,6 +93,7 @@ the integration branch. The script runs vitest on the union and passes the
 child's exit code through. A source change that selects no test exits 1 — it
 never reports an empty green. The full gate still runs everything;
 `test:changed` only makes the focused run honest.
+After you merge a branch into an integration branch, run the full vitest suite. A focused run misses tests that scan all of `src/`.
 
 On a busy machine, set process-only `VITEST_MAX_WORKERS=1` before `npm run verify`.
 Vitest 4.1.12 resolves this value as `maxWorkers`.

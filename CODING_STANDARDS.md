@@ -43,11 +43,16 @@ Stay free windows must exclude scheduled stops after check-in. A missing window 
 Fixture query parameters must change the rendered state or fail explicitly.
 A form fixture cannot prove failed or retained reads owned by its parent.
 
+YouTube hqdefault thumbnails can contain black bars. Check a loaded image and the error fallback.
+Crop letterboxed thumbnails by scaling the img inside a frame with overflow hidden.
+
 Budget guidance must compare the target with the current plan estimate.
 It must not promise room or transport choices from a spending target alone.
 
 Record fresh row events independently of whole-catalogue read verdicts. Test delayed reconciliation while the event's private refresh remains pending or fails.
 A field allowlist must not evaluate unlisted property getters.
+Public profile fields must join the catalog overlay and the field intent allowlist.
+Otherwise saves can lose values after rollback.
 
 Query changes can remount a form when its page key includes the full URL. Exclude only step navigation from that key. Preserve keys for new entries and seed changes. Prove that Next, Back and Review edits keep live answers.
 
@@ -1145,6 +1150,13 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    length through one helper for fit, card, saved stop, vote draft and slack.
    Keep an explicit visit override. When the fact is absent, keep each
    surface's existing fallback. Never turn an invalid fact into zero.
+6br. **A shared header gets one size, and every unbounded input gets a bound
+   (learned 2026-11-16, trip cover).** A per-tab `body:has(...)` height override
+   resized the cover after the tab mounted, so the tab pill moved. Give the
+   header one height per breakpoint. Bound each input that could grow it (title,
+   meta line) with a clamp and a `title` tooltip. Prove it with a probe that
+   fails first: the pill rect on every tab, a click sampler at 0 to 400ms, and
+   a long-name stress case.
 
 ## 2. Conventions (`AGENTS.md` §4)
 

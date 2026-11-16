@@ -29,11 +29,11 @@ describe('#546 — the map scope label stays out of the shrink calculation', () 
     expect(rule).toContain('flex: none')
   })
 
-  it('both rails that host the label use the class — one rule covers both', () => {
-    // The map's day-filter rail ("Show on map") and the suggestion rail's day
-    // strip ("Plan this day") share the class, so the fix cannot drift to one.
+  it('the day-filter rail hosts the label through the class', () => {
+    // The map's day-filter rail ("Show on map") uses the class. The day plan
+    // lost its own day strip: the map's day picker is the one day control.
     expect(tripMap).toContain('className="map-scope-lbl"')
-    expect(mapTab).toContain('className="map-scope-lbl"')
+    expect(mapTab).not.toContain('Plan this day')
   })
 
   it('the day-filter rail really is the nowrap overflow-x container the fix assumes', () => {

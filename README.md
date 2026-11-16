@@ -95,9 +95,18 @@ _Recent release highlights, newest first. See [CHANGELOG.md](CHANGELOG.md) for t
 
 Pending notes live in [change fragments](changelog.d/README.md). The release owner assembles them into the public record.
 
+## The v0.87.0 release
+
+The repository is at v0.87.0. See the [release record](CHANGELOG.md) for its full scope.
+
+- **Creators get a storefront, an owner hub and a rankings page.** The pages show route facts, saved picks, follows and private owner activity. A failed read never shows as zero.
+- **Creators can link public posts to their routes.** The hub counts the visits that each post brings. The app stores links only and keeps no visitor identity.
+- **The trip cover keeps one height on every content tab.** Map and Board show a slim bar, so the tab pill stays in one place. The Plan lens now lives in the Gap panel.
+- **Board drags and Google routing are steadier.** A dragged stop stays on the pointer, and one trip load sends one Google Routes request.
+
 ## The v0.86.0 release
 
-The repository is at v0.86.0. See the [release record](CHANGELOG.md) for its full scope.
+The previous release. Its highlights stay here until the next release.
 
 - **Chakra the koel meets you at the quiet moments.** The loading, failed, empty and not-found screens carry the mascot, which takes the night art in the dark theme. The trip-created column and the unlock reveal celebrate with it. The AI drawer shows it thinking.
 - **The Board tab shows each stop's place, time and cost in full.** Each fact has one home, and the stop cards wrap instead of cutting their details.

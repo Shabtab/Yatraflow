@@ -58,30 +58,28 @@ export const EX_FEATURE_SIZES = [
 ].join(', ')
 
 /**
- * The creator page grid (`.explore-grid`), which the shared card also fills.
- *
- * Derived from the CSS, not measured, so HY4 should confirm it in the browser
- * turn: `10-explore`'s `.explore-grid` is `repeat(auto-fill, minmax(290px, 1fr))`
- * with a 16px gap, inside a `.container` capped at 1180px with 20px inline
- * padding. That is 1140px of content, so three columns of 369px above 1240px;
- * `(100vw - 72px) / 3` while the container is still growing; two columns above
- * 640px (two 290px tracks plus the gap need 596px of content); one below that.
- * A wrong step costs image bytes, never layout.
+ * The creator storefront library grid (`cr-store-grid`), which the shared card
+ * fills. The ladder matches the grid's own columns: three at 1440, two from
+ * 700px (the container is 2 columns there through tablet), one below. The
+ * container carries 20px of inline padding, and a 16px gap costs each column
+ * about 11px. A wrong step costs image bytes, never layout.
  */
 export const PUB_GRID_SIZES = [
-  '(min-width: 1240px) 369px',
-  '(min-width: 950px) calc((100vw - 72px) / 3)',
-  '(min-width: 640px) calc((100vw - 60px) / 2)',
-  'calc(100vw - 48px)',
+  '(min-width: 1240px) calc((100vw - 40px) / 3 - 12px)',
+  '(min-width: 700px) calc((100vw - 40px) / 2 - 12px)',
+  'calc(100vw - 36px)',
 ].join(', ')
 
-export function ExploreCover({ pub, sizes = EX_GRID_SIZES, eager = false }: {
+export function ExploreCover({ pub, sizes = EX_GRID_SIZES, eager = false, ratio = '16:10' }: {
   pub: Pick<PublishedItinerary, 'id' | 'coverImageUrl' | 'routeSummary'>
   /** The slot's real container width. The featured card is wider than a grid card. */
   sizes?: string
   /** Load the image at once. Cards near the top of the page set it, so a cover in
    *  the first screens never waits for a scroll to show. */
   eager?: boolean
+  /** The crop ratio of this slot. The storefront hero band is far wider than a
+   *  card, so it passes "21:9" to aim the focal point at the band's own shape. */
+  ratio?: string
 }) {
   const coverUrl = pub.coverImageUrl ? sizedCoverUrl(pub.coverImageUrl) : ''
   // The publication's route stops go in as they are, so a stop the India place
@@ -97,7 +95,7 @@ export function ExploreCover({ pub, sizes = EX_GRID_SIZES, eager = false }: {
   return (
     <CoverMedia
       plan={plan}
-      ratio="16:10"
+      ratio={ratio}
       sizes={sizes}
       eager={eager}
       className="ex-cover-img"

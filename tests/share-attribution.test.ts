@@ -366,7 +366,8 @@ describe('every surface stamps its own route in', () => {
 
   it('in-app forks name their surface', () => {
     expect(explore).toContain("forkPublication(pub, me, onNavigate, undefined, 'explore')")
-    expect(creator).toContain("forkPublication(p, me, onNavigate, undefined, 'creator')")
+    expect(creator).toContain("forkPublication(featured, me, onNavigate, undefined, 'creator')")
+    expect(creator).toContain("forkPublication(pub, me, onNavigate, undefined, 'creator')")
     expect(purchases).toContain("forkPublication(pub, meId, onNavigate, undefined, 'purchases')")
   })
 

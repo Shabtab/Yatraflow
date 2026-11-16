@@ -227,6 +227,9 @@ describe('abort propagation', () => {
     // aborted fetches reject → the span degrades to estimates; the caller's
     // cancelled-flag decides whether they're ever used
     expect(legs.every(l => l.source === 'estimate')).toBe(true)
+    // the shared request is cancelled one macrotask after its LAST subscriber
+    // leaves (the grace lets a StrictMode replay adopt it), so wait past that
+    await new Promise(r => setTimeout(r, 5))
     expect(sawSignal).not.toBeNull()
     expect(sawSignal!.aborted).toBe(true)
   })

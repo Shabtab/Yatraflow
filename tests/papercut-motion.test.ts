@@ -49,7 +49,7 @@ describe('Papercut motion foundation', () => {
     ]
     for (const value of [...light, ...dark]) expect(css).toContain(value)
     expect(css).toContain('--shadow-navy-rgb: 34, 32, 30')
-    expect(css).toContain('--font-serif: var(--font-display)')
+    expect(css).toContain("--font-serif: 'Playfair Display'")
     expect(css).toContain('--font-hand: var(--font-body)')
     expect(css).toContain('--pw-display-xl: 700 56px/1.04 var(--font-display)')
     expect(css).toContain('--pw-body: 500 15px/1.5 var(--font-body)')

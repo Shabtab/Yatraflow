@@ -362,6 +362,9 @@ export const NO_PROBE_SURFACE = {
     // parity-pinned and its behavior executed on PGlite.
     reason: 'submit_collab_command rewrite only — function bodies have no probe surface and the previous definition keeps working without it; pinned by tests/collab-command-parity.test.ts and tests/stage-c/843-exposure-persistence.test.ts',
   },
+  '20261115_creator_share_sources.sql': {
+    reason: 'function only; G1 role and ownership checks run locally with scripts/integration/creator-g1-g2-db.mjs',
+  },
   '20261110_paywall_locked_day_boundary.sql': {
     // Redefines `get_public_trip` and `get_invite_trip` (#774, #917). Both
     // exist before and after, so presence answers nothing, and a missing file

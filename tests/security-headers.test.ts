@@ -16,6 +16,12 @@ for (const group of vercel.headers ?? [])
   for (const h of group.headers) headerMap.set(h.key.toLowerCase(), h.value)
 
 describe('web security headers (vercel.json)', () => {
+  it('allows the exact YouTube thumbnail host for images only', () => {
+    const csp = headerMap.get('content-security-policy-report-only') ?? ''
+    const image = csp.split(';').map(rule => rule.trim()).find(rule => rule.startsWith('img-src '))
+    expect(image).toBe("img-src 'self' data: blob: https://*.wikimedia.org https://*.supabase.co https://tiles.openfreemap.org https://i.ytimg.com")
+    expect(csp.split('https://i.ytimg.com')).toHaveLength(2)
+  })
   it('ships the baseline set on every path', () => {
     // nosniff kills MIME confusion on uploaded/blob content; DENY is the
     // clickjacking wall (no surface of this app is legitimately framed);

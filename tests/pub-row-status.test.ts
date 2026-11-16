@@ -7,7 +7,7 @@
 // or an "Update page" button on a page that is down. The rules are
 // pure, so this suite pins them with no DOM.
 import { describe, expect, it } from 'vitest'
-import { pubRowStatus } from '../src/lib/pubRowStatus'
+import { livePublicationCount, pubRowStatus } from '../src/lib/pubRowStatus'
 
 const pub = (over: { unpublishedAt?: number; refreshedAt?: number; publishedAt?: number } = {}) => ({
   publishedAt: 1000,
@@ -29,7 +29,7 @@ describe('pubRowStatus', () => {
   it('calls a page behind when the itinerary changed after the page was built', () => {
     const s = pubRowStatus(pub({ refreshedAt: 1500 }), { updatedAt: 2000 })
     expect(s.key).toBe('behind')
-    expect(s.label).toBe('Page behind itinerary')
+    expect(s.label).toBe('Needs update')
     expect(s.action).toBe('update-page')
   })
 
@@ -64,5 +64,14 @@ describe('pubRowStatus', () => {
     for (const s of cases) {
       expect(pairs).toContainEqual([s.key, s.action])
     }
+  })
+
+  it('counts a page that needs an update as live', () => {
+    const statuses = [
+      pubRowStatus(pub({ refreshedAt: 2000 }), { updatedAt: 1500 }),
+      pubRowStatus(pub({ refreshedAt: 1500 }), { updatedAt: 2000 }),
+      pubRowStatus(pub({ unpublishedAt: 900 }), { updatedAt: 9999 }),
+    ]
+    expect(livePublicationCount(statuses)).toBe(2)
   })
 })

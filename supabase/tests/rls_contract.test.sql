@@ -937,5 +937,542 @@ begin
   end if;
 end $$;
 
+-- ============================================================ G1. creator share sources
+-- Metadata checks run in the full contract. Behaviour checks use local fixtures only.
+-- scripts/integration/creator-g1-g2-db.mjs seeds these accounts and enables the fixture flag.
+do $$
+begin
+  if not exists (
+    select 1 from pg_proc where oid = 'public.get_creator_share_sources(integer)'::regprocedure
+      and prosecdef and proconfig @> array['search_path=public']
+  ) then
+    raise exception 'G1: the reader needs SECURITY DEFINER and a pinned search_path';
+  end if;
+  if has_function_privilege('anon', 'public.get_creator_share_sources(integer)', 'execute')
+    or not has_function_privilege('authenticated', 'public.get_creator_share_sources(integer)', 'execute') then
+    raise exception 'G1: only authenticated callers may read share sources';
+  end if;
+  if current_setting('yatraflow.creator_contract_fixture', true) is distinct from 'on' then
+    return;
+  end if;
+  set local role anon;
+  begin
+    perform * from public.get_creator_share_sources();
+    raise exception 'G1: anon read succeeded';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000002', true);
+  set local role authenticated;
+  if exists (select 1 from public.get_creator_share_sources()) then
+    raise exception 'G1: another creator read someone else''s sources';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000003', true);
+  set local role authenticated;
+  if exists (select 1 from public.get_creator_share_sources()) then
+    raise exception 'G1: a disabled owner read sources';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000001', true);
+  set local role authenticated;
+  if (select coalesce(sum(views), 0) from public.get_creator_share_sources()) <> 2
+    or (select coalesce(sum(forks), 0) from public.get_creator_share_sources()) <> 1
+    or not exists (select 1 from public.get_creator_share_sources() where source is null and views = 1) then
+    raise exception 'G1: the owner must read only own counts and retain the direct source';
+  end if;
+  reset role;
+end $$;
+
+-- ============================================================ G2. creator page views
+do $$
+declare
+  v_role text;
+  v_function text;
+  -- G8 replaces the two-argument bump with a three-argument one. Accept either.
+  v_bump text := coalesce(to_regprocedure('public.bump_creator_page_view(uuid,text,uuid)'),
+    to_regprocedure('public.bump_creator_page_view(uuid,text)'))::text;
+begin
+  if not (select relrowsecurity from pg_class where oid = 'public.creator_page_events'::regclass) then
+    raise exception 'G2: raw page events need RLS';
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'creator_page_events'
+      and policyname = 'creator page events deny clients' and permissive = 'RESTRICTIVE'
+      and cmd = 'ALL' and roles @> array['anon', 'authenticated']::name[]
+      and qual = 'false' and with_check = 'false'
+  ) then
+    raise exception 'G2: direct client access needs a RESTRICTIVE deny policy';
+  end if;
+  if (select array_agg(column_name::text order by ordinal_position) from information_schema.columns
+    where table_schema = 'public' and table_name = 'creator_page_events')
+    not in (array['creator_id', 'at', 'source']::text[], array['creator_id', 'at', 'source', 'post_id']::text[]) then
+    raise exception 'G2: page events must hold only creator_id, at and source, plus post_id after G8';
+  end if;
+  foreach v_function in array array[
+    v_bump, 'public.get_creator_page_views(integer)',
+    'public.prune_creator_page_events(integer)'
+  ] loop
+    if not exists (select 1 from pg_proc where oid = v_function::regprocedure
+      and prosecdef and proconfig @> array['search_path=public']) then
+      raise exception 'G2: % needs SECURITY DEFINER and a pinned search_path', v_function;
+    end if;
+  end loop;
+  foreach v_role in array array['anon', 'authenticated'] loop
+    if has_table_privilege(v_role, 'public.creator_page_events', 'SELECT')
+      or has_table_privilege(v_role, 'public.creator_page_events', 'INSERT')
+      or has_table_privilege(v_role, 'public.creator_page_events', 'UPDATE')
+      or has_table_privilege(v_role, 'public.creator_page_events', 'DELETE') then
+      raise exception 'G2: % has direct table privileges', v_role;
+    end if;
+    if has_function_privilege(v_role, 'public.prune_creator_page_events(integer)', 'execute') then
+      raise exception 'G2: clients must not prune events';
+    end if;
+    if not has_function_privilege(v_role, v_bump, 'execute') then
+      raise exception 'G2: visitors must reach the validated bump';
+    end if;
+  end loop;
+  if has_function_privilege('anon', 'public.get_creator_page_views(integer)', 'execute')
+    or not has_function_privilege('authenticated', 'public.get_creator_page_views(integer)', 'execute')
+    or not has_function_privilege('service_role', 'public.prune_creator_page_events(integer)', 'execute') then
+    raise exception 'G2: owner read or retention grants drifted';
+  end if;
+  if current_setting('yatraflow.creator_contract_fixture', true) is distinct from 'on' then
+    return;
+  end if;
+  foreach v_role in array array['anon', 'authenticated'] loop
+    execute format('set local role %I', v_role);
+    begin
+      perform * from public.creator_page_events;
+      raise exception 'G2: direct table select succeeded for %', v_role;
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      insert into public.creator_page_events(creator_id) values ('15110000-0000-4000-8000-000000000001');
+      raise exception 'G2: direct table insert succeeded for %', v_role;
+    exception when insufficient_privilege then null;
+    end;
+    reset role;
+  end loop;
+  set local role anon;
+  begin
+    perform * from public.get_creator_page_views();
+    raise exception 'G2: anon read succeeded';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000002', true);
+  set local role authenticated;
+  if exists (select 1 from public.get_creator_page_views()) then
+    raise exception 'G2: another creator read someone else''s visits';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000003', true);
+  set local role authenticated;
+  if exists (select 1 from public.get_creator_page_views()) then
+    raise exception 'G2: a disabled owner read visits';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '15110000-0000-4000-8000-000000000001', true);
+  set local role authenticated;
+  if (select coalesce(sum(visits), 0) from public.get_creator_page_views()) <> 2 then
+    raise exception 'G2: the owner must read only own visits';
+  end if;
+  reset role;
+end $$;
+
+-- ============================================================ G3. publication facts and creator picks
+-- Behaviour checks use only the local fixture from scripts/integration/creator-g3-g4-db.mjs.
+do $$
+declare
+  v_role text;
+  v_count integer;
+begin
+  if (select array_agg(column_name::text order by ordinal_position) from information_schema.columns
+    where table_schema = 'public' and table_name = 'profile_cards') is distinct from
+    array['id', 'name', 'avatar_url', 'is_creator', 'creator_bio', 'social_links',
+      'creator_available', 'featured_pub_id', 'planning_notes']::text[] then
+    raise exception 'G3: public projection allowlist changed';
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'profile_cards'
+    and policyname = 'deny disabled' and permissive = 'RESTRICTIVE') then
+    raise exception 'G3: cards need a RESTRICTIVE disabled denial';
+  end if;
+  foreach v_role in array array['anon', 'authenticated'] loop
+    if has_table_privilege(v_role, 'public.profile_cards', 'UPDATE')
+      or has_table_privilege(v_role, 'public.profile_cards', 'INSERT')
+      or has_table_privilege(v_role, 'public.profile_cards', 'DELETE')
+      or has_table_privilege(v_role, 'public.profile_cards', 'TRUNCATE') then
+      raise exception 'G3: cards must remain read-only for %', v_role;
+    end if;
+  end loop;
+  if not exists (select 1 from pg_proc where oid = 'public.get_public_profile_cards(uuid[])'::regprocedure
+    and prosecdef and proconfig @> array['search_path=public']) then
+    raise exception 'G3: public reader must pin its definer search_path';
+  end if;
+  if not exists (select 1 from pg_proc where oid = 'public.stamp_publication_reviewed_at()'::regprocedure
+    and not prosecdef and proconfig @> array['search_path=public']) then
+    raise exception 'G3: review stamps need an invoker trigger with a pinned search_path';
+  end if;
+  if current_setting('yatraflow.creator_g3_g4_fixture', true) is distinct from 'on' then return; end if;
+  perform set_config('request.jwt.claim.sub', '', true);
+  set local role anon;
+  begin
+    perform * from public.profiles;
+    raise exception 'G3: anonymous private profile read succeeded';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    update public.profile_cards set planning_notes = '[]';
+    raise exception 'G3: anonymous card write succeeded';
+  exception when insufficient_privilege then null;
+  end;
+  if not exists (select 1 from public.get_public_profile_cards()
+    where id = '16110000-0000-4000-8000-000000000001' and featured_pub_id = 'g3-owner') then
+    raise exception 'G3: reviewed fields must remain public';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '16110000-0000-4000-8000-000000000002', true);
+  set local role authenticated;
+  update public.profiles set planning_notes = '["Foreign edit"]'
+    where id = '16110000-0000-4000-8000-000000000001';
+  get diagnostics v_count = row_count;
+  if v_count <> 0 then raise exception 'G3: another creator changed owner notes'; end if;
+  update public.published_itineraries set planned_km = 99 where id = 'g3-owner';
+  get diagnostics v_count = row_count;
+  if v_count <> 0 then raise exception 'G3: another creator changed owner facts'; end if;
+  if (select count(*) from public.profiles) <> 1 then
+    raise exception 'G3: other creator must read exactly their own seeded private row';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '16110000-0000-4000-8000-000000000003', true);
+  set local role authenticated;
+  if exists (select 1 from public.profiles) or exists (select 1 from public.profile_cards)
+    or exists (select 1 from public.get_public_profile_cards())
+    or exists (select 1 from public.published_itineraries) then
+    raise exception 'G3: disabled callers must read nothing';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '16110000-0000-4000-8000-000000000001', true);
+  set local role authenticated;
+  if (select count(*) from public.profiles) <> 1 then
+    raise exception 'G3: owner must read exactly their own private row';
+  end if;
+  update public.profiles set planning_notes = '["Own note"]';
+  get diagnostics v_count = row_count;
+  if v_count <> 1 then raise exception 'G3: owner must update only their own profile'; end if;
+  update public.published_itineraries set planned_km = 123;
+  get diagnostics v_count = row_count;
+  if v_count <> 2 then raise exception 'G3: owner must update exactly their two seeded publications'; end if;
+  reset role;
+end $$;
+
+-- ============================================================ G4. private creator follows
+do $$
+declare
+  v_count integer;
+begin
+  if not (select relrowsecurity from pg_class where oid = 'public.creator_follows'::regclass)
+    or not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'creator_follows'
+      and policyname = 'deny disabled' and permissive = 'RESTRICTIVE' and cmd = 'ALL'
+      and roles = array['authenticated']::name[] and qual is not null and with_check is not null) then
+    raise exception 'G4: follows need RLS and a RESTRICTIVE disabled denial';
+  end if;
+  if has_table_privilege('anon', 'public.creator_follows', 'SELECT')
+    or has_table_privilege('anon', 'public.creator_follows', 'INSERT')
+    or has_table_privilege('anon', 'public.creator_follows', 'DELETE')
+    or has_table_privilege('authenticated', 'public.creator_follows', 'UPDATE')
+    or has_table_privilege('authenticated', 'public.creator_follows', 'TRUNCATE') then
+    raise exception 'G4: follows grants exceed own select, insert and delete';
+  end if;
+  if not exists (select 1 from pg_proc where oid = 'public.get_creator_follower_count(uuid)'::regprocedure
+    and prosecdef and proconfig @> array['search_path=public'])
+    or not has_function_privilege('anon', 'public.get_creator_follower_count(uuid)', 'execute')
+    or not has_function_privilege('authenticated', 'public.get_creator_follower_count(uuid)', 'execute') then
+    raise exception 'G4: public count needs a pinned definer and explicit grants';
+  end if;
+  if current_setting('yatraflow.creator_g3_g4_fixture', true) is distinct from 'on' then return; end if;
+  perform set_config('request.jwt.claim.sub', '', true);
+  set local role anon;
+  begin
+    perform * from public.creator_follows;
+    raise exception 'G4: anonymous follower list read succeeded';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.creator_follows(follower, creator) values
+      ('16110000-0000-4000-8000-000000000004', '16110000-0000-4000-8000-000000000001');
+    raise exception 'G4: anonymous follow succeeded';
+  exception when insufficient_privilege then null;
+  end;
+  if public.get_creator_follower_count('16110000-0000-4000-8000-000000000001') <> 1 then
+    raise exception 'G4: anonymous visitors need a count only';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '16110000-0000-4000-8000-000000000002', true);
+  set local role authenticated;
+  if (select count(*) from public.creator_follows) <> 1
+    or exists (select 1 from public.creator_follows where follower <> auth.uid()) then
+    raise exception 'G4: other user must read exactly their own seeded follow';
+  end if;
+  delete from public.creator_follows where follower = '16110000-0000-4000-8000-000000000001';
+  get diagnostics v_count = row_count;
+  if v_count <> 0 then raise exception 'G4: another user deleted an owner follow'; end if;
+  begin
+    insert into public.creator_follows(follower, creator) values
+      ('16110000-0000-4000-8000-000000000004', '16110000-0000-4000-8000-000000000001');
+    raise exception 'G4: another user inserted an owner follow';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '16110000-0000-4000-8000-000000000003', true);
+  set local role authenticated;
+  if exists (select 1 from public.creator_follows)
+    or public.get_creator_follower_count('16110000-0000-4000-8000-000000000001') <> 0 then
+    raise exception 'G4: disabled caller must read nothing';
+  end if;
+  delete from public.creator_follows;
+  get diagnostics v_count = row_count;
+  if v_count <> 0 then raise exception 'G4: disabled caller deleted follows'; end if;
+  reset role;
+  perform set_config('request.jwt.claim.sub', '16110000-0000-4000-8000-000000000001', true);
+  set local role authenticated;
+  if (select count(*) from public.creator_follows) <> 1 then
+    raise exception 'G4: owner must read exactly their own seeded follow';
+  end if;
+  delete from public.creator_follows;
+  get diagnostics v_count = row_count;
+  if v_count <> 1 then raise exception 'G4: owner must delete only their own follow'; end if;
+  insert into public.creator_follows(follower, creator) values
+    ('16110000-0000-4000-8000-000000000001', '16110000-0000-4000-8000-000000000002');
+  reset role;
+end $$;
+
+-- ============================================================ G8. creator post links
+-- The metadata half runs on any database. The behaviour half runs only when a
+-- local fixture sets yatraflow.creator_g8_fixture = 'on' and seeds these rows:
+--   17110000-0000-4000-8000-000000000001  active creator (owner)
+--   17110000-0000-4000-8000-000000000002  another active creator
+--   17110000-0000-4000-8000-000000000003  disabled account
+--   routes of the owner: g8-pub-live (3 days, live), g8-pub-down (unpublished)
+--   routes of the other creator: g8-pub-other (live), g8-pub-other-down (unpublished)
+--   posts: 17110000-0000-4000-8000-0000000000a1 on g8-pub-live (owner),
+--          17110000-0000-4000-8000-0000000000a2 on g8-pub-down (owner),
+--          17110000-0000-4000-8000-0000000000b1 on g8-pub-other (other creator),
+--          17110000-0000-4000-8000-0000000000b2 on g8-pub-other-down (other creator)
+-- Run locally with node scripts/integration/creator-g8-db.mjs. Hosted execution stays manual.
+do $$
+declare
+  v_role text;
+  v_count integer;
+  v_n integer;
+begin
+  if not (select relrowsecurity from pg_class where oid = 'public.creator_posts'::regclass) then
+    raise exception 'G8: posts need RLS';
+  end if;
+  if (select array_agg(column_name::text order by ordinal_position) from information_schema.columns
+    where table_schema = 'public' and table_name = 'creator_posts') is distinct from
+    array['id', 'creator', 'url', 'kind', 'pub_id', 'day_index', 'caption', 'created_at']::text[] then
+    raise exception 'G8: the public post columns changed';
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'creator_posts'
+      and policyname = 'deny disabled' and permissive = 'RESTRICTIVE' and cmd = 'ALL'
+      and roles = array['authenticated']::name[] and qual is not null and with_check is not null) then
+    raise exception 'G8: posts need a RESTRICTIVE disabled denial';
+  end if;
+  if (select count(*) from pg_policies where schemaname = 'public' and tablename = 'creator_posts'
+      and permissive = 'PERMISSIVE') <> 5
+    or not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'creator_posts'
+      and policyname = 'creator posts public read' and permissive = 'PERMISSIVE' and cmd = 'SELECT'
+      and roles @> array['anon', 'authenticated']::name[]
+      and qual ilike '%unpublished_at IS NULL%' and qual ilike '%creator_available%')
+    or exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'creator_posts'
+      and policyname like 'creator posts own %' and not (roles = array['authenticated']::name[]
+        and (coalesce(qual, '') || coalesce(with_check, '')) ilike '%auth.uid()%')) then
+    raise exception 'G8: post policies drifted';
+  end if;
+  foreach v_role in array array['creator_posts_url_check', 'creator_posts_kind_check',
+    'creator_posts_day_index_check', 'creator_posts_caption_check', 'creator_posts_creator_url_key'] loop
+    if not exists (select 1 from pg_constraint where conrelid = 'public.creator_posts'::regclass
+      and conname = v_role and convalidated) then
+      raise exception 'G8: constraint % is missing', v_role;
+    end if;
+  end loop;
+  if not exists (select 1 from pg_trigger where tgrelid = 'public.creator_posts'::regclass
+      and tgname = 'creator_posts_guard' and not tgisinternal and tgenabled <> 'D')
+    or not exists (select 1 from pg_proc where oid = 'public.guard_creator_post()'::regprocedure
+      and prosecdef and proconfig @> array['search_path=public'])
+    or not exists (select 1 from pg_trigger where tgrelid = 'public.published_itineraries'::regclass
+      and tgname = 'publications_clear_stale_post_day' and not tgisinternal and tgenabled <> 'D') then
+    raise exception 'G8: guard triggers are missing or have no pinned definer';
+  end if;
+  if has_table_privilege('anon', 'public.creator_posts', 'INSERT')
+    or has_any_column_privilege('anon', 'public.creator_posts', 'INSERT')
+    or has_any_column_privilege('anon', 'public.creator_posts', 'UPDATE')
+    or has_table_privilege('anon', 'public.creator_posts', 'DELETE')
+    or not has_table_privilege('anon', 'public.creator_posts', 'SELECT')
+    or has_table_privilege('authenticated', 'public.creator_posts', 'UPDATE')
+    or has_table_privilege('authenticated', 'public.creator_posts', 'TRUNCATE')
+    or has_column_privilege('authenticated', 'public.creator_posts', 'url', 'UPDATE')
+    or has_column_privilege('authenticated', 'public.creator_posts', 'pub_id', 'UPDATE')
+    or not has_column_privilege('authenticated', 'public.creator_posts', 'caption', 'UPDATE')
+    or has_column_privilege('authenticated', 'public.creator_posts', 'id', 'INSERT')
+    or has_column_privilege('authenticated', 'public.creator_posts', 'created_at', 'INSERT')
+    or not has_column_privilege('authenticated', 'public.creator_posts', 'url', 'INSERT')
+    or not has_table_privilege('authenticated', 'public.creator_posts', 'DELETE') then
+    raise exception 'G8: post grants drifted';
+  end if;
+  if not exists (select 1 from pg_proc where oid = 'public.bump_creator_page_view(uuid,text,uuid)'::regprocedure
+      and prosecdef and proconfig @> array['search_path=public'])
+    or to_regprocedure('public.bump_creator_page_view(uuid,text)') is not null
+    or not has_function_privilege('anon', 'public.bump_creator_page_view(uuid,text,uuid)', 'execute')
+    or not has_function_privilege('authenticated', 'public.bump_creator_page_view(uuid,text,uuid)', 'execute')
+    or not exists (select 1 from pg_proc where oid = 'public.get_creator_post_visits(integer)'::regprocedure
+      and prosecdef and proconfig @> array['search_path=public'])
+    or has_function_privilege('anon', 'public.get_creator_post_visits(integer)', 'execute')
+    or not has_function_privilege('authenticated', 'public.get_creator_post_visits(integer)', 'execute') then
+    raise exception 'G8: attribution functions drifted';
+  end if;
+  if (select array_agg(column_name::text order by ordinal_position) from information_schema.columns
+    where table_schema = 'public' and table_name = 'creator_page_events')
+    is distinct from array['creator_id', 'at', 'source', 'post_id']::text[] then
+    raise exception 'G8: page events must add only post_id';
+  end if;
+  if current_setting('yatraflow.creator_g8_fixture', true) is distinct from 'on' then return; end if;
+
+  -- Anonymous visitors: only posts on live routes of an active creator, read only.
+  perform set_config('request.jwt.claim.sub', '', true);
+  set local role anon;
+  if (select count(*) from public.creator_posts) <> 2
+    or exists (select 1 from public.creator_posts where pub_id in ('g8-pub-down', 'g8-pub-other-down')) then
+    raise exception 'G8: anonymous visitors must read only posts on live routes';
+  end if;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/x', 'youtube', 'g8-pub-live');
+    raise exception 'G8: anonymous insert succeeded';
+  exception when insufficient_privilege then null;
+  end;
+  -- A visit names a real post of that creator and keeps no visitor identity.
+  perform public.bump_creator_page_view('17110000-0000-4000-8000-000000000001', 'post',
+    '17110000-0000-4000-8000-0000000000a1');
+  perform public.bump_creator_page_view('17110000-0000-4000-8000-000000000001', 'post',
+    '17110000-0000-4000-8000-0000000000b1');
+  reset role;
+  if (select count(*) from public.creator_page_events
+      where creator_id = '17110000-0000-4000-8000-000000000001') <> 2
+    or (select count(*) from public.creator_page_events
+      where creator_id = '17110000-0000-4000-8000-000000000001' and post_id is null) <> 1
+    or (select count(*) from public.creator_page_events
+      where creator_id = '17110000-0000-4000-8000-000000000001'
+        and post_id = '17110000-0000-4000-8000-0000000000a1') <> 1 then
+    raise exception 'G8: own posts need attribution and real foreign posts must store NULL';
+  end if;
+
+  -- Another creator: no write on the owner's posts, and their own routes only.
+  perform set_config('request.jwt.claim.sub', '17110000-0000-4000-8000-000000000002', true);
+  set local role authenticated;
+  if (select count(*) from public.creator_posts) <> 3 then
+    raise exception 'G8: another creator must read own posts and the public owner post';
+  end if;
+  delete from public.creator_posts where creator = '17110000-0000-4000-8000-000000000001';
+  get diagnostics v_count = row_count;
+  update public.creator_posts set caption = 'x' where creator = '17110000-0000-4000-8000-000000000001';
+  get diagnostics v_n = row_count;
+  if v_count <> 0 or v_n <> 0 then raise exception 'G8: another creator changed an owner post'; end if;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/y', 'youtube', 'g8-pub-live');
+    raise exception 'G8: another creator inserted an owner post';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000002', 'https://youtu.be/y', 'youtube', 'g8-pub-live');
+    raise exception 'G8: a post on another creator''s route succeeded';
+  exception when check_violation then null;
+  end;
+  if exists (select 1 from public.get_creator_post_visits(30)) then
+    raise exception 'G8: another creator read someone else''s post visits';
+  end if;
+  reset role;
+
+  -- A disabled caller reads nothing.
+  perform set_config('request.jwt.claim.sub', '17110000-0000-4000-8000-000000000003', true);
+  set local role authenticated;
+  if exists (select 1 from public.creator_posts) or exists (select 1 from public.get_creator_post_visits(30)) then
+    raise exception 'G8: a disabled caller read posts';
+  end if;
+  reset role;
+
+  -- The owner: own rows, valid and invalid inserts, caption-only update, the cap.
+  perform set_config('request.jwt.claim.sub', '17110000-0000-4000-8000-000000000001', true);
+  set local role authenticated;
+  if (select count(*) from public.creator_posts) <> 3 then
+    raise exception 'G8: the owner must read both own posts and the public foreign post';
+  end if;
+  if (select coalesce(sum(visits), 0) from public.get_creator_post_visits(30)) <> 1 then
+    raise exception 'G8: only the real post may carry a visit';
+  end if;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://instagram.com.example.com/p/x', 'instagram', 'g8-pub-live');
+    raise exception 'G8: a look-alike host succeeded';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'http://youtu.be/x', 'youtube', 'g8-pub-live');
+    raise exception 'G8: a plain http address succeeded';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/x', 'instagram', 'g8-pub-live');
+    raise exception 'G8: a mismatched kind succeeded';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id, caption)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/x', 'youtube', 'g8-pub-live', E' \t ');
+    raise exception 'G8: a blank caption succeeded';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id, day_index)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/x', 'youtube', 'g8-pub-live', 3);
+    raise exception 'G8: a day past the route succeeded';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/x', 'youtube', 'g8-pub-down');
+    raise exception 'G8: a post on an unpublished route succeeded';
+  exception when check_violation then null;
+  end;
+  insert into public.creator_posts(creator, url, kind, pub_id, day_index, caption)
+    values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/ok', 'youtube', 'g8-pub-live', 2, 'Day three');
+  begin
+    update public.creator_posts set url = 'https://youtu.be/moved';
+    raise exception 'G8: a client changed a post address';
+  exception when insufficient_privilege then null;
+  end;
+  update public.creator_posts set caption = 'Edited';
+  for v_n in 1..9 loop
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/fill' || v_n, 'youtube', 'g8-pub-live');
+  end loop;
+  begin
+    insert into public.creator_posts(creator, url, kind, pub_id)
+      values ('17110000-0000-4000-8000-000000000001', 'https://youtu.be/over', 'youtube', 'g8-pub-live');
+    raise exception 'G8: a thirteenth post succeeded';
+  exception when check_violation then null;
+  end;
+  delete from public.creator_posts;
+  get diagnostics v_count = row_count;
+  if v_count <> 12 then raise exception 'G8: the owner must delete only own posts'; end if;
+  reset role;
+end $$;
+
 -- ------------------------------------------------------------------------ done
 select 'rls contract: all crew-facing policies verified' as result;

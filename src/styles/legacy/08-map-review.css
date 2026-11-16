@@ -24,12 +24,13 @@
 .map-ideas-grid .poi-col-head-txt > .small {
   display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* The Day plan's count line carries the planned count and the rain chance.
+   It wraps on a narrow sheet instead of cutting the rain off. */
+.map-ideas-grid .poi-col--needs .poi-col-head-txt > .small { white-space: normal; }
 
 /* The numbers the rail asks a decision from were its smallest type. The day
    chip's fill count also carried .78 opacity — 4.30:1 on the chip's own white
    and 3.79:1 on its teal-soft "on" fill, under AA at that size. */
-.slots-daychip .slots-daychip-rd { font-size: 11px; opacity: 1; }
-.slots-meter .slots-meter-lbl { font-size: 11px; }
 .slots-list .day-slot-win,
 .slots-list .day-slot-urgent,
 .slots-list .day-slot-missed { font-size: 11px; }
@@ -217,14 +218,6 @@
 .day-slot-cand-bar i { display: block; height: 100%; border-radius: 2px; background: var(--teal); }
 .day-slot-cand-bar i.is-over { background: var(--warn); }
 
-/* Plan P2.5's mobile slots summary: hidden at desktop widths, one count+open
-   line on phones where the list starts collapsed (the meter above still
-   carries the filled count). */
-.slots-mobile-sum { display: none; }
-@media (max-width: 720px) {
-  .slots-mobile-sum { display: flex; margin: 0 10px 8px; }
-  .slots-list:not(.is-peek) { display: none; }
-}
 
 /* ---- The toolbar restructures into three ranked weights ---------------------
    The critique's P1: ~20 same-weight pills over four intents. The day segment

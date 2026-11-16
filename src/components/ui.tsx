@@ -597,11 +597,11 @@ export function StatTile({ label, value, sub }: { label: string; value: React.Re
   )
 }
 
-export function CopyButton({ text, label = 'Copy link', onCopied }: { text: string; label?: string; onCopied?: () => void }) {
+export function CopyButton({ text, label = 'Copy link', variant = 'primary', onCopied }: { text: string; label?: string; variant?: 'primary' | 'outline'; onCopied?: () => void }) {
   const [done, setDone] = useState(false)
   return (
     <button
-      className={`btn btn-sm ${done ? 'btn-outline' : 'btn-primary'}`}
+      className={`btn btn-sm ${done || variant === 'outline' ? 'btn-outline' : 'btn-primary'}`}
       onClick={() => {
         void nativeCopyText(text)
         setDone(true)

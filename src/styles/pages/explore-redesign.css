@@ -35,8 +35,7 @@
   font-family: var(--font-display); font-size: clamp(2.25rem, 1.2rem + 2.6vw, 3.5rem);
   font-weight: 700; line-height: 1.04; letter-spacing: -.025em; text-wrap: balance;
 }
-.ex-page .ex-hero h1 em { font-style: normal; color: var(--pw-lagoon-600); }
-.ex-page .ex-hero h1 em::after { content: none; }
+.ex-page .ex-hero h1 em { font-family: var(--font-serif); font-style: italic; color: var(--pw-lagoon-600); }
 
 .ex-page .ex-hero-lede {
   margin: 14px 0 0; max-width: 560px; color: var(--text-2);
@@ -552,4 +551,4 @@ article.ex-card[data-id] .ex-card-foot { flex-wrap: nowrap; gap: 8px; }
 .ex-card .ex-card-foot .ex-byline > span { min-width: 0; overflow-wrap: anywhere; }
 .ex-card .ex-card-foot .ex-byline > .avatar, .ex-card .ex-card-foot .ex-byline > svg { flex: none; }
 .ex-card .ex-card-foot .ex-fork { flex: none; padding-inline: 12px; }
-.ex-page .ex-hero h1 > em { display: block; }
+.ex-page .ex-hero h1 > em { display: block; width: fit-content; margin-bottom: .18em; }
