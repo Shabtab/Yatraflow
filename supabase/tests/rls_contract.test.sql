@@ -580,7 +580,7 @@ declare
   table_name text;
 begin
   -- The collaboration layer broadcasts live (multi-editor sync).
-  foreach table_name in array array['trips', 'trip_members', 'suggestions', 'decisions', 'activity', 'notifications', 'published_itineraries', 'profiles', 'admin_audit'] loop
+  foreach table_name in array array['trips', 'trip_members', 'suggestions', 'decisions', 'activity', 'notifications', 'published_itineraries', 'profiles', 'admin_audit', 'crew_preferences'] loop
     if not exists (
       select 1
       from pg_publication_tables
@@ -1472,6 +1472,87 @@ begin
   get diagnostics v_count = row_count;
   if v_count <> 12 then raise exception 'G8: the owner must delete only own posts'; end if;
   reset role;
+end $$;
+
+-- ============================================================ G9. group input phase 2 (#972)
+-- Decision closing time and day, add-an-option, and crew preferences
+-- (migration 20261117_group_input_phase2). Metadata checks only, like the rest.
+do $$
+begin
+  -- 9a. The decision columns exist, and a direct editor update cannot move them.
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'decisions' and column_name = 'closes_at' and data_type = 'bigint'
+  ) or not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'decisions' and column_name = 'day_id' and data_type = 'text'
+  ) then
+    raise exception 'G9: decisions.closes_at (bigint) and decisions.day_id (text) must exist';
+  end if;
+  if position('closes_at' in pg_get_functiondef('public.guard_collab_contribution_columns()'::regprocedure)) = 0
+    or position('day_id' in pg_get_functiondef('public.guard_collab_contribution_columns()'::regprocedure)) = 0 then
+    raise exception 'G9: the decision write guard must freeze closes_at and day_id';
+  end if;
+
+  -- 9b. The server enforces the lock and the add-option rules. The check reads the
+  -- function source, so it proves the rules are in the stored function.
+  if position('decision.option.add' in pg_get_functiondef('public.submit_collab_command(text,text,jsonb)'::regprocedure)) = 0
+    or position('voting is closed' in pg_get_functiondef('public.submit_collab_command(text,text,jsonb)'::regprocedure)) = 0
+    or position('duplicate option' in pg_get_functiondef('public.submit_collab_command(text,text,jsonb)'::regprocedure)) = 0 then
+    raise exception 'G9: submit_collab_command must carry the closing-time lock and decision.option.add';
+  end if;
+
+  -- 9c. crew_preferences: RLS on, members read, nobody writes through the table.
+  if not (select relrowsecurity from pg_class where oid = 'public.crew_preferences'::regclass) then
+    raise exception 'G9: crew_preferences must have RLS enabled';
+  end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'crew_preferences'
+      and cmd = 'SELECT' and permissive = 'PERMISSIVE' and qual like '%is_member%'
+  ) then
+    raise exception 'G9: crew_preferences SELECT must be member-scoped (is_member(trip_id))';
+  end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'crew_preferences'
+      and permissive = 'RESTRICTIVE' and cmd = 'ALL' and qual like '%is_disabled%'
+  ) then
+    raise exception 'G9: crew_preferences must keep the RESTRICTIVE deny-disabled policy';
+  end if;
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'crew_preferences'
+      and cmd in ('INSERT', 'UPDATE', 'DELETE') and permissive = 'PERMISSIVE'
+  ) then
+    raise exception 'G9: crew_preferences has no client write policy; set_my_crew_preferences writes the caller''s row';
+  end if;
+  if has_table_privilege('anon', 'public.crew_preferences', 'select')
+    or has_table_privilege('authenticated', 'public.crew_preferences', 'insert')
+    or has_table_privilege('authenticated', 'public.crew_preferences', 'update')
+    or has_table_privilege('authenticated', 'public.crew_preferences', 'delete')
+    or not has_table_privilege('authenticated', 'public.crew_preferences', 'select') then
+    raise exception 'G9: crew_preferences is read-only for authenticated and closed to anon';
+  end if;
+
+  -- 9d. The writer RPC: security definer, pinned search_path, not callable by anon.
+  if not exists (
+    select 1 from pg_proc where oid = 'public.set_my_crew_preferences(text,jsonb)'::regprocedure
+      and prosecdef and proconfig @> array['search_path=""']
+  ) then
+    raise exception 'G9: set_my_crew_preferences needs SECURITY DEFINER and a pinned search_path';
+  end if;
+  if has_function_privilege('anon', 'public.set_my_crew_preferences(text,jsonb)', 'execute')
+    or not has_function_privilege('authenticated', 'public.set_my_crew_preferences(text,jsonb)', 'execute') then
+    raise exception 'G9: only authenticated callers may run set_my_crew_preferences';
+  end if;
+  if exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) e
+    where n.nspname = 'public' and p.proname = 'set_my_crew_preferences' and e.grantee = 0::oid
+  ) then
+    raise exception 'G9: set_my_crew_preferences must revoke PUBLIC';
+  end if;
 end $$;
 
 -- ------------------------------------------------------------------------ done

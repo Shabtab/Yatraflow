@@ -390,7 +390,8 @@ describe('#568 — the reconnect resync covers every subscribed table', () => {
     expect(resynced).toContain('notifications')
     expect(resynced).toContain('published_itineraries')
     expect(resynced).toContain('admin_audit')
-    expect(resynced).toHaveLength(9)
+    expect(resynced).toContain('crew_preferences')
+    expect(resynced).toHaveLength(10)
   })
 
   it('the gap slices refetch and feed synthetic events through the dispatch', () => {
