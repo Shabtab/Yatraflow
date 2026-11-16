@@ -42,7 +42,6 @@ import { publishValidation, PUBLISH_FIELD_ORDER, PublishRejected } from '../lib/
 import { makeInviteCode, normalizeInviteCode } from '../lib/inviteCode'
 import { publishedToRow } from '../lib/restoreRows'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
-import { isVoteClosed } from '../lib/decisionClock'
 import { checkNewOptionLabel, normalizeOptionLabel } from '../lib/decisionOptions'
 import { normalizeInterests, myCrewPreference, upsertCrewPreference, removeCrewPreference, replaceTripPreferences } from '../lib/crewPreferences'
 import { crewPreferenceRowToEntry, submitCrewPreferences } from './crewPreferenceWire'
@@ -87,9 +86,9 @@ interface DB {
   crewPreferences: CrewPreference[]
   /** The verdict of each trip's last crew preference read, keyed by trip id.
    *  Pass it to `sliceState(crewPreferenceReads, tripId)`: a trip with no
-   *  entry is unread (`reading`), a failed read is `failed`, and only a read
+   *  entry, or a first read in flight, is `reading`, a failed read is `failed`, and only a read
    *  that succeeded can say `ready` (and then an empty list means "no answers"). */
-  crewPreferenceReads: Record<ID, 'ok' | 'failed'>
+  crewPreferenceReads: Record<ID, 'ok' | 'failed' | 'reading'>
   activity: ActivityEntry[]
   notifications: Notification[]
   published: PublishedItinerary[]
@@ -206,7 +205,7 @@ export function useCrewPreferenceRows(): CrewPreference[] {
 }
 
 /** Per-trip verdicts of the crew preference reads. Use `sliceState(reads, tripId)`. */
-export function useCrewPreferenceReads(): Record<ID, 'ok' | 'failed'> {
+export function useCrewPreferenceReads(): Record<ID, 'ok' | 'failed' | 'reading'> {
   return useSyncExternalStore(subscribe, () => cache.crewPreferenceReads)
 }
 
@@ -7546,9 +7545,10 @@ export function voteOnDecision(decisionId: ID, optionId: ID): Promise<CollabOutc
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
   if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
   if (cache.decisions[dIdx].status !== 'open') return Promise.resolve({ status: 'invalid', reason: 'decision is not open' })
-  // After the closing time the server refuses every ballot. Say so here first,
-  // so the vote does not flash on screen and then roll back.
-  if (isVoteClosed(cache.decisions[dIdx], Date.now())) return Promise.resolve({ status: 'invalid', reason: 'voting is closed' })
+  // The closing time is NOT checked here. The server is the authority and
+  // refuses a late ballot; a device clock that runs fast would block a valid
+  // vote, and one that runs slow only costs a rollback. The page may use the
+  // clock for its label (`closingLabel`), never as a gate.
   // The chosen option must exist — the contract validates it server-side too,
   // and a ballot pointing nowhere would count a vote for nothing.
   if (!cache.decisions[dIdx].options.some(o => o.id === optionId)) {
@@ -7599,7 +7599,8 @@ const OPTION_REFUSAL: Record<'empty' | 'too long' | 'duplicate' | 'too many opti
 /** Add one option to an open decision.
  *
  *  The server allows it while the decision is open and before its closing time,
- *  to the members who can vote. It refuses a label that matches an existing one
+ *  to the members who can vote. The client does not check the closing time
+ *  against its own clock; the server decides. It refuses a label that matches an existing one
  *  (trimmed, any case), and it records who added the option (`addedBy`). The
  *  client checks the same rules first, so a refusal arrives with its reason. */
 export function addDecisionOption(
@@ -7612,7 +7613,8 @@ export function addDecisionOption(
   if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
   const rowBefore = cache.decisions[dIdx]
   if (rowBefore.status !== 'open') return Promise.resolve({ status: 'invalid', reason: 'decision is not open' })
-  if (isVoteClosed(rowBefore, Date.now())) return Promise.resolve({ status: 'invalid', reason: 'voting is closed' })
+  // The closing time is advisory on the client: the server refuses a late
+  // option, so a skewed device clock cannot block a valid add.
   for (const impact of [input.costImpactInr, input.timeImpactMin]) {
     if (impact !== undefined && !Number.isFinite(impact)) return Promise.resolve({ status: 'invalid', reason: 'impact is not a number' })
   }
@@ -7670,14 +7672,37 @@ export function addDecisionOption(
  *  cannot erase the answer the member just gave. */
 const crewWritesInFlight = new Map<string, CrewPreference>()
 
+/** The newest read started for each trip. A read that finishes while a newer
+ *  one exists writes nothing: the newer read holds the fresher answer. */
+const crewReadSeq = new Map<ID, number>()
+
+/** Forget everything held for one trip: its rows, its verdict, and any read
+ *  still in flight (a late read finds no matching token and writes nothing). */
+function dropCrewTrip(tripId: ID): void {
+  cache.crewPreferences = cache.crewPreferences.filter(p => p.tripId !== tripId)
+  const reads = { ...cache.crewPreferenceReads }
+  delete reads[tripId]
+  cache.crewPreferenceReads = reads
+  // Move the token on, so a read in flight no longer matches it.
+  crewReadSeq.set(tripId, (crewReadSeq.get(tripId) ?? 0) + 1)
+}
+
 /** Read every crew quiz answer of one trip into the cache.
  *
  *  Replace-on-success: a failed read keeps the rows already held and records
  *  `failed` for the trip, so "could not load" never reads as "nobody answered".
- *  Never throws. */
+ *  A trip with no good read yet is marked `reading` first. A read that a newer
+ *  read of the same trip overtook writes nothing. Never throws. */
 export async function loadCrewPreferences(tripId: ID): Promise<'ok' | 'failed'> {
   const scope = identityScope()
   if (!scope) return 'failed'
+  const seq = (crewReadSeq.get(tripId) ?? 0) + 1
+  crewReadSeq.set(tripId, seq)
+  // A refresh of a trip that already read fine keeps showing its answers.
+  if (cache.crewPreferenceReads[tripId] !== 'ok') {
+    cache.crewPreferenceReads = { ...cache.crewPreferenceReads, [tripId]: 'reading' }
+    commit()
+  }
   let verdict: 'ok' | 'failed' = 'failed'
   let fresh: CrewPreference[] | null = null
   try {
@@ -7693,11 +7718,15 @@ export async function loadCrewPreferences(tripId: ID): Promise<'ok' | 'failed'> 
   }
   // A read that lands after sign-out or an account switch writes nothing.
   if (!isCurrentIdentity(scope)) return verdict
+  // An older read, or a read of a trip that was dropped meanwhile, writes nothing.
+  if (crewReadSeq.get(tripId) !== seq) return verdict
   const inflight = crewWritesInFlight.get(`${scope.userId}:${tripId}`)
   if (fresh && inflight) fresh = upsertCrewPreference(fresh, inflight)
-  cache.crewPreferenceReads = { ...cache.crewPreferenceReads, [tripId]: verdict }
+  cache.crewPreferenceReads = { ...cache.crewPreferenceReads, [tripId]: verdict === 'ok' ? 'ok' : 'failed' }
   if (fresh) cache.crewPreferences = replaceTripPreferences(cache.crewPreferences, tripId, fresh)
   commit()
+  // Live updates start after the first good read, on their own channel.
+  if (verdict === 'ok') openCrewChannel(scope)
   return verdict
 }
 
@@ -7735,6 +7764,9 @@ export async function setMyCrewPreferences(tripId: ID, interests: readonly CrewI
       ? upsertCrewPreference(cache.crewPreferences, before)
       : removeCrewPreference(cache.crewPreferences, tripId, scope.userId)
     commit()
+    // `unavailable` means the server may or may not have stored the answer.
+    // Reverting alone could hide a stored row, so read the truth back.
+    if (outcome.status === 'unavailable') void loadCrewPreferences(tripId)
   } else {
     // The row moved on (a newer write or a realtime event): the safe repair is a fresh read.
     void loadCrewPreferences(tripId)
@@ -8606,6 +8638,80 @@ export function connectRealtime(userId: string): void {
   }
 }
 
+// ---------------- Crew preferences channel ----------------
+//
+// crew_preferences has its OWN channel, opened after the first good read of a
+// trip. A client that runs before the migration, or against a table that is not
+// published, gets a CHANNEL_ERROR here and nowhere else: the main
+// `yatraflow-live` channel and its nine tables are untouched.
+let crewChannel: RealtimeChannel | null = null
+let crewChannelIdentity: IdentityScope | null = null
+
+function closeCrewChannel(): void {
+  const channel = crewChannel
+  crewChannel = null
+  crewChannelIdentity = null
+  if (channel) {
+    try { void Promise.resolve(supabase.removeChannel(channel)).catch(() => {}) } catch { /* The identity guard already closed it. */ }
+  }
+}
+
+function openCrewChannel(scope: IdentityScope): void {
+  if (!isSupabaseConfigured || !isCurrentIdentity(scope)) return
+  if (crewChannel && crewChannelIdentity?.userId === scope.userId && crewChannelIdentity.epoch === scope.epoch) return
+  closeCrewChannel()
+  try {
+    const channel = supabase.channel('yatraflow-crew')
+    const live = () => crewChannel === channel && isCurrentIdentity(scope)
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'crew_preferences' }, p => {
+      if (live()) dispatchRealtimeEvent('crew_preferences', p)
+    })
+    crewChannel = channel
+    crewChannelIdentity = scope
+    channel.subscribe(status => {
+      if (!live()) return
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        // Log only. Nothing else depends on this channel, and the client library
+        // rejoins on its own.
+        console.error('[yatraflow] crew preferences channel', status)
+        return
+      }
+      // Every SUBSCRIBED, the first one too, reads the trips again. The first
+      // one can follow an earlier failed join, so it cannot be skipped.
+      if (status === 'SUBSCRIBED') void resyncCrewPreferences(scope)
+    })
+  } catch (error) {
+    console.error('[yatraflow] crew preferences subscribe failed', error)
+    crewChannel = null
+    crewChannelIdentity = null
+  }
+}
+
+/** Reconcile the crew answers of every trip that was read: refetch, feed the
+ *  rows through the same dispatch a live event takes, and sweep a cached row the
+ *  refetch no longer returns. A trip never read has nothing to reconcile. A
+ *  failed refetch leaves the cache as it was. */
+async function resyncCrewPreferences(scope: IdentityScope): Promise<void> {
+  const live = () => isCurrentIdentity(scope)
+  try {
+    if (!live()) return
+    const read = Object.keys(cache.crewPreferenceReads).filter(id => cache.crewPreferenceReads[id] === 'ok' && tripById(id))
+    if (!read.length) return
+    const { data, error } = await supabase.from('crew_preferences').select('*').in('trip_id', read)
+    if (!live()) return
+    if (error) throw error
+    const rows = (data ?? []) as Record<string, unknown>[]
+    const fetchedKeys = new Set(rows.map(r => `${String(r.trip_id)}:${String(r.user_id)}`))
+    for (const cached of cache.crewPreferences) {
+      if (!read.includes(cached.tripId) || fetchedKeys.has(`${cached.tripId}:${cached.userId}`)) continue
+      feedSynthetic('crew_preferences', 'DELETE', {}, { trip_id: cached.tripId, user_id: cached.userId })
+    }
+    for (const row of rows) feedSynthetic('crew_preferences', 'INSERT', row)
+  } catch (e) {
+    console.error('[yatraflow] crew preferences resync failed', e)
+  }
+}
+
 /** Replay every cached trip as a synthetic UPDATE dispatch (same handler as a
  *  live event) so anything that changed while the socket was down re-lands.
  *  Each trip refetches ITS OWN row — a select of the cached ids keeps the
@@ -8620,7 +8726,6 @@ export function connectRealtime(userId: string): void {
 const RESYNC_TABLES = [
   'trips', 'trip_members', 'suggestions', 'decisions', 'activity',
   'notifications', 'profile_cards', 'published_itineraries', 'admin_audit',
-  'crew_preferences',
 ] as const
 
 /** Feed a synthetic postgres_changes payload through the SAME dispatch a live
@@ -8696,22 +8801,6 @@ async function resyncTripsAfterReconnect(scope: IdentityScope): Promise<void> {
       for (const row of rows) feedSynthetic(table, 'INSERT', row)
     }
   })
-  // Crew preferences: only trips whose answers were read. A trip never read has
-  // nothing to reconcile, and its first read fetches every row.
-  await step('crew_preferences', async () => {
-    const read = ids.filter(id => id in cache.crewPreferenceReads)
-    if (!read.length) return
-    const { data, error } = await supabase.from('crew_preferences').select('*').in('trip_id', read)
-    if (!live()) return
-    if (error) throw error
-    const rows = (data ?? []) as Record<string, unknown>[]
-    const fetchedKeys = new Set(rows.map(r => `${String(r.trip_id)}:${String(r.user_id)}`))
-    for (const cached of cache.crewPreferences) {
-      if (!read.includes(cached.tripId) || fetchedKeys.has(`${cached.tripId}:${cached.userId}`)) continue
-      feedSynthetic('crew_preferences', 'DELETE', {}, { trip_id: cached.tripId, user_id: cached.userId })
-    }
-    for (const row of rows) feedSynthetic('crew_preferences', 'INSERT', row)
-  })
   // Per-USER scope, never per-trip — the RLS policy shapes the query.
   await step('notifications', async () => {
     const me = cache.sessionUserId
@@ -8784,6 +8873,7 @@ async function resyncTripsAfterReconnect(scope: IdentityScope): Promise<void> {
 
 /** Tear down the channel. Call on sign-out. */
 export function disconnectRealtime(): void {
+  closeCrewChannel()
   const channel = realtimeChannel
   realtimeChannel = null
   realtimeIdentity = null
@@ -8828,6 +8918,7 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
         cache.decisions = cache.decisions.filter(d => d.tripId !== id)
         cache.activity = cache.activity.filter(a => a.tripId !== id)
         cache.notifications = cache.notifications.filter(n => n.tripId !== id)
+        dropCrewTrip(id)
         break
       }
       const held = queuedLocalTrips.get(id)
@@ -8947,6 +9038,7 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
         cache.decisions = cache.decisions.filter(d => d.tripId !== tripId)
         cache.activity = cache.activity.filter(a => a.tripId !== tripId)
         cache.notifications = cache.notifications.filter(n => n.tripId !== tripId)
+        dropCrewTrip(tripId)
       } else {
         // A demotion keeps the trip readable, so only the edit right goes.
         if (userId === cache.sessionUserId && !canEdit(row?.role)) {

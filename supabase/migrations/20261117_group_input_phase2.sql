@@ -1,9 +1,9 @@
 -- Group input phase 2 data layer (#972): decision closing time, decision day,
 -- add-an-option, and crew preferences.
 -- Apply after 20261026a_resolved_vote_order.sql and BEFORE the client that uses it.
--- The client subscribes to public.crew_preferences on the shared realtime
--- channel; a client deployed before this file runs would ask for a table that
--- does not exist yet.
+-- The client opens its own realtime channel for public.crew_preferences, after
+-- its first successful read of that table, so a client that runs before this
+-- file is applied cannot disturb the main live channel.
 --
 -- What changes:
 --   1. decisions.closes_at (epoch ms) and decisions.day_id (stable day id).
@@ -14,7 +14,15 @@
 --      decision.option.add adds one option while the decision is open and
 --      before its closing time. Nothing auto-resolves a decision.
 --   5. public.crew_preferences (one row per trip member) and the
---      set_my_crew_preferences RPC, the only write path.
+--      set_my_crew_preferences RPC, the only write path. A trigger deletes a
+--      member's row when the member leaves the trip.
+--
+-- After you run this file, check the realtime publication. This query must
+-- return one row. If it returns none, add public.crew_preferences to the
+-- supabase_realtime publication in the Dashboard (Database, Publications):
+--   select schemaname, tablename from pg_publication_tables
+--    where pubname='supabase_realtime' and schemaname='public'
+--      and tablename='crew_preferences';
 begin;
 
 do $$
@@ -143,9 +151,9 @@ revoke all on function public.restore_trip_contributions(text) from public, anon
 grant execute on function public.restore_trip_contributions(text) to authenticated;
 
 -- ---------------------------------------------------- 4. the collab command RPC
--- Copy of 20261026a with three changes: decision.create accepts closesAt and
--- dayId, decision.ballot refuses a vote after the closing time, and the new
--- decision.option.add command.
+-- Copy of 20261026a with changes to the decision commands: decision.create
+-- accepts closesAt and dayId, decision.ballot refuses a vote after the closing
+-- time, and the new decision.option.add command.
 drop function if exists public.submit_collab_command(text,text,jsonb);
 create function public.submit_collab_command(p_command_id text, p_trip_id text, p_command jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
@@ -532,11 +540,8 @@ begin
         if p_command->'optionId'<>'null'::jsonb and (jsonb_typeof(p_command->'optionId') is distinct from 'string' or v_choice is null or length(v_choice) not between 1 and 200) then return jsonb_build_object('status','invalid','tripRevision',null); end if;
         if v_row->>'status'<>'open' or (v_choice is not null and not exists(select 1 from jsonb_array_elements(v_row->'options') o where o->>'id'=v_choice)) then return jsonb_build_object('status','invalid','tripRevision',null); end if;
         -- The closing time locks the vote for new ballots, changes and removals.
-        -- A stored closing time that is not a number refuses the vote (fail closed).
+        -- closes_at is a bigint column, so a stored closing time is always a number.
         if coalesce(jsonb_typeof(v_row->'closes_at'),'null')<>'null' then
-          if jsonb_typeof(v_row->'closes_at')<>'number' then
-            return jsonb_build_object('status','invalid','tripRevision',v_revision,'reason','closing time is unreadable');
-          end if;
           if (v_row->>'closes_at')::numeric <= floor(extract(epoch from clock_timestamp())*1000) then
             return jsonb_build_object('status','invalid','tripRevision',v_revision,'reason','voting is closed');
           end if;
@@ -573,9 +578,6 @@ begin
         return jsonb_build_object('status','invalid','tripRevision',v_revision,'reason','decision is not open');
       end if;
       if coalesce(jsonb_typeof(v_row->'closes_at'),'null')<>'null' then
-        if jsonb_typeof(v_row->'closes_at')<>'number' then
-          return jsonb_build_object('status','invalid','tripRevision',v_revision,'reason','closing time is unreadable');
-        end if;
         if (v_row->>'closes_at')::numeric <= floor(extract(epoch from clock_timestamp())*1000) then
           return jsonb_build_object('status','invalid','tripRevision',v_revision,'reason','voting is closed');
         end if;
@@ -811,7 +813,7 @@ grant execute on function public.submit_collab_command(text,text,jsonb) to authe
 -- ------------------------------------------------------- 5. crew preferences
 -- One row per (trip, member): the interests that member wants on this trip.
 -- The interest set is the app's STOP_CATEGORIES list (src/data/types.ts).
--- tests/crew-preferences-sql-pin.test.ts keeps the two lists equal.
+-- tests/group-input-phase2-sql-pin.test.ts keeps the two lists equal.
 -- A row with an empty list is an answer ("none of these"). No row means the
 -- member has not answered.
 create table if not exists public.crew_preferences (
@@ -892,6 +894,22 @@ end;
 $$;
 revoke all on function public.set_my_crew_preferences(text,jsonb) from public, anon;
 grant execute on function public.set_my_crew_preferences(text,jsonb) to authenticated;
+
+-- A member's answer leaves with the member. The trip_members row can be
+-- deleted by leave, removal or eviction, so one trigger covers every path.
+create or replace function public.crew_preferences_on_member_delete()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  delete from public.crew_preferences where trip_id = old.trip_id and user_id = old.user_id;
+  return old;
+end;
+$$;
+revoke all on function public.crew_preferences_on_member_delete() from public, anon, authenticated;
+
+drop trigger if exists crew_preferences_member_delete on public.trip_members;
+create trigger crew_preferences_member_delete
+  after delete on public.trip_members
+  for each row execute function public.crew_preferences_on_member_delete();
 
 -- ---------------------------------------------------------------- 6. realtime
 -- Realtime DDL can fail on a read-only role, so it is guarded like the rest of

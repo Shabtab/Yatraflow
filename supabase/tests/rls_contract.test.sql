@@ -1553,6 +1553,27 @@ begin
   ) then
     raise exception 'G9: set_my_crew_preferences must revoke PUBLIC';
   end if;
+
+  -- 9e. A member's row leaves with the member: a security definer trigger on
+  -- trip_members with a pinned search_path, not callable by clients.
+  if not exists (
+    select 1 from pg_trigger
+    where tgname = 'crew_preferences_member_delete' and tgrelid = 'public.trip_members'::regclass
+      and not tgisinternal and tgenabled <> 'D'
+      and (tgtype & 1) = 1 and (tgtype & 2) = 0 and (tgtype & 8) = 8
+  ) then
+    raise exception 'G9: trip_members needs the AFTER DELETE FOR EACH ROW trigger crew_preferences_member_delete';
+  end if;
+  if not exists (
+    select 1 from pg_proc where oid = 'public.crew_preferences_on_member_delete()'::regprocedure
+      and prosecdef and proconfig @> array['search_path=""']
+  ) then
+    raise exception 'G9: crew_preferences_on_member_delete needs SECURITY DEFINER and a pinned search_path';
+  end if;
+  if has_function_privilege('anon', 'public.crew_preferences_on_member_delete()', 'execute')
+    or has_function_privilege('authenticated', 'public.crew_preferences_on_member_delete()', 'execute') then
+    raise exception 'G9: crew_preferences_on_member_delete must not be callable by clients';
+  end if;
 end $$;
 
 -- ------------------------------------------------------------------------ done

@@ -50,8 +50,10 @@ describe('the closing-time lock is server side', () => {
     expect(locks.length).toBe(2)
     expect(migration).toContain("(v_row->>'closes_at')::numeric <= floor(extract(epoch from clock_timestamp())*1000)")
   })
-  it('fails closed on a closing time that is not a number', () => {
-    expect((migration.match(/'reason','closing time is unreadable'/g) ?? []).length).toBe(2)
+  it('has no branch for an unreadable closing time, because closes_at is a bigint column', () => {
+    expect(migration).not.toContain('closing time is unreadable')
+    expect(schema).not.toContain('closing time is unreadable')
+    expect(migration).toContain('alter table public.decisions add column if not exists closes_at bigint;')
   })
   it('does not resolve a decision by itself', () => {
     const lock = migration.slice(migration.indexOf("elsif v_kind='decision.option.add'"), migration.indexOf("elsif v_kind='decision.resolve'"))
@@ -97,9 +99,27 @@ describe('mirrors', () => {
     expect(schema).toContain('closes_at          bigint')
     expect(schema).toContain('day_id             text')
   })
-  it('the store subscribes crew_preferences on the shared channel and resyncs it', () => {
-    expect(store).toMatch(/const RESYNC_TABLES = \[[^\]]*'crew_preferences'/)
+  it('the store keeps crew_preferences off the shared channel and gives it its own', () => {
+    expect(store).not.toMatch(/const RESYNC_TABLES = \[[^\]]*'crew_preferences'/)
+    expect(store).toContain("supabase.channel('yatraflow-crew')")
     expect(store).toContain("case 'crew_preferences': {")
-    expect(store).toContain("await step('crew_preferences'")
+    expect(store).not.toContain("await step('crew_preferences'")
+    expect(store).toContain('async function resyncCrewPreferences')
+  })
+  it('a member\'s answer is deleted with the member, in the migration and in schema.sql', () => {
+    for (const sql of [migration, schema]) {
+      expect(sql).toMatch(/create or replace function public\.crew_preferences_on_member_delete\(\)[\s\S]*?security definer set search_path = ''/)
+      expect(sql).toContain('drop trigger if exists crew_preferences_member_delete on public.trip_members;')
+      expect(sql).toMatch(/create trigger crew_preferences_member_delete\s+after delete on public\.trip_members\s+for each row/)
+      expect(sql).toContain('revoke all on function public.crew_preferences_on_member_delete() from public, anon, authenticated;')
+    }
+  })
+  it('the migration header names the publication check the user runs afterwards', () => {
+    expect(migration).toContain("from pg_publication_tables")
+    expect(migration).toContain("tablename='crew_preferences'")
+  })
+  it('the stale test-file name is gone', () => {
+    expect(migration).not.toContain('crew-preferences-sql-pin')
+    expect(schema).not.toContain('crew-preferences-sql-pin')
   })
 })
