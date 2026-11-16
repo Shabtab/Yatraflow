@@ -241,11 +241,16 @@ describe('PW-05: one cover height across the content tabs, a slim bar on Map', (
     expect(css).not.toContain('body:has(.tl-head) .yf-page .yf-trip-head')
   })
 
-  it('sets one cover height per breakpoint and never animates it', () => {
+  it('sets one cover height per breakpoint and glides only to the slim bar', () => {
     const base = ruleBody('.yf-page .yf-trip-head')
     expect(base).toMatch(/height:\s*308px;/)
-    expect(base).toMatch(/transition:\s*box-shadow var\(--motion-slow\) var\(--ease-glide\);/)
-    expect(base).not.toMatch(/transition:[^;]*height/)
+    // One capped, centred cover on every tab, so the canvas width glide
+    // cannot move the pill sideways.
+    expect(base).toMatch(/max-width:\s*1140px;/)
+    expect(base).toMatch(/margin:\s*0 auto var\(--space-7\);/)
+    // The content tabs share one fixed height, so a switch between them has
+    // nothing to animate. The height glides only to and from the Map/Board bar.
+    expect(base).toMatch(/transition:\s*height var\(--motion-slow\) var\(--ease-paper\),\s*box-shadow var\(--motion-slow\) var\(--ease-glide\);/)
     // Phone steps: 306px up to 720px, and 324px below 380px where the member row wraps.
     expect(css).toMatch(/@media \(max-width: 720px\) \{[\s\S]*?\.yf-page \.yf-trip-head \{\s*height: 306px;/)
     expect(css).toMatch(/@media \(max-width: 380px\) \{\s*\.yf-page \.yf-trip-head \{\s*height: 324px;/)
@@ -287,14 +292,19 @@ describe('PW-05: one cover height across the content tabs, a slim bar on Map', (
     // Map and Board share the bar through data-canvas, so they look the same.
     const scope = ".yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true']"
     const hidden = ruleBody(
-      `${scope} .yf-trip-head > .yf-cover-media,\n${scope} .yf-fold,\n${scope} .yf-extra,\n${scope} .yf-cover-top .yf-invite`,
+      `${scope} .yf-fold,\n${scope} .yf-extra,\n${scope} .yf-cover-top .yf-invite`,
     )
     // `display: none` takes the member avatars and the invite button out of the tab order.
     expect(hidden).toMatch(/display:\s*none;/)
     expect(hidden).not.toMatch(/visibility/)
-    expect(ruleBody(`${scope} .yf-trip-head`)).toMatch(/height:\s*auto;/)
+    // The bar has a fixed height, so the cover height glides to it.
+    expect(ruleBody(`${scope} .yf-trip-head`)).toMatch(/height:\s*calc\(/)
+    expect(ruleBody('.yf-page .yf-trip-head')).toMatch(/transition:[^;]*height var\(--motion-slow\)/)
+    // The photo fades; it is not display none.
+    expect(ruleBody(`${scope} .yf-trip-head > .yf-cover-media`)).toMatch(/opacity:\s*0;/)
+    // The pill keeps the cover's absolute rule, so it rides with the edge.
+    expect(ruleBody(".yf-page.yf-page[data-compact='true'] .yf-cover-content > .yf-tabbar")).not.toMatch(/position:\s*relative/)
     // The tab rail stays inside the bar, in the same tablist (no second tree).
-    expect(ruleBody(`${scope} .yf-cover-content > .yf-tabbar`)).toMatch(/margin:\s*0;/)
     expect(ws.match(/<SegmentedTabs className="tabbar yf-tabbar"/g)).toHaveLength(1)
   })
 })

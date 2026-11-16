@@ -250,16 +250,23 @@
      Budget, Share, Settings). It fits the two-line title, the meta line, the
      member row and the tab pill. The old per-tab overrides gave Timeline and
      Settings their own heights, so the pill jumped when the user switched tabs.
-     Height is not in the transition list: nothing resizes between tabs. */
+     Content tabs share this height, so switching between them changes nothing.
+     The height glides only between the cover and the Map and Board bar. */
   height: 308px;
-  margin: 0 0 var(--space-7);
+  /* One 1140px cover, centred, on every tab. The Board and Map canvas is
+     wider, and its width glides back when the user leaves it. A cover with
+     its own cap stays at one x while the container width changes. */
+  max-width: 1140px;
+  margin: 0 auto var(--space-7);
   padding: 0;
   overflow: visible;
   border: 0;
   border-radius: var(--radius-xl);
   background: var(--pw-sea-700);
   box-shadow: var(--elev-3);
-  transition: box-shadow var(--motion-slow) var(--ease-glide);
+  transition:
+    height var(--motion-slow) var(--ease-paper),
+    box-shadow var(--motion-slow) var(--ease-glide);
 }
 
 .yf-page .yf-trip-head::after {
@@ -269,6 +276,9 @@
 .yf-page .yf-trip-head > .yf-cover-media {
   position: absolute;
   inset: 0;
+  transition:
+    opacity var(--motion-slow) var(--ease-paper),
+    visibility 0s linear 0s;
   z-index: 0;
   overflow: hidden;
   border-radius: inherit;
@@ -730,11 +740,11 @@
   margin-top: var(--space-1);
 }
 
+/* The folded header (Map and Board) keeps the pill on the cover's own
+   absolute rule, bottom left. It rides with the header's bottom edge while
+   the height glides, so it never jumps to a new row. */
 .yf-page.yf-page[data-compact='true'] .yf-cover-content > .yf-tabbar {
-  position: relative;
-  inset: auto;
-  flex-shrink: 0;
-  margin-top: var(--space-7);
+  margin: 0;
 }
 
 /* ---------- Map and Board: the cover gives way to one slim bar ----------
@@ -744,37 +754,60 @@
    trip name and the tab rail. The bar does not resize between visits. The map
    canvas measures its own top edge against the viewport (MapTab.tsx), so the
    freed height goes to the map without a change there.
-   Hidden parts use `display: none`, not the fold: nothing inside stays in the
-   tab order, and nothing animates. The phone keeps its full-screen map, which
+   The change glides. The bar has a fixed height, so the cover height
+   transitions to it. The pill keeps the cover's own rule (absolute, bottom
+   left), so it rides with the shrinking or growing edge and never jumps. The
+   photo fades out. The bar's link and name fade in at their new place.
+   Hidden text and controls use `display: none`, so nothing hidden stays in the
+   tab order. The phone keeps its full-screen map, which
    hides the whole page block (map-v2-rail.css), so the bar is a tablet and
    desktop element. The selectors carry the container flag and doubled class
    names so they outrank every folded-header rule above without `!important`. */
 .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head {
-  height: auto;
+  /* Row 1 (44px) plus the pill band (pill, its bottom offset and a 6px gap). */
+  height: calc(var(--space-4) + 44px + var(--space-3) + var(--yf-pill-h) + var(--space-7a));
   min-height: 0;
-  /* The bar keeps the cover's 1140px width, centred, while the canvas below
-     stays wide. The pill then sits at the same x as on the content tabs. */
-  max-width: 1140px;
-  margin-inline: auto;
 }
 
-.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head > .yf-cover-media,
 .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-fold,
 .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-extra,
 .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top .yf-invite {
   display: none;
 }
 
+/* The photo and its veil fade out instead of vanishing. `visibility` waits
+   for the fade, then takes the media out of hit testing. */
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head > .yf-cover-media {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--motion-slow) var(--ease-paper),
+    visibility 0s linear var(--motion-slow);
+}
+
 .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-content {
-  /* Row 1: All trips and the name. Row 2: the pill, at the same left offset
-     as on the cover (--space-9), so the pill keeps its x on every tab. */
+  /* Row 1: All trips and the name. The pill keeps the cover's absolute rule
+     (left --space-9, bottom --space-7a), so it keeps its x on every tab. */
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
   align-items: center;
   gap: var(--space-3) var(--space-7);
-  height: auto;
+  height: 100%;
   min-height: 0;
-  padding: var(--space-4) var(--space-9) var(--space-7a);
+  padding: var(--space-4) var(--space-9) 0;
+}
+
+/* The bar's text arrives at its new place with a short fade. */
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top,
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-head-row {
+  animation: yfBarTextIn var(--motion-med) var(--ease-paper) both;
+}
+
+@keyframes yfBarTextIn {
+  from {
+    opacity: 0;
+  }
 }
 
 .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top {
@@ -807,18 +840,27 @@
   white-space: nowrap;
 }
 
-.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-content > .yf-tabbar {
-  grid-row: 2;
-  grid-column: 1 / -1;
-  justify-self: start;
-  max-width: 100%;
-  margin: 0;
+/* The phone cover places the pill at --space-7, --space-5 from the bottom.
+   The bar keeps that rule and sizes its pill band to match. */
+@media (max-width: 720px) {
+  .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head {
+    height: calc(var(--space-4) + 44px + var(--space-3) + var(--yf-pill-h) + var(--space-5));
+  }
+
+  .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-content {
+    padding: var(--space-4) var(--space-7) 0;
+  }
 }
 
-/* The phone cover places the pill at --space-7. The bar matches it. */
-@media (max-width: 720px) {
-  .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-content {
-    padding: var(--space-4) var(--space-7) var(--space-5);
+@media (prefers-reduced-motion: reduce) {
+  .yf-page .yf-trip-head > .yf-cover-media,
+  .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head > .yf-cover-media {
+    transition: none;
+  }
+
+  .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top,
+  .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-head-row {
+    animation: none;
   }
 }
 
