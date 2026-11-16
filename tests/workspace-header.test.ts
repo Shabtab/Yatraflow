@@ -228,10 +228,16 @@ describe('PW-05: one cover height across the content tabs, a slim bar on Map', (
 
   /** The declaration block of the first rule whose selector list equals `selector`. */
   function ruleBody(selector: string): string {
-    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const match = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`).exec(css)
-    expect(match, `rule not found: ${selector}`).not.toBeNull()
-    return match![1]
+    // A plain text search, so the selector needs no escaping into a pattern.
+    for (let at = css.indexOf(selector); at !== -1; at = css.indexOf(selector, at + 1)) {
+      if (at > 0 && css.charAt(at - 1) !== '\n') continue
+      const rest = css.slice(at + selector.length)
+      const open = rest.length - rest.trimStart().length
+      if (rest.charAt(open) !== '{') continue
+      const close = rest.indexOf('}', open)
+      if (close !== -1) return rest.slice(open + 1, close)
+    }
+    expect.fail(`rule not found: ${selector}`)
   }
 
   it('gives Settings and Timeline no cover height or title clamp of their own', () => {

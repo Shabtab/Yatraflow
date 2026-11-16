@@ -67,13 +67,13 @@ export interface GapDeckProps {
   dayNumber: number
   phase: LensPhase
   gaps: Array<{ title: string; windowText: string | null; picks: GapPicks }>
-  onOpenPick(pick: GapPick): void
-  onAddPick(pick: GapPick): void
+  onOpenPick: (pick: GapPick) => void
+  onAddPick: (pick: GapPick) => void
   /** The Keep action. Absent hides the heart. */
   onShortlist?: (hit: PlaceHit) => void
   /** True draws the kept heart. */
   shortlistedOf?: (hit: PlaceHit) => boolean
-  clock(min: number): string
+  clock: (min: number) => string
   /** The swap action of a pick. Null means the pick has no planned stop to replace. */
   swapOf?: (hit: PlaceHit) => (() => void) | null
   /** The fold handler. Absent uses the Map tab fold button. */
@@ -92,11 +92,11 @@ export function GapDeck(props: GapDeckProps) {
   const [chosen, setChosen] = useState<string | null>(null)
   const focusAt = activeIndex != null && activeIndex >= 0 && activeIndex < gaps.length ? activeIndex : null
   const first = gaps[focusAt ?? 0]
-  const sectionsRef = useRef<HTMLDivElement[]>([])
+  const sectionsRef = useRef(new Map<number, HTMLDivElement>())
   // The part opened from the day list comes into view, so Dinner opens on Dinner.
   useEffect(() => {
     if (focusAt == null) return
-    sectionsRef.current[focusAt]?.scrollIntoView({ block: 'nearest' })
+    sectionsRef.current.get(focusAt)?.scrollIntoView({ block: 'nearest' })
   }, [focusAt])
   const kicker = first == null ? 'Gap' : gapDeckKicker(first.title, first.windowText)
   if (phase !== 'ready' && phase !== 'empty') {
@@ -116,7 +116,7 @@ export function GapDeck(props: GapDeckProps) {
     {gaps.map((gap, index) => {
       const picks = gap.picks.picks.slice(0, 3)
       const selectedAt = selectedCardIndex(picks.map(pick => String(pick.candidate.hit.id)), chosen)
-      return <div className={`mv2-lens-section${index === focusAt ? ' is-focus' : ''}`} key={`${gap.title}-${index}`} ref={node => { if (node) sectionsRef.current[index] = node }}>
+      return <div className={`mv2-lens-section${index === focusAt ? ' is-focus' : ''}`} key={`${gap.title}-${index}`} ref={node => { if (node) sectionsRef.current.set(index, node); else sectionsRef.current.delete(index) }}>
         <p className="mv2-section-label mv2-lens-gap-label">{gap.title}</p>
         {picks.length > 0 && <ul className="mv2-lens-cards">
           {picks.map((pick, at) => {

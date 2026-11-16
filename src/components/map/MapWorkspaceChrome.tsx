@@ -234,7 +234,7 @@ export function MapItinerary({ trip, journey, corrections, activeDay, budgetMin,
       const opens = onOpenWindow != null && row.slotKey != null
       return <li key={`window-${row.startMin}-${row.label}`} className={`mv2-window-row${row.active ? ' is-active-window' : ''}${opens ? ' is-openable' : ''}`}>
         {/* The whole row is the target. The button covers the row, so the row keeps its own layout. */}
-        {opens && <button type="button" className="mv2-window-open" aria-label={`${row.label} · ${sub} · Show picks`} onClick={() => onOpenWindow(row)} />}
+        {opens && <button type="button" className="mv2-window-open" aria-label={`${row.label} · ${sub} · Show picks`} onClick={() => { onOpenWindow(row) }} />}
         <time className="mv2-lens-window-time">{row.nextDayLabel ?? clock?.(row.startMin)}</time>
         <span className="mv2-window-ring" aria-hidden="true" />
         <span className="mv2-stop-copy"><strong>{row.label}</strong><small>{sub}</small></span>
