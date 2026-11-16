@@ -79,9 +79,9 @@ export function UpNextCard({ trip, today, budget, totalTravelMinutes, users, meI
         ))}
         <div className="mt-feat-actions">
           <a className="btn btn-primary" {...appLink(targetRoute)}>Continue planning</a>
-          <button type="button" className="icon-btn mt-del" aria-label={`Delete ${trip.name}`} onClick={() => onDelete(trip)}>
+          {trip.members?.some(m => m.userId === meId && m.role === 'owner') && <button type="button" className="icon-btn mt-del" aria-label={`Delete ${trip.name}`} onClick={() => onDelete(trip)}>
             <Trash2 size={16} aria-hidden />
-          </button>
+          </button>}
         </div>
       </div>
     </article>

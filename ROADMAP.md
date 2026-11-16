@@ -41,7 +41,7 @@ number collides with a shipped release, the ledger wins.
 
 ## Issue #932: owner-only trip columns
 
-Status: the user confirmed local changes. Implementation and verification are in progress.
+Status: the user confirmed local changes. The repair is local; final verification is in progress.
 
 Only the owner, an enabled authorized admin, or a trusted backend may change visibility and trash state.
 An editor may still change the trip plan. A refused mixed update must change nothing.
