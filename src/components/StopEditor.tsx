@@ -258,7 +258,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
       <form onSubmit={submit}>
         <div className="form-row">
           <Field label="Stop name" error={errs.title}>
-            <input className="input" ref={el => (fieldRefs.current.title = el)} aria-invalid={!!errs.title} value={v.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Cheeyappara Waterfalls" />
+            <input className="input" ref={el => { fieldRefs.current.title = el }} aria-invalid={!!errs.title} value={v.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Cheeyappara Waterfalls" />
           </Field>
           <Field label="Category">
             <Select value={v.category} onChange={val => set('category', val as StopCategory)}
@@ -291,7 +291,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
           return (
             <div className="form-row" style={{ gridTemplateColumns: hoursRelevant ? '1fr 1fr 1fr' : '1fr' }}>
               <Field label="Visit duration (min)" error={errs.visitMinutes}>
-                <input type="number" min={0} step={5} className="input" ref={el => (fieldRefs.current.visitMinutes = el)} aria-invalid={!!errs.visitMinutes} value={v.visitMinutes} onChange={e => set('visitMinutes', Number(e.target.value))} />
+                <input type="number" min={0} step={5} className="input" ref={el => { fieldRefs.current.visitMinutes = el }} aria-invalid={!!errs.visitMinutes} value={v.visitMinutes} onChange={e => set('visitMinutes', Number(e.target.value))} />
               </Field>
               {hoursRelevant && (
                 <Field label="Opens at" hint={hoursHint}>
@@ -361,7 +361,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
 
         <div className="form-row">
           <Field label="Source link (optional)" error={errs.sourceUrl}>
-            <input className="input" ref={el => (fieldRefs.current.sourceUrl = el)} value={v.sourceUrl} onChange={e => set('sourceUrl', e.target.value)} placeholder="https://…" />
+            <input className="input" ref={el => { fieldRefs.current.sourceUrl = el }} value={v.sourceUrl} onChange={e => set('sourceUrl', e.target.value)} placeholder="https://…" />
           </Field>
           <Field label="Status">
             <Select value={v.status} onChange={val => set('status', val as StopStatus)}

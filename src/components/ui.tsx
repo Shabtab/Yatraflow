@@ -794,7 +794,7 @@ export function usePageVisible(): boolean {
 }
 
 /** Continuous intersection tracking, like the bench's bill dock. */
-export function useInView(ref: React.RefObject<HTMLElement>): boolean {
+export function useInView(ref: React.RefObject<HTMLElement | null>): boolean {
   const [inView, setInView] = useState(false)
   useEffect(() => {
     const el = ref.current

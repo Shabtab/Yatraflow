@@ -1,7 +1,7 @@
 // P11: one day's time budget, drawn from the engine's own minutes.
 // Driving, at places, free. It reads minutes only, so a locked day may show it:
 // A locked day supplies no clock edges, names or coordinates.
-import type { CSSProperties } from 'react'
+import type { CSSProperties, JSX } from 'react'
 import { minutesToHM } from '../../lib/engine'
 import { staggerStep } from '../../lib/motion'
 
