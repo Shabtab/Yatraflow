@@ -296,7 +296,6 @@ main:focus { outline: none; }
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 15px; flex: 0 0 auto;
 }
-.poi-col--needs .poi-col-head-ico { background: var(--teal-soft); }
 .poi-col--see .poi-col-head-ico { background: color-mix(in srgb, var(--yf-poi-see) 16%, transparent); }
 .poi-col-head b { display: block; font-size: 14px; font-family: var(--font-display); }
 .poi-col--needs .poi-col-head b { color: var(--teal-deep); }

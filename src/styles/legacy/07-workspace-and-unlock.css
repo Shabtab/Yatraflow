@@ -1,28 +1,6 @@
 /* ================= P2: the day's plan (slots rail) + ledger extras ================= */
 /* Appended per the append-only guardrail: new selectors only, motion tokens
    only, no baselined line touched. Composes with the existing rail shell. */
-.slots-daystrip {
-  display: flex; gap: 4px; flex-wrap: wrap; margin: 2px 2px 8px;
-}
-.slots-daychip {
-  border: 1px solid var(--line); background: var(--card); color: var(--text-2);
-  border-radius: 999px; font-size: 11.5px; font-weight: 600;
-  padding: 4px 11px; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 5px;
-  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
-}
-.slots-daychip:hover { background: var(--teal-soft); color: var(--teal-deep); }
-.slots-daychip.is-on { background: var(--teal-soft); border-color: var(--teal-deep); color: var(--teal-deep); }
-.slots-daychip-rd { font-size: 9.5px; font-weight: 700; opacity: .78; font-variant-numeric: tabular-nums; }
-.slots-daychip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
-
-.slots-meter { display: flex; gap: 4px; align-items: center; margin: 0 2px 9px; }
-.slots-meter i { width: 22px; height: 5px; border-radius: 3px; background: var(--line); transition: background var(--motion-fast) var(--ease-out); }
-.slots-meter i.is-filled { background: var(--teal); }
-.slots-meter i.is-auto { background: color-mix(in srgb, var(--teal) 35%, var(--line)); }
-.slots-meter i.is-empty { background: var(--line); }
-.slots-meter-lbl { margin-left: 6px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; font-weight: 700; color: var(--text-3); font-variant-numeric: tabular-nums; }
-
 .slots-list { display: flex; flex-direction: column; gap: 6px; padding: 2px 2px 6px; }
 
 .day-slot {
@@ -107,7 +85,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
 @media (prefers-reduced-motion: reduce) {
   .day-slot-cands { animation: none; }
-  .slots-daychip, .slots-meter i, .day-slot, .day-slot-fill { transition: none; }
+  .day-slot, .day-slot-fill { transition: none; }
 }
 
 /* ---- P2 fix round: the ledger's own rows (see-&-do rail) ----
@@ -197,17 +175,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 /* P4: the part's live vote (a chip + the leading option, opening Group input) */
 .day-slot-vote { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 10px 8px; }
 .day-slot-vote-lead { font-size: 10.5px; color: var(--text-3); }
-/* P5: the day chip carries its weather, and the rail its meta chips */
-.slots-daychip-rain { font-size: 11px; font-weight: 700; color: var(--ink-amber); text-transform: uppercase; letter-spacing: .03em; }
-.slots-daychip.is-on .slots-daychip-rain { color: var(--teal-deep); }
+/* The rail's meta chips. */
 .slots-railmeta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 2px 8px; }
-.slots-legend { position: relative; }
-.slots-legend summary { list-style: none; cursor: pointer; }
-.slots-legend summary::-webkit-details-marker { display: none; }
-.slots-legend-body { margin-top: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 11px; color: var(--text-2); }
-.slots-legend-body p { margin: 0 0 4px; }
-.slots-legend-body p:last-child { margin-bottom: 0; }
-.slots-legend-body b { color: var(--text); font-weight: 600; }
 /* P5.3: a slot pin - an empty part of the day, hollow amber, tap to open */
 /* P5.3: a slot pin — an empty part of the day, hollow amber, tap to open.
    It carries its own card fill: the base `.yf-map-pin` sets NO background, so

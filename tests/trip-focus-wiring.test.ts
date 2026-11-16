@@ -90,7 +90,10 @@ describe('#425 PR 2 — the map validates its inbound day filter', () => {
     expect(board).toMatch(/dayFocus \?\? localFocusDay/)
     expect(board).toMatch(/onDayFocusChange\?\.\(day\)/)
     const tab = codeOf('../src/pages/trip/MapTab.tsx')
-    expect(tab).toMatch(/onDayFocusChange\?\.\(d\.index\)/)
+    // The map's day picker (chooseDay) is the one day control. The Day plan
+    // lost its own day chips, so it cannot hold a second selection.
+    expect(tab).toMatch(/function chooseDay\(index: number\) \{[^}]*onDayFocusChange\?\.\(index\)/)
+    expect(tab).not.toMatch(/onDayFocusChange\?\.\(d\.index\)/)
     expect(tab).toMatch(/onDayFocusChange\?\.\(day\)/)
   })
 })
