@@ -947,7 +947,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
     : [])
 
   return (
-    <div className="container page-enter yf-workspace" data-wide={headerFolded ? 'true' : 'false'} data-map-active={tab === 'map' ? 'true' : undefined} data-map-fullscreen={phoneMapFullscreen ? 'true' : undefined}>
+    <div className="container page-enter yf-workspace" data-wide={headerFolded ? 'true' : 'false'} data-map-active={tab === 'map' ? 'true' : undefined} data-canvas={headerFolded ? 'true' : undefined} data-map-fullscreen={phoneMapFullscreen ? 'true' : undefined}>
       <div className="yf-page" data-compact={headerFolded ? 'true' : 'false'}>
         <TripArtSprite />
         <header className="yf-trip-head">

@@ -737,8 +737,8 @@
   margin-top: var(--space-7);
 }
 
-/* ---------- Map tab: the cover gives way to a slim bar ----------
-   The Map tab shows NO cover: no photo, veil, meta line, member row or invite
+/* ---------- Map and Board: the cover gives way to one slim bar ----------
+   Map and Board look the same. Neither shows a cover: no photo, veil, meta line, member row or invite
    button. The same <header> and the same tab rail stay mounted (nothing
    remounts, so the tab keeps focus), restyled into one bar: "All trips", the
    trip name and the tab rail. The bar does not resize between visits. The map
@@ -749,47 +749,55 @@
    hides the whole page block (map-v2-rail.css), so the bar is a tablet and
    desktop element. The selectors carry the container flag and doubled class
    names so they outrank every folded-header rule above without `!important`. */
-.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head {
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head {
   height: auto;
   min-height: 0;
+  /* The bar keeps the cover's 1140px width, centred, while the canvas below
+     stays wide. The pill then sits at the same x as on the content tabs. */
+  max-width: 1140px;
+  margin-inline: auto;
 }
 
-.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head > .yf-cover-media,
-.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-fold,
-.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-extra,
-.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top .yf-invite {
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head > .yf-cover-media,
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-fold,
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-extra,
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top .yf-invite {
   display: none;
 }
 
-.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-content {
-  flex-direction: row;
-  flex-wrap: wrap;
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-content {
+  /* Row 1: All trips and the name. Row 2: the pill, at the same left offset
+     as on the cover (--space-9), so the pill keeps its x on every tab. */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3) var(--space-7);
   height: auto;
   min-height: 0;
-  padding: var(--space-4) var(--space-9);
+  padding: var(--space-4) var(--space-9) var(--space-7a);
 }
 
-.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top {
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top {
+  grid-row: 1;
+  grid-column: 1;
   flex: none;
 }
 
-.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top .yf-back {
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-top .yf-back {
   margin: 0 0 0 calc(-1 * var(--space-5));
 }
 
 /* The name takes the room between the link and the rail. Its basis is the
    narrowest useful name; below that the rail wraps to its own row, left-aligned
    with the link and the name, like the cover's rail. */
-.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-head-row {
-  flex: 1 1 200px;
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-head-row {
+  grid-row: 1;
+  grid-column: 2;
   min-width: 0;
   margin: 0;
 }
 
-.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head .yf-trip-title {
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-trip-head .yf-trip-title {
   width: 100%;
   overflow: hidden;
   font-size: 20px;
@@ -799,10 +807,19 @@
   white-space: nowrap;
 }
 
-.yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-content > .yf-tabbar {
-  flex: none;
+.yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-content > .yf-tabbar {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  justify-self: start;
   max-width: 100%;
   margin: 0;
+}
+
+/* The phone cover places the pill at --space-7. The bar matches it. */
+@media (max-width: 720px) {
+  .yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true'] .yf-cover-content {
+    padding: var(--space-4) var(--space-7) var(--space-5);
+  }
 }
 
 @keyframes yfCoverSettle {

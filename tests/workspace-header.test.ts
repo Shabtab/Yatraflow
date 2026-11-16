@@ -181,7 +181,7 @@ describe('the workspace markup consumes the rules', () => {
   it('publishes the fold state on the workspace container and page wrapper', () => {
     // W10 added the phone full-screen flag beside the two existing ones: the one
     // container still publishes the fold state and which tab holds the map.
-    expect(ws).toMatch(/<div className="container page-enter yf-workspace" data-wide=\{headerFolded \? 'true' : 'false'\} data-map-active=\{tab === 'map' \? 'true' : undefined\} data-map-fullscreen=\{phoneMapFullscreen \? 'true' : undefined\}>/)
+    expect(ws).toMatch(/<div className="container page-enter yf-workspace" data-wide=\{headerFolded \? 'true' : 'false'\} data-map-active=\{tab === 'map' \? 'true' : undefined\} data-canvas=\{headerFolded \? 'true' : undefined\} data-map-fullscreen=\{phoneMapFullscreen \? 'true' : undefined\}>/)
     expect(ws).toMatch(/<div className="yf-page" data-compact=\{headerFolded \? 'true' : 'false'\}>/)
   })
 
@@ -283,8 +283,9 @@ describe('PW-05: one cover height across the content tabs, a slim bar on Map', (
     expect(pill).toMatch(/bottom:\s*var\(--space-7a\);/)
   })
 
-  it('turns the cover into a slim bar on Map by hiding the parts with display none', () => {
-    const scope = ".yf-workspace[data-map-active='true'] .yf-page.yf-page[data-compact='true']"
+  it('turns the cover into one slim bar on Map and Board by hiding the parts with display none', () => {
+    // Map and Board share the bar through data-canvas, so they look the same.
+    const scope = ".yf-workspace[data-canvas='true'] .yf-page.yf-page[data-compact='true']"
     const hidden = ruleBody(
       `${scope} .yf-trip-head > .yf-cover-media,\n${scope} .yf-fold,\n${scope} .yf-extra,\n${scope} .yf-cover-top .yf-invite`,
     )
