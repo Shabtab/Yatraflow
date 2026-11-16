@@ -21,6 +21,7 @@ import {
 } from '../lib/creatorStorefront'
 import { FeaturedCard } from '../components/explore/FeaturedCard'
 import { StoreHero } from '../components/creator/StoreHero'
+import { StoreStatesGrid } from '../components/creator/StoreStatesGrid'
 import { StoreFeaturedFacts } from '../components/creator/StoreFeaturedFacts'
 import { CreatorIndiaRank } from '../components/creator/CreatorIndiaRank'
 import { creatorPick, plannedKilometres } from '../lib/creatorFacts'
@@ -232,6 +233,8 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
           />
         </section>
       )}
+
+      <StoreStatesGrid pubs={pubs} read={pubsRead} />
 
       {pubsRead === 'failed' ? <p className="cr-store-facts" role="status">Route facts: Unavailable</p>
         : null}

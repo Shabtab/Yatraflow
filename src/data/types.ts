@@ -570,6 +570,10 @@ export interface PublishedItinerary {
   bestMonths?: number
   reviewedAt?: number
   reviewedScope?: string
+  /** G3b: the ISO 3166-2:IN codes of the states and union territories a route
+   *  covers. Absent on rows published before the migration, and while a row has
+   *  no codes. The publish writes it; the storefront counts it. */
+  stateCodes?: string[]
   travelTips: string[]
   warningsAndAssumptions: string[]
   freeDayIndexes: number[]  // which itinerary days are freely viewable

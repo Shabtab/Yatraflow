@@ -501,6 +501,7 @@ export type Database = {
           published_at: number
           refreshed_at: number | null
           route_summary: Json
+          state_codes: string[] | null
           subscriber_cta: string | null
           tagline: string | null
           title: string
@@ -528,6 +529,7 @@ export type Database = {
           published_at?: number
           refreshed_at?: number | null
           route_summary?: Json
+          state_codes?: string[] | null
           subscriber_cta?: string | null
           tagline?: string | null
           title?: string
@@ -555,6 +557,7 @@ export type Database = {
           published_at?: number
           refreshed_at?: number | null
           route_summary?: Json
+          state_codes?: string[] | null
           subscriber_cta?: string | null
           tagline?: string | null
           title?: string
