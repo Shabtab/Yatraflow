@@ -27,7 +27,9 @@ try {
   const profileTable = schema.match(/create table if not exists public\.profiles \([\s\S]*?\n\);/)?.[0]
   assert.ok(profileTable, 'missing prerequisite profiles table')
   const policy = name => {
-    const statement = schema.match(new RegExp(`create policy "${name}"[\\s\\S]*?;`))?.[0]
+    const start = schema.indexOf(`create policy "${name}"`)
+    const end = start < 0 ? -1 : schema.indexOf(';', start)
+    const statement = end < 0 ? undefined : schema.slice(start, end + 1)
     assert.ok(statement, `missing prerequisite policy: ${name}`)
     return statement
   }

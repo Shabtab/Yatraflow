@@ -59,8 +59,13 @@ export function CreatorPostsEditor({ me, pubs, pubsRead, posts, api, onChanged, 
     }, 'Post link added.')
   }
 
+  // A key with no edit yet is absent from captions, so fall back to the saved caption.
+  function draftOf(post: CreatorPost): string {
+    return (post.id in captions ? captions[post.id] : post.caption) ?? ''
+  }
+
   function saveCaption(post: CreatorPost) {
-    const check = checkPostCaption(captions[post.id] ?? post.caption ?? '')
+    const check = checkPostCaption(draftOf(post))
     if (!check.ok) { setFeedback({ kind: 'error', text: check.error }); return }
     void run(post.id, async signal => {
       await api.setCaption(post.id, me.id, check.value, signal)
@@ -85,7 +90,7 @@ export function CreatorPostsEditor({ me, pubs, pubsRead, posts, api, onChanged, 
       {rows.map(post => {
         const pub = routeTitle(post)
         const isLive = pub !== undefined && livePubs([pub]).length === 1
-        const draft = captions[post.id] ?? post.caption ?? ''
+        const draft = draftOf(post)
         const rowBusy = busy === post.id
         return <li className="cr-own-post" key={post.id}>
           <p className="cr-own-post-head">
@@ -101,9 +106,9 @@ export function CreatorPostsEditor({ me, pubs, pubsRead, posts, api, onChanged, 
           </Field>
           <div className="cr-own-post-actions">
             <button type="button" className="btn btn-outline btn-sm" disabled={!writable || draft === (post.caption ?? '')}
-              onClick={() => saveCaption(post)}>{rowBusy ? 'Saving…' : 'Save caption'}</button>
+              onClick={() => { saveCaption(post) }}>{rowBusy ? 'Saving…' : 'Save caption'}</button>
             <CopyButton text={currentCreatorPostShareUrl(me.id, post.id)} label="Copy tagged link" />
-            <button type="button" className="btn btn-ghost btn-sm" disabled={!writable} onClick={() => remove(post)}>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={!writable} onClick={() => { remove(post) }}>
               {removing === post.id ? 'Confirm remove' : 'Remove'}
             </button>
           </div>

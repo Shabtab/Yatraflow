@@ -20,7 +20,7 @@ export function useCreatorPosts(creator: string | null, api: CreatorPostsApi = c
       setSettled({ creator, api, attempt, read: { kind: 'ready', value } })
     }).catch(() => {
       if (alive) setSettled({ creator, api, attempt, read: { kind: 'failed' } })
-    }).finally(() => clearTimeout(timer))
+    }).finally(() => { clearTimeout(timer) })
     return () => { alive = false; clearTimeout(timer); ac.abort() }
   }, [creator, api, attempt])
   if (settled && settled.creator === creator && settled.api === api && settled.attempt === attempt) return settled.read
@@ -39,7 +39,7 @@ export function useCreatorPostVisits(enabled: boolean, days: number, api: Creato
       if (alive && !ac.signal.aborted) setSettled({ days, api, attempt, read: { kind: 'ready', value } })
     }).catch(() => {
       if (alive) setSettled({ days, api, attempt, read: { kind: 'failed' } })
-    }).finally(() => clearTimeout(timer))
+    }).finally(() => { clearTimeout(timer) })
     return () => { alive = false; clearTimeout(timer); ac.abort() }
   }, [enabled, days, api, attempt])
   return settled && settled.days === days && settled.api === api && settled.attempt === attempt ? settled.read : { kind: 'reading' }
