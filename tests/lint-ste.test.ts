@@ -650,7 +650,7 @@ describe('STE100 default run (fixture repositories, real git)', () => {
     const exempt = fixtureRepo(GOOD)
     const extraction = '6d356f84b6a6d97d327a651b8295eeee6a38a3b9'
     const repo = path.resolve(path.dirname(SCRIPT), '..')
-    git(exempt, ['fetch', '-q', repo, extraction])
+    git(exempt, ['fetch', '-q', '--depth=1', repo, extraction])
     const file = 'src/styles/legacy/01-foundations.css'
     const original = git(exempt, ['show', `${extraction}:${file}`])
     commitFile(exempt, file, original)
@@ -686,7 +686,7 @@ describe('STE100 default run (fixture repositories, real git)', () => {
     const source = 'src/styles/legacy/01-foundations.css'
 
     const dir = fixtureRepo(GOOD)
-    git(dir, ['fetch', '-q', repo, extraction])
+    git(dir, ['fetch', '-q', '--depth=1', repo, extraction])
     const original = git(dir, ['show', `${extraction}:${source}`])
     const historicalComment = (original.match(/\/\*[^\r\n]*\*\//g) ?? []).find((c) => /tap-flash/.test(c))
     expect(historicalComment).toBeTruthy()

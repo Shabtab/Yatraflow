@@ -41,7 +41,7 @@ number collides with a shipped release, the ledger wins.
 
 ## Issue #931: durable trip-member access
 
-Status: implemented locally and under independent review. Review repairs and final verification are in progress.
+Status: implemented locally. Independent source review passed. Hosted verification and publication are not approved.
 
 Removal needs an explicit owner restore, even with a replacement invite.
 Keep Undo and add a small owner-only restore option after its window expires.
