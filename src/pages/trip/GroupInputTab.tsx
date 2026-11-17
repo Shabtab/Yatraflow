@@ -1013,7 +1013,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
           <div className="gin-foot">
             {!locked && (
               <button type="button" className="btn btn-primary btn-sm" disabled={!pick || pick === myOptionId}
-                onClick={castVote}><><Check size={15} aria-hidden /> Vote</></button>
+                onClick={castVote}><Check size={15} aria-hidden /> Vote</button>
             )}
             {editable && canAddOption(d, now) && (
               <button ref={addTriggerRef} type="button" className="btn btn-outline btn-sm" aria-expanded={addingOption}

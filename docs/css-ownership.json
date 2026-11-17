@@ -506,7 +506,6 @@
     },
     "reducedMotionRules": 226,
     "configAppearanceKeys": [
-      "src/styles/pages/group-input.css::.gin-foot .btn-primary:disabled::opacity",
       "src/styles/legacy/01-foundations.css::.bento .card::box-shadow",
       "src/styles/legacy/01-foundations.css::.btn::after, .icon-btn::after, .chip::after, .clickable-chip::after, .toast-action::after, .tab-btn::after, .map-legend-toggle::after, .nav-link::after, .link-btn::after, .move-btn::after, .board-pulse-link::after, .cal-day::after, .cal-nav::after, .route-btn::after, .vote-btn::after, .yf-map-idea-add::after, .poi-short::after, .poi-cand-add::after, .poi-fold::after, .save-heart::after, .yf-maplibre .yf-map-ctrls button::after, .day-collapse::after::border-radius",
       "src/styles/legacy/01-foundations.css::.btn::after, .icon-btn::after, .chip::after, .clickable-chip::after, .toast-action::after, .tab-btn::after, .map-legend-toggle::after, .nav-link::after, .link-btn::after, .move-btn::after, .board-pulse-link::after, .cal-day::after, .cal-nav::after, .route-btn::after, .vote-btn::after, .yf-map-idea-add::after, .poi-short::after, .poi-cand-add::after, .poi-fold::after, .save-heart::after, .yf-maplibre .yf-map-ctrls button::after, .day-collapse::after::content",
