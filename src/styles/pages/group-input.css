@@ -31,7 +31,7 @@
 
 /* Card skin for the panels and the decision cards */
 .gin-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
-.yf-surface.gin-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); }
+.yf-surface.gin-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); border-color: var(--line-soft); }
 .gin-card-head { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 10px; }
 .gin-help { margin: 4px 0 0; }
 .gin-composer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
@@ -59,6 +59,8 @@
 .gin-option-end { flex: none; }
 .gin-option-pct { display: inline-block; min-width: 36px; text-align: right; font-size: 13px; font-weight: 700; color: var(--text-2); }
 .gin-option-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+@media (hover: hover) { .gin-option:hover { border-color: var(--line); background-color: var(--pw-lagoon-100); } }
+.gin-option:focus-within { box-shadow: var(--ring); }
 .gin-guide-block { margin-top: 10px; }
 .gin-guide-note { margin: 0; }
 .gin-guide-rec { margin: 4px 0 0; }
@@ -101,6 +103,8 @@
 .gin-quiz-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Small parts that wrap or arrange the motion below */
+.gin-feed-text { min-width: 0; }
+.gin-feed-time { display: block; margin-left: 0; }
 .gin-feed--more > .feed-item:last-child { border-bottom: 1px dashed var(--line); }
 .gin-quiz-body { display: grid; gap: 10px; }
 /* The day collapse (SmoothCollapse) adds a 16px spacer inside its clip for a
@@ -219,6 +223,7 @@ div[role="tabpanel"]:has(> .gin-page) { animation: none; }
    in its own file. */
 @media (prefers-reduced-motion: reduce) {
   .gin-fill { transition: none; }
+  .gin-option { transition: none; }
   .gin-stamp { animation: none; }
   .gin-page > * { animation: none; }
   .gin-state > [data-kind] { animation: none; }

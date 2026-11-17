@@ -468,8 +468,7 @@ function FeedRow({ a }: { a: ReturnType<typeof activityFor>[number] }) {
   return (
     <div className="feed-item">
       <Avatar user={userById(a.actorId)} />
-      <span><b>{userById(a.actorId)?.profile.name}</b> {a.verb}{a.target ? ` · ${a.target}` : ''}</span>
-      <span className="feed-time">{timeAgo(a.at)}</span>
+      <span className="gin-feed-text"><b>{userById(a.actorId)?.profile.name}</b> {a.verb}{a.target ? ` · ${a.target}` : ''}<span className="feed-time gin-feed-time">{timeAgo(a.at)}</span></span>
     </div>
   )
 }
@@ -968,7 +967,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
               const detail = [
                 o.place?.locationName,
                 o.timeImpactMin ? `≈${o.timeImpactMin} min detour` : '',
-                o.costImpactInr ? `${o.costImpactInr > 0 ? '+' : ''}${formatInr(o.costImpactInr)}` : '',
+                o.costImpactInr ? `${o.costImpactInr > 0 ? '+\u2060' : ''}${formatInr(o.costImpactInr)}` : '',
               ].filter(Boolean).join(' · ')
               return (
                 <label key={o.id} className="gin-option">
@@ -1436,7 +1435,7 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
           {opts.map((o, i) => (
             <span key={i} className="opt-row">
               <input className="input" placeholder={`Option ${i + 1}`} aria-label={`Option ${i + 1}`} value={o.label} onChange={e => setOpt(i, 'label', e.target.value)} />
-              <input className="input opt-cost" type="number" placeholder="₹ impact" aria-label={`Cost impact of option ${i + 1}, optional`} value={o.cost} onChange={e => setOpt(i, 'cost', e.target.value)} />
+              <input className="input opt-cost" type="number" placeholder="₹" aria-label={`Cost impact of option ${i + 1}, optional`} value={o.cost} onChange={e => setOpt(i, 'cost', e.target.value)} />
               {opts.length > 2 && (
                 <button type="button" className="icon-btn" aria-label={`Remove option ${i + 1}`} onClick={() => setOpts(list => list.filter((_, j) => j !== i))}><X size={14} /></button>
               )}
