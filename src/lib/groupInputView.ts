@@ -7,6 +7,7 @@
 import { STOP_CATEGORIES, type CrewInterest, type DecisionOption, type ID, type TripDecision } from '../data/types'
 import type { CrewInterestSummary } from './crewPreferences'
 import { voteOutcome } from './decisionClock'
+import { DAY_MS } from './dayCount'
 import { formatHM, type TimeFormat } from './timefmt'
 
 /** Categories that name a logistics need, not an interest. The crew quiz leaves
@@ -89,7 +90,7 @@ export function crewBars(summary: CrewInterestSummary): CrewBar[] {
 export function closingStamp(ms: number, fmt: TimeFormat, now: number): string {
   const d = new Date(ms)
   const hm = formatHM(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, fmt)
-  const day = d.toLocaleDateString('en-IN', ms - now >= 6 * 86_400_000
+  const day = d.toLocaleDateString('en-IN', ms - now >= 6 * DAY_MS
     ? { weekday: 'short', day: 'numeric', month: 'short' }
     : { weekday: 'short' })
   return `${day.replace(',', '')} ${hm}`
