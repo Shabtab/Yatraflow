@@ -43,6 +43,8 @@
 
 /* Decision cards: option rows, vote bars and the footer */
 .gin-decision { display: grid; gap: 10px; }
+.gin-decision-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.gin-decision-head-text { display: grid; gap: 4px; min-width: 0; }
 .gin-sub { margin: 0; }
 .gin-decision-context { margin: 6px 0 10px; }
 .gin-decision-options { display: grid; gap: 8px; margin: 8px 0; }

@@ -942,16 +942,21 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
       data-turned={turned && !open ? 'true' : undefined} {...presenceAttrs({ exiting })}>
       {open ? (
         <>
-          {locked && <p className="gin-eyebrow">Closed</p>}
-          {!locked && needsMe && (
-            <p className="gin-eyebrow gin-eyebrow--amber">
-              Needs your vote{hasClosingTime(d) ? ` · closes ${closingStamp(d.closesAt as number, timeFormat, now)} · in ${formatSpan((d.closesAt as number) - now)}` : ''}
-            </p>
-          )}
-          {!locked && !needsMe && hasClosingTime(d) && (
-            <p className="gin-eyebrow">Open · closes {closingStamp(d.closesAt as number, timeFormat, now)} · in {formatSpan((d.closesAt as number) - now)}</p>
-          )}
-          <h3 className="gin-card-title">{d.question}</h3>
+          <div className="gin-decision-head">
+            <div className="gin-decision-head-text">
+              {locked && <p className="gin-eyebrow">Closed</p>}
+              {!locked && needsMe && (
+                <p className="gin-eyebrow gin-eyebrow--amber">
+                  Needs your vote{hasClosingTime(d) ? ` · closes ${closingStamp(d.closesAt as number, timeFormat, now)} · in ${formatSpan((d.closesAt as number) - now)}` : ''}
+                </p>
+              )}
+              {!locked && !needsMe && hasClosingTime(d) && (
+                <p className="gin-eyebrow">Open · closes {closingStamp(d.closesAt as number, timeFormat, now)} · in {formatSpan((d.closesAt as number) - now)}</p>
+              )}
+              <h3 className="gin-card-title">{d.question}</h3>
+            </div>
+            <Avatar user={userById(d.raisedBy)} />
+          </div>
           <p className="small muted gin-sub">Raised by {raiser}{dayLabel ? ` · ${dayLabel}` : ''} · {voterCount} of {memberCount} voted</p>
           {d.context && <p className="small muted gin-decision-context">{d.context}</p>}
           <div ref={optionsRef} className="gin-decision-options" role="radiogroup" aria-label={`Options for ${d.question}`}
@@ -1087,8 +1092,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
             <div>
               <p className="gin-eyebrow gin-eyebrow--ok">{d.resolvedAt ? `Decided · ${timeAgo(d.resolvedAt)}` : 'Decided'}</p>
               <h3 className="gin-card-title">{resolvedOption?.label ?? d.question}</h3>
-              {resolvedOption && <p className="small muted gin-sub">{d.question}</p>}
-              {resolvedOption && <p className="small muted gin-sub">{agreed} of {memberCount} agreed</p>}
+              {resolvedOption && <p className="small muted gin-sub">{agreed} of {memberCount} agreed · {d.question}</p>}
               {d.context && <p className="small muted gin-decision-context">{d.context}</p>}
             </div>
             <span className={`chip chip-ok${stamped ? ' gin-stamp' : ''}`}>Chosen</span>
