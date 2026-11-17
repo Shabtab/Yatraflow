@@ -93,8 +93,105 @@
 .gin-quiz-title { margin: 0; font-weight: 600; }
 .gin-quiz-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
-/* Reduced motion: the vote bar and the stamp stop moving */
+/* Small parts that wrap or arrange the motion below */
+.gin-feed--more > .feed-item:last-child { border-bottom: 1px dashed var(--line); }
+.gin-quiz-body { display: grid; gap: 10px; }
+/* The day collapse (SmoothCollapse) adds a 16px spacer inside its clip for a
+   day body. A row panel, a field or the quiz sits flush instead. */
+.gin-panel .day-body-clip-inner::before { content: none; }
+
+/* ---------- Entrance: one cascade, owned by the tab body ----------
+   Beat order, one `--stagger-step` each, and no two cards on a
+   beat. Header 0 (eyebrow, title, summary), pill bar 1. Then the cards in
+   reading order. Column 1 holds the decisions: first card 2, second card 3,
+   every later card 4. Column 2 follows: Stop ideas 5, Raise a decision 6.
+   Column 3 ends it: Activity 7, Crew preferences 8. A long list of decisions
+   shares the last beat of its column, so nothing waits for a late card. The
+   header and the bar carry their own beat; each card writes its beat into
+   `--gin-beat`, and the rows and bars inside it trail from there.
+   `div[role="tabpanel"]:has(> .gin-page)` takes the block fade off this tab only;
+   other tabs keep theirs. A wrapper that cascades its children (`.gin-head`,
+   `.gin-grid`, `.gin-col`) carries no fade, so nothing fades twice. The state
+   banners sit in `.gin-state` and are states, not content: they keep `errIn`, as `.bud-state` does.
+   Top level, not in a media query, so the design-system gates can read it. The
+   reduced-motion opt-out is the block at the end.
+   The staggered delays wait for `data-intro` on the root. It holds for the first
+   three `--motion-slower` steps. After that a card or a row that mounts later
+   (a new idea, a decision that just moved to decided) rises at once. */
+div[role="tabpanel"]:has(> .gin-page) { animation: none; }
+.gin-page > * { animation: none; }
+.gin-state > [data-kind] { animation: errIn var(--motion-med) var(--ease-paper); }
+
+/* Header 0 and the pill bar 1. */
+.gin-head > * { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
+.gin-head > .gin-pillbar { animation-delay: calc(var(--stagger-step) * 1); }
+
+/* The cards. Each one carries its beat, and the intro turns the beat into a delay. */
+.gin-col > .yf-surface { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
+.gin-col--decisions > .yf-surface:nth-of-type(1) { --gin-beat: 2; }
+.gin-col--decisions > .yf-surface:nth-of-type(2) { --gin-beat: 3; }
+.gin-col--decisions > .yf-surface:nth-of-type(n+3) { --gin-beat: 4; }
+.gin-col--ideas > .yf-surface:nth-of-type(1) { --gin-beat: 5; }
+.gin-col--ideas > .yf-surface:nth-of-type(2) { --gin-beat: 6; }
+.gin-col--activity > .yf-surface:nth-of-type(1) { --gin-beat: 7; }
+.gin-col--activity > .yf-surface:nth-of-type(2) { --gin-beat: 8; }
+.gin-page[data-intro='true'] .gin-col > .yf-surface:not([data-presence='exit']) { animation-delay: calc(var(--stagger-step) * var(--gin-beat, 0)); }
+
+/* Rows inside a card trail the card: its beat, then one step per row, and the
+   fourth row and every later one share the fourth step. A row keeps its own
+   entrance (docs/MOTION-TOKENS.md), so a row that mounts later rises on its own. */
+.gin-rows > .gin-row { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
+.gin-feed > .feed-item { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
+.gin-rows > .gin-row:nth-child(1), .gin-feed > .feed-item:nth-child(1), .gin-option:nth-child(1), .gin-crew-row:nth-child(1) { --gin-k: 1; }
+.gin-rows > .gin-row:nth-child(2), .gin-feed > .feed-item:nth-child(2), .gin-option:nth-child(2), .gin-crew-row:nth-child(2) { --gin-k: 2; }
+.gin-rows > .gin-row:nth-child(3), .gin-feed > .feed-item:nth-child(3), .gin-option:nth-child(3), .gin-crew-row:nth-child(3) { --gin-k: 3; }
+.gin-rows > .gin-row:nth-child(n+4), .gin-feed > .feed-item:nth-child(n+4), .gin-option:nth-child(n+4), .gin-crew-row:nth-child(n+4) { --gin-k: 4; }
+.gin-page[data-intro='true'] .gin-rows > .gin-row[data-presence='live'],
+.gin-page[data-intro='true'] .gin-feed > .feed-item { animation-delay: calc(var(--stagger-step) * (var(--gin-beat, 0) + var(--gin-k, 0))); }
+
+/* Chart entrance: the vote bars and the crew bars grow from the zero edge on
+   `scaleX`, as one element, `--motion-slower` on `--ease-paper`. Only the entrance
+   grows. A later vote moves the width on the transition that `.gin-fill` carries.
+   Each bar starts one step after its row. The percentage label is a label, so it
+   fades in after its bar (the bar's step plus one `--motion-slower`). While the bars
+   are off screen or the tab is hidden, `data-motion-paused` holds both. */
+.gin-option .gin-fill, .gin-crew-row .gin-fill {
+  transform-origin: left center;
+  animation: gin-grow-x var(--motion-slower) var(--ease-paper) backwards;
+}
+.gin-option-end .gin-option-pct, .gin-crew-row .gin-option-pct {
+  animation: fadeIn var(--motion-med) var(--ease-paper) backwards;
+  animation-delay: var(--motion-slower);
+}
+.gin-page[data-intro='true'] .gin-option .gin-fill,
+.gin-page[data-intro='true'] .gin-crew-row .gin-fill { animation-delay: calc(var(--stagger-step) * (var(--gin-beat, 0) + var(--gin-k, 0))); }
+.gin-page[data-intro='true'] .gin-option-end .gin-option-pct,
+.gin-page[data-intro='true'] .gin-crew-row .gin-option-pct { animation-delay: calc(var(--stagger-step) * (var(--gin-beat, 0) + var(--gin-k, 0)) + var(--motion-slower)); }
+[data-motion-paused='true'] .gin-fill,
+[data-motion-paused='true'] .gin-option-pct { animation-play-state: paused; }
+@keyframes gin-grow-x { from { transform: scaleX(0); } to { transform: none; } }
+
+/* Small pop: the "Needs your vote" and "Best fit" chips, both under 48px. They pop
+   one step after the row or option that holds them. */
+.gin-pop { display: inline-flex; animation: gin-pop-in var(--motion-fast) var(--ease-settle) backwards; }
+.gin-page[data-intro='true'] .gin-pop { animation-delay: calc(var(--stagger-step) * (var(--gin-beat, 0) + var(--gin-k, 0) + 1)); }
+@keyframes gin-pop-in { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: none; } }
+
+/* Reduced motion: every entrance, the bars, the labels, the pops and the stamp
+   stop moving. Each selector repeats its animated rule, so the opt-out has the
+   same weight and comes last. The row exit and the collapse have their own
+   opt-outs: `usePresenceList` drops an item at once, and `.day-body-clip` is off
+   in its own file. */
 @media (prefers-reduced-motion: reduce) {
   .gin-fill { transition: none; }
   .gin-stamp { animation: none; }
+  .gin-page > * { animation: none; }
+  .gin-state > [data-kind] { animation: none; }
+  .gin-head > * { animation: none; }
+  .gin-col > .yf-surface { animation: none; }
+  .gin-rows > .gin-row { animation: none; }
+  .gin-feed > .feed-item { animation: none; }
+  .gin-option .gin-fill, .gin-crew-row .gin-fill { animation: none; }
+  .gin-option-end .gin-option-pct, .gin-crew-row .gin-option-pct { animation: none; }
+  .gin-pop { animation: none; }
 }

@@ -470,7 +470,8 @@
         "gin-row-title", "gin-row-meta", "gin-row-by", "gin-heart", "gin-row-panel", "gin-stop-meta",
         "gin-vote-row", "gin-item-actions", "gin-comments", "gin-comment-form", "gin-resolved",
         "gin-disclosure", "gin-text-btn", "gin-crew-count", "gin-crew-list", "gin-crew-row",
-        "gin-crew-label", "gin-quiz", "gin-quiz-title", "gin-quiz-chips"
+        "gin-crew-label", "gin-quiz", "gin-quiz-title", "gin-quiz-chips",
+        "gin-page", "gin-state", "gin-rows", "gin-feed", "gin-feed--more", "gin-pop", "gin-quiz-body"
       ],
       "configClasses": [],
       "variables": []

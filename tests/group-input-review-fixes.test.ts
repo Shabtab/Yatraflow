@@ -32,7 +32,7 @@ describe('Group input review fixes', () => {
   })
 
   it('marks an idea that needs my vote with text, and pads the row off the border', () => {
-    expect(tab).toMatch(/\{needsMe && <Chip tone="saffron">Needs your vote<\/Chip>\}/)
+    expect(tab).toMatch(/\{needsMe && <span className="gin-pop"><Chip tone="saffron">Needs your vote<\/Chip><\/span>\}/)
     expect(own).toMatch(/\.gin-row\.gi-needs-you \{ padding-left: 12px; \}/)
   })
 
@@ -48,7 +48,7 @@ describe('Group input review fixes', () => {
 
   it('shows "No open stop ideas" when every idea is resolved, gated on a ready read', () => {
     expect(tab).toContain("title: 'No open stop ideas'")
-    expect(tab).toMatch(/suggestionsRead === 'ready' && sortedIdeas\.length > 0 && openIdeas\.length === 0 && \(\s*<StateBlock kind="empty" size="compact" title=\{EMPTY_COPY\.ideasOpen\.title\}/)
+    expect(tab).toMatch(/suggestionsRead === 'ready' && sortedIdeas\.length > 0 && openIdeas\.length === 0 && !ideasExiting && \(\s*<StateBlock kind="empty" size="compact" title=\{EMPTY_COPY\.ideasOpen\.title\}/)
   })
 
   it('keeps one primary in the decision footer, and states the helper line without a fit claim', () => {
@@ -64,8 +64,10 @@ describe('Group input review fixes', () => {
 
   it('links each comment toggle to its form and moves the focus into the field', () => {
     expect(tab.match(/aria-controls=\{commenting \? `gi-comment-\$\{d\.id\}` : undefined\}/g)).toHaveLength(2)
-    expect(tab).toContain('<CommentForm id={`gi-comment-${d.id}`} focusOnMount')
-    expect(tab).toMatch(/useEffect\(\(\) => \{ if \(focusOnMount\) fieldRef\.current\?\.focus\(\) \}, \[focusOnMount\]\)/)
+    // The field mounts hidden inside the day collapse, so the focus moves once the collapse is open.
+    expect(tab).toContain('<SmoothCollapse open={commenting} fallbackFocus={commentToggleRef} onExpanded={focusCommentField}>')
+    expect(tab).toContain("document.getElementById(`gi-comment-${d.id}`)?.querySelector<HTMLElement>('input')?.focus()")
+    expect(tab).not.toContain('focusOnMount')
     expect(tab).toMatch(/if \(ideaComposerOpen\) ideaComposerRef\.current\?\.querySelector/)
   })
 

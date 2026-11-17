@@ -5,7 +5,8 @@
 // actions are unchanged.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CatIcon, InlineIcon } from '../../components/icons'
-import { scrollBehavior } from '../../lib/motion'
+import { motionTiming, scrollBehavior } from '../../lib/motion'
+import { presenceAttrs, usePresenceList } from '../../lib/usePresenceList'
 import type { FormEvent } from 'react'
 import { Car, ChevronDown, ChevronUp, ClipboardList, Clock, Heart, Lightbulb, MapPin, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
 import { PillNav } from '../../components/PillNav'
@@ -29,7 +30,7 @@ import { myCrewPreference, summarizeCrewPreferences } from '../../lib/crewPrefer
 import {
   CREW_QUIZ_INTERESTS, closingStamp, crewBars, dayOptionLabel, localInputValue, sameInterests, decisionDayLabel, optionLabelRefusal, parseClosesAt, votingClosedLine,
 } from '../../lib/groupInputView'
-import { Avatar, Chip, Field, toast } from '../../components/ui'
+import { Avatar, Chip, Field, toast, useInView, usePageVisible } from '../../components/ui'
 import { assignAvatarTones } from '../../lib/avatarTone'
 import { FilterChip } from '../../components/filters/FilterChip'
 import { StateBlock } from '../../components/page/StateBlock'
@@ -42,6 +43,7 @@ import { LocationInput } from '../../components/LocationInput'
 import { dayRefFor } from '../../lib/dayRef'
 import { editPlaceDraft, persistedPlace, pickPlaceDraft, unresolvedPlace, type PlaceDraft } from '../../lib/placeDraft'
 import { cap, timeAgo } from './shared'
+import { SmoothCollapse } from './timeline/DaySection'
 import {
   runDecisionResolution,
   type LegacyResolutionTarget,
@@ -167,6 +169,23 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   }, [ideaComposerOpen])
   const [showResolvedIdeas, setShowResolvedIdeas] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
+  const feedToggleRef = useRef<HTMLButtonElement>(null)
+  // The entrance staggers only while the tab arrives. The flag drops after the
+  // last delayed animation has started, so a row or card that mounts later
+  // rises at once instead of waiting for a beat that has already passed. A
+  // delay that lapses on a running animation would also make it jump, so the
+  // wait is three of the longest steps, which is past the last delay.
+  const [intro, setIntro] = useState(true)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIntro(false), motionTiming('--motion-slower').duration * 3)
+    return () => window.clearTimeout(timer)
+  }, [])
+  // The stamp plays on the card that a resolve produced. A resolve moves its
+  // decision to the decided group as a new card, so the id lives here.
+  const [stampedIds, setStampedIds] = useState<ReadonlySet<string>>(() => new Set())
+  const markStamped = useCallback((id: string) => {
+    setStampedIds(current => (current.has(id) ? current : new Set(current).add(id)))
+  }, [])
 
   const suggestions = db.suggestions.filter(s => s.tripId === trip.id)
   const decisions = db.decisions.filter(d => d.tripId === trip.id)
@@ -218,16 +237,30 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   // Below 860px one column shows at a time. Wider, every column shows.
   const sectionOnScreen: Section = view === 'needs' ? needsSection : view
   const feed = tripActivity.slice(0, 20)
-  const feedRows = showAllActivity ? feed : feed.slice(0, 4)
+  const feedRows = feed.slice(0, 4)
+  const moreFeedRows = feed.slice(4)
+
+  // An idea that leaves the open list (added or declined) and a decision that
+  // moves from open to decided stay mounted for one exit (docs/MOTION-TOKENS.md,
+  // "List exit"). A decision keys on its status, so the open card leaves and the
+  // decided card arrives as a new one. The open card is the only one that exits.
+  const { entries: ideaEntries, exiting: ideasExiting, attachList: attachIdeaList } = usePresenceList(openIdeas, sg => sg.id, {
+    fallbackFocus: () => document.getElementById(SECTION_DOM.ideas),
+  })
+  const { entries: decisionEntries, attachList: attachDecisionList } = usePresenceList(
+    [...openDecisions, ...resolvedDecisions],
+    d => `${d.id}:${d.status}`,
+  )
 
   /** One tap opens an idea row and its actions. A second tap closes it. */
   function toggleIdea(id: string) {
     setSelectedIdeaId(current => (current === id ? null : id))
   }
 
-  const renderIdea = (sg: StopSuggestion) => (
+  /** One idea row. `exiting` is set only by the open list, which plays an exit. */
+  const renderIdea = (sg: StopSuggestion, exiting?: boolean) => (
     <IdeaRow key={sg.id} sg={sg} trip={trip} me={me} editable={editable} memberCount={memberCount}
-      needsMe={suggestionNeedsMe(sg)} previewOpen={previewOpen}
+      needsMe={suggestionNeedsMe(sg)} previewOpen={previewOpen} exiting={exiting}
       selected={selectedIdeaId === sg.id} onSelect={toggleIdea} />
   )
 
@@ -255,7 +288,7 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   }
 
   return (
-    <div>
+    <div className="gin-page" data-intro={intro ? 'true' : undefined}>
       <div className="gin-head">
         <div className="gin-head-text">
           <p className="gin-eyebrow">Crew · group input</p>
@@ -274,37 +307,41 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
         </PillNav>
       </div>
 
-      {items.length > 0 && listFailed && (
-        <StateBlock kind="kept" size="compact" title="Couldn’t refresh group input. Showing what was loaded."
-          actions={<button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button>} />
-      )}
-      {items.length === 0 && listFailed && (() => {
-        const copy = emptyCopyFor('failed', 'group input', retryGroupInput)
-        return (
-          <StateBlock kind="failed" size="compact" title={copy.title} body={copy.body}
-            icon={<Lightbulb size={38} aria-hidden />}
+      <div className="gin-state">
+        {items.length > 0 && listFailed && (
+          <StateBlock kind="kept" size="compact" title="Couldn’t refresh group input. Showing what was loaded."
             actions={<button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button>} />
-        )
-      })()}
-      {items.length === 0 && listReading && (
-        <StateBlock kind="loading" size="compact" title="Loading group input…" art={<div className="spinner" />} />
-      )}
-      {items.length === 0 && !listFailed && !listReading && (
-        <StateBlock kind="empty" size="compact" title={EMPTY_COPY.all.title} body={EMPTY_COPY.all.body}
-          icon={<Lightbulb size={38} aria-hidden />} />
-      )}
+        )}
+        {items.length === 0 && listFailed && (() => {
+          const copy = emptyCopyFor('failed', 'group input', retryGroupInput)
+          return (
+            <StateBlock kind="failed" size="compact" title={copy.title} body={copy.body}
+              icon={<Lightbulb size={38} aria-hidden />}
+              actions={<button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button>} />
+          )
+        })()}
+        {items.length === 0 && listReading && (
+          <StateBlock kind="loading" size="compact" title="Loading group input…" art={<div className="spinner" />} />
+        )}
+        {items.length === 0 && !listFailed && !listReading && (
+          <StateBlock kind="empty" size="compact" title={EMPTY_COPY.all.title} body={EMPTY_COPY.all.body}
+            icon={<Lightbulb size={38} aria-hidden />} />
+        )}
+      </div>
 
       <div className="gin-grid">
         <div id="gi-section-decisions" tabIndex={-1} role="region" aria-labelledby="gi-heading-decisions"
+          ref={attachDecisionList}
           className={`gin-col gin-col--decisions${sectionOnScreen === 'decisions' ? ' gin-col--shown' : ''}`}>
           <h3 id="gi-heading-decisions" className="sr-only">Decisions</h3>
           {items.length > 0 && decisionsRead === 'ready' && sortedDecisions.length === 0 && (
             <StateBlock kind="empty" size="compact" title={EMPTY_COPY.decisions.title} body={EMPTY_COPY.decisions.body}
               icon={<Scale size={38} aria-hidden />} />
           )}
-          {[...openDecisions, ...resolvedDecisions].map(d => (
-            <DecisionCard key={d.id} d={d} me={me} editable={editable} memberCount={memberCount}
-              needsMe={decisionNeedsMe(d)} now={now} trip={trip} previewOpen={previewOpen} slotResolution={slotResolution} />
+          {decisionEntries.map(({ item: d, key, exiting }) => (
+            <DecisionCard key={key} d={d} me={me} editable={editable} memberCount={memberCount}
+              needsMe={decisionNeedsMe(d)} now={now} trip={trip} previewOpen={previewOpen} slotResolution={slotResolution}
+              exiting={exiting} stamped={stampedIds.has(d.id)} onStamp={markStamped} />
           ))}
         </div>
 
@@ -328,17 +365,19 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
               <StateBlock kind="empty" size="compact" title={EMPTY_COPY.ideas.title} body={EMPTY_COPY.ideas.body}
                 icon={<Lightbulb size={38} aria-hidden />} />
             )}
-            {items.length > 0 && suggestionsRead === 'ready' && sortedIdeas.length > 0 && openIdeas.length === 0 && (
+            {items.length > 0 && suggestionsRead === 'ready' && sortedIdeas.length > 0 && openIdeas.length === 0 && !ideasExiting && (
               <StateBlock kind="empty" size="compact" title={EMPTY_COPY.ideasOpen.title} body={EMPTY_COPY.ideasOpen.body}
                 icon={<Lightbulb size={38} aria-hidden />} />
             )}
-            {openIdeas.map(renderIdea)}
+            <div ref={attachIdeaList} className="gin-rows">
+              {ideaEntries.map(({ item: sg, exiting }) => renderIdea(sg, exiting))}
+            </div>
             {resolvedIdeas.length > 0 && (
               <div className="gin-resolved">
                 <button type="button" className="gin-disclosure" aria-expanded={showResolvedIdeas}
                   aria-controls={showResolvedIdeas ? 'gi-resolved-ideas' : undefined}
                   onClick={() => setShowResolvedIdeas(open => !open)}>Resolved ideas · {resolvedIdeas.length}</button>
-                {showResolvedIdeas && <div id="gi-resolved-ideas">{resolvedIdeas.map(renderIdea)}</div>}
+                {showResolvedIdeas && <div id="gi-resolved-ideas">{resolvedIdeas.map(sg => renderIdea(sg))}</div>}
               </div>
             )}
           </Surface>
@@ -363,15 +402,25 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
             {activityRead === 'ready' && tripActivity.length === 0 && (
               <StateBlock kind="empty" size="compact" title="No activity yet." />
             )}
-            {feedRows.map(a => (
-              <div key={a.id} className="feed-item">
-                <Avatar user={userById(a.actorId)} />
-                <span><b>{userById(a.actorId)?.profile.name}</b> {a.verb}{a.target ? ` · ${a.target}` : ''}</span>
-                <span className="feed-time">{timeAgo(a.at)}</span>
+            {feedRows.length > 0 && (
+              <div className={`gin-feed${moreFeedRows.length > 0 ? ' gin-feed--more' : ''}`}>
+                {feedRows.map(a => (
+                  <FeedRow key={a.id} a={a} />
+                ))}
               </div>
-            ))}
+            )}
+            {moreFeedRows.length > 0 && (
+              // The rest of the feed opens and closes with the day collapse.
+              <SmoothCollapse open={showAllActivity} fallbackFocus={feedToggleRef}>
+                <div className="gin-feed">
+                  {moreFeedRows.map(a => (
+                    <FeedRow key={a.id} a={a} />
+                  ))}
+                </div>
+              </SmoothCollapse>
+            )}
             {tripActivity.length > 4 && (
-              <button type="button" className="gin-text-btn" aria-expanded={showAllActivity}
+              <button ref={feedToggleRef} type="button" className="gin-text-btn" aria-expanded={showAllActivity}
                 onClick={() => setShowAllActivity(open => !open)}>
                 {showAllActivity ? 'Show less' : 'Show everything'}
               </button>
@@ -380,6 +429,17 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
           <CrewPreferencesCard trip={trip} meId={me.id} />
         </div>
       </div>
+    </div>
+  )
+}
+
+/** One activity entry: who did what, and when. */
+function FeedRow({ a }: { a: ReturnType<typeof activityFor>[number] }) {
+  return (
+    <div className="feed-item">
+      <Avatar user={userById(a.actorId)} />
+      <span><b>{userById(a.actorId)?.profile.name}</b> {a.verb}{a.target ? ` · ${a.target}` : ''}</span>
+      <span className="feed-time">{timeAgo(a.at)}</span>
     </div>
   )
 }
@@ -428,11 +488,13 @@ function CrewPreferencesCard({ trip, meId }: { trip: Trip; meId: string }) {
     setRestoreFocus(false)
   }, [restoreFocus, quizOpen])
 
-  useEffect(() => {
-    if (!focusChip || !quizOpen) return
+  /** The quiz mounts hidden and opens a beat later. The first chip takes the
+   *  focus once it is open, because a hidden element cannot hold focus. */
+  function focusFirstChip() {
+    if (!focusChip) return
     chipsRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
     setFocusChip(false)
-  }, [focusChip, quizOpen])
+  }
 
   function toggle(interest: CrewInterest) {
     setDraft(current => {
@@ -475,15 +537,7 @@ function CrewPreferencesCard({ trip, meId }: { trip: Trip; meId: string }) {
         <>
           <p className="small muted gin-crew-count">{summary.answered} of {memberIds.length} answered</p>
           {bars.length > 0 ? (
-            <ul className="gin-crew-list">
-              {bars.map(b => (
-                <li key={b.interest} className="gin-crew-row">
-                  <span className="gin-crew-label">{cap(b.interest)}</span>
-                  <ShareBar percent={b.percent} lead />
-                  <span className="gin-option-pct num">{b.percent}%</span>
-                </li>
-              ))}
-            </ul>
+            <CrewBarList bars={bars} />
           ) : (
             <p className="small muted">Nobody picked an interest yet.</p>
           )}
@@ -491,8 +545,11 @@ function CrewPreferencesCard({ trip, meId }: { trip: Trip; meId: string }) {
       )}
       {read === 'ready' && isMember && (
         <div className="gin-quiz">
-          {quizOpen ? (
-            <>
+          {/* The quiz opens and closes with the day collapse. The Edit button
+              is not part of it: it appears at once, so focus has a target as
+              the quiz starts to close. */}
+          <SmoothCollapse open={quizOpen} fallbackFocus={editBtnRef} onExpanded={focusFirstChip}>
+            <div className="gin-quiz-body">
               <p className="small gin-quiz-title" id={`gi-quiz-title-${trip.id}`}>Your answers</p>
               <div ref={chipsRef} className="gin-quiz-chips" role="group" aria-labelledby={`gi-quiz-title-${trip.id}`}>
                 {CREW_QUIZ_INTERESTS.map(interest => (
@@ -509,14 +566,35 @@ function CrewPreferencesCard({ trip, meId }: { trip: Trip; meId: string }) {
                   <button type="button" className="gin-text-btn" disabled={pending} onClick={() => save([])}>None of these</button>
                 )}
               </div>
-            </>
-          ) : (
+            </div>
+          </SmoothCollapse>
+          {!quizOpen && (
             <button ref={editBtnRef} type="button" className="gin-text-btn" aria-expanded={false}
               onClick={() => { setEditing(true); setFocusChip(true) }}>Edit your answers</button>
           )}
         </div>
       )}
     </Surface>
+  )
+}
+
+/** The crew's interest bars. The list owns its in-view and page-visible state,
+ *  so the bars grow only while the reader can see them. It mounts when the first
+ *  answer arrives, so the observer reads a real element. */
+function CrewBarList({ bars }: { bars: ReturnType<typeof crewBars> }) {
+  const listRef = useRef<HTMLUListElement>(null)
+  const inView = useInView(listRef)
+  const visible = usePageVisible()
+  return (
+    <ul ref={listRef} className="gin-crew-list" data-motion-paused={!visible || !inView}>
+      {bars.map(b => (
+        <li key={b.interest} className="gin-crew-row">
+          <span className="gin-crew-label">{cap(b.interest)}</span>
+          <ShareBar percent={b.percent} lead />
+          <span className="gin-option-pct num">{b.percent}%</span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -531,7 +609,7 @@ function ShareBar({ percent, lead }: { percent: number; lead?: boolean }) {
 
 // ================= Stop idea row =================
 
-function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, selected, onSelect }: {
+function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, selected, onSelect, exiting }: {
   sg: StopSuggestion
   trip: Trip
   me: NonNullable<ReturnType<typeof currentUser>>
@@ -541,6 +619,8 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
   previewOpen?: boolean
   selected: boolean
   onSelect: (id: string) => void
+  /** Set by the open list, which plays an exit. A row outside that list leaves it unset. */
+  exiting?: boolean
 }) {
   const ups = sg.votes.filter(v => v.value === 1).length
   const downs = sg.votes.length - ups
@@ -548,6 +628,7 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
   const author = userById(sg.proposedBy)
   const open = sg.status === 'open'
   const { busy, claim, release } = useBusyClaim(sg.id)
+  const headRef = useRef<HTMLButtonElement>(null)
   // Only the user's CHOICE lives here. The day list is read from the trip at
   // render time: a day removed while the panel was open must disappear from the
   // choices too, instead of offering a day that no longer exists (#839).
@@ -581,14 +662,15 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
   }
 
   return (
-    <div id={`gi-item-${sg.id}`} tabIndex={-1} className={`gin-row gi-item${needsMe ? ' gi-needs-you' : ''}`}>
-      <button type="button" className="gin-row-head" aria-expanded={expanded}
+    <div id={exiting ? undefined : `gi-item-${sg.id}`} tabIndex={-1} className={`gin-row gi-item${needsMe ? ' gi-needs-you' : ''}`}
+      {...(exiting === undefined ? {} : presenceAttrs({ exiting }))}>
+      <button ref={headRef} type="button" className="gin-row-head" aria-expanded={expanded}
         aria-controls={expanded ? `gi-row-panel-${sg.id}` : undefined} onClick={() => onSelect(sg.id)}>
         <span className="gin-cat-tile"><CatIcon category={sg.category} size={18} /></span>
         <span className="gin-row-main">
           <span className="gin-row-title">
             {sg.title}
-            {needsMe && <Chip tone="saffron">Needs your vote</Chip>}
+            {needsMe && <span className="gin-pop"><Chip tone="saffron">Needs your vote</Chip></span>}
             {!open && <Chip tone={sg.status === 'accepted' ? 'ok' : 'danger'}>{cap(sg.status)}</Chip>}
           </span>
           <span className="gin-row-meta small muted num">{ideaMeta(sg)}</span>
@@ -596,7 +678,9 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
         </span>
         <span className="gin-heart"><Heart size={13} aria-hidden /> {ups}</span>
       </button>
-      {expanded && (
+      {/* The action panel opens and closes with the day collapse (grid rows).
+          Focus returns to the row head if a close would strand it. */}
+      <SmoothCollapse open={expanded} fallbackFocus={headRef}>
         <div id={`gi-row-panel-${sg.id}`} className="gin-row-panel">
           <div className="stop-meta gin-stop-meta">
             <span><MapPin size={13} aria-hidden /> {sg.locationName}</span>
@@ -671,14 +755,14 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
           )}
           <CommentForm onSubmit={text => addCommentToSuggestion(trip.id, sg.id, text).then(o => { reportCollabOutcome(o); return o })} />
         </div>
-      )}
+      </SmoothCollapse>
     </div>
   )
 }
 
 // ================= Decision card =================
 
-function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previewOpen, slotResolution }: {
+function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previewOpen, slotResolution, exiting, stamped, onStamp }: {
   d: TripDecision
   me: { id: string }
   editable: boolean
@@ -689,6 +773,11 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
   trip: Trip
   previewOpen?: boolean
   slotResolution: SlotResolutionContext | null
+  /** True while this card plays its exit: an open card whose decision just moved to decided. */
+  exiting: boolean
+  /** True after a resolve this tab made. The Chosen chip then plays its stamp. */
+  stamped: boolean
+  onStamp: (id: string) => void
 }) {
   const tally = d.options.map(o => Object.values(d.votesByUserId).filter(v => v === o.id).length)
   const totalVotes = tally.reduce((s, t) => s + t, 0)
@@ -716,8 +805,12 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
   const optionClaim = useBusyClaim(`${d.id}:add-option`)
   const optionRef = useRef<HTMLInputElement>(null)
   const addTriggerRef = useRef<HTMLButtonElement>(null)
+  const commentToggleRef = useRef<HTMLButtonElement>(null)
+  // The vote bars grow once, while they are on screen and the tab is visible.
+  const optionsRef = useRef<HTMLDivElement>(null)
+  const optionsInView = useInView(optionsRef)
+  const pageVisible = usePageVisible()
   const timeFormat = useTimeFormat()
-  const [stamped, setStamped] = useState(false)
   const [placementDayId, setPlacementDayId] = useState('')
   const [placementDays, setPlacementDays] = useState<Array<{ id: string; index: number; title?: string }> | null>(null)
   const [openDayOptionId, setOpenDayOptionId] = useState<string | null>(null)
@@ -752,12 +845,14 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
     }
     setRoadRefusal(null)
     // The stamp plays only for a resolution this card made, so a page load never replays it.
-    if (flow.kind === 'settled' && (flow.outcome.status === 'applied' || flow.outcome.status === 'alreadyApplied')) setStamped(true)
+    if (flow.kind === 'settled' && (flow.outcome.status === 'applied' || flow.outcome.status === 'alreadyApplied')) onStamp(d.id)
     setOpenDayOptionId(flow.kind === 'settled' && flow.needsDayPicker ? (d.resolvedOptionId ?? optionId) : null)
   }
 
-  // The add-option field takes the focus when it opens.
-  useEffect(() => { if (addingOption) optionRef.current?.focus() }, [addingOption])
+  // The add-option field and the comment field mount hidden and open a beat
+  // later, so each takes the focus from the collapse once it is open.
+  const focusOptionField = () => optionRef.current?.focus()
+  const focusCommentField = () => document.getElementById(`gi-comment-${d.id}`)?.querySelector<HTMLElement>('input')?.focus()
 
   /** Add one option. The same duplicate check the server runs shows its reason at once. */
   function submitOption() {
@@ -784,7 +879,8 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
   }
 
   return (
-    <Surface id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-panel gin-decision${needsMe ? ' gi-needs-you' : ''}`}>
+    <Surface id={exiting ? undefined : `gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-panel gin-decision${needsMe ? ' gi-needs-you' : ''}`}
+      {...presenceAttrs({ exiting })}>
       {open ? (
         <>
           {locked && <p className="gin-eyebrow">Closed</p>}
@@ -799,7 +895,8 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
           <h3 className="gin-card-title">{d.question}</h3>
           <p className="small muted gin-sub">Raised by {raiser}{dayLabel ? ` · ${dayLabel}` : ''} · {voterCount} of {memberCount} voted</p>
           {d.context && <p className="small muted gin-decision-context">{d.context}</p>}
-          <div className="gin-decision-options" role="radiogroup" aria-label={`Options for ${d.question}`}>
+          <div ref={optionsRef} className="gin-decision-options" role="radiogroup" aria-label={`Options for ${d.question}`}
+            data-motion-paused={!pageVisible || !optionsInView}>
             {d.options.map((o, i) => {
               const pct = totalVotes > 0 ? Math.round((tally[i] / totalVotes) * 100) : 0
               const leading = i === leadingIdx && tally[i] > 0
@@ -818,7 +915,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
                   <span className="gin-option-main">
                     <span className="gin-option-title">
                       <span id={`gi-opt-${d.id}-${o.id}-label`} className="gin-option-label">{o.label}</span>
-                      {rec?.optionId === o.id && <Chip tone="teal">Best fit · engine</Chip>}
+                      {rec?.optionId === o.id && <span className="gin-pop"><Chip tone="teal">Best fit · engine</Chip></span>}
                     </span>
                     {detail && <span id={`gi-opt-${d.id}-${o.id}-detail`} className="gin-option-detail small muted num">{detail}</span>}
                     <ShareBar percent={pct} lead={leading} />
@@ -870,7 +967,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
               <button type="button" className="btn btn-primary btn-sm" disabled={!pick || pick === myOptionId}
                 onClick={castVote}>Vote</button>
             )}
-            <button type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
+            <button ref={commentToggleRef} type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
               aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
               onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
             {editable && canAddOption(d, now) && (
@@ -882,7 +979,8 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
               </button>
             )}
           </div>
-          {addingOption && editable && canAddOption(d, now) && (
+          {/* The add-option field opens and closes with the day collapse. */}
+          <SmoothCollapse open={addingOption && editable && canAddOption(d, now)} fallbackFocus={addTriggerRef} onExpanded={focusOptionField}>
             <form id={`gi-add-option-${d.id}`} className="gin-option-form" onSubmit={e => { e.preventDefault(); submitOption() }}>
               <Field label="New option" error={optionError}>
                 <input ref={optionRef} className="input" value={optionLabel} maxLength={200}
@@ -890,7 +988,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
               </Field>
               <button className="btn btn-sm btn-outline" aria-label={`Add option to ${d.question}`} disabled={optionClaim.busy} aria-busy={optionClaim.busy}>Add</button>
             </form>
-          )}
+          </SmoothCollapse>
           {editable && (
             <div className="resolve-btns">
               {d.options.map(o => (
@@ -919,7 +1017,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
             <span className={`chip chip-ok${stamped ? ' gin-stamp' : ''}`}>Chosen</span>
           </div>
           <div className="gin-foot">
-            <button type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
+            <button ref={commentToggleRef} type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
               aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
               onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
           </div>
@@ -974,9 +1072,10 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
           ))}
         </div>
       )}
-      {commenting && (
-        <CommentForm id={`gi-comment-${d.id}`} focusOnMount onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
-      )}
+      {/* The comment field opens and closes with the day collapse. */}
+      <SmoothCollapse open={commenting} fallbackFocus={commentToggleRef} onExpanded={focusCommentField}>
+        <CommentForm id={`gi-comment-${d.id}`} onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
+      </SmoothCollapse>
     </Surface>
   )
 }
@@ -1077,12 +1176,9 @@ export function SuggestionFollowUpPanel({ followUp, days, busy, previewOpen, onP
   )
 }
 
-function CommentForm({ id, focusOnMount, onSubmit }: { id?: string; focusOnMount?: boolean; onSubmit: (text: string) => Promise<CollabOutcome> }) {
+function CommentForm({ id, onSubmit }: { id?: string; onSubmit: (text: string) => Promise<CollabOutcome> }) {
   const [text, setText] = useState('')
   const [pending, setPending] = useState(false)
-  const fieldRef = useRef<HTMLInputElement>(null)
-  // A form the reader opened on purpose takes the focus, so typing can start.
-  useEffect(() => { if (focusOnMount) fieldRef.current?.focus() }, [focusOnMount])
   return (
     <form id={id} className="gin-comment-form" onSubmit={e => {
       e.preventDefault()
@@ -1097,7 +1193,7 @@ function CommentForm({ id, focusOnMount, onSubmit }: { id?: string; focusOnMount
         setPending(false)
       })
     }}>
-      <input ref={fieldRef} className="input" placeholder="Add a comment…" aria-label="Add a comment" value={text} onChange={e => setText(e.target.value)} />
+      <input className="input" placeholder="Add a comment…" aria-label="Add a comment" value={text} onChange={e => setText(e.target.value)} />
       <button className="btn btn-sm btn-outline" disabled={pending} aria-busy={pending}>Post</button>
     </form>
   )

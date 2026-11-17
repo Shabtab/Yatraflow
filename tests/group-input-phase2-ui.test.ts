@@ -137,7 +137,8 @@ describe('add option visibility', () => {
     expect(canAddOption({ status: 'open', closesAt: NOW - 1, options: decision().options }, NOW)).toBe(false)
     expect(canAddOption({ status: 'resolved', options: decision().options }, NOW)).toBe(false)
     expect(tab).toContain('{editable && canAddOption(d, now) && (')
-    expect(tab).toContain('{addingOption && editable && canAddOption(d, now) && (')
+    // The field opens and closes with the day collapse, which takes the same gate.
+    expect(tab).toContain('<SmoothCollapse open={addingOption && editable && canAddOption(d, now)} fallbackFocus={addTriggerRef} onExpanded={focusOptionField}>')
   })
   it('checks a duplicate on the client, then submits through the store with a busy claim', () => {
     expect(tab).toContain('checkNewOptionLabel(d.options, optionLabel)')

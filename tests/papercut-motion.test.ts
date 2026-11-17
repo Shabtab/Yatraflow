@@ -138,6 +138,8 @@ describe('Papercut motion foundation', () => {
       // The Settings rail's 18px edited-count badge pops in on the settle ease: the
       // badge case the motion tokens doc allows (tests/settings-entrance-motion.test.ts).
       .filter(selector => selector !== '.tset-nav-item i')
+      // Group input: the Chosen stamp and the two chip pops, all under 48px and entrance only.
+      .filter(selector => !/\.gin-(stamp|pop)$/.test(selector))
     expect(bounceRules).toEqual([])
     expect(css).not.toContain('.save-heart.save-heart')
     expect(gallery).toMatch(/\.gallery-final-pin\s*\{[^}]*width:\s*20px[^}]*height:\s*20px/)

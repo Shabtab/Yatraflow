@@ -52,8 +52,10 @@ describe('#704 — Group input reads its verdicts before it renders', () => {
     expect(component).toMatch(/items\.length === 0 && listReading && \(\s*<StateBlock kind="loading"/)
     expect(component).not.toMatch(/listFailed \?/)
     expect(component).not.toMatch(/listReading \?/)
-    expect(component).toMatch(/\{\[\.\.\.openDecisions, \.\.\.resolvedDecisions\]\.map\(d => \(/)
-    expect(component).toMatch(/\{openIdeas\.map\(renderIdea\)\}/)
+    expect(component).toMatch(/usePresenceList\(\s*\[\.\.\.openDecisions, \.\.\.resolvedDecisions\],/)
+    expect(component).toMatch(/\{decisionEntries\.map\(\(\{ item: d, key, exiting \}\) => \(/)
+    expect(component).toMatch(/usePresenceList\(openIdeas, sg => sg\.id,/)
+    expect(component).toMatch(/\{ideaEntries\.map\(\(\{ item: sg, exiting \}\) => renderIdea\(sg, exiting\)\)\}/)
   })
 
   it('the all-empty copy is gated on a ready, empty list, and comes after the failed and reading branches', () => {
