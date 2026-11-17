@@ -61,6 +61,8 @@
 .gin-guide-note { margin: 0; }
 .gin-guide-rec { margin: 4px 0 0; }
 .gin-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gin-foot-spacer { flex: 1; }
+.gin-details { display: grid; gap: 10px; padding-top: 10px; }
 .gin-decided { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .gin-stamp { animation: gin-stamp-in var(--motion-med) var(--ease-settle) both; }
 @keyframes gin-stamp-in { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: none; } }

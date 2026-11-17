@@ -830,6 +830,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
   const { busy, claim, release } = useBusyClaim(d.id)
   const [pick, setPick] = useState<string | null>(null)
   const [commenting, setCommenting] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const [addingOption, setAddingOption] = useState(false)
   const [optionLabel, setOptionLabel] = useState('')
   const [optionError, setOptionError] = useState<string | undefined>()
@@ -837,6 +838,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
   const optionRef = useRef<HTMLInputElement>(null)
   const addTriggerRef = useRef<HTMLButtonElement>(null)
   const commentToggleRef = useRef<HTMLButtonElement>(null)
+  const detailsToggleRef = useRef<HTMLButtonElement>(null)
   // The vote bars grow once, while they are on screen and the tab is visible.
   const optionsRef = useRef<HTMLDivElement>(null)
   const optionsInView = useInView(optionsRef)
@@ -999,26 +1001,9 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
               )
             })}
           </div>
-          <div className="gi-guide gin-guide-block">
-            <p className="small muted gin-guide-note">
-              <InlineIcon icon={ClipboardList} size={12} gap={4} />
-              {contextLine(ctx)}
-            </p>
-            {rec && (
-              <p className="small gin-guide-rec">
-                <InlineIcon icon={Sparkles} size={12} gap={4} />
-                <b>{rec.label}</b>: {rec.reason} <Chip tone="info">offline</Chip>
-              </p>
-            )}
-          </div>
           {locked && (
             <p className="small verdict-line">
               {votingClosedLine(d)}{outcome.kind === 'tie' ? '. An editor picks the winner.' : ''}
-            </p>
-          )}
-          {!locked && totalVotes > 0 && (
-            <p className="small muted verdict-line">
-              Tally leans <b>{d.options[leadingIdx]?.label}</b>{needsMe ? '. Your vote could flip it' : '. Editors resolve'}.
             </p>
           )}
           <div className="gin-foot">
@@ -1026,9 +1011,6 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
               <button type="button" className="btn btn-primary btn-sm" disabled={!pick || pick === myOptionId}
                 onClick={castVote}>Vote</button>
             )}
-            <button ref={commentToggleRef} type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
-              aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
-              onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
             {editable && canAddOption(d, now) && (
               <button ref={addTriggerRef} type="button" className="btn btn-ghost btn-sm" aria-expanded={addingOption}
                 aria-label={`Add option to ${d.question}`}
@@ -1037,6 +1019,13 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
                 <Plus size={14} aria-hidden /> Add option
               </button>
             )}
+            <span className="gin-foot-spacer" aria-hidden />
+            <button ref={detailsToggleRef} type="button" className="gin-disclosure" aria-expanded={detailsOpen}
+              aria-controls={detailsOpen ? `gi-details-${d.id}` : undefined}
+              onClick={() => setDetailsOpen(v => !v)}>{detailsOpen ? 'Hide details' : 'Details'}</button>
+            <button ref={commentToggleRef} type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
+              aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
+              onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
           </div>
           {/* The add-option field opens and closes with the day collapse. */}
           <SmoothCollapse open={addingOption && editable && canAddOption(d, now)} fallbackFocus={addTriggerRef} onExpanded={focusOptionField}>
@@ -1048,7 +1037,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
               <button className="btn btn-sm btn-outline" aria-label={`Add option to ${d.question}`} disabled={optionClaim.busy} aria-busy={optionClaim.busy}>Add</button>
             </form>
           </SmoothCollapse>
-          {editable && (
+          {editable && locked && (
             <div className="resolve-btns">
               {d.options.map(o => (
                 <button key={o.id} className={`btn btn-sm ${locked && outcome.kind === 'winner' && outcome.option.id === o.id ? 'btn-primary' : 'btn-outline'}`} disabled={busy} aria-busy={busy}
@@ -1061,6 +1050,35 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
               ))}
             </div>
           )}
+          <SmoothCollapse open={detailsOpen} fallbackFocus={detailsToggleRef}>
+            <div id={exiting ? undefined : `gi-details-${d.id}`} className="gin-details">
+              <div className="gi-guide gin-guide-block">
+                <p className="small muted gin-guide-note">
+                  <InlineIcon icon={ClipboardList} size={12} gap={4} />
+                  {contextLine(ctx)}
+                </p>
+                {rec && (
+                  <p className="small gin-guide-rec">
+                    <InlineIcon icon={Sparkles} size={12} gap={4} />
+                    <b>{rec.label}</b>: {rec.reason} <Chip tone="info">offline</Chip>
+                  </p>
+                )}
+              </div>
+              {editable && !locked && (
+                <div className="resolve-btns">
+                  {d.options.map(o => (
+                    <button key={o.id} className={`btn btn-sm ${locked && outcome.kind === 'winner' && outcome.option.id === o.id ? 'btn-primary' : 'btn-outline'}`} disabled={busy} aria-busy={busy}
+                      onClick={() => {
+                        if (refuseWhileStaged(previewOpen)) return
+                        void resolveChoice(o.id)
+                      }}>
+                      Resolve: {o.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </SmoothCollapse>
         </>
       ) : (
 
