@@ -54,7 +54,7 @@ MSYS_NO_PATHCONV=1 node $V drive <route> <name> [--click <text>] [--expect <text
 
 - `<route>` is an app path, for example `/explore`, `/auth?mode=signup` or `/trip/<id>/map`.
 - `--click` clicks the first link or button whose text matches exactly. If none matches, it uses a substring match.
-- `--settle` waits this many milliseconds after a click before it reads the page. Default is 3000.
+- `--settle` waits this many milliseconds after a click before it reads the page. Default is 3000. Without `--click`, `--settle` has no effect: the page is read about 4 seconds after load. A cold dev server can take longer than that. Use `--expect`, or reach the page through a `--click`, so that a slow load is not recorded as a stuck page.
 - `--expect` checks the page text. The command waits up to 15 seconds for the text, then exits `1` if it is still missing.
 - `--width` sets the viewport width. Default is 1280. Below 720 the page renders as mobile.
 - `--signin` runs `signin` first. It does nothing when the account is already signed in.

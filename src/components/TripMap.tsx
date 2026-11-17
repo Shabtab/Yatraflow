@@ -795,6 +795,15 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   // both glide; the class is transient and the timer is cleared on unmount.
   const [closing, setClosing] = useState(false)
   const collapseTimer = useRef<number | undefined>(undefined)
+  // One Expand button. The tools column and the phone menu draw the same control.
+  function mapExpandButton(extraClass = '') {
+    return <button type="button" className={`mv2-map-tools-btn map-expand-chip${extraClass ? ` ${extraClass}` : ''}${expanded ? ' on' : ''}`} aria-pressed={expanded}
+      onClick={() => { if (expanded) collapseExpanded(); else setExpanded(true) }}
+      title={expanded ? 'Shrink the map back into the page (Esc)' : 'Expand the map to fill the screen'}
+      aria-label={expanded ? 'Shrink the map back into the page' : 'Expand the map to fill the screen'}>
+      {expanded ? <X size={17} aria-hidden /> : <Maximize2 size={17} aria-hidden />}
+    </button>
+  }
   function collapseExpanded() {
     if (!expanded || closing) return
     setClosing(true)
@@ -1912,6 +1921,10 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
             </button>
           </div>
           )}
+          {/* Expand is one tap on a tablet or desktop, not hidden in the menu. */}
+          <div className="mv2-map-tools-card mv2-map-expand" role="group" aria-label="Map size">
+            {mapExpandButton()}
+          </div>
           <details className="mv2-tool-menu" onKeyDown={event => { if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); event.stopPropagation() } }}>
             <summary className="mv2-icon-btn" aria-label="Layers" title="Layers"><Layers size={18} aria-hidden />{layersChanged && <span className="mv2-layers-dot" aria-hidden="true" />}</summary>
             <div className="mv2-tool-menu-body popover mv2-layers" aria-label="Map layers">
@@ -1961,12 +1974,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                   aria-label="Directions for this day in Google Maps" title="Open this day's ride with turn-by-turn directions in Google Maps"><Navigation size={17} aria-hidden /></button></>
             )}
             <span className="mv2-map-tools-divider" aria-hidden="true" />
-            <button type="button" className={`mv2-map-tools-btn map-expand-chip${expanded ? ' on' : ''}`} aria-pressed={expanded}
-              onClick={() => (expanded ? collapseExpanded() : setExpanded(true))}
-              title={expanded ? 'Shrink the map back into the page (Esc)' : 'Expand the map to fill the screen'}
-              aria-label={expanded ? 'Shrink the map back into the page' : 'Expand the map to fill the screen'}>
-              {expanded ? <X size={17} aria-hidden /> : <Maximize2 size={17} aria-hidden />}
-            </button>
+            {/* The phone keeps Expand in this menu too, so the tools column stays short. */}
+            {mapExpandButton('mv2-map-expand-menu')}
             <button type="button" className={`mv2-map-tools-btn${liveOn ? ' on' : ''}`}
               onClick={toggleLive} aria-pressed={liveOn}
               aria-label={liveOn ? 'Stop showing my live location' : 'Show my live location on the map'}

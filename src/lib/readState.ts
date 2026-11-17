@@ -105,7 +105,7 @@ export function figureOrUnavailable(
  * three states) meet, so a page cannot get the inference subtly wrong.
  */
 export function sliceState(
-  sliceReads: Record<string, 'ok' | 'failed'> | undefined,
+  sliceReads: Record<string, 'ok' | 'failed' | 'reading'> | undefined,
   slice: string,
 ): ReadState {
   const verdict = sliceReads?.[slice]

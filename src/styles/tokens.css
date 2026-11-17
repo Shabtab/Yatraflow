@@ -506,6 +506,10 @@
   --pw-card: #FEFDFB;
   /* Ink over a cover photo. Light keeps the card white, so the light theme is unchanged. */
   --pw-on-cover: #FEFDFB;
+  /* The ticket header stays dark in both themes. */
+  --pw-ticket-head: #0B3F44;
+  --pw-ticket-ink: #FFFFFF;
+  --pw-ticket-muted: #9FD9CF;
   --pw-raised: #FFFFFF;
   --pw-line: #DFDBD1;
   --pw-line-soft: #E8E4DB;

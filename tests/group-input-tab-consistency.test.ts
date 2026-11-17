@@ -21,16 +21,21 @@ describe('Group input tab: panels, titles and states follow the page pattern', (
   })
 
   it('gives every card title the shared title class, and no bare h3', () => {
-    expect(tab.match(/<h3 className="gin-card-title">/g)).toHaveLength(6)
+    // Three titles are plain: the open and decided decision cards and the Raise a decision form.
+    // Two panel titles carry an id, so the section regions can name themselves.
+    // The Crew preferences title carries a ref and a -1 tabindex, so focus can return to it.
+    expect(tab.match(/<h3 className="gin-card-title">/g)).toHaveLength(3)
+    expect(tab.match(/<h3 id="gi-heading-[a-z]+" className="gin-card-title">/g)).toHaveLength(2)
+    expect(tab.match(/<h3 ref=\{headingRef\} tabIndex=\{-1\} className="gin-card-title">/g)).toHaveLength(1)
     expect(tab).not.toMatch(/<h3>/)
     expect(css).toContain('.gin-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }')
   })
 
   it('gives each state its own compact StateBlock kind', () => {
-    expect(tab.match(/<StateBlock kind="kept" size="compact"/g)).toHaveLength(2)
-    expect(tab.match(/<StateBlock kind="failed" size="compact"/g)).toHaveLength(2)
-    expect(tab.match(/<StateBlock kind="loading" size="compact"/g)).toHaveLength(1)
-    expect(tab.match(/<StateBlock kind="empty" size="compact"/g)).toHaveLength(3)
+    expect(tab.match(/<StateBlock kind="kept" size="compact"/g)).toHaveLength(3)
+    expect(tab.match(/<StateBlock kind="failed" size="compact"/g)).toHaveLength(3)
+    expect(tab.match(/<StateBlock kind="loading" size="compact"/g)).toHaveLength(2)
+    expect(tab.match(/<StateBlock kind="empty" size="compact"/g)).toHaveLength(6)
   })
 
   it('keeps the old ad-hoc state markup out of the tab', () => {
@@ -45,12 +50,11 @@ describe('Group input tab: panels, titles and states follow the page pattern', (
   })
 
   it('restates the card skin for the panels, with the shared surface values', () => {
-    expect(css).toContain('.yf-surface.gin-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); }')
+    expect(css).toContain('.yf-surface.gin-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); border-color: var(--line-soft); }')
   })
 
   it('adds no raw millisecond value in the new CSS section', () => {
-    expect(css).toContain('P12: Group input tab')
-    const section = css.slice(css.indexOf('P12: Group input tab'), css.indexOf('/* Papercut foundations */'))
+    const section = readFileSync(new URL('../src/styles/pages/group-input.css', import.meta.url), 'utf8')
     expect(section).not.toMatch(/\d+ms\b/)
   })
 })

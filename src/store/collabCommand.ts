@@ -13,7 +13,7 @@
 // payload answers `conflict` — so a command ID is minted once per logical
 // action and kept for the retry.
 
-import type { Comment, PersistedPlaceIdentity, StopCategory, StopSuggestion, TripDecision, Vote } from '../data/types'
+import type { Comment, CrewPreference, PersistedPlaceIdentity, StopCategory, StopSuggestion, TripDecision, Vote } from '../data/types'
 import { persistedPlaceFromJson } from '../lib/placeDraft'
 import { supabase } from '../lib/supabase'
 
@@ -46,10 +46,20 @@ export type CollabCommand =
         question: string
         context?: string
         options: Array<Record<string, unknown> & { id: string; label: string }>
+        /** Epoch milliseconds. After it the server refuses every ballot. */
+        closesAt?: number
+        /** The stable day id this decision is about. */
+        dayId?: string
       }
     }
   | { type: 'decision.comment'; decisionId: string; commentId: string; text: string }
   | { type: 'decision.ballot'; decisionId: string; optionId: string | null }
+  | {
+      type: 'decision.option.add'
+      decisionId: string
+      /** The server sets `addedBy` from the signed-in account. It is not sent. */
+      option: { id: string; label: string; costImpactInr?: number; timeImpactMin?: number }
+    }
   | { type: 'activity.append'; activityId: string; verb: string; target?: string }
 
 /** The exact wire shape of an ordered resolution request. Client intent metadata
@@ -90,6 +100,8 @@ export type CollabOutcome =
       tripRevision: number
       suggestion?: StopSuggestion
       decision?: TripDecision
+      /** Set by `setMyCrewPreferences`: the stored row for the caller. */
+      crewPreference?: CrewPreference
       activityId?: string
       notificationIds?: string[]
     }
@@ -136,6 +148,7 @@ export function suggestionRowToEntry(row: unknown): StopSuggestion {
 
 type DbDecisionRow = {
   id: string; trip_id: string; question: string; context?: string | null
+  closes_at?: number | string | null; day_id?: string | null
   options?: TripDecision['options']; votes_by_user_id?: Record<string, string>
   comments?: Comment[]; status: TripDecision['status']
   resolved_option_id?: string | null; resolved_stop_id?: string | null; raised_by: string; created_at?: number; resolved_at?: number | null
@@ -150,6 +163,19 @@ export function decisionRowToEntry(row: unknown): TripDecision {
     resolvedOptionId: r.resolved_option_id ?? undefined, raisedBy: r.raised_by,
     ...(typeof r.resolved_stop_id === 'string' && r.resolved_stop_id ? { resolvedStopId: r.resolved_stop_id } : {}),
     createdAt: r.created_at ?? 0, resolvedAt: r.resolved_at ?? undefined,
+    ...closingFields(r),
+  }
+}
+
+/** The optional closing time and day. A legacy row has neither column set, and
+ *  maps to a decision without them. A closing time that is not a positive number
+ *  is dropped here; the server still refuses the vote for it. */
+function closingFields(r: DbDecisionRow): Pick<TripDecision, 'closesAt' | 'dayId'> {
+  // PostgREST returns a bigint column as a number, and a string is accepted too.
+  const closes = typeof r.closes_at === 'string' && r.closes_at.trim() !== '' ? Number(r.closes_at) : r.closes_at
+  return {
+    ...(typeof closes === 'number' && Number.isFinite(closes) && closes > 0 ? { closesAt: closes } : {}),
+    ...(typeof r.day_id === 'string' && r.day_id ? { dayId: r.day_id } : {}),
   }
 }
 
@@ -189,6 +215,24 @@ function idListOf(v: unknown): string[] | undefined {
  *  get, with the picked place gone and nothing said. Anything other than a
  *  success status has nothing to prove. */
 function receiptKeepsPromisedMetadata(command: CollabCommand, outcome: CollabOutcome): boolean {
+  if (command.type === 'decision.create') {
+    if (outcome.status !== 'applied' && outcome.status !== 'alreadyApplied') return true
+    const wantedCloses = command.decision.closesAt
+    const wantedDay = command.decision.dayId
+    if (wantedCloses === undefined && wantedDay === undefined) return true
+    // A server that predates the closing time would drop the field, and the vote
+    // would never lock. The row must come back carrying what the user set.
+    const stored = outcome.decision
+    if (!stored) return false
+    if (wantedCloses !== undefined && stored.closesAt !== wantedCloses) return false
+    if (wantedDay !== undefined && stored.dayId !== wantedDay) return false
+    return true
+  }
+  if (command.type === 'decision.option.add') {
+    if (outcome.status !== 'applied' && outcome.status !== 'alreadyApplied') return true
+    // The receipt row must hold the option that was sent.
+    return !!outcome.decision?.options.some(o => o.id === command.option.id)
+  }
   if (command.type !== 'suggestion.create') return true
   if (outcome.status !== 'applied' && outcome.status !== 'alreadyApplied') return true
   const promised = command.suggestion

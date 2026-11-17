@@ -492,6 +492,10 @@ export interface DecisionOption {
   costImpactInr?: number
   timeImpactMin?: number
   place?: DecisionPlacePayload
+  /** The member who added this option after the decision was raised. The server
+   *  sets it from the signed-in account. Absent on options written with the
+   *  decision itself. */
+  addedBy?: ID
 }
 
 /** What a caller may hand `addDecision`: the option id is OPTIONAL (#335).
@@ -520,6 +524,27 @@ export interface TripDecision {
   raisedBy: ID
   createdAt: number
   resolvedAt?: number
+  /** When voting stops, in epoch milliseconds. Absent means the vote stays open
+   *  until an editor resolves it. After this time the server refuses every
+   *  ballot and every new option. Nothing resolves the decision by itself. */
+  closesAt?: number
+  /** The stable day this decision is about. Absent when the decision is not tied
+   *  to a day, and on every row written before the column existed. */
+  dayId?: ID
+}
+
+/** One interest a member can pick in the crew quiz. The set is the app's stop
+ *  categories. `supabase/migrations/20261117_group_input_phase2.sql` holds the
+ *  same list, and a test keeps the two equal. */
+export type CrewInterest = StopCategory
+
+/** One member's answer to the crew quiz for one trip. A row with an empty
+ *  `interests` list is an answer ("none of these"). No row means no answer. */
+export interface CrewPreference {
+  tripId: ID
+  userId: ID
+  interests: CrewInterest[]
+  updatedAt: number
 }
 
 /** Explicit measured placement intent for one resolved slot vote. The captured
@@ -570,6 +595,10 @@ export interface PublishedItinerary {
   bestMonths?: number
   reviewedAt?: number
   reviewedScope?: string
+  /** G3b: the ISO 3166-2:IN codes of the states and union territories a route
+   *  covers. Absent on rows published before the migration, and while a row has
+   *  no codes. The publish writes it; the storefront counts it. */
+  stateCodes?: string[]
   travelTips: string[]
   warningsAndAssumptions: string[]
   freeDayIndexes: number[]  // which itinerary days are freely viewable

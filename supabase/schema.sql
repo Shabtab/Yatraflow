@@ -176,7 +176,12 @@ create table if not exists public.decisions (
   resolved_stop_id text,
   raised_by          uuid not null references public.profiles (id) on delete cascade,
   created_at         bigint not null default extract(epoch from now()) * 1000,
-  resolved_at        bigint
+  resolved_at        bigint,
+  -- 20261117_group_input_phase2.sql: optional closing time (epoch ms) and day.
+  closes_at          bigint,
+  day_id             text,
+  constraint decisions_closes_at_check check (closes_at is null or (closes_at > 0 and closes_at <= 4102444800000)),
+  constraint decisions_day_id_check check (day_id is null or char_length(btrim(day_id)) between 1 and 100)
 );
 
 -- Pre-existing installs: add the comments column without touching data
@@ -1428,6 +1433,7 @@ begin
     when 'decision.create' then array['type','decisionId','decision']
     when 'decision.comment' then array['type','decisionId','commentId','text']
     when 'decision.ballot' then array['type','decisionId','optionId']
+    when 'decision.option.add' then array['type','decisionId','option']
     when 'decision.resolve' then array['type','decisionId','optionId','expectedRevision','dayId','dayIndex','orderedPlacement']
     when 'activity.append' then array['type','activityId','verb','target']
     else null end;
@@ -1660,7 +1666,12 @@ begin
       if v_id is null or jsonb_typeof(v_payload) is distinct from 'object' or jsonb_typeof(v_payload->'question') is distinct from 'string'
         or length(btrim(v_payload->>'question')) not between 1 and 300 or jsonb_typeof(v_row) is distinct from 'array'
         or jsonb_array_length(v_row) not between 2 and 20
-        or exists(select 1 from jsonb_object_keys(v_payload) as x(key) where key<>all(array['question','context','options']))
+        or (v_payload ? 'closesAt' and not coalesce(case when jsonb_typeof(v_payload->'closesAt')='number' and (v_payload->>'closesAt') ~ '^[0-9]{1,13}$'
+          then (v_payload->>'closesAt')::bigint > floor(extract(epoch from clock_timestamp())*1000)::bigint
+            and (v_payload->>'closesAt')::bigint <= 4102444800000
+          else false end,false))
+        or (v_payload ? 'dayId' and (jsonb_typeof(v_payload->'dayId') is distinct from 'string' or length(btrim(v_payload->>'dayId')) not between 1 and 100))
+        or exists(select 1 from jsonb_object_keys(v_payload) as x(key) where key<>all(array['question','context','options','closesAt','dayId']))
         or exists(select 1 from jsonb_array_elements(v_row) o where jsonb_typeof(o) is distinct from 'object' or jsonb_typeof(o->'id') is distinct from 'string' or length(o->>'id') not between 1 and 200 or jsonb_typeof(o->'label') is distinct from 'string' or length(btrim(o->>'label')) not between 1 and 200 or exists(select 1 from jsonb_object_keys(o) as x(key) where key<>all(array['id','label','costImpactInr','timeImpactMin','place'])))
         or (select count(distinct o->>'id') from jsonb_array_elements(v_row) o)<>jsonb_array_length(v_row)
         or exists(select 1 from jsonb_array_elements(v_row) o
@@ -1673,8 +1684,9 @@ begin
           else o end order by ordinality
       ),'[]'::jsonb) into v_row
       from jsonb_array_elements(v_row) with ordinality as option_rows(o,ordinality);
-      insert into public.decisions(id,trip_id,question,context,options,votes_by_user_id,comments,status,raised_by)
-      values(v_id,v_trip_id,btrim(v_payload->>'question'),v_payload->>'context',v_row,'{}','[]','open',v_actor);
+      insert into public.decisions(id,trip_id,question,context,options,votes_by_user_id,comments,status,raised_by,closes_at,day_id)
+      values(v_id,v_trip_id,btrim(v_payload->>'question'),v_payload->>'context',v_row,'{}','[]','open',v_actor,
+        case when v_payload ? 'closesAt' then (v_payload->>'closesAt')::bigint end,nullif(btrim(v_payload->>'dayId'),''));
       v_activity_id:=gen_random_uuid();
       insert into public.activity(id,trip_id,actor_id,verb,target) values(v_activity_id,v_trip_id,v_actor,'raised decision “'||btrim(v_payload->>'question')||'”','Decisions');
       for v_recipient in select user_id from public.trip_members where trip_id=v_trip_id and user_id<>v_actor loop
@@ -1711,12 +1723,66 @@ begin
         v_choice:=nullif(p_command->>'optionId','');
         if p_command->'optionId'<>'null'::jsonb and (jsonb_typeof(p_command->'optionId') is distinct from 'string' or v_choice is null or length(v_choice) not between 1 and 200) then return jsonb_build_object('status','invalid','tripRevision',null); end if;
         if v_row->>'status'<>'open' or (v_choice is not null and not exists(select 1 from jsonb_array_elements(v_row->'options') o where o->>'id'=v_choice)) then return jsonb_build_object('status','invalid','tripRevision',null); end if;
+        -- The closing time locks the vote for new ballots, changes and removals.
+        -- closes_at is a bigint column, so a stored closing time is always a number.
+        if coalesce(jsonb_typeof(v_row->'closes_at'),'null')<>'null' then
+          if (v_row->>'closes_at')::numeric <= floor(extract(epoch from clock_timestamp())*1000) then
+            return jsonb_build_object('status','invalid','tripRevision',v_revision,'reason','voting is closed');
+          end if;
+        end if;
         v_votes:=(v_row->'votes_by_user_id')-v_actor::text;
         if v_choice is not null then v_votes:=v_votes||jsonb_build_object(v_actor::text,v_choice); end if;
         update public.decisions set votes_by_user_id=v_votes where id=v_id and trip_id=v_trip_id returning to_jsonb(decisions.*) into v_row;
         v_activity_id:=gen_random_uuid();
         insert into public.activity(id,trip_id,actor_id,verb,target) values(v_activity_id,v_trip_id,v_actor,case when v_choice is null then 'removed their vote on a decision' else 'voted on a decision' end,v_row->>'question');
       end if;
+      v_result:=jsonb_build_object('status','applied','tripRevision',v_revision,'decision',v_row);
+
+    elsif v_kind='decision.option.add' then
+      v_id:=(p_command->>'decisionId')::uuid;
+      v_option:=p_command->'option';
+      if v_id is null or jsonb_typeof(v_option) is distinct from 'object'
+        or exists(select 1 from jsonb_object_keys(v_option) as x(key) where key<>all(array['id','label','costImpactInr','timeImpactMin']))
+        or jsonb_typeof(v_option->'id') is distinct from 'string'
+        or coalesce(v_option->>'id','') !~ '^[A-Za-z0-9_-]{1,100}$'
+        or jsonb_typeof(v_option->'label') is distinct from 'string'
+        or length(btrim(v_option->>'label')) not between 1 and 200
+        or (v_option ? 'costImpactInr' and jsonb_typeof(v_option->'costImpactInr') is distinct from 'number')
+        or (v_option ? 'timeImpactMin' and jsonb_typeof(v_option->'timeImpactMin') is distinct from 'number') then
+        return jsonb_build_object('status','invalid','tripRevision',null);
+      end if;
+      select to_jsonb(d) into v_row from public.decisions d where d.id=v_id and d.trip_id=v_trip_id for update;
+      if v_row is null then return jsonb_build_object('status','invalid','tripRevision',null); end if;
+      if jsonb_typeof(v_row->'options') is distinct from 'array'
+        or exists(select 1 from jsonb_array_elements(v_row->'options') o where jsonb_typeof(o) is distinct from 'object' or jsonb_typeof(o->'id') is distinct from 'string' or jsonb_typeof(o->'label') is distinct from 'string')
+        or (select count(distinct o->>'id') from jsonb_array_elements(v_row->'options') o)<>jsonb_array_length(v_row->'options') then
+        return jsonb_build_object('status','invalid','tripRevision',v_revision);
+      end if;
+      if v_row->>'status'<>'open' then
+        return jsonb_build_object('status','invalid','tripRevision',v_revision,'reason','decision is not open');
+      end if;
+      if coalesce(jsonb_typeof(v_row->'closes_at'),'null')<>'null' then
+        if (v_row->>'closes_at')::numeric <= floor(extract(epoch from clock_timestamp())*1000) then
+          return jsonb_build_object('status','invalid','tripRevision',v_revision,'reason','voting is closed');
+        end if;
+      end if;
+      if jsonb_array_length(v_row->'options')>=20 then
+        return jsonb_build_object('status','invalid','tripRevision',v_revision,'reason','too many options');
+      end if;
+      if exists(select 1 from jsonb_array_elements(v_row->'options') o where o->>'id'=v_option->>'id') then
+        return jsonb_build_object('status','invalid','tripRevision',v_revision,'reason','duplicate option id');
+      end if;
+      if exists(select 1 from jsonb_array_elements(v_row->'options') o where lower(btrim(o->>'label'))=lower(btrim(v_option->>'label'))) then
+        return jsonb_build_object('status','invalid','tripRevision',v_revision,'reason','duplicate option');
+      end if;
+      v_option:=jsonb_build_object('id',v_option->>'id','label',btrim(v_option->>'label'))
+        ||case when v_option ? 'costImpactInr' then jsonb_build_object('costImpactInr',v_option->'costImpactInr') else '{}'::jsonb end
+        ||case when v_option ? 'timeImpactMin' then jsonb_build_object('timeImpactMin',v_option->'timeImpactMin') else '{}'::jsonb end
+        ||jsonb_build_object('addedBy',v_actor);
+      update public.decisions set options=(v_row->'options')||jsonb_build_array(v_option)
+        where id=v_id and trip_id=v_trip_id returning to_jsonb(decisions.*) into v_row;
+      v_activity_id:=gen_random_uuid();
+      insert into public.activity(id,trip_id,actor_id,verb,target) values(v_activity_id,v_trip_id,v_actor,'added an option to a decision',v_row->>'question');
       v_result:=jsonb_build_object('status','applied','tripRevision',v_revision,'decision',v_row);
 
     elsif v_kind='decision.resolve' then
@@ -2079,6 +2145,8 @@ begin
     or to_jsonb(new)->'resolved_option_id' is distinct from to_jsonb(old)->'resolved_option_id'
     or to_jsonb(new)->'resolved_at' is distinct from to_jsonb(old)->'resolved_at'
     or to_jsonb(new)->'resolved_stop_id' is distinct from to_jsonb(old)->'resolved_stop_id'
+    or to_jsonb(new)->'closes_at' is distinct from to_jsonb(old)->'closes_at'
+    or to_jsonb(new)->'day_id' is distinct from to_jsonb(old)->'day_id'
   ) then raise exception 'use submit_collab_command for decision transitions and contributions' using errcode='42501'; end if;
   return new;
 end;
@@ -2139,8 +2207,8 @@ begin
     if found then v_count:=v_count+1; end if;
   end loop;
   for v_row in select value from jsonb_array_elements(v_event.decisions) loop
-    insert into public.decisions(id,trip_id,question,context,options,votes_by_user_id,comments,status,resolved_option_id,raised_by,created_at,resolved_at)
-    values((v_row->>'id')::uuid,v_trip,v_row->>'question',v_row->>'context',v_row->'options',v_row->'votes_by_user_id',v_row->'comments',v_row->>'status',v_row->>'resolved_option_id',(v_row->>'raised_by')::uuid,(v_row->>'created_at')::bigint,nullif(v_row->>'resolved_at','')::bigint)
+    insert into public.decisions(id,trip_id,question,context,options,votes_by_user_id,comments,status,resolved_option_id,raised_by,created_at,resolved_at,closes_at,day_id)
+    values((v_row->>'id')::uuid,v_trip,v_row->>'question',v_row->>'context',v_row->'options',v_row->'votes_by_user_id',v_row->'comments',v_row->>'status',v_row->>'resolved_option_id',(v_row->>'raised_by')::uuid,(v_row->>'created_at')::bigint,nullif(v_row->>'resolved_at','')::bigint,nullif(v_row->>'closes_at','')::bigint,nullif(v_row->>'day_id',''))
     on conflict(id) do nothing;
     if found then v_count:=v_count+1; end if;
   end loop;
@@ -2161,6 +2229,121 @@ end;
 $$;
 revoke all on function public.restore_trip_contributions(text) from public, anon;
 grant execute on function public.restore_trip_contributions(text) to authenticated;
+
+-- ------------------------------------------------------- 5. crew preferences
+-- One row per (trip, member): the interests that member wants on this trip.
+-- The interest set is the app's STOP_CATEGORIES list (src/data/types.ts).
+-- tests/group-input-phase2-sql-pin.test.ts keeps the two lists equal.
+-- A row with an empty list is an answer ("none of these"). No row means the
+-- member has not answered.
+create table if not exists public.crew_preferences (
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  interests text[] not null default '{}',
+  updated_at bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  primary key (trip_id, user_id)
+);
+
+alter table public.crew_preferences drop constraint if exists crew_preferences_interests_check;
+alter table public.crew_preferences add constraint crew_preferences_interests_check
+  check (
+    interests <@ array['sightseeing','food','nature','beach','temple','adventure','shopping','museum','travel','hotel','rest','event','transport-hub']::text[]
+    and cardinality(interests) <= 13
+  );
+
+alter table public.crew_preferences enable row level security;
+
+-- Members of a trip read every row of that trip. No client policy or grant
+-- writes the table: set_my_crew_preferences below writes the caller's own row.
+-- (A client upsert needs UPDATE on the key columns, which would let a client
+-- rewrite trip_id or user_id.)
+drop policy if exists "crew preferences member read" on public.crew_preferences;
+create policy "crew preferences member read" on public.crew_preferences
+  for select to authenticated using (public.is_member(trip_id));
+drop policy if exists "deny disabled" on public.crew_preferences;
+create policy "deny disabled" on public.crew_preferences
+  as restrictive for all to authenticated
+  using (not public.is_disabled()) with check (not public.is_disabled());
+
+revoke all on table public.crew_preferences from public, anon, authenticated;
+grant select on public.crew_preferences to authenticated;
+
+drop function if exists public.set_my_crew_preferences(text,jsonb);
+create function public.set_my_crew_preferences(p_trip_id text, p_interests jsonb)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_actor uuid := auth.uid();
+  v_trip uuid;
+  v_allowed text[] := array['sightseeing','food','nature','beach','temple','adventure','shopping','museum','travel','hotel','rest','event','transport-hub'];
+  v_interests text[];
+  v_row jsonb;
+begin
+  if v_actor is null or coalesce(public.is_disabled(), true) then
+    return jsonb_build_object('status','forbidden');
+  end if;
+  begin
+    v_trip := p_trip_id::uuid;
+  exception when others then
+    return jsonb_build_object('status','invalid');
+  end;
+  -- Fail closed on every shape that is not a short array of known, distinct strings.
+  if v_trip is null or jsonb_typeof(p_interests) is distinct from 'array'
+    or jsonb_array_length(p_interests) > 13
+    or exists(select 1 from jsonb_array_elements(p_interests) x
+      where jsonb_typeof(x) is distinct from 'string' or (x#>>'{}') <> all(v_allowed))
+    or (select count(distinct x#>>'{}') from jsonb_array_elements(p_interests) x) <> jsonb_array_length(p_interests) then
+    return jsonb_build_object('status','invalid');
+  end if;
+  -- A live trip, and the caller is one of its members (any role).
+  perform 1 from public.trips t where t.id=v_trip and t.deleted_at is null for share;
+  if not found or not public.is_member(v_trip) then
+    return jsonb_build_object('status','forbidden');
+  end if;
+  select coalesce(array_agg(x#>>'{}' order by x#>>'{}'), '{}'::text[]) into v_interests
+    from jsonb_array_elements(p_interests) x;
+  insert into public.crew_preferences(trip_id,user_id,interests,updated_at)
+    values(v_trip,v_actor,v_interests,floor(extract(epoch from clock_timestamp())*1000)::bigint)
+    on conflict(trip_id,user_id) do update
+      set interests=excluded.interests, updated_at=excluded.updated_at
+    returning to_jsonb(crew_preferences.*) into v_row;
+  return jsonb_build_object('status','applied','preference',v_row);
+exception
+  when sqlstate '22P02' or sqlstate '22003' or sqlstate '22023' then return jsonb_build_object('status','invalid');
+  when others then return jsonb_build_object('status','unavailable');
+end;
+$$;
+revoke all on function public.set_my_crew_preferences(text,jsonb) from public, anon;
+grant execute on function public.set_my_crew_preferences(text,jsonb) to authenticated;
+
+-- A member's answer leaves with the member. The trip_members row can be
+-- deleted by leave, removal or eviction, so one trigger covers every path.
+create or replace function public.crew_preferences_on_member_delete()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  delete from public.crew_preferences where trip_id = old.trip_id and user_id = old.user_id;
+  return old;
+end;
+$$;
+revoke all on function public.crew_preferences_on_member_delete() from public, anon, authenticated;
+
+drop trigger if exists crew_preferences_member_delete on public.trip_members;
+create trigger crew_preferences_member_delete
+  after delete on public.trip_members
+  for each row execute function public.crew_preferences_on_member_delete();
+
+-- ---------------------------------------------------------------- 6. realtime
+-- Realtime DDL can fail on a read-only role, so it is guarded like the rest of
+-- the schema. If it fails, add public.crew_preferences to supabase_realtime in
+-- the Dashboard.
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.crew_preferences;
+  exception when duplicate_object then null;
+            when others then raise notice 'crew_preferences is not on supabase_realtime: %', sqlerrm;
+  end;
+end;
+$$;
 
 -- ============================================================
 -- #800 — the public/private profile boundary.
@@ -2343,3 +2526,67 @@ create policy "deny disabled" on public.admin_audit
   as restrictive for all to authenticated using (not public.is_disabled());
 
 commit;
+
+-- ---------- provider quota: mirror of supabase/migrations/20261118_provider_quota.sql ----------
+-- Keep the function text identical to the migration. tests/provider-quota-migration.test.ts pins it.
+
+-- ---------- provider_quota_caps ----------
+-- The monthly cap per provider SKU. A cap of 0 turns the SKU off.
+create table if not exists public.provider_quota_caps (
+  sku          text primary key,
+  monthly_cap  integer not null check (monthly_cap >= 0)
+);
+
+-- routes: 60,000 calls a month, account-wide. Change the cap with an UPDATE. No release is needed.
+insert into public.provider_quota_caps (sku, monthly_cap)
+values ('routes', 60000)
+on conflict (sku) do nothing;
+
+-- ---------- provider_quota_usage ----------
+-- One row per SKU and UTC month. `used` counts the units that were granted.
+create table if not exists public.provider_quota_usage (
+  sku    text not null,
+  month  date not null,
+  used   integer not null default 0,
+  primary key (sku, month)
+);
+
+-- RLS is on and no policy is written. Only consume_provider_quota touches these tables.
+-- The revoke also keeps anon and signed-in users out, if a policy is added by mistake later.
+alter table public.provider_quota_caps enable row level security;
+alter table public.provider_quota_usage enable row level security;
+revoke all on public.provider_quota_caps from public, anon, authenticated;
+revoke all on public.provider_quota_usage from public, anon, authenticated;
+
+-- ---------- consume_provider_quota ----------
+-- Takes one unit of a SKU's monthly quota. Returns true when the unit is granted.
+-- Returns false when the SKU has no cap row, its cap is 0, or the month is used up.
+--
+-- Race safety: the insert and the conditional update are one statement. Two calls
+-- for the same SKU and month wait on the usage row. The second call re-checks
+-- `used < cap` on the committed row, so `used` never passes the cap.
+-- security definer: the body runs as the table owner, who bypasses RLS.
+-- set search_path: stops a caller from steering the names this body resolves.
+create or replace function public.consume_provider_quota(p_sku text)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  with granted as (
+    insert into public.provider_quota_usage as u (sku, month, used)
+    select c.sku, date_trunc('month', now() at time zone 'utc')::date, 1
+    from public.provider_quota_caps as c
+    where c.sku = p_sku and c.monthly_cap > 0
+    on conflict (sku, month) do update
+      set used = u.used + 1
+      where u.used < (select c2.monthly_cap from public.provider_quota_caps as c2 where c2.sku = p_sku)
+    returning true as ok
+  )
+  select coalesce((select ok from granted), false);
+$$;
+
+-- Name the roles. A revoke from public alone leaves anon and authenticated with EXECUTE.
+revoke all on function public.consume_provider_quota(text) from public, anon, authenticated;
+grant execute on function public.consume_provider_quota(text) to anon, authenticated;
+

@@ -15,6 +15,7 @@ import { nativeCopyText } from '../../lib/native'
 import { useTablist } from '../../hooks/useTablist'
 import { computeTotals, formatInr, type LegEstimate } from '../../lib/engine'
 import { publishablePlannedKm } from '../../lib/creatorFacts'
+import { publishableStateCodes } from '../../lib/routeStates'
 import { netOfFeeInr, PLATFORM_FEE_SUMMARY } from '../../lib/earnings'
 import {
   publishValidation, PUBLISH_FIELD_ORDER, PUBLISH_FIELD_LABELS, PublishRejected, type PublishField,
@@ -285,6 +286,9 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         routeSummary: [trip.startLocation, ...trip.destinations],
         durationDays: trip.days.length,
         plannedKm: publishablePlannedKm(computeTotals(trip, legCorrections).totalDistanceKm),
+        // G3b: the shape module loads here only, so the storefront never carries
+        // it. A failed load sends undefined, and the publish still proceeds.
+        stateCodes: await publishableStateCodes(trip),
         estimatedBudgetPerPersonInr: trip.budgetPerPersonInr,
         travelStyle: trip.travelStyle,
         bestSeason: bestSeason.trim() || undefined,

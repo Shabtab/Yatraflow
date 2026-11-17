@@ -8,6 +8,7 @@ import { hasUnlock } from './payments'
 import { emptyLockedDay, isWireLocked } from './lockedDay'
 import { toast } from '../components/ui'
 import { finishPendingFork, pendingForkId, rememberFork, type CampaignId } from './growthAttribution'
+import { applyForkPlan, type ForkPlan } from './weekendPlan'
 
 // Wire constant: the server's get_public_trip writes this exact notice into a
 // withheld stop (supabase/migrations/*public_trip*.sql), and the match must be
@@ -79,19 +80,20 @@ export function wireWithheld(src: Trip, freeDayIndexes: number[]): boolean {
  *  caller that passes nothing) triggers a fresh read of this session's own rows.
  *  A negative is never trusted, because the page's flag is `false` while that
  *  read is still in flight — which is exactly when a buyer who has just paid
- *  clicks Fork. */
-export async function forkPublication(pub: PublishedItinerary, meId: string | null, onNavigate: (r: string) => void, unlockedPresentationOnly?: boolean, source?: ShareSource | null, campaign?: CampaignId | null): Promise<boolean> {
+ *  clicks Fork. A plan comes from the storefront card only: its answers reach the copy, and sign-in returns to that creator page. */
+export async function forkPublication(pub: PublishedItinerary, meId: string | null, onNavigate: (r: string) => void, unlockedPresentationOnly?: boolean, source?: ShareSource | null, campaign?: CampaignId | null, plan?: ForkPlan | null): Promise<boolean> {
   if (!meId) {
-    rememberFork(pub.id, { source: source ?? null, campaign: campaign ?? null })
+    rememberFork(pub.id, { source: source ?? null, campaign: campaign ?? null, ...(plan ? { plan } : {}) })
     toast('Log in to fork this trip into your plans.')
-    onNavigate(`/auth?next=${encodeURIComponent(`/pub/${pub.id}`)}`)
+    // The card's answers return the viewer to the creator page they were given on.
+    onNavigate(`/auth?next=${encodeURIComponent(plan ? `/creator/${pub.creatorId}` : `/pub/${pub.id}`)}`)
     return false
   }
   const key = `${meId}:${pub.id}`
   const held = inFlight.get(key)
   if (held) return held
-  rememberFork(pub.id, { source: source ?? null, campaign: campaign ?? null })
-  const operation = performFork(pub, meId, onNavigate, unlockedPresentationOnly, source, campaign)
+  rememberFork(pub.id, { source: source ?? null, campaign: campaign ?? null, ...(plan ? { plan } : {}) })
+  const operation = performFork(pub, meId, onNavigate, unlockedPresentationOnly, source, campaign, plan)
     .catch(() => {
       toast('Could not save the forked trip. Check your connection and try again.', 'err')
       return false
@@ -101,7 +103,7 @@ export async function forkPublication(pub: PublishedItinerary, meId: string | nu
   return operation
 }
 
-async function performFork(pub: PublishedItinerary, meId: string, onNavigate: (r: string) => void, unlockedPresentationOnly?: boolean, source?: ShareSource | null, campaign?: CampaignId | null): Promise<boolean> {
+async function performFork(pub: PublishedItinerary, meId: string, onNavigate: (r: string) => void, unlockedPresentationOnly?: boolean, source?: ShareSource | null, campaign?: CampaignId | null, plan?: ForkPlan | null): Promise<boolean> {
   // Read through the paywall RPC, not the raw table. A creator/buyer session
   // gets the real trip back from the same call a visitor makes — the server
   // compared auth.uid() against the entitlement rows, not this client.
@@ -135,7 +137,9 @@ async function performFork(pub: PublishedItinerary, meId: string, onNavigate: (r
   // publication withholds its budget breakdown from a viewer who has not
   // bought it, so the re-stub empties it here too. `premiumPriceInr` is the
   // publication's own row — the field the RPC keys on.
-  const safe = unlockedFork ? src : restubLockedDays(src, pub.freeDayIndexes, (pub.premiumPriceInr ?? 0) > 0)
+  const base = unlockedFork ? src : restubLockedDays(src, pub.freeDayIndexes, (pub.premiumPriceInr ?? 0) > 0)
+  // The card's answers move the copy's start and party. The source row is never mutated.
+  const safe = plan ? applyForkPlan(base, plan) : base
   // #352 — and the persist branch keys on the SERVER's decision, not on the
   // shape of the row in hand. `src.days.some(...)` used to decide it, which
   // read a wire-stubbed row whose days came back empty (the RPC's own

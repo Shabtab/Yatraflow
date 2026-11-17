@@ -16,6 +16,64 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.88.0] - 2026-11-17
+
+### Added
+
+- **A decision can close at a set time, and an editor can add an option before then.** Raise a decision with an optional Closes time and an optional Day. Its card shows when voting closes. After the closing time, the server refuses new votes, vote changes and new options. The card then shows who leads, or the tied options, and an editor applies the winner. Nothing resolves on its own. (#972)
+
+- **Each trip member can answer a short interest quiz, and Group input shows the crew's answers.** The Crew preferences card shows how many members answered and a bar for each interest that someone picked. Any trip member can answer, viewers included. The quiz leaves out hotel, transport hub, travel and event. A member's answer is deleted when the member leaves the trip. The engine does not read these answers yet. Run supabase/migrations/20261117_group_input_phase2.sql before you deploy the client. (#972)
+
+- **A route needs a republish to show its states.** A publish now records the Indian states and union territories a route covers. Old rows stay null until the creator publishes again.
+
+- **The creator storefront shows a "States covered" tile grid.** Each of the 36 states and union territories is one square, placed where it sits. A tile shows the ISO code and the count of planned routes. The grid stays hidden while no live route has codes. A framed card holds teal planned tiles, pale dashed empty tiles, and a route legend. Equal square tiles fit phone screens in both themes.
+
+- **The publish path probes the optional columns before it writes them.** One probe covers `state_codes` and the three G3 columns. A publish still succeeds on a database where the new SQL has not run.
+
+- **A creator's route can now be copied as a weekend trip.** Pick a start date and a party size on the storefront card. The copy starts on that date with that party. Sign-in keeps those answers, and the card brings them back.
+
+### Changed
+
+- **Dependencies move to the latest minor and patch releases.** The update covers Capacitor 8.6, Supabase 2.119, MapLibre 6.18, Vite 8.3 and the dev tools in the same major lines.
+
+- **The compiler moves to TypeScript 6.0.** This release is the bridge to TypeScript 7. The typescript-eslint tools do not support TypeScript 7 yet.
+
+- **The maps standards record two routing lessons.** A provider mock must copy a captured live response. A fallback that runs on every call can hide a broken primary, so you must probe each new endpoint live.
+
+- **Expand is one tap on the Map.** On a tablet or desktop, the Expand button has its own place in the map tools, below the view switch. It is no longer in the More map tools menu. A phone keeps it in that menu, so the tools column stays short.
+
+- **The test runner moves to Vitest 5.** The upgrade keeps the same test files and config.
+
+- **The browser check guide explains when the settle wait applies.** Without a click, the harness reads the page about 4 seconds after load. Use expected text or a click. Then a slow load does not look like a stuck page.
+
+- **Group input now reads as one Decide together page.** Decisions, stop ideas and activity sit in three columns under a pill bar. The pill counts show only after their read has settled. Each option shows its vote share, its voters and its detail. The engine marks its best fit when it picks one. A stop idea is a row. It opens to vote, comment, add to the timeline or decline. A row that needs your vote says so in words. Resolved decisions show their context. Activity shows the newest four entries first. The three sections are named regions with a visible focus ring. (#972)
+
+- **The Group input tab now moves like the Budget tab.** The header, the pill bar and the cards rise in one after another, in reading order. The rows inside a card trail the card. The vote bars and the crew preference bars grow from the left when you can see them. Their percentage labels fade in after them. An idea that you add or decline fades out, and the rest of the list glides into the gap. A decision that moves to decided stays one card. Your comment draft, the day picker and your focus stay, and its decided body rises in. On a narrow screen, a column does not play its entrance again when you return to it. The idea panel, the comment field and the add-option field open and close smoothly. So do the activity list and the quiz. The "Needs your vote" and "Best fit" chips pop in. Every effect stops when the reader asks for reduced motion. (#972)
+
+- **Google route requests now share one monthly limit across all users.** The limit counts every user together, not each browser. When the limit is reached, or the check fails, the app uses OpenStreetMap routes instead. The per-browser counter stays in place as a runaway guard.
+
+- **The roadmap snapshot records v0.87.0 as released.** The snapshot names the promotion PR #961 and the tag `v0.87.0`. It no longer says that promotion and the tag are pending.
+
+### Fixed
+
+- **Dependencies no longer carry known moderate advisories.** The lockfile now resolves uuid, minimatch and glob to patched versions. The npm audit command reports no vulnerabilities.
+
+- **The state lookup handles the Puducherry enclaves.** Mahe and Yanam have small hand-made polygons, because Natural Earth has no part for them. Daman, Diu, Silvassa, Karaikal and Kavaratti also resolve to their own unit now.
+
+- **Preview tests cover both decision resolution controls.** The test counts the guard on the closed-vote card as well as the open-vote details.
+
+- **Day-card date tests use two distinct fixed dates.** A moving demo seed date cannot turn the cache invalidation check into an unchanged-date check.
+
+- **The expanded Map covers the whole screen again.** The trip name and the tab pill no longer show through on top of it. The map buttons stay at the right edge. They no longer keep space for the hidden deck.
+
+- **Decision closing labels use the shared day duration.** The date threshold reads the constant from the day-count helper.
+
+- **Google route lines work again.** The app now calls the correct Google address. Every request stays in Google's basic price tier.
+
+- **Group input store tests use complete decision receipts.** The mock keeps closing times, day IDs, options, and ballots in its stored rows.
+
+- **Weekend ticket dates match the copied itinerary days.** Source dates and publication summaries do not set the span. Stored start dates must use a complete, valid YYYY-MM-DD date. The card uses the mockup spacing and fixed ticket header colours in both themes.
+
 ## [0.87.1] - 2026-11-16
 
 ### Fixed
