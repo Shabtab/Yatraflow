@@ -8,7 +8,7 @@ import { CatIcon, InlineIcon } from '../../components/icons'
 import { motionTiming, scrollBehavior } from '../../lib/motion'
 import { presenceAttrs, usePresenceList } from '../../lib/usePresenceList'
 import type { CSSProperties, FormEvent } from 'react'
-import { Car, ChevronDown, ChevronUp, ClipboardList, Clock, Heart, Lightbulb, MapPin, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
+import { Car, Check, ChevronDown, ChevronUp, ClipboardList, Clock, Heart, Lightbulb, MapPin, MessageSquare, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
 import { PillNav } from '../../components/PillNav'
 import type { CrewInterest, StopCategory, StopSuggestion, Trip, TripDecision } from '../../data/types'
 import type { AcceptanceOutcome, CollabOutcome } from '../../store/collabCommand'
@@ -1009,10 +1009,10 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
           <div className="gin-foot">
             {!locked && (
               <button type="button" className="btn btn-primary btn-sm" disabled={!pick || pick === myOptionId}
-                onClick={castVote}>Vote</button>
+                onClick={castVote}><><Check size={15} aria-hidden /> Vote</></button>
             )}
             {editable && canAddOption(d, now) && (
-              <button ref={addTriggerRef} type="button" className="btn btn-ghost btn-sm" aria-expanded={addingOption}
+              <button ref={addTriggerRef} type="button" className="btn btn-outline btn-sm" aria-expanded={addingOption}
                 aria-label={`Add option to ${d.question}`}
                 aria-controls={addingOption ? `gi-add-option-${d.id}` : undefined}
                 onClick={() => setAddingOption(a => !a)}>
@@ -1023,9 +1023,9 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
             <button ref={detailsToggleRef} type="button" className="gin-disclosure" aria-expanded={detailsOpen}
               aria-controls={detailsOpen ? `gi-details-${d.id}` : undefined}
               onClick={() => setDetailsOpen(v => !v)}>{detailsOpen ? 'Hide details' : 'Details'}</button>
-            <button ref={commentToggleRef} type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
+            <button ref={commentToggleRef} type="button" className="gin-text-btn" aria-expanded={commenting}
               aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
-              onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
+              onClick={() => setCommenting(c => !c)}><MessageSquare size={15} aria-hidden /> Comment · {d.comments.length}</button>
           </div>
           {/* The add-option field opens and closes with the day collapse. */}
           <SmoothCollapse open={addingOption && editable && canAddOption(d, now)} fallbackFocus={addTriggerRef} onExpanded={focusOptionField}>
@@ -1094,9 +1094,9 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
             <span className={`chip chip-ok${stamped ? ' gin-stamp' : ''}`}>Chosen</span>
           </div>
           <div className="gin-foot">
-            <button ref={commentToggleRef} type="button" className="btn btn-ghost btn-sm" aria-expanded={commenting}
+            <button ref={commentToggleRef} type="button" className="gin-text-btn" aria-expanded={commenting}
               aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
-              onClick={() => setCommenting(c => !c)}>Comment · {d.comments.length}</button>
+              onClick={() => setCommenting(c => !c)}><MessageSquare size={15} aria-hidden /> Comment · {d.comments.length}</button>
           </div>
         </>
       )}

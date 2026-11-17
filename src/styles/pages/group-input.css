@@ -61,6 +61,8 @@
 .gin-guide-note { margin: 0; }
 .gin-guide-rec { margin: 4px 0 0; }
 .gin-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gin-foot .btn-primary:disabled { opacity: 1; }
+.gin-foot .gin-text-btn { display: inline-flex; align-items: center; gap: 6px; }
 .gin-foot-spacer { flex: 1; }
 .gin-details { display: grid; gap: 10px; padding-top: 10px; }
 .gin-decided { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
