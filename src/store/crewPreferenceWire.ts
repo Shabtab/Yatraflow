@@ -20,8 +20,8 @@ type DbCrewPreferenceRow = {
  *  throws, so the caller's `mapOrSkip` drops it. An interest this app does not
  *  know is left out of the list, and the row still counts as an answer. */
 export function crewPreferenceRowToEntry(row: unknown): CrewPreference {
+  if (!row || typeof row !== 'object') throw new Error('crew preference row is not an object')
   const r = row as DbCrewPreferenceRow
-  if (!r || typeof r !== 'object') throw new Error('crew preference row is not an object')
   if (typeof r.trip_id !== 'string' || !r.trip_id || typeof r.user_id !== 'string' || !r.user_id) {
     throw new Error('crew preference row has no trip or member')
   }

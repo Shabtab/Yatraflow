@@ -84,7 +84,9 @@ vi.mock('../src/lib/supabase', () => {
           }
           return { data: { status: 'applied', tripRevision: 1, decision: structuredClone(decision) }, error: null }
         }
-        const answer = h.rpc[fn]?.(params) ?? defaultAnswer()
+        // A Map lookup, so only a handler the test set can run.
+        const handler = new Map(Object.entries(h.rpc)).get(fn)
+        const answer = handler?.(params) ?? defaultAnswer()
         return Promise.resolve(answer).then(res, rej)
       }
       return qb
