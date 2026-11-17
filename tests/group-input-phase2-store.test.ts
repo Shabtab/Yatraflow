@@ -7,9 +7,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { seedData } from '../src/data/seed'
 import { sliceState } from '../src/lib/readState'
+import type { DecisionOption } from '../src/data/types'
+import type { CollabCommand } from '../src/store/collabCommand'
 
 type Answer = { data: unknown; error: unknown }
 type Rec = { name: string; handlers: string[]; cb?: (status: string) => void }
+type DecisionRow = {
+  id: string; trip_id: string; question: string; context?: string
+  options: DecisionOption[]; votes_by_user_id: Record<string, string | null>
+  status: 'open'; raised_by: string; closes_at?: number; day_id?: string
+}
 
 const h = vi.hoisted(() => ({
   calls: [] as Array<{ table: string; method: string; payload?: unknown }>,
@@ -19,6 +26,7 @@ const h = vi.hoisted(() => ({
   crewReads: [] as Array<() => Promise<{ data: unknown; error: unknown }> | { data: unknown; error: unknown }>,
   /** Answer of each RPC, by name. */
   rpc: {} as Record<string, (params: unknown) => Promise<{ data: unknown; error: unknown }> | { data: unknown; error: unknown }>,
+  decisions: new Map<string, DecisionRow>(),
 }))
 
 vi.mock('../src/lib/supabase', () => {
@@ -49,11 +57,34 @@ vi.mock('../src/lib/supabase', () => {
   }
   const supabase = {
     from: (t: string) => makeBuilder(t),
-    rpc: (fn: string, params?: unknown) => {
+    rpc: (fn: string, params?: { p_trip_id: string; p_command: CollabCommand }) => {
       const qb: Record<string, unknown> = {}
       qb.then = (res: (v: Answer) => unknown, rej?: (e: unknown) => unknown) => {
         h.calls.push({ table: fn, method: 'rpc', payload: params })
-        const answer = h.rpc[fn]?.(params) ?? { data: { status: 'applied', tripRevision: 1 }, error: null }
+        const defaultAnswer = () => {
+          const command = params?.p_command
+          if (fn !== 'submit_collab_command' || !command || !('decisionId' in command)) {
+            return { data: { status: 'applied', tripRevision: 1 }, error: null }
+          }
+          if (command.type === 'decision.create') {
+            h.decisions.set(command.decisionId, {
+              id: command.decisionId, trip_id: params.p_trip_id,
+              question: command.decision.question, context: command.decision.context,
+              options: command.decision.options, votes_by_user_id: {},
+              status: 'open', raised_by: 'owner-p2',
+              closes_at: command.decision.closesAt, day_id: command.decision.dayId,
+            })
+          }
+          const decision = h.decisions.get(command.decisionId)
+          if (decision && command.type === 'decision.option.add') {
+            decision.options = [...decision.options, { ...command.option, addedBy: 'owner-p2' }]
+          }
+          if (decision && command.type === 'decision.ballot') {
+            decision.votes_by_user_id['owner-p2'] = command.optionId
+          }
+          return { data: { status: 'applied', tripRevision: 1, decision: structuredClone(decision) }, error: null }
+        }
+        const answer = h.rpc[fn]?.(params) ?? defaultAnswer()
         return Promise.resolve(answer).then(res, rej)
       }
       return qb
@@ -99,6 +130,7 @@ const crewReadCalls = () => h.calls.filter(c => c.table === 'crew_preferences' &
 const crewRpcCalls = () => h.calls.filter(c => c.table === 'set_my_crew_preferences' && c.method === 'rpc')
 
 beforeEach(() => {
+  h.decisions.clear()
   h.calls.length = 0
   h.channels.length = 0
   h.removed.length = 0
