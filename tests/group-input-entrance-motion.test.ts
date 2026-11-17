@@ -250,7 +250,7 @@ describe('Group input row and field collapse', () => {
     expect(TAB).toContain('<SmoothCollapse open={addingOption && editable && canAddOption(d, now)} fallbackFocus={addTriggerRef} onExpanded={focusOptionField}>')
     expect(TAB).toContain('<SmoothCollapse open={showAllActivity} fallbackFocus={feedToggleRef}>')
     expect(TAB).toContain('<SmoothCollapse open={quizOpen} fallbackFocus={editBtnRef} onExpanded={focusFirstChip}>')
-    expect(TAB.match(/<SmoothCollapse /g)).toHaveLength(5)
+    expect(TAB.match(/<SmoothCollapse /g)).toHaveLength(6)
   })
 
   it('moves focus after the content is open, because a hidden element cannot take it', () => {

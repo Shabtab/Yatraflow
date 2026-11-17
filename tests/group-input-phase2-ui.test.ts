@@ -47,7 +47,8 @@ describe('the closing-time lock UI', () => {
   })
   it('says who picks a tie, and keeps the resolve controls for editors', () => {
     expect(tab).toContain("outcome.kind === 'tie' ? '. An editor picks the winner.' : ''")
-    expect(tab).toMatch(/\{editable && \(\s*<div className="resolve-btns">/)
+    expect(tab).toMatch(/\{editable && locked && \(\s*<div className="resolve-btns">/)
+    expect(tab).toMatch(/\{editable && !locked && \(\s*<div className="resolve-btns">/)
   })
   it('resolves nothing on its own: resolveChoice( is only called from an onClick handler', () => {
     const calls = [...tab.matchAll(/resolveChoice\(/g)].map(m => m.index as number)

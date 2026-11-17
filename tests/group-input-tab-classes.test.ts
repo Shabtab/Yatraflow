@@ -28,7 +28,7 @@ function declarationsOf(selector: string): string[] | undefined {
 const PINNED: Array<[selector: string, declarations: string[]]> = [
   ['.gin-grid', ['display: grid', 'grid-template-columns: 1.15fr 1fr 0.8fr', 'gap: 18px', 'align-items: start']],
   ['.gin-card-title', ['font-family: var(--font-body)', 'font-size: 18px', 'font-weight: 800', 'line-height: 1.3', 'color: var(--text)']],
-  ['.yf-surface.gin-panel', ['border-radius: var(--radius)', 'box-shadow: var(--shadow-card)']],
+  ['.yf-surface.gin-panel', ['border-radius: var(--radius)', 'box-shadow: var(--shadow-card)', 'border-color: var(--line-soft)']],
   ['.stop-meta.gin-stop-meta', ['margin-top: 8px']],
   ['.gin-fill', ['display: block', 'height: 100%', 'width: 0', 'border-radius: var(--radius-pill)', 'background: var(--teal)', 'opacity: 0.35', 'transition: width var(--motion-med) var(--ease-paper)']],
   // #839 stage B: the retarget / add-another-visit follow-up. Motion only. The

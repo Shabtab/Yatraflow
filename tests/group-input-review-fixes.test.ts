@@ -22,8 +22,7 @@ describe('Group input review fixes', () => {
   })
 
   it('hides the agreed line and the repeated question when no option was resolved', () => {
-    expect(tab).toMatch(/\{resolvedOption && <p className="small muted gin-sub">\{d\.question\}<\/p>\}/)
-    expect(tab).toMatch(/\{resolvedOption && <p className="small muted gin-sub">\{agreed\} of \{memberCount\} agreed<\/p>\}/)
+    expect(tab).toMatch(/\{resolvedOption && <p className="small muted gin-sub">\{agreed\} of \{memberCount\} agreed · \{d\.question\}<\/p>\}/)
   })
 
   it('shows the context on a decided card', () => {

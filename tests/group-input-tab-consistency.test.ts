@@ -50,7 +50,7 @@ describe('Group input tab: panels, titles and states follow the page pattern', (
   })
 
   it('restates the card skin for the panels, with the shared surface values', () => {
-    expect(css).toContain('.yf-surface.gin-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); }')
+    expect(css).toContain('.yf-surface.gin-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); border-color: var(--line-soft); }')
   })
 
   it('adds no raw millisecond value in the new CSS section', () => {
