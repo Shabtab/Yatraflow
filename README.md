@@ -95,9 +95,18 @@ _Recent release highlights, newest first. See [CHANGELOG.md](CHANGELOG.md) for t
 
 Pending notes live in [change fragments](changelog.d/README.md). The release owner assembles them into the public record.
 
+## The v0.88.0 release
+
+The repository is at v0.88.0. See the [release record](CHANGELOG.md) for its full scope.
+
+- **Group input is one Decide together page.** Decisions, stop ideas and activity share one layout. A decision can close at a set time, and each member can answer a short interest quiz.
+- **Creators can copy a route as a weekend trip.** Pick a start date and a party size, and the copy keeps both. Storefronts also show the Indian states their routes cover.
+- **Map Expand has its own control.** A tablet or desktop keeps it beside the view switch, not in the More menu.
+- **Google route requests share one monthly limit across all users.** Past the limit, routes come from OpenStreetMap. The compiler moves to TypeScript 6 and the test runner to Vitest 5.
+
 ## The v0.87.1 release
 
-The repository is at v0.87.1. See the [release record](CHANGELOG.md) for its full scope.
+The previous release. Its highlights stay here until the next release.
 
 - **Map route lines follow the roads again.** Each leg of a trip follows its own section of the road route.
 
