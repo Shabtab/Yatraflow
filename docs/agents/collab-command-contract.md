@@ -82,6 +82,10 @@ ballot. A repeated value does not toggle the ballot.
 Each option needs a distinct ID and a label. The server preserves supported
 option impact fields and the place payload.
 
+`decision` can also hold `closesAt` and `dayId`. `closesAt` is a whole number of
+epoch milliseconds. It must be in the future. `dayId` is the stable ID of a
+day. Both are optional, and the server refuses any other key.
+
 ```json
 {
   "type": "decision.comment",
@@ -97,6 +101,27 @@ option impact fields and the place payload.
 
 Use `optionId: null` to remove the caller's ballot. The decision must be open.
 The chosen ID must exist in its options.
+
+After the decision's `closesAt` time, the server refuses every ballot, change
+and removal with `invalid` and the reason `voting is closed`. Comments stay
+open. Nothing resolves the decision by itself: an editor resolves it with
+`decision.resolve`, and a tie stays open for the editor to choose.
+
+```json
+{
+  "type": "decision.option.add",
+  "decisionId": "UUID",
+  "option": { "id": "o_stable_key", "label": "Option C" }
+}
+```
+
+The caller must be able to vote. The decision must be open and before its
+`closesAt` time. The option ID uses letters, digits, `_` and `-`. The server
+refuses a label that matches an existing label after a trim and a lower-case
+fold (reason `duplicate option`), and a decision with 20 options (reason
+`too many options`). The option can also hold `costImpactInr` and
+`timeImpactMin`. It cannot hold a place. The server stores the caller as
+`addedBy` on the option. The command carries no `addedBy`.
 
 ### Activity command
 

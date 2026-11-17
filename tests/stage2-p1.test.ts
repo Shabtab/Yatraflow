@@ -33,26 +33,30 @@ function deferred<T>() {
 }
 
 describe('Stage 2 P1 regressions', () => {
-  it('parks a filtered digest target, then scrolls and focuses only after render', () => {
+  it('parks a focus target, then scrolls and focuses only after render', () => {
     let pending: string | null = null
-    let filter = 'resolved'
+    let rendered = false
     let effect = () => {}
     const card = { scrollIntoView: vi.fn(), focus: vi.fn() }
-    const document = { getElementById: vi.fn(() => filter === 'all' ? card : null) }
+    const document = { getElementById: vi.fn(() => rendered ? card : null) }
     const start = group.indexOf('  const [pendingTarget, setPendingTarget]')
     expect(start).toBeGreaterThan(-1)
     const code = group.slice(start, group.indexOf('\n  return (', start))
-    const render = (shown: { id: string }[]) => evaluate(code, {
+    const render = (items: { id: string }[]) => evaluate(code, {
       useState: () => [pending, (id: string | null) => { pending = id }],
       useEffect: (fn: () => void) => { effect = fn },
-      document, scrollBehavior: () => 'auto', shown,
+      document, scrollBehavior: () => 'auto', items,
+      SECTION_DOM: {}, needsYou: [], needsSection: 'decisions',
       itemId: (item: { id: string }) => item.id,
-      setFilter: (value: string) => { filter = value },
+      setView: () => {}, setSelectedIdeaId: () => {},
     }, 'focusItem')
     render([])('idea-1')
-    expect(pending).toBe('idea-1')
-    expect(filter).toBe('all')
+    expect(pending).toBe('gi-item-idea-1')
+    render([])
+    effect()
     expect(card.scrollIntoView).not.toHaveBeenCalled()
+    expect(pending).toBe('gi-item-idea-1')
+    rendered = true
     render([{ id: 'idea-1' }])
     effect()
     expect(document.getElementById).toHaveBeenCalledWith('gi-item-idea-1')
@@ -63,7 +67,7 @@ describe('Stage 2 P1 regressions', () => {
     render([{ id: 'idea-1' }])
     effect()
     expect(card.scrollIntoView).toHaveBeenCalledTimes(1)
-    expect(group.match(/tabIndex=\{-1\} className=\{`card gi-item/g)).toHaveLength(2)
+    expect(group.match(/tabIndex=\{-1\} className=\{`(card gi-item|gin-row gi-item)/g)).toHaveLength(2)
   })
 
   it('keeps the cross-day append target outside the collapsed body, including empty days', () => {

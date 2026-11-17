@@ -36,6 +36,15 @@ export type Database = {
           { foreignKeyName: "creator_posts_pub_id_fkey"; columns: ["pub_id"]; isOneToOne: false; referencedRelation: "published_itineraries"; referencedColumns: ["id"] },
         ]
       }
+      crew_preferences: {
+        Row: { trip_id: string; user_id: string; interests: string[]; updated_at: number }
+        Insert: { trip_id: string; user_id: string; interests?: string[]; updated_at?: number }
+        Update: { trip_id?: string; user_id?: string; interests?: string[]; updated_at?: number }
+        Relationships: [
+          { foreignKeyName: "crew_preferences_trip_id_fkey"; columns: ["trip_id"]; isOneToOne: false; referencedRelation: "trips"; referencedColumns: ["id"] },
+          { foreignKeyName: "crew_preferences_user_id_fkey"; columns: ["user_id"]; isOneToOne: false; referencedRelation: "profiles"; referencedColumns: ["id"] },
+        ]
+      }
       activity: {
         Row: {
           actor_id: string
@@ -193,9 +202,11 @@ export type Database = {
       }
       decisions: {
         Row: {
+          closes_at: number | null
           comments: Json
           context: string | null
           created_at: number
+          day_id: string | null
           id: string
           options: Json
           question: string
@@ -208,9 +219,11 @@ export type Database = {
           votes_by_user_id: Json
         }
         Insert: {
+          closes_at?: number | null
           comments?: Json
           context?: string | null
           created_at?: number
+          day_id?: string | null
           id?: string
           options?: Json
           question?: string
@@ -223,9 +236,11 @@ export type Database = {
           votes_by_user_id?: Json
         }
         Update: {
+          closes_at?: number | null
           comments?: Json
           context?: string | null
           created_at?: number
+          day_id?: string | null
           id?: string
           options?: Json
           question?: string
@@ -1363,6 +1378,10 @@ export type Database = {
         Returns: boolean
       }
       safe_social_links: { Args: { p_links: Json }; Returns: Json }
+      set_my_crew_preferences: {
+        Args: { p_interests: Json; p_trip_id: string }
+        Returns: Json
+      }
       submit_collab_command: {
         Args: { p_command: Json; p_command_id: string; p_trip_id: string }
         Returns: Json

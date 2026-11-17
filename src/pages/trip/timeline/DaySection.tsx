@@ -333,34 +333,46 @@ const COLLAPSE_UNMOUNT_SLACK_MS = 40
  *
  *  Pass `fold` to move on a clock a sibling shares (the day cover rides the
  *  body's); without it the clip keeps its own. */
-function SmoothCollapse({ open, children, fallbackFocus, fold }: {
+export function SmoothCollapse({ open, children, fallbackFocus, fold, onExpanded }: {
   open: boolean
   children: React.ReactNode
   fallbackFocus?: React.RefObject<HTMLButtonElement | null>
   fold?: FoldState
+  /** Runs each time the clip starts to open, when its `open` class lands. The
+   *  content is mounted and visible then, but the clip is still about 0px high
+   *  with `overflow: hidden`. A caller that moves focus here must pass
+   *  `preventScroll: true`, or the browser scrolls the clip's inner box.
+   *  Group input moves focus here. */
+  onExpanded?: () => void
 }) {
   return fold
-    ? <FoldClip open={open} fold={fold} fallbackFocus={fallbackFocus}>{children}</FoldClip>
-    : <OwnFoldClip open={open} fallbackFocus={fallbackFocus}>{children}</OwnFoldClip>
+    ? <FoldClip open={open} fold={fold} fallbackFocus={fallbackFocus} onExpanded={onExpanded}>{children}</FoldClip>
+    : <OwnFoldClip open={open} fallbackFocus={fallbackFocus} onExpanded={onExpanded}>{children}</OwnFoldClip>
 }
 
-function OwnFoldClip({ open, children, fallbackFocus }: {
+function OwnFoldClip({ open, children, fallbackFocus, onExpanded }: {
   open: boolean
   children: React.ReactNode
   fallbackFocus?: React.RefObject<HTMLButtonElement | null>
+  onExpanded?: () => void
 }) {
   const fold = useFold(open)
-  return <FoldClip open={open} fold={fold} fallbackFocus={fallbackFocus}>{children}</FoldClip>
+  return <FoldClip open={open} fold={fold} fallbackFocus={fallbackFocus} onExpanded={onExpanded}>{children}</FoldClip>
 }
 
-function FoldClip({ open, fold, children, fallbackFocus }: {
+function FoldClip({ open, fold, children, fallbackFocus, onExpanded }: {
   open: boolean
   fold: FoldState
   children: React.ReactNode
   fallbackFocus?: React.RefObject<HTMLButtonElement | null>
+  onExpanded?: () => void
 }) {
   const { mounted, expanded } = fold
   const clipRef = useRef<HTMLDivElement>(null)
+  // The newest callback runs when the open class lands, never a stale one.
+  const expandedCallback = useRef(onExpanded)
+  useEffect(() => { expandedCallback.current = onExpanded })
+  useEffect(() => { if (expanded) expandedCallback.current?.() }, [expanded])
   useEffect(() => {
     if (open) return
     // This clip is on its way out, so hand focus back to the day's disclosure
