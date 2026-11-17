@@ -223,7 +223,6 @@ div[role="tabpanel"]:has(> .gin-page) { animation: none; }
    in its own file. */
 @media (prefers-reduced-motion: reduce) {
   .gin-fill { transition: none; }
-  .gin-option { transition: none; }
   .gin-stamp { animation: none; }
   .gin-page > * { animation: none; }
   .gin-state > [data-kind] { animation: none; }
@@ -236,4 +235,5 @@ div[role="tabpanel"]:has(> .gin-page) { animation: none; }
   .gin-pop { animation: none; }
   .gin-decision[data-turned='true'] .gin-decided,
   .gin-decision[data-turned='true'] .gin-decided + .gin-foot { animation: none; }
+  .gin-option { transition: none; }
 }
