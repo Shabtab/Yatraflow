@@ -965,34 +965,36 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
               ].filter(Boolean).join(' · ')
               return (
                 <label key={o.id} className="gin-option">
-                  <input type="radio" className="gin-radio" name={`vote-${d.id}`} value={o.id}
-                    aria-labelledby={`gi-opt-${d.id}-${o.id}-label`}
-                    aria-describedby={[detail ? `gi-opt-${d.id}-${o.id}-detail` : '', `gi-opt-${d.id}-${o.id}-pct`].filter(Boolean).join(' ')}
-                    checked={(pick ?? myOptionId) === o.id} disabled={locked} onChange={() => setPick(o.id)} />
-                  <span className="gin-option-main">
-                    <span className="gin-option-title">
-                      <span id={exiting ? undefined : `gi-opt-${d.id}-${o.id}-label`} className="gin-option-label">{o.label}</span>
-                      {rec?.optionId === o.id && <span className="gin-pop"><Chip tone="teal">Best fit · engine</Chip></span>}
+                  <span className="gin-option-top">
+                    <input type="radio" className="gin-radio" name={`vote-${d.id}`} value={o.id}
+                      aria-labelledby={`gi-opt-${d.id}-${o.id}-label`}
+                      aria-describedby={[detail ? `gi-opt-${d.id}-${o.id}-detail` : '', `gi-opt-${d.id}-${o.id}-pct`].filter(Boolean).join(' ')}
+                      checked={(pick ?? myOptionId) === o.id} disabled={locked} onChange={() => setPick(o.id)} />
+                    <span id={exiting ? undefined : `gi-opt-${d.id}-${o.id}-label`} className="gin-option-label">{o.label}</span>
+                    {rec?.optionId === o.id && <span className="gin-pop"><Chip tone="teal">Best fit · engine</Chip></span>}
+                    <span className="gin-option-end">
+                      <span id={exiting ? undefined : `gi-opt-${d.id}-${o.id}-pct`} className="gin-option-pct num">{pct}%</span>
                     </span>
-                    {detail && <span id={exiting ? undefined : `gi-opt-${d.id}-${o.id}-detail`} className="gin-option-detail small muted num">{detail}</span>}
-                    <ShareBar percent={pct} lead={leading} />
                   </span>
-                  <span className="gin-option-end">
-                    {voters.length > 0 && (
-                      <span className="who-voted" role="img"
-                        aria-label={`Voted for this: ${voters.map(v => userById(v)?.profile.name ?? 'Traveller').join(', ')}`}>
-                        {(() => {
-                          const first = voters.slice(0, 4)
-                          const tones = assignAvatarTones(first)
-                          return first.map((v, index) => (
-                            <Avatar key={v} user={userById(v)} tone={tones[index]} />
-                          ))
-                        })()}
-                        {voters.length > 4 && <span className="who-more">+{voters.length - 4}</span>}
-                      </span>
-                    )}
-                    <span id={exiting ? undefined : `gi-opt-${d.id}-${o.id}-pct`} className="gin-option-pct num">{pct}%</span>
-                  </span>
+                  <ShareBar percent={pct} lead={leading} />
+                  {(voters.length > 0 || detail) && (
+                    <span className="gin-option-meta">
+                      {voters.length > 0 && (
+                        <span className="who-voted" role="img"
+                          aria-label={`Voted for this: ${voters.map(v => userById(v)?.profile.name ?? 'Traveller').join(', ')}`}>
+                          {(() => {
+                            const first = voters.slice(0, 4)
+                            const tones = assignAvatarTones(first)
+                            return first.map((v, index) => (
+                              <Avatar key={v} user={userById(v)} tone={tones[index]} />
+                            ))
+                          })()}
+                          {voters.length > 4 && <span className="who-more">+{voters.length - 4}</span>}
+                        </span>
+                      )}
+                      {detail && <span id={exiting ? undefined : `gi-opt-${d.id}-${o.id}-detail`} className="gin-option-detail small muted num">{detail}</span>}
+                    </span>
+                  )}
                 </label>
               )
             })}

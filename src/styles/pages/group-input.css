@@ -46,17 +46,17 @@
 .gin-sub { margin: 0; }
 .gin-decision-context { margin: 6px 0 10px; }
 .gin-decision-options { display: grid; gap: 8px; margin: 8px 0; }
-.gin-option { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); cursor: pointer; }
-.gin-radio { margin: 0; width: 16px; height: 16px; accent-color: var(--teal); }
-.gin-option-main { display: grid; gap: 6px; min-width: 0; }
-.gin-option-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.gin-option-label { font-weight: 600; }
+.gin-option { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: var(--radius-sm); background: var(--card); cursor: pointer; transition: border-color var(--motion-fast) var(--ease-paper), background-color var(--motion-fast) var(--ease-paper); }
+.gin-option-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gin-radio { flex: none; margin: 0; width: 20px; height: 20px; accent-color: var(--teal); }
+.gin-option-label { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; }
 .gin-option-detail { margin: 0; }
 .gin-track { display: block; height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--line); }
 .gin-fill { display: block; height: 100%; width: 0; border-radius: var(--radius-pill); background: var(--teal); opacity: 0.35; transition: width var(--motion-med) var(--ease-paper); }
 .gin-fill--lead { opacity: 1; }
-.gin-option-end { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
-.gin-option-pct { min-width: 40px; text-align: right; font-weight: 600; }
+.gin-option-end { flex: none; }
+.gin-option-pct { display: inline-block; min-width: 36px; text-align: right; font-size: 13px; font-weight: 700; color: var(--text-2); }
+.gin-option-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .gin-guide-block { margin-top: 10px; }
 .gin-guide-note { margin: 0; }
 .gin-guide-rec { margin: 4px 0 0; }
