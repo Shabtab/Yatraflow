@@ -514,6 +514,7 @@ function CrewPreferencesCard({ trip, meId }: { trip: Trip; meId: string }) {
   useEffect(() => {
     if (!restoreFocus || quizOpen) return
     ;(editBtnRef.current ?? headingRef.current)?.focus()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot flag: the focus move needs the committed DOM, then the flag clears
     setRestoreFocus(false)
   }, [restoreFocus, quizOpen])
 
@@ -862,6 +863,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
   const [refocusCard, setRefocusCard] = useState(false)
   useEffect(() => {
     if (open || !refocusCard) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot flag: the resolve can land before or after the flag, so it must stay state
     setRefocusCard(false)
     // The Resolve button left with the open body. Focus goes to the card, and only
     // when it is stranded: a member who typed in a field that stays keeps that field.
