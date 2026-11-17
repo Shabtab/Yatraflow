@@ -52,13 +52,13 @@
 .gin-option-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .gin-radio { flex: none; margin: 0; width: 20px; height: 20px; accent-color: var(--teal); }
 .gin-option-label { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; }
-.gin-option-detail { margin: 0; }
+.gin-option-detail { flex: 1; min-width: 0; margin: 0; }
 .gin-track { display: block; height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--line); }
 .gin-fill { display: block; height: 100%; width: 0; border-radius: var(--radius-pill); background: var(--teal); opacity: 0.35; transition: width var(--motion-med) var(--ease-paper); }
 .gin-fill--lead { opacity: 1; }
 .gin-option-end { flex: none; }
 .gin-option-pct { display: inline-block; min-width: 36px; text-align: right; font-size: 13px; font-weight: 700; color: var(--text-2); }
-.gin-option-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.gin-option-meta { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 @media (hover: hover) { .gin-option:hover { border-color: var(--line); background-color: var(--pw-lagoon-100); } }
 .gin-option:focus-within { box-shadow: var(--ring); }
 .gin-guide-block { margin-top: 10px; }
