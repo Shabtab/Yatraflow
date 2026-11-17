@@ -32,7 +32,7 @@
 /* Card skin for the panels and the decision cards */
 .gin-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
 .yf-surface.gin-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); }
-.gin-card-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.gin-card-head { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 10px; }
 .gin-help { margin: 4px 0 0; }
 .gin-composer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .gin-composer-hint { margin: 6px 0 12px; }
@@ -74,12 +74,13 @@
 /* Stop idea rows: a category tile, the title block and the upvote tally */
 .gin-row { border-top: 1px solid var(--line); }
 .gin-row-head { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.gin-cat-tile { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--bg-soft); color: var(--ink-teal); }
+.gin-cat-tile { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--pw-lagoon-100); color: var(--ink-teal); }
 .gin-row-main { display: grid; gap: 4px; min-width: 0; }
 .gin-row-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: 600; }
 .gin-row-meta { margin: 0; }
 .gin-row-by { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.gin-heart { display: inline-flex; align-items: center; gap: 4px; min-width: 40px; justify-content: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-weight: 600; }
+.gin-heart { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; min-width: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 12px; }
+.gin-heart svg { color: var(--pw-bloom-700); }
 .gin-row-panel { display: grid; gap: 10px; padding: 0 0 14px 56px; }
 .stop-meta.gin-stop-meta { margin-top: 8px; }
 .gin-vote-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

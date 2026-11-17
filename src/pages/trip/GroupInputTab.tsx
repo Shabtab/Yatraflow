@@ -381,13 +381,13 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
             <div className="gin-card-head">
               <div>
                 <h3 id="gi-heading-ideas" className="gin-card-title">Stop ideas</h3>
-                <p className="small muted gin-help">Anyone can suggest. Editors add the ones the group likes to the timeline.</p>
               </div>
               <button type="button" className="btn btn-outline btn-sm" aria-expanded={ideaComposerOpen}
                 aria-controls="gi-idea-composer" onClick={() => setIdeaComposerOpen(open => !open)}>
                 <Plus size={14} aria-hidden /> Add an idea
               </button>
             </div>
+            <p className="small muted gin-help">Anyone can suggest. Editors add the ones the group likes to the timeline.</p>
             <div id="gi-idea-composer" ref={ideaComposerRef} className="gin-composer" hidden={!ideaComposerOpen}>
               <SuggestionComposerForm trip={trip} />
             </div>
@@ -707,7 +707,7 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
           <span className="gin-row-meta small muted num">{ideaMeta(sg)}</span>
           <span className="gin-row-by small muted"><Avatar user={author} /> suggested by {initialsOf(author?.profile.name)}</span>
         </span>
-        <span className="gin-heart"><Heart size={13} aria-hidden /> {ups}</span>
+        <span className="gin-heart"><Heart size={14} aria-hidden /><b>{ups}</b></span>
       </button>
       {/* The action panel opens and closes with the day collapse (grid rows).
           Focus returns to the row head if a close would strand it. */}
@@ -737,8 +737,8 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
                 if (refuseWhileStaged(previewOpen)) return
                 if (!claim()) return
                 accept()
-              }}>Add to timeline</button>
-              <button className="btn btn-ghost btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
+              }}><Plus size={14} aria-hidden /> Add to timeline</button>
+              <button className="gin-text-btn" disabled={busy} aria-busy={busy} onClick={() => {
                 if (refuseWhileStaged(previewOpen)) return
                 if (!claim()) return
                 void declineSuggestion(trip.id, sg.id).then(o => {
