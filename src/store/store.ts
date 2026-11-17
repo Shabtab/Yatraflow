@@ -11,7 +11,7 @@ import { useSyncExternalStore } from 'react'
 import type {
   CachedUser, PublicUser, PrivateUser, PrivateUserProfile, Trip, StopSuggestion, TripDecision, ActivityEntry, Notification,
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
-  NewDecisionOption, VehicleProfile, Comment, Vote, DecisionOption,
+  NewDecisionOption, VehicleProfile, Comment, Vote, DecisionOption, CrewPreference, CrewInterest,
 } from '../data/types'
 import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
 import { seedData, uid } from '../data/seed'
@@ -42,6 +42,9 @@ import { publishValidation, PUBLISH_FIELD_ORDER, PublishRejected } from '../lib/
 import { makeInviteCode, normalizeInviteCode } from '../lib/inviteCode'
 import { publishedToRow } from '../lib/restoreRows'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
+import { checkNewOptionLabel, normalizeOptionLabel } from '../lib/decisionOptions'
+import { normalizeInterests, myCrewPreference, upsertCrewPreference, removeCrewPreference, replaceTripPreferences } from '../lib/crewPreferences'
+import { crewPreferenceRowToEntry, submitCrewPreferences } from './crewPreferenceWire'
 import { MISSING_BACKEND_MESSAGE, describeAuthFailure } from '../lib/authErrors'
 import { nextOrderInDay, renumberDay } from '../lib/stopOrder'
 import {
@@ -78,6 +81,14 @@ interface DB {
   trashedTrips: Trip[]
   suggestions: StopSuggestion[]
   decisions: TripDecision[]
+  /** Crew quiz answers, for the trips whose preferences were read. Not part of
+   *  the hydrate: `loadCrewPreferences` reads one trip at a time. */
+  crewPreferences: CrewPreference[]
+  /** The verdict of each trip's last crew preference read, keyed by trip id.
+   *  Pass it to `sliceState(crewPreferenceReads, tripId)`: a trip with no
+   *  entry, or a first read in flight, is `reading`, a failed read is `failed`, and only a read
+   *  that succeeded can say `ready` (and then an empty list means "no answers"). */
+  crewPreferenceReads: Record<ID, 'ok' | 'failed' | 'reading'>
   activity: ActivityEntry[]
   notifications: Notification[]
   published: PublishedItinerary[]
@@ -130,7 +141,7 @@ interface CatalogStamp {
 }
 
 let cache: DB = {
-  users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [],
+  users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [], crewPreferences: [], crewPreferenceReads: {},
   activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null,
   ready: false, sliceReads: {}, trashLoaded: false, trashFailed: false, cachedAt: null, adminAuditFailed: false,
   catalogAuthority: null,
@@ -186,6 +197,16 @@ export function useTrashFailed(): boolean {
  *  when the verdicts move, not on every unrelated store commit. */
 export function useSliceReads(): Record<string, 'ok' | 'failed'> {
   return useSyncExternalStore(subscribe, () => cache.sliceReads)
+}
+
+/** Crew quiz answers for every trip read so far. Filter by trip id in the page. */
+export function useCrewPreferenceRows(): CrewPreference[] {
+  return useSyncExternalStore(subscribe, () => cache.crewPreferences)
+}
+
+/** Per-trip verdicts of the crew preference reads. Use `sliceState(reads, tripId)`. */
+export function useCrewPreferenceReads(): Record<ID, 'ok' | 'failed' | 'reading'> {
+  return useSyncExternalStore(subscribe, () => cache.crewPreferenceReads)
 }
 
 export function usePublished(): PublishedItinerary[] {
@@ -796,7 +817,7 @@ export async function logout(): Promise<void> {
   const departing = cache.sessionUserId
   // The rows go with the authority they were read under: an empty catalogue
   // carries no private authority, so the stamp is nulled beside it.
-  patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, users: [], catalogAuthority: null, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
+  patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, users: [], catalogAuthority: null, suggestions: [], decisions: [], crewPreferences: [], crewPreferenceReads: {}, activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
   commit()
   // #578 — the in-memory debounce timers are a module Map that knows nothing
   // of auth, and they outlive this wipe unless told not to. A timer firing
@@ -1482,7 +1503,7 @@ export function init(): void {
       // catalogue's authority stamp goes with the rows it described: the next
       // account starts with no private authority of its own.
       patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false,
-        users: [], suggestions: [], decisions: [], activity: [], notifications: [],
+        users: [], suggestions: [], decisions: [], crewPreferences: [], crewPreferenceReads: {}, activity: [], notifications: [],
         adminAudit: [], adminAuditFailed: false, sessionUserId: userId,
         ready: false, cachedAt: null, sliceReads: {}, catalogAuthority: null })
       commit()
@@ -1526,7 +1547,7 @@ export function init(): void {
             self: { status: 'not-requested' },
             admin: { status: 'not-requested' },
           })
-          patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [],
+          patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], crewPreferences: [], crewPreferenceReads: {}, activity: [],
             notifications: [], published: dedupePublished(mapOrSkip(pubRes.data ?? [], rowToPublished)),
             adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null,
             sliceReads: sliceReadReport(failed, PUBLIC_READ_SLICES) })
@@ -1534,7 +1555,7 @@ export function init(): void {
         } catch (error) {
           if (gen !== hydrateGen || lastAuthUserId !== null) return
           console.error('[yatraflow] anonymous hydration failed', error)
-          patch({ users: [], catalogAuthority: null, trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [],
+          patch({ users: [], catalogAuthority: null, trips: [], trashedTrips: [], suggestions: [], decisions: [], crewPreferences: [], crewPreferenceReads: {}, activity: [],
             notifications: [], published: [], sessionUserId: null, ready: true, cachedAt: null,
             sliceReads: sliceReadReport(PUBLIC_READ_SLICES, PUBLIC_READ_SLICES) })
           commit()
@@ -2139,7 +2160,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       // so the stamp goes with it.
       if (!sameSessionUser) clearInstalledCatalog()
       patch({
-        ...(cache.sessionUserId === userId ? {} : { decisions: [], activity: [] }),
+        ...(cache.sessionUserId === userId ? {} : { decisions: [], crewPreferences: [], crewPreferenceReads: {}, activity: [] }),
         ...(!sameSessionUser ? { suggestions: [], notifications: [] } : {}),
         ...(sessionWasUnknown ? { sessionUserId: userId } : {}),
         sliceReads: { ...cache.sliceReads, ...sliceReadReport(unread, unread) },
@@ -6885,6 +6906,8 @@ function rollbackContribution(args: {
   rowBefore?: unknown
   rowRef?: unknown
   commentId?: string
+  /** An option this operation added to a decision. */
+  optionId?: string
   ballotOwnership?: { key: string; token: string; userId: ID }
   localActivityId?: string
   localNotificationIds?: string[]
@@ -6940,6 +6963,11 @@ function rollbackContribution(args: {
         let next = cur
         if (args.commentId && next.comments.some(c => c.id === args.commentId)) {
           next = { ...next, comments: next.comments.filter(c => c.id !== args.commentId) }
+        }
+        // Retract only the option this operation added, by id. A peer's option
+        // and every later vote stay.
+        if (args.optionId && next.options.some(o => o.id === args.optionId)) {
+          next = { ...next, options: next.options.filter(o => o.id !== args.optionId) }
         }
         if (args.ballotOwnership) {
           const retracted = retractDecisionBallotFromRow(args.ballotOwnership, next)
@@ -7025,6 +7053,7 @@ async function runContributionCommand(args: {
   rowBefore?: unknown
   rowRef?: unknown
   commentId?: string
+  optionId?: string
   ballotOwnership?: { key: string; token: string; userId: ID }
   localActivityId: string
   localNotificationIds: string[]
@@ -7091,7 +7120,7 @@ async function runContributionCommand(args: {
     // entries, and let the next call be a new action.
     rollbackContribution({
       rowKind: args.rowKind, rowId: args.rowId, rowBefore: args.rowBefore, rowRef: args.rowRef,
-      commentId: args.commentId, ballotOwnership: args.ballotOwnership,
+      commentId: args.commentId, optionId: args.optionId, ballotOwnership: args.ballotOwnership,
       localActivityId: args.localActivityId, localNotificationIds: args.localNotificationIds,
     })
     settlePendingCollab(args.pendingKey)
@@ -7109,7 +7138,7 @@ async function runContributionCommand(args: {
   // retried comment re-records it.
   rollbackContribution({
     rowKind: args.rowKind, rowId: args.rowId, rowBefore: args.rowBefore, rowRef: args.rowRef,
-    commentId: args.commentId, ballotOwnership: args.ballotOwnership,
+    commentId: args.commentId, optionId: args.optionId, ballotOwnership: args.ballotOwnership,
     localActivityId: args.localActivityId, localNotificationIds: args.localNotificationIds,
   })
   releaseBallotOwnership(args.ballotOwnership)
@@ -7406,10 +7435,30 @@ export function declineSuggestion(tripId: ID, suggestionId: ID): Promise<CollabO
 
 // ---------------- Decisions ----------------
 
-export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'context'> & { options: NewDecisionOption[] }): Promise<CollabOutcome> {
+/** Raise a decision.
+ *
+ *  `closesAt` (epoch ms, in the future) locks the vote when it passes: the
+ *  server then refuses every ballot and new option. `dayId` is the stable id of
+ *  the day the decision is about. Both are optional, and a decision without them
+ *  behaves as it always did. */
+export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'context'> & {
+  options: NewDecisionOption[]
+  closesAt?: number
+  dayId?: ID
+}): Promise<CollabOutcome> {
   const scope = identityScope()
   if (!scope) return Promise.resolve({ status: 'forbidden' })
   if (!d.question.trim()) return Promise.resolve({ status: 'invalid', reason: 'empty question' })
+  // The server refuses a closing time that is not in the future, and so does
+  // this check, so the form gets the reason without a round trip.
+  if (d.closesAt !== undefined
+    && (!Number.isSafeInteger(d.closesAt) || d.closesAt <= Date.now())) {
+    return Promise.resolve({ status: 'invalid', reason: 'closing time must be in the future' })
+  }
+  const dayId = d.dayId === undefined ? undefined : d.dayId.trim()
+  if (dayId !== undefined && (dayId.length === 0 || dayId.length > 100)) {
+    return Promise.resolve({ status: 'invalid', reason: 'day id is not valid' })
+  }
   // The envelope (gate round 3, R1): the LOGICAL FORM is fingerprinted BEFORE
   // any id is minted, and the retained action owns the whole normalized
   // payload — question, context, the decision id and every option id. A retry
@@ -7420,6 +7469,8 @@ export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'cont
     question: d.question,
     context: d.context ?? null,
     options: d.options.map(o => ({ ...o, id: o.id ?? null })),
+    closesAt: d.closesAt ?? null,
+    dayId: dayId ?? null,
   })}`
   const claimed = claimEnvelope(scope, tripId,
     collabKey(scope, tripId, 'decision.create', '', formFingerprint),
@@ -7440,7 +7491,13 @@ export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'cont
       return {
         type: 'decision.create',
         decisionId: uuid(),
-        decision: { question: d.question, ...(d.context !== undefined ? { context: d.context } : {}), options: options.map(o => ({ ...o })) },
+        decision: {
+          question: d.question,
+          ...(d.context !== undefined ? { context: d.context } : {}),
+          options: options.map(o => ({ ...o })),
+          ...(d.closesAt !== undefined ? { closesAt: d.closesAt } : {}),
+          ...(dayId !== undefined ? { dayId } : {}),
+        },
       }
     })
   const command = claimed.command
@@ -7448,8 +7505,11 @@ export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'cont
   const id = command.decisionId
   const options = command.decision.options as DecisionOption[]
   cache.decisions = [...cache.decisions, {
-    ...d, id, tripId, options, votesByUserId: {}, comments: [], status: 'open' as const,
+    question: d.question, context: d.context,
+    id, tripId, options, votesByUserId: {}, comments: [], status: 'open' as const,
     raisedBy: scope.userId, createdAt: Date.now(),
+    ...(command.decision.closesAt !== undefined ? { closesAt: command.decision.closesAt } : {}),
+    ...(command.decision.dayId !== undefined ? { dayId: command.decision.dayId } : {}),
   }]
   const localActivityId = uuid()
   cache.activity = [...cache.activity, {
@@ -7485,6 +7545,10 @@ export function voteOnDecision(decisionId: ID, optionId: ID): Promise<CollabOutc
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
   if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
   if (cache.decisions[dIdx].status !== 'open') return Promise.resolve({ status: 'invalid', reason: 'decision is not open' })
+  // The closing time is NOT checked here. The server is the authority and
+  // refuses a late ballot; a device clock that runs fast would block a valid
+  // vote, and one that runs slow only costs a rollback. The page may use the
+  // clock for its label (`closingLabel`), never as a gate.
   // The chosen option must exist — the contract validates it server-side too,
   // and a ballot pointing nowhere would count a vote for nothing.
   if (!cache.decisions[dIdx].options.some(o => o.id === optionId)) {
@@ -7523,6 +7587,191 @@ export function voteOnDecision(decisionId: ID, optionId: ID): Promise<CollabOutc
     rowKind: 'decision', rowId: decisionId, rowBefore, rowRef, ballotOwnership,
     localActivityId, localNotificationIds: [],
   })
+}
+
+const OPTION_REFUSAL: Record<'empty' | 'too long' | 'duplicate' | 'too many options', string> = {
+  empty: 'empty option',
+  'too long': 'option is too long',
+  duplicate: 'duplicate option',
+  'too many options': 'too many options',
+}
+
+/** Add one option to an open decision.
+ *
+ *  The server allows it while the decision is open and before its closing time,
+ *  to the members who can vote. The client does not check the closing time
+ *  against its own clock; the server decides. It refuses a label that matches an existing one
+ *  (trimmed, any case), and it records who added the option (`addedBy`). The
+ *  client checks the same rules first, so a refusal arrives with its reason. */
+export function addDecisionOption(
+  decisionId: ID,
+  input: { label: string; costImpactInr?: number; timeImpactMin?: number },
+): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
+  if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
+  const rowBefore = cache.decisions[dIdx]
+  if (rowBefore.status !== 'open') return Promise.resolve({ status: 'invalid', reason: 'decision is not open' })
+  // The closing time is advisory on the client: the server refuses a late
+  // option, so a skewed device clock cannot block a valid add.
+  for (const impact of [input.costImpactInr, input.timeImpactMin]) {
+    if (impact !== undefined && !Number.isFinite(impact)) return Promise.resolve({ status: 'invalid', reason: 'impact is not a number' })
+  }
+  const extras = {
+    ...(input.costImpactInr !== undefined ? { costImpactInr: input.costImpactInr } : {}),
+    ...(input.timeImpactMin !== undefined ? { timeImpactMin: input.timeImpactMin } : {}),
+  }
+  const label = input.label.trim()
+  const key = collabKey(scope, rowBefore.tripId, 'decision.option.add', decisionId,
+    `l:${JSON.stringify([normalizeOptionLabel(label), extras])}`)
+  // A retry of an uncertain add can find the option already in the cache (a
+  // realtime event or a refetch delivered the committed row). That is the
+  // retry's answer: nothing is sent again, and the slot is free for the next add.
+  const pending = key ? pendingCollabActions.get(key) : undefined
+  if (pending && pending.command.type === 'decision.option.add') {
+    const pendingOptionId = pending.command.option.id
+    if (rowBefore.options.some(o => o.id === pendingOptionId)) {
+      settlePendingCollab(key)
+      return Promise.resolve({ status: 'alreadyApplied', tripRevision: 0, decision: rowBefore })
+    }
+  }
+  const checked = checkNewOptionLabel(rowBefore.options, label)
+  if (!checked.ok) return Promise.resolve({ status: 'invalid', reason: OPTION_REFUSAL[checked.reason] })
+  const claimed = claimEnvelope(scope, rowBefore.tripId, key,
+    () => ({ type: 'decision.option.add', decisionId, option: { id: uid('o'), label: checked.label, ...extras } }))
+  const command = claimed.command
+  if (command.type !== 'decision.option.add') return Promise.resolve({ status: 'unavailable' })
+  const option: DecisionOption = { ...command.option, addedBy: scope.userId }
+  const d: TripDecision = { ...rowBefore, options: [...rowBefore.options, option] }
+  cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId: d.tripId, actorId: scope.userId, verb: 'added an option to a decision', target: d.question, at: Date.now(),
+  }]
+  commit()
+  const rowRef = cache.decisions.find(x => x.id === decisionId)
+  return runContributionCommand({
+    scope, tripId: d.tripId, commandId: claimed.commandId, command, pendingKey: claimed.pendingKey,
+    rowKind: 'decision', rowId: decisionId, rowBefore, rowRef, optionId: option.id,
+    localActivityId, localNotificationIds: [],
+  })
+}
+
+// ---------------- Crew preferences ----------------
+//
+// The crew quiz: each member says which interests they want on this trip. One
+// row per (trip, member). Members of the trip read every row of that trip; a
+// member writes only their own row, through the `set_my_crew_preferences` RPC.
+// The rows are NOT part of the hydrate. A page reads one trip with
+// `loadCrewPreferences`, and the verdict per trip lives in `crewPreferenceReads`
+// so a failed read, a pending read and an empty trip stay three states.
+
+/** The optimistic row of an own write that has not settled, keyed by
+ *  `${userId}:${tripId}`. A read that lands meanwhile keeps it, so a slow read
+ *  cannot erase the answer the member just gave. */
+const crewWritesInFlight = new Map<string, CrewPreference>()
+
+/** The newest read started for each trip. A read that finishes while a newer
+ *  one exists writes nothing: the newer read holds the fresher answer. */
+const crewReadSeq = new Map<ID, number>()
+
+/** Forget everything held for one trip: its rows, its verdict, and any read
+ *  still in flight (a late read finds no matching token and writes nothing). */
+function dropCrewTrip(tripId: ID): void {
+  cache.crewPreferences = cache.crewPreferences.filter(p => p.tripId !== tripId)
+  const reads = { ...cache.crewPreferenceReads }
+  delete reads[tripId]
+  cache.crewPreferenceReads = reads
+  // Move the token on, so a read in flight no longer matches it.
+  crewReadSeq.set(tripId, (crewReadSeq.get(tripId) ?? 0) + 1)
+}
+
+/** Read every crew quiz answer of one trip into the cache.
+ *
+ *  Replace-on-success: a failed read keeps the rows already held and records
+ *  `failed` for the trip, so "could not load" never reads as "nobody answered".
+ *  A trip with no good read yet is marked `reading` first. A read that a newer
+ *  read of the same trip overtook writes nothing. Never throws. */
+export async function loadCrewPreferences(tripId: ID): Promise<'ok' | 'failed'> {
+  const scope = identityScope()
+  if (!scope) return 'failed'
+  const seq = (crewReadSeq.get(tripId) ?? 0) + 1
+  crewReadSeq.set(tripId, seq)
+  // A refresh of a trip that already read fine keeps showing its answers.
+  if (cache.crewPreferenceReads[tripId] !== 'ok') {
+    cache.crewPreferenceReads = { ...cache.crewPreferenceReads, [tripId]: 'reading' }
+    commit()
+  }
+  let verdict: 'ok' | 'failed' = 'failed'
+  let fresh: CrewPreference[] | null = null
+  try {
+    const { data, error } = await supabase.from('crew_preferences').select('*').eq('trip_id', tripId)
+    if (error) {
+      console.error('[yatraflow] crew preferences read failed', error)
+    } else {
+      fresh = mapOrSkip((data ?? []) as unknown[], crewPreferenceRowToEntry)
+      verdict = 'ok'
+    }
+  } catch (e) {
+    console.error('[yatraflow] crew preferences read failed', e)
+  }
+  // A read that lands after sign-out or an account switch writes nothing.
+  if (!isCurrentIdentity(scope)) return verdict
+  // An older read, or a read of a trip that was dropped meanwhile, writes nothing.
+  if (crewReadSeq.get(tripId) !== seq) return verdict
+  const inflight = crewWritesInFlight.get(`${scope.userId}:${tripId}`)
+  if (fresh && inflight) fresh = upsertCrewPreference(fresh, inflight)
+  cache.crewPreferenceReads = { ...cache.crewPreferenceReads, [tripId]: verdict === 'ok' ? 'ok' : 'failed' }
+  if (fresh) cache.crewPreferences = replaceTripPreferences(cache.crewPreferences, tripId, fresh)
+  commit()
+  // Live updates start after the first good read, on their own channel.
+  if (verdict === 'ok') openCrewChannel(scope)
+  return verdict
+}
+
+/** Save the signed-in member's interests for one trip. An empty list is an
+ *  answer ("none of these"). The list is de-duplicated and put in the standard
+ *  order; an entry that is not a known interest is `invalid`.
+ *
+ *  The answer shows at once. A refusal or an uncertain result puts back the row
+ *  held before, because nothing was confirmed. */
+export async function setMyCrewPreferences(tripId: ID, interests: readonly CrewInterest[]): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return { status: 'forbidden' }
+  const normalized = normalizeInterests(interests)
+  if (!normalized) return { status: 'invalid', reason: 'unknown interest' }
+  const trip = tripById(tripId)
+  if (!trip?.members?.some(m => m.userId === scope.userId)) return { status: 'forbidden' }
+  const before = myCrewPreference(cache.crewPreferences, tripId, scope.userId)
+  const optimistic: CrewPreference = { tripId, userId: scope.userId, interests: normalized, updatedAt: Date.now() }
+  const slot = `${scope.userId}:${tripId}`
+  crewWritesInFlight.set(slot, optimistic)
+  cache.crewPreferences = upsertCrewPreference(cache.crewPreferences, optimistic)
+  commit()
+  const outcome = await submitCrewPreferences(tripId, normalized)
+  if (crewWritesInFlight.get(slot) === optimistic) crewWritesInFlight.delete(slot)
+  if (!isCurrentIdentity(scope)) return outcome
+  const current = myCrewPreference(cache.crewPreferences, tripId, scope.userId)
+  if (outcome.status === 'applied' && outcome.crewPreference) {
+    // Adopt the stored row, unless a later write of the same member replaced the optimistic one.
+    if (current === optimistic) {
+      cache.crewPreferences = upsertCrewPreference(cache.crewPreferences, outcome.crewPreference)
+      commit()
+    }
+  } else if (current === optimistic) {
+    cache.crewPreferences = before
+      ? upsertCrewPreference(cache.crewPreferences, before)
+      : removeCrewPreference(cache.crewPreferences, tripId, scope.userId)
+    commit()
+    // `unavailable` means the server may or may not have stored the answer.
+    // Reverting alone could hide a stored row, so read the truth back.
+    if (outcome.status === 'unavailable') void loadCrewPreferences(tripId)
+  } else {
+    // The row moved on (a newer write or a realtime event): the safe repair is a fresh read.
+    void loadCrewPreferences(tripId)
+  }
+  return outcome
 }
 
 /** One explicit measured placement intent. The revision is captured WITH the
@@ -8387,6 +8636,97 @@ export function connectRealtime(userId: string): void {
     realtimeChannel = null
     realtimeIdentity = null
   }
+  // disconnectRealtime above closed the crew channel too. Reopen it for this
+  // user when any trip already read fine, or nothing would ever reopen it.
+  if (Object.values(cache.crewPreferenceReads).some(v => v === 'ok')) openCrewChannel(scope)
+}
+
+// ---------------- Crew preferences channel ----------------
+//
+// crew_preferences has its OWN channel, opened after the first good read of a
+// trip. A client that runs before the migration, or against a table that is not
+// published, gets a CHANNEL_ERROR here and nowhere else: the main
+// `yatraflow-live` channel and its nine tables are untouched.
+let crewChannel: RealtimeChannel | null = null
+let crewChannelIdentity: IdentityScope | null = null
+
+function closeCrewChannel(): void {
+  const channel = crewChannel
+  crewChannel = null
+  crewChannelIdentity = null
+  if (channel) {
+    try { void Promise.resolve(supabase.removeChannel(channel)).catch(() => {}) } catch { /* The identity guard already closed it. */ }
+  }
+}
+
+function openCrewChannel(scope: IdentityScope): void {
+  if (!isSupabaseConfigured || !isCurrentIdentity(scope)) return
+  if (crewChannel && crewChannelIdentity?.userId === scope.userId && crewChannelIdentity.epoch === scope.epoch) return
+  closeCrewChannel()
+  try {
+    const channel = supabase.channel('yatraflow-crew')
+    const live = () => crewChannel === channel && isCurrentIdentity(scope)
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'crew_preferences' }, p => {
+      if (live()) dispatchRealtimeEvent('crew_preferences', p)
+    })
+    crewChannel = channel
+    crewChannelIdentity = scope
+    let errorLogged = false
+    channel.subscribe(status => {
+      if (!live()) return
+      if (status === 'CLOSED') {
+        // The channel is gone for good: forget it, so the next
+        // loadCrewPreferences or connectRealtime opens a fresh one.
+        crewChannel = null
+        crewChannelIdentity = null
+        return
+      }
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        // Log once per channel lifetime. Nothing else depends on this channel,
+        // and the client library rejoins on its own.
+        if (!errorLogged) { errorLogged = true; console.error('[yatraflow] crew preferences channel', status) }
+        return
+      }
+      // Every SUBSCRIBED, the first one too, reads the trips again. The first
+      // one can follow an earlier failed join, so it cannot be skipped.
+      if (status === 'SUBSCRIBED') void resyncCrewPreferences(scope)
+    })
+  } catch (error) {
+    console.error('[yatraflow] crew preferences subscribe failed', error)
+    crewChannel = null
+    crewChannelIdentity = null
+  }
+}
+
+/** Reconcile the crew answers of every trip that was read: refetch, feed the
+ *  rows through the same dispatch a live event takes, and sweep a cached row the
+ *  refetch no longer returns. A trip never read has nothing to reconcile. A
+ *  failed refetch leaves the cache as it was. */
+async function resyncCrewPreferences(scope: IdentityScope): Promise<void> {
+  const live = () => isCurrentIdentity(scope)
+  try {
+    if (!live()) return
+    const read = Object.keys(cache.crewPreferenceReads).filter(id => cache.crewPreferenceReads[id] === 'ok' && tripById(id))
+    if (!read.length) return
+    const { data, error } = await supabase.from('crew_preferences').select('*').in('trip_id', read)
+    if (!live()) return
+    if (error) throw error
+    const rows = (data ?? []) as Record<string, unknown>[]
+    // An own write still in flight keeps its optimistic row, as in loadCrewPreferences.
+    const writing = (tripId: string, userId: string) => userId === scope.userId && crewWritesInFlight.has(`${userId}:${tripId}`)
+    const fetchedKeys = new Set(rows.map(r => `${String(r.trip_id)}:${String(r.user_id)}`))
+    for (const cached of cache.crewPreferences) {
+      if (!read.includes(cached.tripId) || fetchedKeys.has(`${cached.tripId}:${cached.userId}`)) continue
+      if (writing(cached.tripId, cached.userId)) continue
+      feedSynthetic('crew_preferences', 'DELETE', {}, { trip_id: cached.tripId, user_id: cached.userId })
+    }
+    for (const row of rows) {
+      if (writing(String(row.trip_id), String(row.user_id))) continue
+      feedSynthetic('crew_preferences', 'INSERT', row)
+    }
+  } catch (e) {
+    console.error('[yatraflow] crew preferences resync failed', e)
+  }
 }
 
 /** Replay every cached trip as a synthetic UPDATE dispatch (same handler as a
@@ -8550,6 +8890,7 @@ async function resyncTripsAfterReconnect(scope: IdentityScope): Promise<void> {
 
 /** Tear down the channel. Call on sign-out. */
 export function disconnectRealtime(): void {
+  closeCrewChannel()
   const channel = realtimeChannel
   realtimeChannel = null
   realtimeIdentity = null
@@ -8570,7 +8911,7 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
   // The composite string keys the dispatch; the case itself keeps reading
   // trip_id/user_id. Every other table keys on `id`, which stays guarded.
   let id: string
-  if (table === 'trip_members') {
+  if (table === 'trip_members' || table === 'crew_preferences') {
     const tripId: string | undefined = row?.trip_id ?? oldRow?.trip_id
     const userId: string | undefined = row?.user_id ?? oldRow?.user_id
     if (!tripId || !userId) return
@@ -8594,6 +8935,7 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
         cache.decisions = cache.decisions.filter(d => d.tripId !== id)
         cache.activity = cache.activity.filter(a => a.tripId !== id)
         cache.notifications = cache.notifications.filter(n => n.tripId !== id)
+        dropCrewTrip(id)
         break
       }
       const held = queuedLocalTrips.get(id)
@@ -8713,6 +9055,7 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
         cache.decisions = cache.decisions.filter(d => d.tripId !== tripId)
         cache.activity = cache.activity.filter(a => a.tripId !== tripId)
         cache.notifications = cache.notifications.filter(n => n.tripId !== tripId)
+        dropCrewTrip(tripId)
       } else {
         // A demotion keeps the trip readable, so only the edit right goes.
         if (userId === cache.sessionUserId && !canEdit(row?.role)) {
@@ -8753,6 +9096,24 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       cache.decisions = reduceSlice(cache.decisions, event, mapped, oldRow?.id)
       if (mapped) noteConfirmedBallots('decision', mapped)
       if (id !== undefined) reattachCommentDrafts('decision', id)
+      break
+    }
+    case 'crew_preferences': {
+      // The key is (trip_id, user_id); `id` above is that pair. A trip whose
+      // answers were never read is skipped: its first read fetches every row,
+      // and a partial list would pass for the whole crew.
+      const tripId: string | undefined = row?.trip_id ?? oldRow?.trip_id
+      const userId: string | undefined = row?.user_id ?? oldRow?.user_id
+      if (!tripId || !userId || !(tripId in cache.crewPreferenceReads)) break
+      if (event === 'DELETE' || !row) {
+        cache.crewPreferences = removeCrewPreference(cache.crewPreferences, tripId, userId)
+        break
+      }
+      const incoming = crewPreferenceRowToEntry(row)
+      const held = myCrewPreference(cache.crewPreferences, tripId, userId)
+      // A late or replayed event must not put an older answer over a newer one.
+      if (held && incoming.updatedAt < held.updatedAt) break
+      cache.crewPreferences = upsertCrewPreference(cache.crewPreferences, incoming)
       break
     }
     case 'activity': {

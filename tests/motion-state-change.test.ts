@@ -246,6 +246,8 @@ describe('a list item that leaves plays an exit (AGENTS §2.10)', () => {
     { file: 'src/pages/Explore.tsx', uses: /usePresenceList\(\s*gridPubs\.slice\(0, visibleCount\),/ },
     { file: 'src/components/trips/SavedShelfSection.tsx', uses: /usePresenceList\(shelfRows,/ },
     { file: 'src/components/page/FilterBar.tsx', uses: /usePresenceList\(\s*onClear \? \['clear'\] : \[\]/ },
+    { file: 'src/pages/trip/GroupInputTab.tsx', uses: /usePresenceList\(openIdeas, sg => sg\.id,/ },
+    { file: 'src/pages/trip/GroupInputTab.tsx', uses: /usePresenceList\(\s*\[\.\.\.openDecisions, \.\.\.resolvedDecisions\],/ },
   ]
   for (const { file, uses } of wired) {
     it(`${file} keeps a leaving item mounted: ${uses.source.slice(0, 40)}`, () => {

@@ -138,7 +138,8 @@ describe('the surfaces that must not race a preview (#334)', () => {
     // so it is not among them). #839 added a fourth: the retarget /
     // add-another-visit follow-up writes the same row from its own buttons, so
     // it refuses too rather than being the one path around the guard.
-    expect(src.match(/refuseWhileStaged\(previewOpen\)/g) ?? []).toHaveLength(4)
+    // The closed-vote card has a separate Resolve control. It must refuse too.
+    expect(src.match(/refuseWhileStaged\(previewOpen\)/g) ?? []).toHaveLength(5)
     // #424: this surface's own helper went into the shared lifecycle — its rule,
     // its wording and its six call sites are one contract now, not a copy.
     expect(src).toMatch(/import \{ refuseWhileStaged \} from '\.\.\/\.\.\/lib\/mutationLifecycle'/)

@@ -390,6 +390,7 @@ describe('#568 — the reconnect resync covers every subscribed table', () => {
     expect(resynced).toContain('notifications')
     expect(resynced).toContain('published_itineraries')
     expect(resynced).toContain('admin_audit')
+    expect(resynced).not.toContain('crew_preferences')
     expect(resynced).toHaveLength(9)
   })
 

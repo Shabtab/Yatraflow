@@ -96,7 +96,7 @@
     "src/pages/trip/GroupInputTab.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 2,
+      "inlineStyle": 1,
       "rawH1": 0
     },
     "src/pages/trip/map/editing/EditCards.tsx": {
