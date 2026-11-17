@@ -104,20 +104,24 @@
    Beat order, one `--stagger-step` each, and no two cards on a
    beat. Header 0 (eyebrow, title, summary), pill bar 1. Then the cards in
    reading order. Column 1 holds the decisions: first card 2, second card 3,
-   every later card 4. Column 2 follows: Stop ideas 5, Raise a decision 6.
-   Column 3 ends it: Activity 7, Crew preferences 8. A long list of decisions
-   shares the last beat of its column, so nothing waits for a late card. The
-   header and the bar carry their own beat; each card writes its beat into
-   `--gin-beat`, and the rows and bars inside it trail from there.
+   every later card 4. Column 2 follows the last decision beat: Stop ideas,
+   then Raise a decision. Column 3 ends it: Activity, then Crew preferences.
+   The tab computes where each column starts and writes it as `--col-beat`
+   on the column, so a tab with no decision cards starts Stop ideas on beat 2
+   and leaves no empty beat. Without that value the beats are 2, 5 and 7 (three
+   decisions). A long list of decisions shares the last beat of its column, so
+   nothing waits for a late card. The header and the bar carry their own beat;
+   each card writes its beat into `--gin-beat`, and the rows and bars inside it
+   trail from there.
    `div[role="tabpanel"]:has(> .gin-page)` takes the block fade off this tab only;
    other tabs keep theirs. A wrapper that cascades its children (`.gin-head`,
    `.gin-grid`, `.gin-col`) carries no fade, so nothing fades twice. The state
    banners sit in `.gin-state` and are states, not content: they keep `errIn`, as `.bud-state` does.
    Top level, not in a media query, so the design-system gates can read it. The
    reduced-motion opt-out is the block at the end.
-   The staggered delays wait for `data-intro` on the root. It holds for the first
-   three `--motion-slower` steps. After that a card or a row that mounts later
-   (a new idea, a decision that just moved to decided) rises at once. */
+   The staggered delays wait for `data-intro` on the root. It starts when the list
+   read first settles and holds for three `--motion-slower` steps. After that a
+   card or a row that mounts later (a new idea) rises at once. */
 div[role="tabpanel"]:has(> .gin-page) { animation: none; }
 .gin-page > * { animation: none; }
 .gin-state > [data-kind] { animation: errIn var(--motion-med) var(--ease-paper); }
@@ -128,13 +132,13 @@ div[role="tabpanel"]:has(> .gin-page) { animation: none; }
 
 /* The cards. Each one carries its beat, and the intro turns the beat into a delay. */
 .gin-col > .yf-surface { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
-.gin-col--decisions > .yf-surface:nth-of-type(1) { --gin-beat: 2; }
-.gin-col--decisions > .yf-surface:nth-of-type(2) { --gin-beat: 3; }
-.gin-col--decisions > .yf-surface:nth-of-type(n+3) { --gin-beat: 4; }
-.gin-col--ideas > .yf-surface:nth-of-type(1) { --gin-beat: 5; }
-.gin-col--ideas > .yf-surface:nth-of-type(2) { --gin-beat: 6; }
-.gin-col--activity > .yf-surface:nth-of-type(1) { --gin-beat: 7; }
-.gin-col--activity > .yf-surface:nth-of-type(2) { --gin-beat: 8; }
+.gin-col--decisions > .yf-surface:nth-of-type(1) { --gin-beat: calc(var(--col-beat, 2) + 0); }
+.gin-col--decisions > .yf-surface:nth-of-type(2) { --gin-beat: calc(var(--col-beat, 2) + 1); }
+.gin-col--decisions > .yf-surface:nth-of-type(n+3) { --gin-beat: calc(var(--col-beat, 2) + 2); }
+.gin-col--ideas > .yf-surface:nth-of-type(1) { --gin-beat: calc(var(--col-beat, 5) + 0); }
+.gin-col--ideas > .yf-surface:nth-of-type(2) { --gin-beat: calc(var(--col-beat, 5) + 1); }
+.gin-col--activity > .yf-surface:nth-of-type(1) { --gin-beat: calc(var(--col-beat, 7) + 0); }
+.gin-col--activity > .yf-surface:nth-of-type(2) { --gin-beat: calc(var(--col-beat, 7) + 1); }
 .gin-page[data-intro='true'] .gin-col > .yf-surface:not([data-presence='exit']) { animation-delay: calc(var(--stagger-step) * var(--gin-beat, 0)); }
 
 /* Rows inside a card trail the card: its beat, then one step per row, and the
@@ -177,6 +181,30 @@ div[role="tabpanel"]:has(> .gin-page) { animation: none; }
 .gin-page[data-intro='true'] .gin-pop { animation-delay: calc(var(--stagger-step) * (var(--gin-beat, 0) + var(--gin-k, 0) + 1)); }
 @keyframes gin-pop-in { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: none; } }
 
+/* Open to decided: one decision card lives through the resolve, so its drafts and
+   focus stay. The decided body (the title row and its footer) rises in on the
+   page-rise tokens. Only a card that changed phase on screen carries
+   `data-turned`; a card that loads as decided has its own entrance and no more. */
+.gin-decision[data-turned='true'] .gin-decided,
+.gin-decision[data-turned='true'] .gin-decided + .gin-foot { animation: pageRise var(--motion-med) var(--ease-paper) backwards; }
+
+/* Below 860px one column shows at a time, and `display: none` would replay a
+   column's entrance on every pill press. A column that has been on screen and left
+   it is `gin-col--seen` (set by the tab), and its entrance stays off. Only the
+   narrow layout does this, so wide screens still rise a card or row that mounts later. */
+@media (max-width: 860px) {
+  .gin-col.gin-col--seen > .yf-surface,
+  .gin-col.gin-col--seen .gin-rows > .gin-row,
+  .gin-col.gin-col--seen .gin-feed > .feed-item,
+  .gin-col.gin-col--seen .gin-option .gin-fill,
+  .gin-col.gin-col--seen .gin-crew-row .gin-fill,
+  .gin-col.gin-col--seen .gin-option-pct,
+  .gin-col.gin-col--seen .gin-pop,
+  .gin-col.gin-col--seen .gin-stamp,
+  .gin-col.gin-col--seen .gin-decided,
+  .gin-col.gin-col--seen .gin-decided + .gin-foot { animation: none; }
+}
+
 /* Reduced motion: every entrance, the bars, the labels, the pops and the stamp
    stop moving. Each selector repeats its animated rule, so the opt-out has the
    same weight and comes last. The row exit and the collapse have their own
@@ -194,4 +222,6 @@ div[role="tabpanel"]:has(> .gin-page) { animation: none; }
   .gin-option .gin-fill, .gin-crew-row .gin-fill { animation: none; }
   .gin-option-end .gin-option-pct, .gin-crew-row .gin-option-pct { animation: none; }
   .gin-pop { animation: none; }
+  .gin-decision[data-turned='true'] .gin-decided,
+  .gin-decision[data-turned='true'] .gin-decided + .gin-foot { animation: none; }
 }

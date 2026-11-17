@@ -461,7 +461,7 @@
       "owned": [
         "gin-head", "gin-head-text", "gin-eyebrow", "gin-eyebrow--amber", "gin-eyebrow--ok", "gin-title",
         "gin-summary", "gin-pillbar", "gin-grid", "gin-col", "gin-col--decisions", "gin-col--ideas",
-        "gin-col--activity", "gin-col--shown", "gin-card-title", "gin-panel", "gin-card-head", "gin-help",
+        "gin-col--activity", "gin-col--shown", "gin-col--seen", "gin-card-title", "gin-panel", "gin-card-head", "gin-help",
         "gin-composer", "gin-composer-hint", "gin-submit", "gin-option-grid", "gin-option-form", "gin-decision", "gin-sub",
         "gin-decision-context", "gin-decision-options", "gin-option", "gin-radio", "gin-option-main",
         "gin-option-title", "gin-option-label", "gin-option-detail", "gin-option-end", "gin-option-pct",

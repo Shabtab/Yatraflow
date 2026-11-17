@@ -76,8 +76,12 @@ describe('Group input entrance: one cascade, owned by the tab body', () => {
   })
 
   it('orders the cards: column 1, then column 2, then column 3, one beat each', () => {
-    const beat = (selector: string) => Number(ruleOf(selector)?.body.match(/--gin-beat:\s*(\d+)/)?.[1])
-    const order = [
+    // Each card writes its beat as an offset from the start of its column.
+    const beat = (selector: string) => {
+      const m = ruleOf(selector)?.body.match(/--gin-beat:\s*calc\(var\(--col-beat, (\d+)\) \+ (\d+)\)/)
+      return { fallback: Number(m?.[1]), offset: Number(m?.[2]) }
+    }
+    const rules = [
       beat('.gin-col--decisions > .yf-surface:nth-of-type(1)'),
       beat('.gin-col--decisions > .yf-surface:nth-of-type(2)'),
       beat('.gin-col--decisions > .yf-surface:nth-of-type(n+3)'),
@@ -86,9 +90,21 @@ describe('Group input entrance: one cascade, owned by the tab body', () => {
       beat('.gin-col--activity > .yf-surface:nth-of-type(1)'),
       beat('.gin-col--activity > .yf-surface:nth-of-type(2)'),
     ]
-    expect(order).toEqual([2, 3, 4, 5, 6, 7, 8])
+    expect(rules.map(r => r.offset)).toEqual([0, 1, 2, 0, 1, 0, 1])
+    // Without a value from the tab, the beats are the full order: 2, 3, 4, 5, 6, 7, 8.
+    expect(rules.map(r => r.fallback + r.offset)).toEqual([2, 3, 4, 5, 6, 7, 8])
     // Beat 0 is the header and beat 1 the bar, so the cards start at 2 and never meet them.
-    expect(Math.min(...order)).toBeGreaterThan(1)
+    expect(Math.min(...rules.map(r => r.fallback + r.offset))).toBeGreaterThan(1)
+  })
+
+  it('starts each column on the beat after the cards before it, so an empty column leaves no gap', () => {
+    expect(TAB).toContain('const decisionBeats = Math.min(sortedDecisions.length, 3)')
+    expect(TAB).toContain('const ideasBeat = 2 + decisionBeats')
+    expect(TAB).toContain('const activityBeat = ideasBeat + 2')
+    expect(TAB).toContain("const beatOf = (beat: number) => ({ '--col-beat': beat }) as CSSProperties")
+    expect(TAB).toContain('style={beatOf(2)} className={colClass(\'decisions\')}')
+    expect(TAB).toContain('style={beatOf(ideasBeat)} className={colClass(\'ideas\')}')
+    expect(TAB).toContain('style={beatOf(activityBeat)} className={colClass(\'activity\')}')
   })
 
   it('rises each card on the page-rise tokens and caps the later decision cards on one beat', () => {
@@ -101,6 +117,13 @@ describe('Group input entrance: one cascade, owned by the tab body', () => {
     expect(rule?.body).toMatch(/animation-delay:\s*calc\(var\(--stagger-step\) \* var\(--gin-beat, 0\)\)/)
     expect(TAB).toContain("data-intro={intro ? 'true' : undefined}")
     expect(TAB).toContain("window.setTimeout(() => setIntro(false), motionTiming('--motion-slower').duration * 3)")
+  })
+
+  it('starts the intro window when the list read first settles, not at mount', () => {
+    expect(TAB).toContain('const listSettled = listReady || listFailed')
+    expect(TAB).toMatch(/useEffect\(\(\) => \{\s*if \(!listSettled\) return\s*const timer = window\.setTimeout\(\(\) => setIntro\(false\)[^\n]*\n[^\n]*clearTimeout\(timer\)\s*\}, \[listSettled\]\)/)
+    // No timer sits in an effect with an empty dependency list.
+    expect(TAB).not.toMatch(/setIntro\(false\)[\s\S]{0,160}\}, \[\]\)/)
   })
 
   it('trails the rows from their card: idea rows and activity rows, capped on the fourth step', () => {
@@ -179,10 +202,12 @@ describe('Group input small pops', () => {
 })
 
 describe('Group input list exit', () => {
-  it('keeps a leaving idea and a decision that moved to decided mounted for one exit', () => {
+  it('keeps a leaving idea mounted for one exit, and a removed decision with it', () => {
     expect(TAB).toContain("import { presenceAttrs, usePresenceList } from '../../lib/usePresenceList'")
     expect(TAB).toMatch(/usePresenceList\(openIdeas, sg => sg\.id, \{\s*fallbackFocus: \(\) => document\.getElementById\(SECTION_DOM\.ideas\),/)
-    expect(TAB).toMatch(/usePresenceList\(\s*\[\.\.\.openDecisions, \.\.\.resolvedDecisions\],\s*d => `\$\{d\.id\}:\$\{d\.status\}`,/)
+    // A decision keys on its id only, so one card instance lives through the resolve.
+    expect(TAB).toMatch(/usePresenceList\(\s*\[\.\.\.openDecisions, \.\.\.resolvedDecisions\],\s*d => d\.id,/)
+    expect(TAB).not.toMatch(/d => `\$\{d\.id\}:\$\{d\.status\}`/)
     expect(TAB).toContain('<div ref={attachIdeaList} className="gin-rows">')
     expect(TAB).toContain('ref={attachDecisionList}')
   })
@@ -191,6 +216,12 @@ describe('Group input list exit', () => {
     expect(TAB).toContain('{...presenceAttrs({ exiting })}')
     expect(TAB).toContain('id={exiting ? undefined : `gi-item-${sg.id}`}')
     expect(TAB).toContain('id={exiting ? undefined : `gi-item-${d.id}`}')
+  })
+
+  it('drops every id of a leaving item, so no id repeats while it fades', () => {
+    for (const id of ['gi-row-panel-${sg.id}', 'gi-add-option-${d.id}', 'gi-opt-${d.id}-${o.id}-label', 'gi-opt-${d.id}-${o.id}-detail', 'gi-opt-${d.id}-${o.id}-pct', 'gi-comment-${d.id}']) {
+      expect(TAB, id).toContain('id={exiting ? undefined : `' + id + '`}')
+    }
   })
 
   it('holds the empty message back until the last idea has left', () => {
@@ -223,8 +254,12 @@ describe('Group input row and field collapse', () => {
   })
 
   it('moves focus after the content is open, because a hidden element cannot take it', () => {
-    expect(TAB).toContain('const focusOptionField = () => optionRef.current?.focus()')
-    expect(TAB).toContain("chipsRef.current?.querySelector<HTMLButtonElement>('button')?.focus()")
+    // The clip is about 0px high when onExpanded runs, so no focus call may scroll.
+    expect(TAB).toContain('const focusOptionField = () => optionRef.current?.focus({ preventScroll: true })')
+    expect(TAB).toContain("chipsRef.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true })")
+    expect(TAB).toContain("?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true })")
+    expect(DAY).toContain('Runs each time the clip starts to open')
+    expect(DAY).not.toContain('finishes opening')
     expect(TAB).not.toContain('focusOnMount')
   })
 
@@ -234,6 +269,76 @@ describe('Group input row and field collapse', () => {
 
   it('keeps the pill bar on PillNav, which carries the glider', () => {
     expect(TAB).toContain('<PillNav className="mode-pillbar gin-pillbar"')
+  })
+})
+
+describe('Group input decision card keeps its state through a resolve', () => {
+  it('keys the decision card on its id only, so a resolve never remounts it', () => {
+    expect(TAB).toContain('<DecisionCard key={key} d={d}')
+    expect(TAB).not.toMatch(/<DecisionCard key=\{`/)
+    // The one id-only key reaches the card through the presence list.
+    expect(TAB).toMatch(/decisionEntries\.map\(\(\{ item: d, key, exiting \}\)/)
+  })
+
+  it('holds the drafts in the one card instance, above the open and decided branches', () => {
+    const card = TAB.slice(TAB.indexOf('function DecisionCard('), TAB.indexOf('// ================= The one follow-up'))
+    const branch = card.indexOf('{open ? (')
+    for (const draft of ['setCommenting', 'setAddingOption', 'setOptionLabel', 'setPlacementDayId', 'setPlacementDays']) {
+      const at = card.indexOf(`${draft}] = useState`) >= 0 ? card.indexOf(`${draft}] = useState`) : card.indexOf(`, ${draft}`)
+      expect(at, draft).toBeGreaterThan(-1)
+      expect(at, draft).toBeLessThan(branch)
+    }
+    // The comment field and the day picker sit outside the open branch, so they persist.
+    expect(card.indexOf('<SmoothCollapse open={commenting}')).toBeGreaterThan(card.indexOf('<div className="gin-decided">'))
+    expect(card.indexOf('{pickerOptionId && pickerOption?.place && (')).toBeGreaterThan(card.indexOf('<div className="gin-decided">'))
+  })
+
+  it('marks a card that changed phase on screen, and rises only its decided body', () => {
+    expect(TAB).toContain("data-turned={turned && !open ? 'true' : undefined}")
+    expect(TAB).toContain('if (!open) setTurned(true)')
+    const rise = top.find((b) => b.selector.includes(".gin-decision[data-turned='true'] .gin-decided"))
+    expect(rise?.body).toMatch(/animation:\s*pageRise var\(--motion-med\) var\(--ease-paper\) backwards/)
+    expect(rise?.selector.replace(/\s+/g, ' ')).toContain(".gin-decision[data-turned='true'] .gin-decided + .gin-foot")
+  })
+
+  it('moves focus only when the resolve stranded it, and never out of a field the member is typing in', () => {
+    expect(TAB).toContain('const cardHadFocus = !!document.getElementById(`gi-item-${d.id}`)?.contains(document.activeElement)')
+    expect(TAB).toContain('if (cardHadFocus) setRefocusCard(true)')
+    expect(TAB).toContain('if (!active || active === document.body) document.getElementById(`gi-item-${d.id}`)?.focus({ preventScroll: true })')
+    // Someone else's resolve sets no refocus request, so it cannot take focus.
+    expect(TAB.match(/setRefocusCard\(true\)/g)).toHaveLength(1)
+  })
+
+  it('keeps the Chosen stamp on the same card', () => {
+    expect(TAB).toContain('onStamp(d.id)')
+    expect(TAB).toContain("className={`chip chip-ok${stamped ? ' gin-stamp' : ''}`}")
+  })
+})
+
+describe('Group input narrow layout does not replay a column', () => {
+  const narrow = top.find((b) => b.selector === '@media (max-width: 860px)' && /gin-col--seen/.test(b.body))
+
+  it('marks a column that has been on screen and left it', () => {
+    expect(TAB).toContain("const [seenCols, setSeenCols] = useState<ReadonlySet<Section>>(() => new Set())")
+    expect(TAB).toContain('if (lastShown) setSeenCols(current => new Set(current).add(lastShown))')
+    expect(TAB).toContain("seenCols.has(section) ? ' gin-col--seen' : ''")
+  })
+
+  it('turns every entrance of a seen column off, and only in the narrow layout', () => {
+    expect(narrow).toBeDefined()
+    expect(narrow?.body).toMatch(/\{\s*animation:\s*none;\s*\}\s*$/)
+    for (const part of ['> .yf-surface', '.gin-rows > .gin-row', '.gin-feed > .feed-item', '.gin-option .gin-fill', '.gin-crew-row .gin-fill', '.gin-option-pct', '.gin-pop', '.gin-stamp', '.gin-decided']) {
+      expect(narrow?.body, part).toContain(`.gin-col.gin-col--seen ${part.startsWith('>') ? part : part}`.replace('seen  ', 'seen '))
+    }
+    // No other rule switches a seen column off, so a wide screen keeps its later entrances.
+    expect(top.filter((b) => !b.selector.startsWith('@') && /gin-col--seen/.test(b.selector))).toEqual([])
+  })
+
+  it('keeps the seen rule ahead of the reduced-motion block and registers the class', () => {
+    expect(CSS.indexOf('.gin-col.gin-col--seen')).toBeLessThan(CSS.indexOf('@media (prefers-reduced-motion: reduce)'))
+    const ownership = JSON.parse(read('docs/css-ownership.json')) as { owners: Array<{ file: string; owned?: string[] }> }
+    const owner = ownership.owners.find((o) => o.file === 'src/styles/pages/group-input.css')
+    expect(owner?.owned).toContain('gin-col--seen')
   })
 })
 

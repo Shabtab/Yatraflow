@@ -66,7 +66,7 @@ describe('Group input review fixes', () => {
     expect(tab.match(/aria-controls=\{commenting \? `gi-comment-\$\{d\.id\}` : undefined\}/g)).toHaveLength(2)
     // The field mounts hidden inside the day collapse, so the focus moves once the collapse is open.
     expect(tab).toContain('<SmoothCollapse open={commenting} fallbackFocus={commentToggleRef} onExpanded={focusCommentField}>')
-    expect(tab).toContain("document.getElementById(`gi-comment-${d.id}`)?.querySelector<HTMLElement>('input')?.focus()")
+    expect(tab).toContain("document.getElementById(`gi-comment-${d.id}`)?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true })")
     expect(tab).not.toContain('focusOnMount')
     expect(tab).toMatch(/if \(ideaComposerOpen\) ideaComposerRef\.current\?\.querySelector/)
   })

@@ -21,9 +21,12 @@ describe('Group input tab: panels, titles and states follow the page pattern', (
   })
 
   it('gives every card title the shared title class, and no bare h3', () => {
+    // Three titles are plain: the open and decided decision cards and the Raise a decision form.
     // Two panel titles carry an id, so the section regions can name themselves.
-    expect(tab.match(/<h3 className="gin-card-title">/g)).toHaveLength(4)
+    // The Crew preferences title carries a ref and a -1 tabindex, so focus can return to it.
+    expect(tab.match(/<h3 className="gin-card-title">/g)).toHaveLength(3)
     expect(tab.match(/<h3 id="gi-heading-[a-z]+" className="gin-card-title">/g)).toHaveLength(2)
+    expect(tab.match(/<h3 ref=\{headingRef\} tabIndex=\{-1\} className="gin-card-title">/g)).toHaveLength(1)
     expect(tab).not.toMatch(/<h3>/)
     expect(css).toContain('.gin-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }')
   })

@@ -338,8 +338,11 @@ export function SmoothCollapse({ open, children, fallbackFocus, fold, onExpanded
   children: React.ReactNode
   fallbackFocus?: React.RefObject<HTMLButtonElement | null>
   fold?: FoldState
-  /** Runs each time the clip finishes opening its class. Content is not
-   *  focusable before that: it mounts hidden. Group input moves focus here. */
+  /** Runs each time the clip starts to open, when its `open` class lands. The
+   *  content is mounted and visible then, but the clip is still about 0px high
+   *  with `overflow: hidden`. A caller that moves focus here must pass
+   *  `preventScroll: true`, or the browser scrolls the clip's inner box.
+   *  Group input moves focus here. */
   onExpanded?: () => void
 }) {
   return fold

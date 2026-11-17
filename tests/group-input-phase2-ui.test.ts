@@ -209,12 +209,13 @@ describe('the crew quiz', () => {
   it('renders pressed chips from the quiz list and saves through the store', () => {
     expect(tab).toContain('{CREW_QUIZ_INTERESTS.map(interest => (')
     expect(tab).toContain('<FilterChip key={interest} pressed={picked.includes(interest)}')
-    expect(tab).toMatch(/void setMyCrewPreferences\(trip\.id, picked\)\.then\(o => \{\s*reportCollabOutcome\(o, 'Your answers are saved'\)/)
+    expect(tab).toContain('function save(list: CrewInterest[] = picked)')
+    expect(tab).toMatch(/void setMyCrewPreferences\(trip\.id, list\)\.then\(o => \{\s*reportCollabOutcome\(o, 'Your answers are saved'\)/)
     expect(tab).toContain('const picked = draft ?? mine?.interests ?? []')
   })
   it('moves focus: first chip on Edit, the Edit button (or heading) after Save or Cancel', () => {
     expect(tab).toContain('onClick={() => { setEditing(true); setFocusChip(true) }}')
-    expect(tab).toContain("querySelector<HTMLButtonElement>('button')?.focus()")
+    expect(tab).toContain("querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true })")
     expect(tab).toContain('(editBtnRef.current ?? headingRef.current)?.focus()')
     expect(tab).toContain('setEditing(false); setRestoreFocus(true) }')
     expect(tab).toContain('onClick={() => { setDraft(null); setEditing(false); setRestoreFocus(true) }}')

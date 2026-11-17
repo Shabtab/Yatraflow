@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CatIcon, InlineIcon } from '../../components/icons'
 import { motionTiming, scrollBehavior } from '../../lib/motion'
 import { presenceAttrs, usePresenceList } from '../../lib/usePresenceList'
-import type { FormEvent } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
 import { Car, ChevronDown, ChevronUp, ClipboardList, Clock, Heart, Lightbulb, MapPin, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
 import { PillNav } from '../../components/PillNav'
 import type { CrewInterest, StopCategory, StopSuggestion, Trip, TripDecision } from '../../data/types'
@@ -61,6 +61,12 @@ const SECTION_DOM: Record<Section, string> = {
   decisions: 'gi-section-decisions',
   ideas: 'gi-section-ideas',
   activity: 'gi-section-activity',
+}
+/** The base class of each column. Written out, so every class name stays greppable. */
+const COL_CLASS: Record<Section, string> = {
+  decisions: 'gin-col gin-col--decisions',
+  ideas: 'gin-col gin-col--ideas',
+  activity: 'gin-col gin-col--activity',
 }
 /** One interleaved list entry: either a stop suggestion or a trip decision. */
 type GroupItem = { kind: 'idea'; sg: StopSuggestion } | { kind: 'decision'; d: TripDecision }
@@ -174,12 +180,14 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   // last delayed animation has started, so a row or card that mounts later
   // rises at once instead of waiting for a beat that has already passed. A
   // delay that lapses on a running animation would also make it jump, so the
-  // wait is three of the longest steps, which is past the last delay.
+  // wait is three of the longest steps, which is past the last delay. The
+  // window starts when the list read first settles (it is declared below the
+  // reads), not at mount: the cards that carry the beats arrive with the read.
   const [intro, setIntro] = useState(true)
-  useEffect(() => {
-    const timer = window.setTimeout(() => setIntro(false), motionTiming('--motion-slower').duration * 3)
-    return () => window.clearTimeout(timer)
-  }, [])
+  // Below 860px one column shows at a time. A column that has been on screen and
+  // then left it is "seen", and its entrance does not play again on a later pill press.
+  const [seenCols, setSeenCols] = useState<ReadonlySet<Section>>(() => new Set())
+  const [lastShown, setLastShown] = useState<Section | null>(null)
   // The stamp plays on the card that a resolve produced. A resolve moves its
   // decision to the decided group as a new card, so the id lives here.
   const [stampedIds, setStampedIds] = useState<ReadonlySet<string>>(() => new Set())
@@ -199,6 +207,13 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   const listFailed = suggestionsRead === 'failed' || decisionsRead === 'failed'
   const listReading = !listFailed && (suggestionsRead === 'reading' || decisionsRead === 'reading')
   const listReady = suggestionsRead === 'ready' && decisionsRead === 'ready'
+  // A failed read also settles the list: its kept rows are on screen, so the intro must end.
+  const listSettled = listReady || listFailed
+  useEffect(() => {
+    if (!listSettled) return
+    const timer = window.setTimeout(() => setIntro(false), motionTiming('--motion-slower').duration * 3)
+    return () => window.clearTimeout(timer)
+  }, [listSettled])
   const activityRead = sliceState(db.sliceReads, 'activity')
   // Retry re-issues the read through the same re-hydrate that app resume runs.
   const retryGroupInput = () => { void resumeSync() }
@@ -236,20 +251,35 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   const needsSection: 'decisions' | 'ideas' = needsYou[0]?.kind === 'idea' ? 'ideas' : 'decisions'
   // Below 860px one column shows at a time. Wider, every column shows.
   const sectionOnScreen: Section = view === 'needs' ? needsSection : view
+  // Adjust state while rendering: the column that just left the screen is now seen.
+  if (lastShown !== sectionOnScreen) {
+    setLastShown(sectionOnScreen)
+    if (lastShown) setSeenCols(current => new Set(current).add(lastShown))
+  }
+  const colClass = (section: Section) =>
+    `${COL_CLASS[section]}${sectionOnScreen === section ? ' gin-col--shown' : ''}${seenCols.has(section) ? ' gin-col--seen' : ''}`
+  // The beat each column starts on. Beat 0 is the header and beat 1 the bar, so
+  // the first card is on beat 2. A column with no card gives its beats away: with
+  // no decision cards, Stop ideas takes beat 2. The decision cards use up to three beats.
+  const decisionBeats = Math.min(sortedDecisions.length, 3)
+  const ideasBeat = 2 + decisionBeats
+  const activityBeat = ideasBeat + 2
+  const beatOf = (beat: number) => ({ '--col-beat': beat }) as CSSProperties
   const feed = tripActivity.slice(0, 20)
   const feedRows = feed.slice(0, 4)
   const moreFeedRows = feed.slice(4)
 
-  // An idea that leaves the open list (added or declined) and a decision that
-  // moves from open to decided stay mounted for one exit (docs/MOTION-TOKENS.md,
-  // "List exit"). A decision keys on its status, so the open card leaves and the
-  // decided card arrives as a new one. The open card is the only one that exits.
+  // An idea that leaves the open list (added or declined) stays mounted for one
+  // exit (docs/MOTION-TOKENS.md, "List exit"). A decision keys on its id only:
+  // one card instance lives through open to decided, so a comment draft, an
+  // add-option draft, the day picker and the focus all survive the resolve. The
+  // card plays the open-to-decided change inside itself.
   const { entries: ideaEntries, exiting: ideasExiting, attachList: attachIdeaList } = usePresenceList(openIdeas, sg => sg.id, {
     fallbackFocus: () => document.getElementById(SECTION_DOM.ideas),
   })
   const { entries: decisionEntries, attachList: attachDecisionList } = usePresenceList(
     [...openDecisions, ...resolvedDecisions],
-    d => `${d.id}:${d.status}`,
+    d => d.id,
   )
 
   /** One tap opens an idea row and its actions. A second tap closes it. */
@@ -332,7 +362,7 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
       <div className="gin-grid">
         <div id="gi-section-decisions" tabIndex={-1} role="region" aria-labelledby="gi-heading-decisions"
           ref={attachDecisionList}
-          className={`gin-col gin-col--decisions${sectionOnScreen === 'decisions' ? ' gin-col--shown' : ''}`}>
+          style={beatOf(2)} className={colClass('decisions')}>
           <h3 id="gi-heading-decisions" className="sr-only">Decisions</h3>
           {items.length > 0 && decisionsRead === 'ready' && sortedDecisions.length === 0 && (
             <StateBlock kind="empty" size="compact" title={EMPTY_COPY.decisions.title} body={EMPTY_COPY.decisions.body}
@@ -346,7 +376,7 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
         </div>
 
         <div id="gi-section-ideas" tabIndex={-1} role="region" aria-labelledby="gi-heading-ideas"
-          className={`gin-col gin-col--ideas${sectionOnScreen === 'ideas' ? ' gin-col--shown' : ''}`}>
+          style={beatOf(ideasBeat)} className={colClass('ideas')}>
           <Surface className="card gin-panel">
             <div className="gin-card-head">
               <div>
@@ -387,7 +417,7 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
         </div>
 
         <div id="gi-section-activity" tabIndex={-1} role="region" aria-labelledby="gi-heading-activity"
-          className={`gin-col gin-col--activity${sectionOnScreen === 'activity' ? ' gin-col--shown' : ''}`}>
+          style={beatOf(activityBeat)} className={colClass('activity')}>
           <Surface className="card gin-panel">
             <h3 id="gi-heading-activity" className="gin-card-title">Activity</h3>
             <hr className="divider" />
@@ -489,10 +519,11 @@ function CrewPreferencesCard({ trip, meId }: { trip: Trip; meId: string }) {
   }, [restoreFocus, quizOpen])
 
   /** The quiz mounts hidden and opens a beat later. The first chip takes the
-   *  focus once it is open, because a hidden element cannot hold focus. */
+   *  focus when the clip starts to open. The clip is still about 0px high then,
+   *  so the focus call must not scroll. */
   function focusFirstChip() {
     if (!focusChip) return
-    chipsRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    chipsRef.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true })
     setFocusChip(false)
   }
 
@@ -681,7 +712,7 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
       {/* The action panel opens and closes with the day collapse (grid rows).
           Focus returns to the row head if a close would strand it. */}
       <SmoothCollapse open={expanded} fallbackFocus={headRef}>
-        <div id={`gi-row-panel-${sg.id}`} className="gin-row-panel">
+        <div id={exiting ? undefined : `gi-row-panel-${sg.id}`} className="gin-row-panel">
           <div className="stop-meta gin-stop-meta">
             <span><MapPin size={13} aria-hidden /> {sg.locationName}</span>
             <span><Clock size={13} aria-hidden /> {minutesToHM(sg.visitMinutes)}</span>
@@ -815,6 +846,27 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
   const [placementDays, setPlacementDays] = useState<Array<{ id: string; index: number; title?: string }> | null>(null)
   const [openDayOptionId, setOpenDayOptionId] = useState<string | null>(null)
   const [roadRefusal, setRoadRefusal] = useState<{ copy: string; recoverable: boolean } | null>(null)
+  // One card instance lives through open to decided, so every draft below
+  // survives a resolve. `turned` marks a card that changed phase while it was
+  // on screen: only that card plays the decided body's rise. A card that loads
+  // as decided has the card's own entrance and nothing more. State is adjusted
+  // while rendering, so the first decided frame already carries the mark.
+  const [seenOpen, setSeenOpen] = useState(open)
+  const [turned, setTurned] = useState(false)
+  if (open !== seenOpen) {
+    setSeenOpen(open)
+    if (!open) setTurned(true)
+  }
+  // Set by a resolve that this member made while focus sat inside the card.
+  const [refocusCard, setRefocusCard] = useState(false)
+  useEffect(() => {
+    if (open || !refocusCard) return
+    setRefocusCard(false)
+    // The Resolve button left with the open body. Focus goes to the card, and only
+    // when it is stranded: a member who typed in a field that stays keeps that field.
+    const active = document.activeElement
+    if (!active || active === document.body) document.getElementById(`gi-item-${d.id}`)?.focus({ preventScroll: true })
+  }, [open, refocusCard, d.id])
   const resolvedOption = d.options.find(o => o.id === d.resolvedOptionId)
   const agreed = d.resolvedOptionId ? votersOf(d.resolvedOptionId).length : 0
   const needsPlacement = d.status === 'resolved' && !!d.resolvedOptionId && !d.resolvedStopId && !!resolvedOption?.place
@@ -829,6 +881,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
   // It is pure, so no await can lend a newer trip to an older measurement.
   // Every resolve route goes through it, including the day-picker retry.
   async function resolveChoice(optionId: string, target: LegacyResolutionTarget = {}) {
+    const cardHadFocus = !!document.getElementById(`gi-item-${d.id}`)?.contains(document.activeElement)
     const flow = await runDecisionResolution(
       { context: slotResolution, decision: d, optionId, target, previewOpen },
       {
@@ -845,14 +898,18 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
     }
     setRoadRefusal(null)
     // The stamp plays only for a resolution this card made, so a page load never replays it.
-    if (flow.kind === 'settled' && (flow.outcome.status === 'applied' || flow.outcome.status === 'alreadyApplied')) onStamp(d.id)
+    if (flow.kind === 'settled' && (flow.outcome.status === 'applied' || flow.outcome.status === 'alreadyApplied')) {
+      onStamp(d.id)
+      if (cardHadFocus) setRefocusCard(true)
+    }
     setOpenDayOptionId(flow.kind === 'settled' && flow.needsDayPicker ? (d.resolvedOptionId ?? optionId) : null)
   }
 
   // The add-option field and the comment field mount hidden and open a beat
-  // later, so each takes the focus from the collapse once it is open.
-  const focusOptionField = () => optionRef.current?.focus()
-  const focusCommentField = () => document.getElementById(`gi-comment-${d.id}`)?.querySelector<HTMLElement>('input')?.focus()
+  // later. Each takes the focus when its clip starts to open. The clip is still
+  // about 0px high with hidden overflow then, so neither call may scroll.
+  const focusOptionField = () => optionRef.current?.focus({ preventScroll: true })
+  const focusCommentField = () => document.getElementById(`gi-comment-${d.id}`)?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true })
 
   /** Add one option. The same duplicate check the server runs shows its reason at once. */
   function submitOption() {
@@ -880,7 +937,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
 
   return (
     <Surface id={exiting ? undefined : `gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-panel gin-decision${needsMe ? ' gi-needs-you' : ''}`}
-      {...presenceAttrs({ exiting })}>
+      data-turned={turned && !open ? 'true' : undefined} {...presenceAttrs({ exiting })}>
       {open ? (
         <>
           {locked && <p className="gin-eyebrow">Closed</p>}
@@ -914,10 +971,10 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
                     checked={(pick ?? myOptionId) === o.id} disabled={locked} onChange={() => setPick(o.id)} />
                   <span className="gin-option-main">
                     <span className="gin-option-title">
-                      <span id={`gi-opt-${d.id}-${o.id}-label`} className="gin-option-label">{o.label}</span>
+                      <span id={exiting ? undefined : `gi-opt-${d.id}-${o.id}-label`} className="gin-option-label">{o.label}</span>
                       {rec?.optionId === o.id && <span className="gin-pop"><Chip tone="teal">Best fit · engine</Chip></span>}
                     </span>
-                    {detail && <span id={`gi-opt-${d.id}-${o.id}-detail`} className="gin-option-detail small muted num">{detail}</span>}
+                    {detail && <span id={exiting ? undefined : `gi-opt-${d.id}-${o.id}-detail`} className="gin-option-detail small muted num">{detail}</span>}
                     <ShareBar percent={pct} lead={leading} />
                   </span>
                   <span className="gin-option-end">
@@ -934,7 +991,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
                         {voters.length > 4 && <span className="who-more">+{voters.length - 4}</span>}
                       </span>
                     )}
-                    <span id={`gi-opt-${d.id}-${o.id}-pct`} className="gin-option-pct num">{pct}%</span>
+                    <span id={exiting ? undefined : `gi-opt-${d.id}-${o.id}-pct`} className="gin-option-pct num">{pct}%</span>
                   </span>
                 </label>
               )
@@ -981,7 +1038,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
           </div>
           {/* The add-option field opens and closes with the day collapse. */}
           <SmoothCollapse open={addingOption && editable && canAddOption(d, now)} fallbackFocus={addTriggerRef} onExpanded={focusOptionField}>
-            <form id={`gi-add-option-${d.id}`} className="gin-option-form" onSubmit={e => { e.preventDefault(); submitOption() }}>
+            <form id={exiting ? undefined : `gi-add-option-${d.id}`} className="gin-option-form" onSubmit={e => { e.preventDefault(); submitOption() }}>
               <Field label="New option" error={optionError}>
                 <input ref={optionRef} className="input" value={optionLabel} maxLength={200}
                   onChange={e => { setOptionLabel(e.target.value); setOptionError(undefined) }} />
@@ -1074,7 +1131,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
       )}
       {/* The comment field opens and closes with the day collapse. */}
       <SmoothCollapse open={commenting} fallbackFocus={commentToggleRef} onExpanded={focusCommentField}>
-        <CommentForm id={`gi-comment-${d.id}`} onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
+        <CommentForm id={exiting ? undefined : `gi-comment-${d.id}`} onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
       </SmoothCollapse>
     </Surface>
   )
