@@ -25,7 +25,8 @@ vi.mock('../src/components/ui', () => ({
   },
 }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { memberBootstrapClient } = await import('./helpers/memberBootstrapClient')
   const builder = (table: string) => {
     const b: Record<string, unknown> = {
       select: () => b,
@@ -44,7 +45,7 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: true,
-    supabase: {
+    supabase: memberBootstrapClient({
       from: builder,
       channel: () => { const c: Record<string, unknown> = { on: () => c, subscribe: () => ({}) }; return c },
       removeChannel: () => Promise.resolve(),
@@ -72,7 +73,7 @@ vi.mock('../src/lib/supabase', () => {
         }
         return b
       },
-    },
+    }),
   }
 })
 

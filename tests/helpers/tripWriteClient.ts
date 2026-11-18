@@ -1,3 +1,5 @@
+import { memberBootstrapClient } from './memberBootstrapClient'
+
 /** Add revision-aware trip transport to mutation tests that only inspect payloads.
  * Dedicated replay tests supply their own server, authorization, and failure model.
  */
@@ -96,5 +98,5 @@ export function tripWriteClient(client: any, fixture?: () => { trips: any[]; mem
     })
     return builder
   }
-  return wrapped
+  return memberBootstrapClient(wrapped)
 }

@@ -47,6 +47,7 @@ export interface TripRow {
   cover_image_url?: string | null;
   /** present only after the invite-code migration (see supabase/schema.sql) */
   invite_code?: string | null; visibility: 'private' | 'public';
+  access_version?: number | null;
   /** present only after the share-source migration (20260929_pub_events_share_source.sql) —
    *  how this trip's owner ARRIVED: the shared link's ref, or the in-app surface */
   ref?: string | null;
@@ -221,6 +222,7 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     flights: flights.length ? flights : undefined,
     days, expenses, coverEmoji: row.cover_emoji,
     coverImageUrl: row.cover_image_url ?? undefined, inviteCode: row.invite_code ?? undefined,
+    accessVersion: typeof row.access_version === 'number' && Number.isSafeInteger(row.access_version) && row.access_version >= 0 ? row.access_version : undefined,
     ref: row.ref ?? undefined,
     creationKind: TRIP_CREATION_KINDS.find(kind => kind === row.creation_kind),
     sourcePubId: row.creation_kind === 'forked' ? row.source_pub_id ?? undefined : undefined,
@@ -367,6 +369,7 @@ export function tripUpdateRow(
   // unused binding (the lint ratchet counts an unused destructured name).
   const row: Omit<TripRow, 'created_at' | 'updated_at' | 'owner_id'> = tripToRow(trip, ownerId, cols)
   delete (row as Partial<TripRow>).owner_id
+  delete row.invite_code
   return row
 }
 

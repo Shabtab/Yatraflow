@@ -1577,4 +1577,29 @@ begin
 end $$;
 
 -- ------------------------------------------------------------------------ done
+do $$
+declare v_role text; v_privilege text;
+begin
+  foreach v_role in array array['anon','authenticated','service_role'] loop
+    foreach v_privilege in array array['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop
+      if has_table_privilege(v_role,'public.trip_members',v_privilege) then
+        raise exception '% must not have direct % on trip_members',v_role,v_privilege;
+      end if;
+    end loop;
+    if has_table_privilege(v_role,'public.trip_member_access','SELECT') then
+      raise exception '% must not read private member history directly',v_role;
+    end if;
+  end loop;
+  if not (select relrowsecurity from pg_class where oid='public.trip_member_access'::regclass) then
+    raise exception 'member history must have RLS enabled';
+  end if;
+  if has_function_privilege('anon','public.change_trip_access(uuid,text,uuid,text,bigint)','EXECUTE')
+    or not has_function_privilege('authenticated','public.change_trip_access(uuid,text,uuid,text,bigint)','EXECUTE') then
+    raise exception 'member commands need authenticated-only execution';
+  end if;
+  if not exists(select 1 from pg_trigger where tgrelid='public.trips'::regclass and tgname='trips_invite_boundary' and not tgisinternal) then
+    raise exception 'trip invite writes need their boundary trigger';
+  end if;
+end $$;
+
 select 'rls contract: all crew-facing policies verified' as result;

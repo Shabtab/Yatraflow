@@ -26,7 +26,8 @@ const state: {
 const { toast } = vi.hoisted(() => ({ toast: vi.fn() }))
 vi.mock('../src/components/ui', () => ({ toast }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { memberBootstrapClient } = await import('./helpers/memberBootstrapClient')
   function query(table: string) {
     const qb: any = { table }
     const filters = new Map<string, unknown>()
@@ -80,7 +81,7 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: () => true,
-    supabase: {
+    supabase: memberBootstrapClient({
       from: (table: string) => {
         const qb = query(table)
         qb.insert = (p: any) => write(table, 'insert', p)
@@ -100,7 +101,7 @@ vi.mock('../src/lib/supabase', () => {
       // The public read is an RPC after the paywall moved to the wire, so an
       // empty payload is what "this trip did not load" looks like here.
       rpc: async () => ({ data: null, error: null }),
-    },
+    }),
   }
 })
 
