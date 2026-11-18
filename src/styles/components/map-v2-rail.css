@@ -41,7 +41,10 @@
 
 /* Map workspace. The real map sits behind the itinerary, search and pick deck. */
 .container.yf-workspace.yf-workspace[data-map-active='true'] { width: 100%; max-width: none; }
-.mv2-workspace { --mv2-day-width: 380px; --mv2-deck-width: 372px; --mv2-inset: var(--space-5); --mv2-ribbon-h: 72px; --mv2-edge-tab-w: 22px; position: relative; min-width: 0; }
+/* --mv2-panel-pad: the one inner inset both deck panels read. The Day plan and
+   the suggestion deck keep the same 16px edge, so the right panel matches the
+   left one and the mockup. */
+.mv2-workspace { --mv2-day-width: 380px; --mv2-deck-width: 372px; --mv2-inset: var(--space-5); --mv2-panel-pad: var(--space-7); --mv2-ribbon-h: 72px; --mv2-edge-tab-w: 22px; position: relative; min-width: 0; }
 .mv2-workspace .map-ideas-grid { display: block; position: relative; height: var(--mv2-canvas-height, max(640px, calc(100dvh - 200px))); min-height: 320px; margin-top: 0; isolation: isolate; overflow: clip; border-radius: var(--radius-lg); background: var(--bg-soft); transition: none; }
 .mv2-workspace .map-ideas-map { position: absolute; inset: 0; min-width: 0; }
 .mv2-workspace .map-shell--workspace { height: 100%; border-radius: 0; box-shadow: none; border: 0; }
@@ -145,15 +148,15 @@
 .mv2-workspace [hidden] { display: none; }
 .mv2-workspace .poi-col.is-sheet-hidden:not([hidden]) { display: block; }
 .mv2-workspace .poi-col--see > .poi-col-head { display: none; }
-.mv2-workspace .poi-col--needs > .poi-col-head { padding: var(--space-7); background: transparent; color: var(--text); }
-.mv2-workspace .poi-plan-list { padding: var(--space-7); }
-.mv2-workspace .poi-col--needs > :not(.mv2-sheet-handle):not(.poi-col-head) { margin-inline: var(--space-7); }
+.mv2-workspace .poi-col--needs > .poi-col-head { padding: var(--mv2-panel-pad); background: transparent; color: var(--text); }
+.mv2-workspace .poi-plan-list { padding: var(--mv2-panel-pad); }
+.mv2-workspace .poi-col--needs > :not(.mv2-sheet-handle):not(.poi-col-head) { margin-inline: var(--mv2-panel-pad); }
 .mv2-workspace .lrow-new { border-bottom: 1px solid var(--line); }
-.mv2-workspace .lrow-sum { display: grid; grid-template-columns: 12px 1fr 16px; padding: var(--space-7) 0; row-gap: var(--space-2); }
+.mv2-workspace .lrow-sum { display: grid; grid-template-columns: 12px 1fr 16px; padding: var(--mv2-panel-pad) 0; row-gap: var(--space-2); }
 .mv2-workspace .lr-name { font-size: 13px; font-weight: 700; }
 .mv2-workspace .lr-meta { grid-column: 2; font-size: var(--text-xs); color: var(--text-2); }
 .mv2-workspace .lr-go { grid-column: 3; grid-row: 1 / 3; align-self: center; }
-.mv2-deck-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-7); border-bottom: 1px solid var(--line); }
+.mv2-deck-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--mv2-panel-pad); border-bottom: 1px solid var(--line); }
 .mv2-deck-header h2 { display: flex; align-items: center; gap: var(--space-3); font: var(--pw-title); margin: var(--space-2) 0 0; }
 .mv2-deck-header h2 > span { font-size: var(--text-xs); color: var(--text-2); }
 .mv2-reopen-day { position: absolute; top: var(--mv2-inset); left: var(--mv2-inset); z-index: 5; box-shadow: var(--shadow-soft); }
@@ -264,7 +267,7 @@
   .mv2-workspace .map-ideas-grid > .poi-col, .mv2-workspace .mv2-detail { top: auto; bottom: 0; left: 0; right: 0; width: 100%; height: var(--mv2-sheet-height); padding-bottom: var(--safe-bottom); border-radius: var(--radius-lg) var(--radius-lg) 0 0; transition: height var(--motion-med) var(--ease-resize); }
   .mv2-sheet-handle { display: flex; align-items: center; justify-content: center; position: sticky; top: 0; z-index: 2; width: 100%; height: 44px; flex: 0 0 auto; padding: 0; border: 0; background: var(--card); color: var(--text-2); touch-action: none; cursor: ns-resize; }
   .mv2-sheet-handle > span { height: 4px; width: 36px; border-radius: var(--radius-pill); background: var(--line); transition: background var(--motion-fast) var(--ease-paper), box-shadow var(--motion-fast) var(--ease-paper); }
-  .mv2-workspace .mv2-deck-header { padding: 0 var(--space-7) var(--space-4); }
+  .mv2-workspace .mv2-deck-header { padding: 0 var(--mv2-panel-pad) var(--space-4); }
   .mv2-deck-header h2 { font-size: 17px; }
   .mv2-workspace .poi-plan-list { padding-top: var(--space-2); }
   .mv2-workspace .mv2-ribbon { left: var(--space-4); right: var(--space-4); bottom: calc(var(--mv2-sheet-height) + var(--space-3)); min-height: 56px; height: 56px; padding-block: var(--space-3); gap: var(--space-3); transition: bottom var(--motion-med) var(--ease-resize); }
@@ -398,7 +401,7 @@
 .mv2-workspace .lrow-deck { border: 0; border-bottom: 1px solid var(--pw-line-soft, var(--line)); border-radius: 0; background: transparent; margin: 0; }
 .mv2-workspace .lrow-deck:last-of-type { border-bottom: 0; }
 .mv2-workspace .lrow-deck[open] { padding-bottom: 0; }
-.mv2-workspace .lrow-deck .lrow-sum { grid-template-columns: 34px 1fr 16px; padding: var(--space-7) 0; border-radius: var(--radius-sm); transition: none; }
+.mv2-workspace .lrow-deck .lrow-sum { grid-template-columns: 34px 1fr 16px; padding: var(--mv2-panel-pad) 0; border-radius: var(--radius-sm); transition: none; }
 .mv2-workspace .lrow-deck .lrow-sum:hover { background: color-mix(in srgb, var(--color-primary) 5%, transparent); }
 .mv2-workspace .lrow-deck .lrow-sum:focus-visible { outline: none; box-shadow: var(--ring); }
 .mv2-workspace .lrow-deck .lrow-tile { display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--pw-sunken, var(--bg-soft)); color: var(--ink-teal, var(--color-primary)); }
@@ -518,7 +521,7 @@
 /* Map edit: the Swap with list. Its control keeps a 44px touch target. */
 
 /* ===== Map v2 lens decks (package 911-W2): DriveTabs and FixDeck ===== */
-.mv2-lens { display: flex; flex-direction: column; gap: var(--space-5); padding: 0 var(--space-7) var(--space-7); color: var(--pw-ink); }
+.mv2-lens { display: flex; flex-direction: column; gap: var(--space-5); padding: 0 var(--mv2-panel-pad) var(--mv2-panel-pad); color: var(--pw-ink); }
 .mv2-lens-phase { margin: 0; padding: 12px; border-radius: 12px; background: var(--pw-soft); color: var(--pw-ink); font: var(--pw-meta); }
 .mv2-lens-tabs { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--pw-sunken); }
 .mv2-lens-tab { flex: 0 0 auto; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--pw-ink); font: var(--pw-ui); cursor: pointer; transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper); }
@@ -575,11 +578,12 @@
   --mv2-lens-edge: var(--pw-line);
   --mv2-lens-accent: var(--pw-marigold-500);
   --mv2-lens-accent-ink: var(--pw-on-marigold);
-  padding: 0 var(--space-4) var(--space-4);
+  /* One panel inset like the Drive deck and the Day plan: 0 on top (the deck
+     head carries the shared inset), the shared pad inline and at the bottom. */
+  padding: 0 var(--mv2-panel-pad) var(--mv2-panel-pad);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4);
   color: var(--pw-ink);
 }
 :root:where([data-theme='dark']) .mv2-lens-deck {
@@ -657,7 +661,7 @@
 }
 
 /* ============ Map v2 lens decks (package 911-W4-decks) ============ */
-.mv2-lens-deck-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-4); }
+.mv2-lens-deck-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding-top: var(--mv2-panel-pad); }
 .mv2-lens-deck-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .mv2-lens-deck-kicker { color: var(--pw-marigold-ink); font: var(--pw-kicker); font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
 .mv2-lens-deck-title { margin: 0; color: var(--pw-ink); font: var(--pw-title); }
@@ -1302,7 +1306,7 @@
   width: auto; margin: 0; padding: var(--space-5) var(--space-7); border-radius: 0; box-shadow: none;
   background: transparent; font-size: var(--text-xs);
 }
-.mv2-deck-footer { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-4) var(--space-7); border-top: 1px solid var(--line); }
+.mv2-deck-footer { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-4) var(--mv2-panel-pad); border-top: 1px solid var(--line); }
 .mv2-deck-footer .mv2-lens-source { flex: 1; }
 .mv2-suggestion-info > summary { list-style: none; }
 .mv2-suggestion-notes { padding-block: var(--space-5); font-size: var(--text-xs); }
@@ -1388,7 +1392,7 @@
 
 /* ---- Live suggestion states on top of the deck ---- */
 .mv2-workspace .mv2-suggestion-notes:empty { display: none; }
-.mv2-workspace .mv2-suggestion-notes { padding: var(--space-3) var(--space-5) 0; }
+.mv2-workspace .mv2-suggestion-notes { padding: var(--mv2-panel-pad) var(--mv2-panel-pad) 0; }
 .mv2-workspace .mv2-suggestion-notes > p { margin: 0 0 var(--space-2); }
 
 /* ---- Motion: panels slide in, the deck content rises on each lens change ---- */
