@@ -2060,10 +2060,10 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                 {/* The one home of the day's count. The rail and the Gap deck do not repeat it. */}
                 <span className="small muted">{activeDaySlots.length === 0 ? 'Drive plan · In progress' : `${activeReadinessLabel(activeDayReadiness)}`}{dayRainPct?.[activeDayIndex] != null && dayRainPct[activeDayIndex]! >= 40 ? ` · Rain ${Math.round(dayRainPct[activeDayIndex]!)}%` : ''}</span>
               </div>
-              <button type="button" className="chip chip-sm" onClick={() => openGapDeck()} title="Back to the open parts and their picks">Gaps</button>
+              <button type="button" className="chip chip-sm mv2-plan-chip" onClick={() => openGapDeck()} title="Back to the open parts and their picks">Gaps</button>
               <button
                 type="button"
-                className="chip chip-sm"
+                className="chip chip-sm mv2-plan-chip"
                 aria-pressed={shapeView}
                 title={shapeView ? 'Back to the list' : 'See the day as a shape: drives and parts on one clock'}
                 onClick={() => setShapeView(v => !v)}

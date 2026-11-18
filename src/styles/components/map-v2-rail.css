@@ -148,7 +148,7 @@
 .mv2-workspace [hidden] { display: none; }
 .mv2-workspace .poi-col.is-sheet-hidden:not([hidden]) { display: block; }
 .mv2-workspace .poi-col--see > .poi-col-head { display: none; }
-.mv2-workspace .poi-col--needs > .poi-col-head { padding: var(--mv2-panel-pad); background: transparent; color: var(--text); }
+.mv2-workspace .poi-col--needs > .poi-col-head { padding: var(--mv2-panel-pad); row-gap: var(--space-4); background: transparent; color: var(--text); }
 .mv2-workspace .poi-plan-list { padding: var(--mv2-panel-pad); }
 .mv2-workspace .poi-col--needs > :not(.mv2-sheet-handle):not(.poi-col-head) { margin-inline: var(--mv2-panel-pad); }
 .mv2-workspace .lrow-new { border-bottom: 1px solid var(--line); }
@@ -1484,3 +1484,120 @@
 /* An edge tab joins its panel, so the side that meets the panel draws no line. */
 .mv2-workspace .mv2-edge-tab--day { border-left: 0; }
 .mv2-workspace .mv2-edge-tab--deck { border-right: 0; }
+
+/* ---- Day plan rail: the needs panel in the Map V2 language ----
+   Scoped to the V2 workspace so the legacy day-slot rules that other pages
+   share stay untouched. Only paint and rhythm change; every control keeps its
+   markup, state and behaviour. Values come from the Map tab v2 mockups. */
+/* Head: a centred title with a day-tone dot, a small count line and pill chips. */
+.mv2-workspace .poi-col--needs .poi-col-head-txt { align-items: center; text-align: center; gap: var(--space-1); }
+.mv2-workspace .poi-col--needs .poi-col-head-txt > b {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-3);
+  font: var(--pw-title); font-size: 17px; line-height: 21px; letter-spacing: 0;
+  color: var(--pw-ink); white-space: normal;
+}
+.mv2-workspace .poi-col--needs .poi-col-head-txt > b::before {
+  content: ''; flex: none; width: 9px; height: 9px; border-radius: var(--radius-pill);
+  background: var(--mv2-day-tone, var(--pw-lagoon-600));
+}
+.mv2-workspace .poi-col--needs .poi-col-head-txt > .small {
+  margin: 0; font-size: 12px; line-height: 15px; color: var(--pw-ink-3); text-align: center;
+}
+.mv2-workspace .poi-col--needs > .poi-col-head > .mv2-plan-chip {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  min-height: 32px; padding: 0 var(--space-4); border-radius: var(--radius-pill);
+  border: 1px solid var(--pw-line); background: var(--pw-sunken); color: var(--pw-ink-2);
+  font-size: 11.5px; font-weight: 700;
+  transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper);
+}
+.mv2-workspace .poi-col--needs > .poi-col-head > .mv2-plan-chip::after {
+  content: ''; position: absolute; inset: -6px; border-radius: inherit;
+}
+.mv2-workspace .poi-col--needs > .poi-col-head > .mv2-plan-chip[aria-pressed='true'] {
+  background: var(--pw-sea-700); border-color: var(--pw-sea-700); color: var(--pw-card);
+}
+.mv2-workspace .poi-col--needs > .poi-col-head > .poi-fold {
+  background: var(--pw-sunken); border-color: var(--pw-line); color: var(--pw-ink-2);
+}
+
+/* Slots: flat rows on hairlines, a 24px state tile, name over a small meta line. */
+.mv2-workspace .poi-col--needs .slots-list { gap: 0; padding: 0; }
+.mv2-workspace .poi-col--needs .slots-list .day-slot {
+  border: 0; border-bottom: 1px solid var(--pw-line-soft); border-radius: 0;
+  background: transparent; box-shadow: none;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot:last-child { border-bottom: 0; }
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-auto { background: transparent; border-style: solid; }
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-open {
+  background: var(--pw-marigold-50); border-bottom-color: transparent;
+  border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1.5px var(--pw-marigold-500);
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot-top {
+  display: grid; grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto; align-items: center;
+  column-gap: var(--space-4); row-gap: 0;
+  width: 100%; padding: var(--space-4) var(--space-3); text-align: left;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot-st {
+  grid-column: 1; grid-row: 1 / span 2; width: 24px; height: 24px; font-size: 11px;
+  border: 1.5px solid var(--pw-line); background: var(--pw-card); color: var(--pw-ink-3);
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-filled .day-slot-st {
+  background: var(--pw-lagoon-100); border-color: var(--pw-lagoon-600); color: var(--pw-sea-700);
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-auto .day-slot-st {
+  border-style: dashed; border-color: var(--pw-ink-4); background: transparent;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-empty .day-slot-st {
+  border: 2px dashed var(--pw-marigold-500); background: transparent;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot-lab {
+  grid-column: 2; grid-row: 1; min-width: 0;
+  font-size: 13.5px; font-weight: 700; line-height: 1.3; color: var(--pw-ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-open .day-slot-lab { color: var(--pw-marigold-ink); }
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-auto .day-slot-lab { color: var(--pw-ink-3); font-weight: 600; }
+.mv2-workspace .poi-col--needs .slots-list .day-slot-win {
+  grid-column: 2; grid-row: 2;
+  font-size: 11.5px; line-height: 1.3; color: var(--pw-ink-3);
+  letter-spacing: 0; text-transform: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot-val {
+  grid-column: 3; grid-row: 1 / span 2; margin-left: var(--space-3); max-width: 46%;
+  font-size: 11.5px; color: var(--pw-ink-2);
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot-urgent,
+.mv2-workspace .poi-col--needs .slots-list .day-slot-missed {
+  grid-column: 3; grid-row: 1; margin-left: var(--space-3); font-size: 11.5px;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot-hint {
+  margin: 0; padding: 0 var(--space-3) var(--space-4) calc(24px + var(--space-4));
+  font-size: 11.5px; color: var(--pw-ink-3);
+}
+
+/* The open slot's source shelf and its Find / Fill pills. */
+.mv2-workspace .poi-col--needs .day-slot-cands {
+  margin: 0 var(--space-3) var(--space-4); padding: var(--space-4);
+  border: 1px solid var(--pw-line-soft); border-radius: var(--radius-sm);
+  background: var(--pw-card);
+}
+.mv2-workspace .poi-col--needs .day-slot-cand { padding: var(--space-4) 0; }
+.mv2-workspace .poi-col--needs .day-slot-cand-nm b { font-size: 13px; font-weight: 700; }
+.mv2-workspace .poi-col--needs .day-slot-cand-nm > span { font-size: 11.5px; color: var(--pw-ink-3); }
+.mv2-workspace .poi-col--needs .day-slot-fill {
+  position: relative; min-height: 30px; padding: 0 var(--space-5);
+  border: 1px solid transparent; border-radius: var(--radius-pill);
+  background: var(--pw-sea-700); color: var(--pw-card);
+  font-size: 12px; font-weight: 700;
+  transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper);
+}
+.mv2-workspace .poi-col--needs .day-slot-fill::after {
+  content: ''; position: absolute; inset: -7px; border-radius: inherit;
+}
+.mv2-workspace .poi-col--needs .day-slot-fill:hover:not(:disabled) { background: var(--pw-sea-900); }
+.mv2-workspace .poi-col--needs .day-slot-fill:focus-visible { outline: 2px solid var(--pw-sea-700); outline-offset: 2px; }
+.mv2-workspace .poi-col--needs .day-slot-drift-t,
+.mv2-workspace .poi-col--needs .day-slot-vote-lead,
+.mv2-workspace .poi-col--needs .day-slot-pattern { font-size: 11.5px; color: var(--pw-ink-2); }
