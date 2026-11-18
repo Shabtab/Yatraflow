@@ -443,7 +443,7 @@ describe('#414 follow-up — the settings banner needs a real remote edit', () =
     const saved: Trip = { ...trip, ...run.patch }
     // A migrated database: every optional column exists, as in production.
     const cols: OptionalColumnsProbe = { economy: true, price: true, roundTrip: true, cover: true, inviteCode: true, deleted: true, stayStyle: true, driverCount: true, hasVulnerable: true, driveAfterDinner: true, vehicleProfile: true, tankL: true, rentPerDayInr: true, localTrain: true, drivesPart: true, flights: true, ref: true, growth: true }
-    const row = { ...tripUpdateRow(saved, 'owner-1', cols), owner_id: 'owner-1', created_at: new Date(saved.createdAt).toISOString(), updated_at: new Date(saved.updatedAt + 5_000).toISOString() } as TripRow
+    const row = { ...tripUpdateRow(saved, 'owner-1', cols), owner_id: 'owner-1', created_at: new Date(saved.createdAt).toISOString(), updated_at: new Date(saved.updatedAt + 5_000).toISOString() } as unknown as TripRow
     const echoed = rowToTrip(JSON.parse(JSON.stringify(row)) as TripRow, saved.members ?? [])
     expect(settingsSnapshot(echoed)).toBe(settingsSnapshot(saved))
   })
