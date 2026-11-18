@@ -34,6 +34,19 @@ export function escapeClosesCard(event: CardCloseKey): boolean {
   return true
 }
 
+/** The same decision for a card that is itself a `role="dialog"` surface, such
+ *  as the bottom stop bar. `inOwnDialog` marks a dialog match that IS the
+ *  card's own root: that one is the card, not another surface, so it does not
+ *  keep the key. A dialog anywhere else (the add modal, a place card) still
+ *  keeps it. */
+export function escapeClosesCardWithin(event: CardCloseKey & { inOwnDialog?: boolean }): boolean {
+  if (event.key !== 'Escape') return false
+  if (event.defaultPrevented) return false
+  if (event.inTextField) return false
+  if (event.inOtherDialog && !event.inOwnDialog) return false
+  return true
+}
+
 /** Read a real keydown into the terms `escapeClosesCard` decides on. */
 export function cardCloseFromEvent(event: KeyboardEvent): boolean {
   const target = event.target instanceof Element ? event.target : null
@@ -42,5 +55,19 @@ export function cardCloseFromEvent(event: KeyboardEvent): boolean {
     defaultPrevented: event.defaultPrevented,
     inTextField: target?.closest(TEXT_FIELD) != null,
     inOtherDialog: target?.closest(OTHER_DIALOG) != null,
+  })
+}
+
+/** Read a real keydown into the terms `escapeClosesCardWithin` decides on,
+ *  with `cardRoot` naming the card's own dialog element. */
+export function cardCloseFromEventWithin(event: KeyboardEvent, cardRoot: Element | null): boolean {
+  const target = event.target instanceof Element ? event.target : null
+  const dialog = target?.closest(OTHER_DIALOG) ?? null
+  return escapeClosesCardWithin({
+    key: event.key,
+    defaultPrevented: event.defaultPrevented,
+    inTextField: target?.closest(TEXT_FIELD) != null,
+    inOtherDialog: dialog != null,
+    inOwnDialog: dialog != null && dialog === cardRoot,
   })
 }

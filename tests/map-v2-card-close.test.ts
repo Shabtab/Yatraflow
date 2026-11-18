@@ -5,7 +5,7 @@
 // off the real sources.
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { escapeClosesCard } from '../src/pages/trip/map/editing/cardClose'
+import { escapeClosesCard, escapeClosesCardWithin } from '../src/pages/trip/map/editing/cardClose'
 
 const read = (rel: string) => readFileSync(new URL('../' + rel, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const cards = read('src/pages/trip/map/editing/EditCards.tsx')
@@ -97,5 +97,48 @@ describe('the page owns the one close', () => {
   it('returns focus to the stop that opened the card', () => {
     expect(tab).toContain('stopOpener.current = document.activeElement')
     expect(tab).toContain('target?.focus({ preventScroll: true })')
+  })
+})
+
+// A node test cannot fire a DOM event, so the within-card decision is a pure
+// function here. The event reader that feeds it is pinned off the sources.
+const withinBase = { key: 'Escape', defaultPrevented: false, inTextField: false, inOtherDialog: false }
+
+describe('escapeClosesCardWithin', () => {
+  it('closes when the only dialog match is the card itself', () => {
+    expect(escapeClosesCardWithin({ ...withinBase, inOtherDialog: true, inOwnDialog: true })).toBe(true)
+  })
+
+  it('keeps the key for a dialog that is not the card', () => {
+    expect(escapeClosesCardWithin({ ...withinBase, inOtherDialog: true })).toBe(false)
+    expect(escapeClosesCardWithin({ ...withinBase, inOtherDialog: true, inOwnDialog: false })).toBe(false)
+  })
+
+  it('closes on a plain Escape with no dialog around', () => {
+    expect(escapeClosesCardWithin({ ...withinBase })).toBe(true)
+  })
+
+  it('still yields to a text field, another key and a taken key', () => {
+    expect(escapeClosesCardWithin({ ...withinBase, inTextField: true, inOwnDialog: true })).toBe(false)
+    expect(escapeClosesCardWithin({ ...withinBase, key: 'Enter', inOwnDialog: true })).toBe(false)
+    expect(escapeClosesCardWithin({ ...withinBase, defaultPrevented: true, inOwnDialog: true })).toBe(false)
+  })
+})
+
+describe('the bottom stop bar closes on Escape too', () => {
+  it('binds the shared decision while the bar is on screen', () => {
+    expect(tripMap).toContain('cardCloseFromEventWithin')
+    expect(tripMap).toContain('if (!stopJumpOpen) return')
+    expect(tripMap).toContain("document.addEventListener('keydown', onKey)")
+  })
+
+  it('names the bar as its own card root and clears the same selection the buttons clear', () => {
+    expect(tripMap).toContain('ref={stopJumpRef}')
+    expect(tripMap).toMatch(/cardCloseFromEventWithin\(event, stopJumpRef\.current\)\) return\n\s*setSelectedStop\(null\)/)
+  })
+
+  it('returns focus to the pin that opened the bar', () => {
+    expect(tripMap).toContain('stopJumpOpener.current = event.currentTarget')
+    expect(tripMap).toContain('opener.focus({ preventScroll: true })')
   })
 })

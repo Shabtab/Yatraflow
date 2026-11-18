@@ -13,6 +13,7 @@ import { dayColor } from '../lib/mapStyles/dayColors'
 import { buildJourney, coLocates, getAssumptions, isRoundTrip, isAirMode, type LegEstimate } from '../lib/engine'
 import { buildStopClock } from '../lib/stopClock'
 import type { RouteMark } from '../lib/map/routeMarks'
+import { cardCloseFromEventWithin } from '../pages/trip/map/editing/cardClose'
 import { clockHM, type ClockMilestone } from '../lib/clockOverlay'
 import { pointAtKm } from '../lib/geo'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
@@ -791,6 +792,28 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   // Selected stop (stop-pin click) — powers the compact cross-link popup that
   // jumps to the Timeline/Board tabs. Null = no popup.
   const [selectedStop, setSelectedStop] = useState<{ id: string; title: string; dayIndex: number } | null>(null)
+  // The popup's own dialog element, for the Escape decision (cardClose.ts).
+  const stopJumpRef = useRef<HTMLDivElement | null>(null)
+  // The control that opened the popup. Escape puts focus back on it.
+  const stopJumpOpener = useRef<HTMLElement | null>(null)
+  const stopJumpOpen = selectedStop != null && (onOpenInTimeline != null || onOpenInBoard != null || onDeleteStop != null)
+  // Escape closes the popup through the same card-close decision the stop edit
+  // card uses: a key that starts in an open menu, another dialog or a text
+  // field keeps its own surface. The popup is itself a role="dialog", so it is
+  // the decision's card root — a key that starts inside it still closes it.
+  useEffect(() => {
+    if (!stopJumpOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (!cardCloseFromEventWithin(event, stopJumpRef.current)) return
+      setSelectedStop(null)
+      requestAnimationFrame(() => {
+        const opener = stopJumpOpener.current
+        if (opener?.isConnected && opener.getClientRects().length) opener.focus({ preventScroll: true })
+      })
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [stopJumpOpen])
   // Collapse plays a short scale-down first (mapCollapse) so expand/collapse
   // both glide; the class is transient and the timer is cleared on unmount.
   const [closing, setClosing] = useState(false)
@@ -2482,7 +2505,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                       <button
                         className={`yf-map-pin ${workspaceChrome ? `mv2-map-stop${p.category === 'hotel' || onLastNight ? ' is-stay' : ''}${isBase && frameStayRing ? ' is-stay-hero' : ''}${p.status === 'maybe' ? ' is-tentative' : ''}` : 'yf-map-tear'}${p.status === 'maybe' ? ' yf-map-maybe' : ''}`}
                         style={{ '--pin-color': colorForDay(p.dayIndex), ...(workspaceChrome ? { '--mv2-marker-ink': '#FFFFFF' } : {}) } as React.CSSProperties}
-                        onClick={() => { onOpenStop?.(p.id); if (onOpenInTimeline || onOpenInBoard || onDeleteStop) setSelectedStop({ id: p.id, title: p.title, dayIndex: p.dayIndex }) }}
+                        onClick={event => { stopJumpOpener.current = event.currentTarget; onOpenStop?.(p.id); if (onOpenInTimeline || onOpenInBoard || onDeleteStop) setSelectedStop({ id: p.id, title: p.title, dayIndex: p.dayIndex }) }}
                         data-active-day={workspaceChrome && activeTagDay != null && p.dayIndex === activeTagDay ? 'true' : undefined}
                         aria-label={`Stop ${num}: ${p.title}${workspaceChrome && trip.fixedCommitments?.some(lock => lock.stopId === p.id && lock.dayIndex === p.dayIndex) ? ', fixed time' : ''}`}
                         title={p.title}
@@ -2600,7 +2623,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
         )}
 
         {selectedStop && (onOpenInTimeline || onOpenInBoard || onDeleteStop) && (
-          <div className="yf-stop-jump" role="dialog" aria-label={`Selected stop: ${selectedStop.title}`}
+          <div ref={stopJumpRef} className="yf-stop-jump" role="dialog" aria-label={`Selected stop: ${selectedStop.title}`}
             style={{ position: 'absolute', left: '50%', bottom: 'calc(var(--mv2-sheet-height, 0px) + 14px)', transform: 'translateX(-50%)', zIndex: 5, display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 10px', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-soft)', maxWidth: 'calc(100% - 24px)' }}>
             {/* #612: the name gets its own row. It used to share one flex row
                 with every action, so at phone width the buttons kept their
