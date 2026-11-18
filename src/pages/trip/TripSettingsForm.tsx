@@ -113,6 +113,19 @@ export function formFromTrip(trip: Trip): SettingsFormState {
   }
 }
 
+/** #414 follow-up: the fields this form owns, as one comparable string. The
+ *  remote-edit banner compares this, not the clock, so the server echo of our
+ *  own save and writes to other parts of the trip cannot raise it. */
+export function settingsSnapshot(t: Trip): string {
+  return JSON.stringify([formFromTrip(t), t.destinations, t.destinationCoords ?? null, t.startLocationCoords ?? null])
+}
+
+/** #414 follow-up: only another owner or editor can change trip settings. On a
+ *  trip where you are the only editor, a remote edit cannot exist. */
+export function hasOtherEditor(members: readonly { userId: string; role: string }[], meId: string | null | undefined): boolean {
+  return members.some(m => m.userId !== meId && (m.role === 'owner' || m.role === 'editor'))
+}
+
 export type SettingsDryRun =
   | { ok: true; patch: Partial<Trip>; startCoordsDropped: boolean }
   | { ok: false; reason: string; blocked?: number[] }
@@ -553,11 +566,22 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
    *  `openedAtRef` is the updatedAt the draft was born against; our OWN save
    *  rebases it through `ownSaveRef` so it never fires on ourselves. */
   const openedAtRef = useRef(trip.updatedAt)
+  const openedSnapRef = useRef(settingsSnapshot(trip))
   const ownSaveRef = useRef(false)
   const [remoteAt, setRemoteAt] = useState<number | null>(null)
   useEffect(() => {
-    if (ownSaveRef.current) { ownSaveRef.current = false; openedAtRef.current = trip.updatedAt; return }
-    if (trip.updatedAt > openedAtRef.current) setRemoteAt(trip.updatedAt)
+    const snap = settingsSnapshot(trip)
+    if (ownSaveRef.current) { ownSaveRef.current = false; openedAtRef.current = trip.updatedAt; openedSnapRef.current = snap; return }
+    if (trip.updatedAt <= openedAtRef.current) return
+    // A newer row that changes none of this form's fields (the echo of our own
+    // save, a stop edit, a background write) is not a conflict: rebase quietly.
+    if (snap === openedSnapRef.current || !hasOtherEditor(membersOf(trip), meId)) {
+      openedAtRef.current = trip.updatedAt; openedSnapRef.current = snap
+      return
+    }
+    setRemoteAt(trip.updatedAt)
+    // Deps stay on the clock alone: field changes are compared inside.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip.updatedAt])
   // The day grid follows the date range — show what the picker will do to it.
   const dayDelta = (() => {
@@ -679,6 +703,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
     setStartPin(t.startLocationCoords ? { coords: t.startLocationCoords, label: t.startLocation } : null)
     setStartNotice(''); setDestInput(''); setRenamingDest(null); setRenameDraft('')
     openedAtRef.current = t.updatedAt
+    openedSnapRef.current = settingsSnapshot(t)
     setRemoteAt(null)
   }
 
@@ -976,7 +1001,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
         <RemoteEditBanner
           noun="trip settings"
           byName=""
-          onKeepMine={() => { openedAtRef.current = trip.updatedAt; setRemoteAt(null) }}
+          onKeepMine={() => { openedAtRef.current = trip.updatedAt; openedSnapRef.current = settingsSnapshot(trip); setRemoteAt(null) }}
           onTakeTheirs={() => reseedFrom(trip)}
         />
       )}

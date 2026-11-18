@@ -68,7 +68,7 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 import { readFileSync } from 'node:fs'
 // The predicate and the seed factory live on the form; the store import chain
 // rides the same mock the session-lifecycle harness uses.
-import { settingsDryRun, settingsAreDirty, formFromTrip } from '../src/pages/trip/TripSettingsForm'
+import { settingsDryRun, settingsAreDirty, formFromTrip, settingsSnapshot, hasOtherEditor } from '../src/pages/trip/TripSettingsForm'
 import { zipDests, splitDests, renameDest } from '../src/lib/destPairs'
 import { parseCapacityL, parseVehicleEconomy } from '../src/lib/vehicleProfile'
 import { reconcileDays } from '../src/store/store'
@@ -264,6 +264,9 @@ describe('#408/#412/#414 — the form and its neighbours are wired as pinned', (
     // The shared banner keeps its stop-editor default — one component, two nouns.
     expect(banner).toMatch(/noun = 'stop'/)
     expect(banner).toMatch(/edited this \{noun\} while you had it open/)
+    // The banner needs a changed settings field AND another editor (#414 follow-up).
+    expect(form).toMatch(/snap === openedSnapRef\.current \|\| !hasOtherEditor\(membersOf\(trip\), meId\)/)
+    expect(form).toMatch(/openedSnapRef\.current = settingsSnapshot\(t\)/)
   })
 
   it('halt plans are stamped, freshness-checked, and zombies pruned', () => {
@@ -395,5 +398,27 @@ describe('flight day protection', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.blocked).toEqual([3])
     expect(reconcileDays(t.days, f.startDate, f.endDate, new Set(t.flights.map(f => f.dayIndex))).error).toBeTruthy()
+  })
+})
+
+describe('#414 follow-up — the settings banner needs a real remote edit', () => {
+  const base = structuredClone(seedData.trips[0]) as Trip
+
+  it('the snapshot ignores the clock and non-settings fields', () => {
+    const later = { ...base, updatedAt: base.updatedAt + 60_000, days: [...base.days] }
+    expect(settingsSnapshot(later)).toBe(settingsSnapshot(base))
+  })
+
+  it('the snapshot moves when a settings field moves', () => {
+    expect(settingsSnapshot({ ...base, name: `${base.name} 2` })).not.toBe(settingsSnapshot(base))
+    expect(settingsSnapshot({ ...base, destinations: [...base.destinations, 'Hampi'] })).not.toBe(settingsSnapshot(base))
+  })
+
+  it('only another owner or editor counts as a crew member who can edit settings', () => {
+    expect(hasOtherEditor([{ userId: 'me', role: 'owner' }], 'me')).toBe(false)
+    expect(hasOtherEditor([{ userId: 'me', role: 'owner' }, { userId: 'v', role: 'viewer' }, { userId: 'c', role: 'commenter' }], 'me')).toBe(false)
+    expect(hasOtherEditor([{ userId: 'me', role: 'owner' }, { userId: 'e', role: 'editor' }], 'me')).toBe(true)
+    expect(hasOtherEditor([{ userId: 'o', role: 'owner' }, { userId: 'me', role: 'editor' }], 'me')).toBe(true)
+    expect(hasOtherEditor([], 'me')).toBe(false)
   })
 })
