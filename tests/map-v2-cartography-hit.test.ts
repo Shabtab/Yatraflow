@@ -20,4 +20,8 @@ describe('coarse pointer hit areas', () => {
     expect(coarse).toMatch(/\.yf-map-ctrls button[^{]*\{ min-width: 44px; min-height: 44px; \}/)
     expect(coarse).toMatch(/\.mv2-omnibar input, \.mv2-omnibar \.btn \{ min-height: 44px; \}/)
   })
+
+  it('keeps the omnibar buttons at 44px on a fine pointer too', () => {
+    expect(css.split('\n')).toContain('.mv2-omnibar .btn { min-height: 44px; }')
+  })
 })

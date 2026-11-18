@@ -36,6 +36,10 @@ button.mv2-warn-diamond:hover { transform: rotate(45deg) scale(1.12); box-shadow
 /* Every tappable mark answers a hover: the pile fans out and lifts. */
 button.mv2-stack:hover, button.mv2-stack:focus-visible { transform: translateY(-2px); box-shadow: 0 -6px 0 -2px #D6EEEA, 0 -6px 0 -1px #0B6B63AA, 0 -12px 0 -5px #D6EEEA, 0 -12px 0 -4px #0B6B6380, 0 10px 18px -8px rgba(64, 54, 44, 0.55); }
 button.mv2-stack:focus-visible { outline: 2px solid var(--pw-ink); outline-offset: 3px; }
+/* The omnibar's Find and Clear are mouse targets too: 44 px on every pointer,
+   the same floor the deck buttons carry. The coarse block below keeps the
+   input's own match. */
+.mv2-omnibar .btn { min-height: 44px; }
 @media (pointer: coarse) {
   .mv2-workspace .yf-map-pin--slot::before, .mv2-workspace .mv2-warn-diamond::before, .mv2-workspace .yf-map-idea-add::before { content: ''; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
   .mv2-workspace .yf-map-ctrls button, .mv2-workspace .map-legend-toggle { min-width: 44px; min-height: 44px; }
