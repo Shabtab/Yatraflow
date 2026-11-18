@@ -8,12 +8,17 @@ import { buildRouteHeightPlot, heightLabelY, strokeClearOfBox } from '../../lib/
 import { overviewPinText } from '../../lib/overviewRouteMap'
 
 /** The corner overlay's box in chart units. It mirrors `.ovw-elev-inset` in
- *  overview-route-card.css (top 8, left 8, 76 square). The margin keeps a
+ *  overview-route-card.css (top 8, left 8, 60 square). The margin keeps a
  *  stroke from grazing its border. */
-const INSET_BOX = { left: 8, top: 8, right: 84, bottom: 84 }
+const INSET_BOX = { left: 8, top: 8, right: 68, bottom: 68 }
 const INSET_MARGIN = 6
-/** A narrower chart has no corner free of its labels. */
-const INSET_MIN_WIDTH = 480
+/** A narrower chart has no corner free of its labels: the desktop card's own
+ *  chart is about 320 to 470 px, the 390 phone chart about 340 px, so both
+ *  clear this floor and the geometry decides the rest. */
+const INSET_MIN_WIDTH = 280
+/** The sun's halo radius plus 2 px: how far right of the inset the sun steps
+ *  when the inset shows, so the two never overlap. */
+const SUN_CLEAR = 26
 
 /** The SVG fills the CONTENT box of its frame, so measure that box only. */
 function useDrawableWidth(fallback: number) {
@@ -96,7 +101,7 @@ export function OverviewElevationProfile({
     return { mark, anchor, dx, name, heightText, labelWidth, nameY }
   }), [labelled, width, compact, plot])
 
-  // The overlay in the top-left corner (`.ovw-elev-inset`, 8 px in, 76 px square)
+  // The overlay in the top-left corner (`.ovw-elev-inset`, 8 px in, 60 px square)
   // shows only when the chart is wide enough and it covers neither the stroke
   // nor an end label. A route that starts high puts both in that corner.
   const insetRoom = useMemo(() => {
@@ -110,6 +115,11 @@ export function OverviewElevationProfile({
       return right < box.left || left > box.right || nameY + 17 < box.top || nameY - 11 > box.bottom
     })
   }, [width, plot, endLabels])
+
+  // The decorative sun shares the top-left corner with the inset. When the
+  // inset shows, the sun steps right of it by its halo, so the two never
+  // overlap; when it hides, the sun keeps its own place.
+  const sunCx = insetRoom ? Math.max(width * 0.141, INSET_BOX.right + SUN_CLEAR) : width * 0.141
 
   const peak = plot.peak
   const peakBoxH = 34
@@ -150,8 +160,8 @@ export function OverviewElevationProfile({
         </defs>
 
         <rect x="0" y="0" width={width} height={height} fill={`url(#${skyId})`} />
-        <circle className="ovw-elev-sun-halo" cx={width * 0.141} cy={height * 0.207} r={24} aria-hidden="true" />
-        <circle className="ovw-elev-sun" cx={width * 0.141} cy={height * 0.207} r={15} aria-hidden="true" />
+        <circle className="ovw-elev-sun-halo" cx={sunCx} cy={height * 0.207} r={24} aria-hidden="true" />
+        <circle className="ovw-elev-sun" cx={sunCx} cy={height * 0.207} r={15} aria-hidden="true" />
         <rect className="ovw-elev-band" x="0" y={plot.baseY} width={width} height={height - plot.baseY} aria-hidden="true" />
 
         {/* Two far ranges are the same plotted curve scaled up from the baseline.

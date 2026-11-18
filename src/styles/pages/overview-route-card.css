@@ -16,8 +16,8 @@
   left: 8px;
   z-index: 1;
   box-sizing: border-box;
-  width: 76px;
-  height: 76px;
+  width: 60px;
+  height: 60px;
   padding: 5px;
   pointer-events: none;
   border: 1px solid var(--pw-line-soft);
@@ -61,15 +61,12 @@
   .ovw2-route .ovw-elev-inset { animation: none; }
 }
 
-/* A 390 phone chart has no corner free of the curve and its labels, so the
-   overlay is dropped there instead of covering them. */
-@media (max-width: 480px) {
-  .ovw-elev-inset { display: none; }
-}
-
-/* A route that starts high puts its first stroke and its start label in the
-   corner. OverviewElevationProfile reads the real geometry and sets this flag,
-   so the overlay hides instead of covering them. */
+/* The one hide rule is the component's own: OverviewElevationProfile reads the
+   real geometry and sets this flag, so the overlay hides when the chart is
+   too narrow (below 280 px) or the route's stroke and end labels would sit
+   under it. No viewport media query here: the desktop chart is about 320 to
+   470 px and the 390 phone chart about 340 px, and both can hold the 60 px
+   corner when the geometry leaves it free. */
 .ovw-elev[data-inset-room='false'] .ovw-elev-inset { display: none; }
 
 /* ===== The header side group (caption and "Open map") ===== */
