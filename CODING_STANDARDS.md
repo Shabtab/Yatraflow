@@ -4,6 +4,9 @@ Locked day titles can name paid places. Public summaries and renderers must show
 Never select artwork from a locked title. Free and purchased days keep their creator titles.
 Trip kit views must check the wire lock before simulation. Locked cards must show no time bar or road facts.
 
+Member removal must not erase access history. Keep the last role and removal state outside the membership row.
+Send membership changes through the checked server command. Ordinary plan updates must omit invite credentials. (#931)
+
 Conventions and hard-won pitfalls. Read during **review**, and reach for a
 single rule while implementing when a change touches that area.
 

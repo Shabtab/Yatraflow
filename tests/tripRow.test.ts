@@ -472,13 +472,14 @@ describe('#799 — tripUpdateRow omits owner_id, tripToRow keeps it', () => {
     expect(row.owner_id).toBe('owner-1')
   })
 
-  it('everything else in the row survives the strip', () => {
+  it('preserves plan fields while owner and invite fields stay server-owned', () => {
     // A strip that also dropped a sibling field would be a silent data-loss bug.
     const t = tripWithExpenses()
     const insert = tripToRow(t, 'owner-1', ALL_COLUMNS)
     const update = tripUpdateRow(t, 'owner-1', ALL_COLUMNS)
     const expected: Record<string, unknown> = { ...insert }
     delete expected.owner_id
+      delete expected.invite_code
     expect(update).toEqual(expected)
     expect(update.expenses).toEqual(t.expenses)
     expect(update.name).toBe(insert.name)

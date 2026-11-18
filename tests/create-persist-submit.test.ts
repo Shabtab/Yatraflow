@@ -40,7 +40,8 @@ const { state, toast } = vi.hoisted(() => ({
 
 vi.mock('../src/components/ui', () => ({ toast }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { memberBootstrapClient } = await import('./helpers/memberBootstrapClient')
   const next = (queue: FakeError[]) => (queue.length ? queue.shift()! : null)
   function query(table: string) {
     const qb: any = {}
@@ -91,7 +92,7 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: () => true,
-    supabase: {
+    supabase: memberBootstrapClient({
       from: (table: string) => {
         const qb = query(table)
         qb.insert = (p: any) => write(table, 'insert', p)
@@ -107,7 +108,7 @@ vi.mock('../src/lib/supabase', () => {
       channel: () => ({ on() { return this }, subscribe() { return this } }),
       removeChannel: () => {},
       rpc: async () => ({ data: null, error: null }),
-    },
+    }),
   }
 })
 

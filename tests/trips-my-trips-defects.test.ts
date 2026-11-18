@@ -237,7 +237,16 @@ vi.mock('../src/lib/supabase', () => {
     isSupabaseConfigured: true,
     supabase: {
       from: (t: string) => makeBuilder(t),
-      rpc: () => Promise.resolve({ data: [], error: null }),
+      rpc: (name: string, args?: { p_trip_id: string; p_action: string }) => {
+        if (name === 'change_trip_access' && args?.p_action === 'bootstrap') {
+          const owner = { trip_id: args.p_trip_id, user_id: state.sessionUser, role: 'owner', joined_at: 1 }
+          const members = (state.tables.trip_members ??= [])
+          if (!members.some(m => m.trip_id === owner.trip_id && m.user_id === owner.user_id)) members.push(owner)
+          return Promise.resolve({ data: { status: 'applied', state: { version: 1, inviteCode: null,
+            members: [{ userId: state.sessionUser, role: 'owner', joinedAt: 1, revision: 1 }], removed: [] } }, error: null })
+        }
+        return Promise.resolve({ data: [], error: null })
+      },
       channel: () => chain,
       removeChannel: () => Promise.resolve(),
       auth: {
