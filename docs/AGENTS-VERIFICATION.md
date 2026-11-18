@@ -435,7 +435,7 @@ the same job:
 | Destination | `ci.yml` (tsc + vitest + build) | `yatraflow-apk.yml` (Android APK) |
 | --- | --- | --- |
 | push to `test` | yes | **no** |
-| push to `main` | yes | **yes** |
+| push to `main` | yes | **yes** (creates the release from `CHANGELOG.md` when none exists, then attaches the APK) |
 | push to `redesign/**` | yes | **no** |
 | PR into `main` | yes | **no** |
 | PR into `test` | yes | **no** |

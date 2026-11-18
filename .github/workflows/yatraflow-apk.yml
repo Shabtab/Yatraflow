@@ -11,10 +11,16 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-# contents: write is only used by the tag run, to attach the APK to its release.
-# Every branch run reads the tree and uploads a workflow artifact.
+# contents: write lets the release step create a release and attach the APK.
+# A manual run only reads the tree and uploads a workflow artifact.
 permissions:
   contents: write
+
+# A main push and a tag push for the same commit must run one after the other.
+# The second run then finds the release that the first run made.
+concurrency:
+  group: apk-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   apk:
@@ -109,18 +115,91 @@ jobs:
           path: android/app/build/outputs/apk/debug/YatraFlow-*.apk
           retention-days: 14
 
-      # A tag run previously stopped at the workflow artifact, which expires
-      # after 14 days and never appears on the release page: v0.79.0 and
-      # v0.79.1 shipped with no APK. Attach the same file to the release, and
-      # wait briefly for a release that is created just after the tag.
+      # A tag run once stopped at the workflow artifact, which expires after 14
+      # days and never appears on the release page. A forgotten tag or release
+      # then left a version without an APK (v0.79.0, v0.79.1, v0.87.1, v0.88.1).
+      # This step now runs on every push: it creates the release when none
+      # exists, then attaches the APK.
+      # - A tag run uses the pushed tag. It waits up to 60 s for a release that a
+      #   person creates right after the tag, so hand-written notes win.
+      # - A main run uses v plus the package.json version. The release creates
+      #   the tag at the pushed commit. A tag made with GITHUB_TOKEN does not
+      #   start another workflow run, so this does not cause a second build.
+      # - A main run stops with a warning when the tag points at another commit.
+      #   That means main moved without a version bump.
       - name: Attach APK to the release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for attempt in 1 2 3 4 5 6; do
-            if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then break; fi
-            echo "release $GITHUB_REF_NAME not there yet (attempt $attempt), waiting"
-            sleep 10
-          done
-          gh release upload "$GITHUB_REF_NAME" android/app/build/outputs/apk/debug/YatraFlow-*.apk --clobber
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            RUN_KIND=tag
+            TAG="$GITHUB_REF_NAME"
+          else
+            RUN_KIND=main
+            TAG="v$(node -p "require('./package.json').version")"
+          fi
+          VERSION="${TAG#v}"
+
+          # The commit that the remote tag points at. An annotated tag lists its
+          # commit on the peeled (^{}) line. A lightweight tag lists it directly.
+          tag_commit() {
+            local refs
+            refs=$(git ls-remote --tags origin "refs/tags/${TAG}" "refs/tags/${TAG}^{}")
+            if grep -q '\^{}$' <<<"$refs"; then
+              grep '\^{}$' <<<"$refs" | cut -f1
+            else
+              cut -f1 <<<"$refs"
+            fi
+          }
+
+          release_exists() { gh release view "$TAG" >/dev/null 2>&1; }
+
+          if [[ "$RUN_KIND" == main ]]; then
+            EXISTING=$(tag_commit)
+            if [[ -n "$EXISTING" && "$EXISTING" != "$GITHUB_SHA" ]]; then
+              echo "::warning::Tag $TAG points at $EXISTING, not at $GITHUB_SHA. Main moved without a version bump. The release is not changed."
+              exit 0
+            fi
+          else
+            for attempt in 1 2 3 4 5 6; do
+              if release_exists; then break; fi
+              echo "release $TAG not there yet (attempt $attempt), waiting"
+              sleep 10
+            done
+          fi
+
+          if ! release_exists; then
+            # Notes: the body of the "## [X.Y.Z]" section of CHANGELOG.md, up to
+            # the next "## [" heading. The awk filter reads to the end of the
+            # input: an early exit would break the pipe and fail under pipefail.
+            if ! grep -q "^## \[${VERSION}\]" CHANGELOG.md; then
+              echo "::error::CHANGELOG.md has no section for ${VERSION}. A promotion needs one."
+              exit 1
+            fi
+            tr -d '\r' < CHANGELOG.md \
+              | awk -v h="## [${VERSION}]" 'index($0, h) == 1 { found = 1; next } /^## \[/ { if (found) done = 1 } found && !done' \
+              | sed -e '/./,$!d' > release-notes.md
+            if [[ ! -s release-notes.md ]]; then
+              echo "::error::The CHANGELOG.md section for ${VERSION} is empty."
+              exit 1
+            fi
+
+            if [[ "$RUN_KIND" == main ]]; then
+              TARGET_FLAG=(--target "$GITHUB_SHA")
+            else
+              TARGET_FLAG=(--verify-tag)
+            fi
+            # A parallel run can create the release first. Check again before failing.
+            if ! gh release create "$TAG" --title "YatraFlow ${TAG}" --notes-file release-notes.md --latest "${TARGET_FLAG[@]}"; then
+              if ! release_exists; then
+                echo "::error::Could not create the release for $TAG."
+                exit 1
+              fi
+              echo "Release $TAG was created by another run. Continuing."
+            fi
+          fi
+
+          gh release upload "$TAG" android/app/build/outputs/apk/debug/YatraFlow-*.apk --clobber

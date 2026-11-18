@@ -5,8 +5,8 @@
 // versionCode 14 while package.json said 0.79.1, so the in-app update check
 // (#809) could never see a newer build.
 //
-// This pin holds both halves: a tag run must attach the file to the release,
-// and the Android version must come from package.json rather than a literal.
+// This pin holds both halves: every push must end with the file on a release
+// (the run creates the release when none exists), and the Android version must come from package.json rather than a literal.
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -27,10 +27,50 @@ describe('Android release workflow', () => {
   const gradle = read('../android/app/build.gradle')
   const pkg = JSON.parse(read('../package.json'))
 
-  it('attaches the APK to the release on a tag run', () => {
-    expect(workflow).toContain("startsWith(github.ref, 'refs/tags/v')")
-    expect(workflow).toContain('gh release upload "$GITHUB_REF_NAME"')
+  it('runs the release step on main pushes as well as tag pushes', () => {
+    const step = workflow.slice(workflow.indexOf('name: Attach APK to the release'))
+    expect(step).toContain("if: github.event_name == 'push'")
+    // A tag-only guard would skip the main promotion that has no tag yet.
+    expect(step).not.toContain("startsWith(github.ref, 'refs/tags/v')")
+    expect(workflow).toMatch(/branches: \['main'\]/)
+    expect(workflow).toMatch(/tags: \['v\*'\]/)
+  })
+
+  it('creates a missing release with notes taken from CHANGELOG.md', () => {
+    expect(workflow).toContain('gh release create "$TAG"')
+    expect(workflow).toContain('--title "YatraFlow ${TAG}"')
+    expect(workflow).toContain('--notes-file release-notes.md')
+    expect(workflow).toContain('--latest')
+    expect(workflow).toContain('CHANGELOG.md')
+    expect(workflow).toContain('"## [${VERSION}]"')
+    // A main run creates the tag at the pushed commit. A tag run reuses its tag.
+    expect(workflow).toContain('--target "$GITHUB_SHA"')
+    expect(workflow).toContain('--verify-tag')
+    // A promotion without a changelog section is a defect, not a quiet skip.
+    expect(workflow).toMatch(/::error::CHANGELOG\.md has no section/)
+  })
+
+  it('names the tag from the ref on a tag run and from package.json on a main run', () => {
+    expect(workflow).toContain('TAG="$GITHUB_REF_NAME"')
+    expect(workflow).toContain("TAG=\"v$(node -p \"require('./package.json').version\")\"")
+  })
+
+  it('leaves a release alone when main moved without a version bump', () => {
+    expect(workflow).toContain('::warning::')
+    expect(workflow).toContain('Main moved without a version bump')
+    expect(workflow).toMatch(/"\$EXISTING" != "\$GITHUB_SHA"/)
+  })
+
+  it('attaches the APK to the release with a clobbering upload', () => {
+    expect(workflow).toContain(
+      'gh release upload "$TAG" android/app/build/outputs/apk/debug/YatraFlow-*.apk --clobber',
+    )
     expect(workflow).toContain('YatraFlow-*.apk')
+  })
+
+  it('runs a main push and a tag push for one commit one after the other', () => {
+    expect(workflow).toMatch(/concurrency:\s+group: apk-\$\{\{ github\.sha \}\}/)
+    expect(workflow).toContain('cancel-in-progress: false')
   })
 
   it('runs every action on a runtime the runners still provide', () => {
