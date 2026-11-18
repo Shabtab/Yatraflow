@@ -141,7 +141,7 @@ export function AiDrawer({ trip, open, onOpen, onClose, legCorrections }: {
               {m.text}
               {m.source && (
                 <span className={`ai-source ${m.source === 'llm' ? 'llm' : m.source === 'jev' ? 'jev' : 'off'}`}>
-                  {m.source === 'llm' ? 'LLM' : m.source === 'jev' ? 'Jev' : 'offline'}
+                  {m.source === 'llm' ? 'LLM' : m.source === 'jev' ? 'Jev' : 'Offline'}
                 </span>
               )}
               {m.assumptions && <div className="ai-assumption"><InlineIcon icon={ClipboardList} size={12} gap={3} />{m.assumptions}</div>}

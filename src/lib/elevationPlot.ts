@@ -461,7 +461,7 @@ export function heightDayLabels(
 /** The band's own words. It says "highest" only when the peak is inside it. */
 export function paidBandLabel(paidIndexes: readonly number[], peakDayIndex: number | null): string {
   const inPaid = peakDayIndex != null && paidIndexes.includes(peakDayIndex)
-  return inPaid ? 'highest · paid days' : 'paid days'
+  return inPaid ? 'Highest · paid days' : 'Paid days'
 }
 
 /** Every height the card prints is rounded to 50 m, so nothing reads false. */

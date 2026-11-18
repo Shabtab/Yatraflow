@@ -36,13 +36,13 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
           <span><Zap size={14} aria-hidden /></span>
           <span>Impact preview: estimates only</span>
           <span style={{ marginLeft: 'auto' }} className={`chip ${result.newWarnings.length ? 'chip-danger' : 'chip-ok'}`}>
-            {result.newWarnings.length ? `+${result.newWarnings.length} warning${result.newWarnings.length > 1 ? 's' : ''}` : 'no new warnings'}
+            {result.newWarnings.length ? `+${result.newWarnings.length} warning${result.newWarnings.length > 1 ? 's' : ''}` : 'No new warnings'}
           </span>
         </div>
         <div className="impact-body">
           <div className="impact-grid">
             <div className="impact-cell">
-              <div className="k">Time on the road<span className="muted" style={{ display: 'block', fontWeight: 400 }}>driving + stops</span></div>
+              <div className="k">Time on the road<span className="muted" style={{ display: 'block', fontWeight: 400 }}>Driving + stops</span></div>
               <div className={`v ${cls(result.timeDeltaMin)}`}>{signMin(result.timeDeltaMin)}</div>
             </div>
             <div className="impact-cell">

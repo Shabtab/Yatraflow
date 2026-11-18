@@ -622,7 +622,7 @@ function ContentTab() {
                         <button className="btn btn-outline btn-sm" disabled={busy} onClick={() => setConfirmUnpub(tripOf(p.tripId)!)}>Unpublish</button>
                       )
                     ) : (
-                      <span className="small muted">trip gone</span>
+                      <span className="small muted">Trip gone</span>
                     )}
                   </td>
                 </tr>
