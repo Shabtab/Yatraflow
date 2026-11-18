@@ -172,56 +172,8 @@
   font-weight: 700;
 }
 
-/* The true-shape inset. Its path is the real route projected into a small box,
-   so the shape is real and the inset carries no height. It rides in the card
-   HEADER beside the title block as a compact 88 px square: a corner inside a
-   mountain profile always covers part of the route line, and this drawing is
-   the line's own shape. */
-.ovw-elev-inset {
-  flex: none;
-  box-sizing: border-box;
-  width: 88px;
-  height: 88px;
-  padding: 6px;
-  border: 1px solid var(--pw-line-soft);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--pw-card) 90%, transparent);
-  box-shadow: var(--elev-1);
-}
-
-.ovw-elev-inset-svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.ovw-elev-inset-grid { fill: none; stroke: var(--pw-line); stroke-width: .8px; }
-
-.ovw-elev-inset span {
-  color: var(--pw-ink-2);
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.ovw-elev-inset-case {
-  fill: none;
-  stroke: var(--pw-card);
-  stroke-width: 5.5px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.ovw-elev-inset-line {
-  fill: none;
-  stroke: var(--pw-sea-700);
-  stroke-width: 2.6px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.ovw-elev-inset-start { fill: var(--pw-sea-700); stroke: var(--pw-card); stroke-width: 1.5px; }
-.ovw-elev-inset-n { fill: var(--pw-sunken); }
-.ovw-elev-inset-n-text { fill: var(--pw-ink-2); font-family: var(--font-body); font-size: 11px; font-weight: 800; }
+/* The true-shape inset lives in src/styles/pages/overview-route-card.css and
+   renders inside the .ovw-elev chart box (top-left corner). */
 
 .ovw-elev-note {
   margin: 0;
@@ -940,8 +892,7 @@ div[role="tabpanel"]:has(> .ovw2) { animation: none; }
   animation: fadeIn var(--motion-med) var(--ease-paper) backwards;
   animation-delay: calc(var(--stagger-step) * 10);
 }
-.ovw2-route .ovw-elev-axes,
-.ovw2-route .ovw-elev-inset {
+.ovw2-route .ovw-elev-axes {
   animation: fadeIn var(--motion-med) var(--ease-paper) backwards;
   animation-delay: calc(var(--stagger-step) * 11);
 }
@@ -1021,7 +972,6 @@ div[role="tabpanel"]:has(> .ovw2) { animation: none; }
   .ovw2-route .ovw-elev-axes,
   .ovw2-route .ovw-elev-labels,
   .ovw2-route .ovw-elev-peak,
-  .ovw2-route .ovw-elev-inset,
   .ovw2-route .ovw-stoplist > li,
   .ovw2-commitments .ovw-commitments > *,
   .ovw2-strip .ovw2-strip-grid > .ovw2-strip-tile,
@@ -1030,8 +980,5 @@ div[role="tabpanel"]:has(> .ovw2) { animation: none; }
   .ovw-matrix .mx-compact > .mx-crow { animation: none; }
 }
 
-/* The 88 px header square needs room beside the caption and the link. A 390
-   phone header has none, so the square is dropped there. */
-@media (max-width: 480px) {
-  .ovw-elev-inset { display: none; }
-}
+/* The inset's reduced-motion opt-out and its phone breakpoint live with the
+   inset rules in src/styles/pages/overview-route-card.css. */

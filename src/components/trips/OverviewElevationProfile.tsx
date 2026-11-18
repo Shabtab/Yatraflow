@@ -2,7 +2,7 @@
 // Paints the geometry `elevationPlot.ts` returns. The curve is illustrative:
 // it joins the public terrain estimates at the trip's own places and never
 // claims the ground between them.
-import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { RouteHeightCurveRun, RouteHeightPoint, RouteHeightStats } from '../../lib/elevation'
 import { buildRouteHeightPlot, heightLabelY } from '../../lib/elevationPlot'
 import { overviewPinText } from '../../lib/overviewRouteMap'
@@ -36,11 +36,14 @@ export function OverviewElevationProfile({
   runs,
   stats,
   compact,
+  children,
 }: {
   points: readonly RouteHeightPoint[]
   runs: readonly RouteHeightCurveRun[]
   stats: RouteHeightStats
   compact: boolean
+  /** Overlay content rendered inside the chart box (position: relative). */
+  children?: ReactNode
 }) {
   const { ref, width } = useDrawableWidth(compact ? 420 : 720)
   const height = Math.max(compact ? 150 : 170, Math.min(280, Math.round(width * 0.45)))
@@ -199,6 +202,7 @@ export function OverviewElevationProfile({
           ))}
         </g>
       </svg>
+      {children}
     </div>
   )
 }

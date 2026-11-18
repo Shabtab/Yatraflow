@@ -437,7 +437,16 @@
     {
       "id": "overview-route-card",
       "file": "src/styles/pages/overview-route-card.css",
-      "owned": [],
+      "owned": [
+        "ovw-elev-inset",
+        "ovw-elev-inset-svg",
+        "ovw-elev-inset-grid",
+        "ovw-elev-inset-case",
+        "ovw-elev-inset-line",
+        "ovw-elev-inset-start",
+        "ovw-elev-inset-n",
+        "ovw-elev-inset-n-text"
+      ],
       "configClasses": [],
       "variables": []
     },
