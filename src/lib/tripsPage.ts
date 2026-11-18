@@ -551,10 +551,12 @@ export function dateStamp(t: Pick<Trip, 'startDate'>): DateStamp | null {
  *  - No usable dates: "Idea · no dates yet".
  *  - Live: "Live · Day 2 of 5".
  *  - Upcoming and ready to go (see isReadyToGo): "Ready to go".
- *  - Upcoming otherwise: "Planning · 5 of 7 days".
+ *  - Upcoming otherwise: "Planning · 5 of 7 days". When every day is planned
+ *    but checks are open: "Planning · 4 to fix", so the line agrees with the
+ *    Up next day strip.
  *  - Past: "Past".
  */
-export function cardStatusLine(t: TripPlan, today: Date, readyToGo: boolean): string {
+export function cardStatusLine(t: TripPlan, today: Date, readyToGo: boolean, toFix = 0): string {
   const status = statusOf(t, today)
   if (status === 'draft') return 'Idea · no dates yet'
   if (status === 'past') return 'Past'
@@ -564,6 +566,7 @@ export function cardStatusLine(t: TripPlan, today: Date, readyToGo: boolean): st
   }
   if (readyToGo) return 'Ready to go'
   const { planned, total } = planning(t)
+  if (total > 0 && planned === total && toFix > 0) return `Planning · ${toFix} to fix`
   return total > 0 ? `Planning · ${planned} of ${total} days` : 'Planning · no days yet'
 }
 

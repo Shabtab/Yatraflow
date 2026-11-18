@@ -24,6 +24,8 @@ export interface TripCardProps {
   budget: ReactNode
   /** True when the trip meets the "Ready to go" rule (see lib/tripDayStrip). */
   readyToGo: boolean
+  /** Open checks from the day strip (`openChecks`). */
+  toFix: number
   users: CachedUser[]
   meId: string | null
   /** Position in the grid. It sets the entrance delay. */
@@ -35,10 +37,10 @@ export interface TripCardProps {
   onDelete: (trip: Trip) => void
 }
 
-export function TripCard({ trip, today, budget, readyToGo, users, meId, enterIndex, coverSizes, presence, onDelete }: TripCardProps) {
+export function TripCard({ trip, today, budget, readyToGo, toFix, users, meId, enterIndex, coverSizes, presence, onDelete }: TripCardProps) {
   const status = statusOf(trip, today)
   const step = cardNextStep(trip, today)
-  const statusLine = cardStatusLine(trip, today, readyToGo)
+  const statusLine = cardStatusLine(trip, today, readyToGo, toFix)
   const flags = plannedDayFlags(trip)
   const { planned, total } = planning(trip)
   const enterDelay: CSSProperties = { animationDelay: staggerDelay(enterIndex) }

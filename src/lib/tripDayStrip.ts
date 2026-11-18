@@ -40,9 +40,16 @@ export function dayStrip(trip: Pick<Trip, 'days'>, warnings: ScheduleWarning[]):
   })
 }
 
+/** The open checks the day strip shows: the sum of its "N to fix" cells. */
+export function openChecks(trip: Pick<Trip, 'days'>, warnings: ScheduleWarning[]): number {
+  return dayStrip(trip, warnings).reduce((sum, cell) => sum + (cell.tone === 'fix' || cell.tone === 'risk' ? Number.parseInt(cell.label, 10) : 0), 0)
+}
+
 /**
  * "Ready to go" has one rule: the trip is live or upcoming, it has at least one
- * day, every day holds an activity, and the engine reports no high warning.
+ * day, every day holds an activity, the day strip has nothing to fix, and the
+ * engine reports no high warning (trip-wide ones included). The card label and
+ * the Up next strip read the same warnings, so they cannot disagree.
  * A trip without dates, or one that ended, is never ready.
  */
 export function isReadyToGo(trip: Trip, today: Date, warnings: ScheduleWarning[]): boolean {
@@ -50,5 +57,6 @@ export function isReadyToGo(trip: Trip, today: Date, warnings: ScheduleWarning[]
   if (status !== 'upcoming' && status !== 'live') return false
   const flags = plannedDayFlags(trip)
   if (flags.length === 0 || !flags.every(Boolean)) return false
+  if (openChecks(trip, warnings) > 0) return false
   return !warnings.some(w => w.severity === 'high')
 }

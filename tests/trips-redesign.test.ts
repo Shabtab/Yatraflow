@@ -9,7 +9,7 @@ import {
   cardStatusLine, compareSoonest, countsLine, dateStamp, firstNameOf, greetingCounts, greetingDateLabel,
   greetingHeadline, greetingWord, splitByMemory, travelSoFar,
 } from '../src/lib/tripsPage'
-import { dayStrip, isReadyToGo } from '../src/lib/tripDayStrip'
+import { dayStrip, isReadyToGo, openChecks } from '../src/lib/tripDayStrip'
 import { activityStopCount, plannedDayFlags } from '../src/lib/tripNextStep'
 import { kmText, stopCountText } from '../src/lib/tripsCard'
 import { clearDraft, loadDraft, saveDraft, type DraftStore } from '../src/lib/createDraft'
@@ -140,10 +140,16 @@ describe('card status line, stamp and the Ready to go rule', () => {
     expect(dateStamp(trip({ id: 's', startDate: '2026-11-14' }))).toEqual({ weekday: 'SAT', day: 14, month: 'Nov' })
   })
 
-  it('is ready only when every day is planned, dates exist and no warning is high', () => {
+  it('is ready only when every day is planned, dates exist and the day strip has nothing to fix', () => {
     const t = trip({ id: 'r', startDate: '2026-12-20', endDate: '2026-12-22', days: planned(3) })
     expect(isReadyToGo(t, TODAY, [])).toBe(true)
-    expect(isReadyToGo(t, TODAY, [warning(1, 'medium')])).toBe(true)
+    // A medium warning on a day shows "1 to fix" in the strip, so the card must not say ready.
+    expect(isReadyToGo(t, TODAY, [warning(1, 'medium')])).toBe(false)
+    expect(openChecks(t, [warning(1, 'medium'), warning(2, 'low'), warning(2, 'medium')])).toBe(3)
+    expect(cardStatusLine(t, TODAY, false, 3)).toBe('Planning · 3 to fix')
+    expect(cardStatusLine(t, TODAY, false, 0)).toBe('Planning · 3 of 3 days')
+    // A trip-wide high warning has no day cell, but still blocks "Ready to go".
+    expect(isReadyToGo(t, TODAY, [warning(null, 'high')])).toBe(false)
     expect(isReadyToGo(t, TODAY, [warning(1, 'high')])).toBe(false)
     expect(cardStatusLine(t, TODAY, true)).toBe('Ready to go')
     const partly = { ...t, days: [...planned(2), day(2, [])] } as Trip

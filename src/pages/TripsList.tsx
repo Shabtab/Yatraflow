@@ -15,7 +15,7 @@ import { sliceState, emptyCopyFor, readState, rowsView } from '../lib/readState'
 import type { Trip } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
 import { compareSoonest, countsLine, greetingCounts, greetingDateLabel, greetingHeadline, otherTripsEmptyKind, pickUpNext, splitByMemory, travelSoFar, whenBucket, type WhenKey } from '../lib/tripsPage'
-import { dayStrip, isReadyToGo } from '../lib/tripDayStrip'
+import { dayStrip, isReadyToGo, openChecks } from '../lib/tripDayStrip'
 import { layoutFromPref, startOfLocalDay, TRIPS_LAYOUT_PREF } from '../lib/tripsCard'
 import { loadPref, savePref } from '../lib/uiPrefs'
 import { usePresenceList, presenceAttrs } from '../lib/usePresenceList'
@@ -533,6 +533,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                       today={today}
                       budget={<BudgetText totals={totals} />}
                       readyToGo={isReadyToGo(t, today, tripChecks.get(t.id) ?? [])}
+                      toFix={openChecks(t, tripChecks.get(t.id) ?? [])}
                       users={users}
                       meId={meId}
                       enterIndex={exiting ? 0 : i}
