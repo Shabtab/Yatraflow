@@ -56,8 +56,8 @@ export function MemoriesSection({ titleId, memories, today, travel, copyingId, o
         <li className="mt-travel">
           <span className="mt-travel-kicker">Your travel so far</span>
           <dl className="mt-travel-grid">
-            <div><dt>km planned</dt><dd>{Math.round(travel.kmPlanned).toLocaleString('en-IN')}</dd></div>
-            <div><dt>trips with friends</dt><dd>{travel.withFriends}</dd></div>
+            <div><dt>Km planned</dt><dd>{Math.round(travel.kmPlanned).toLocaleString('en-IN')}</dd></div>
+            <div><dt>Trips with friends</dt><dd>{travel.withFriends}</dd></div>
           </dl>
         </li>
       </ul>

@@ -11,7 +11,7 @@ const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/
 export interface Countdown {
   /** One tile per digit: 17 gives ["1", "7"]. */
   digits: string[]
-  /** "days to go", or "day to go" for one day. */
+  /** "Days to go", or "Day to go" for one day. A label, so it starts with a capital. */
   unit: string
   /** The group label for a screen reader: "17 days to go". */
   label: string
@@ -24,8 +24,8 @@ export interface Countdown {
 export function countdownTiles(t: Pick<Trip, 'startDate' | 'endDate'>, today: Date): Countdown | null {
   const away = daysUntilStart(t, today)
   if (away === null || away < 1) return null
-  const unit = away === 1 ? 'day to go' : 'days to go'
-  return { digits: String(away).split(''), unit, label: `${away} ${unit}` }
+  const unit = away === 1 ? 'Day to go' : 'Days to go'
+  return { digits: String(away).split(''), unit, label: `${away} ${unit.toLowerCase()}` }
 }
 
 /** The stored clock of the first timed stop on a day, with the stop's own name. */

@@ -216,7 +216,7 @@ describe('Up next countdown row', () => {
   const stopAt = (id: string, order: number, title: string, extra: Record<string, unknown>) => ({ ...stop(id, order), title, ...extra }) as unknown as ItineraryStop
 
   it('gives one tile per digit for an upcoming trip', () => {
-    expect(countdownTiles(t({ startDate: '2026-11-06', endDate: '2026-11-09' }), TODAY)).toEqual({ digits: ['9'], unit: 'days to go', label: '9 days to go' })
+    expect(countdownTiles(t({ startDate: '2026-11-06', endDate: '2026-11-09' }), TODAY)).toEqual({ digits: ['9'], unit: 'Days to go', label: '9 days to go' })
     expect(countdownTiles(t({}), TODAY)?.label).toBe('30 days to go')
     expect(countdownTiles(t({ startDate: '2026-11-14', endDate: '2026-11-17' }), new Date(2026, 9, 28))?.label).toBe('17 days to go')
     expect(countdownTiles(t({ startDate: '2026-11-14', endDate: '2026-11-17' }), new Date(2026, 9, 28))?.digits).toEqual(['1', '7'])
