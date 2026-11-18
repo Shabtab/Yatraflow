@@ -2642,7 +2642,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
             {onDeleteStop && (
               <button className="btn btn-sm btn-danger" onClick={() => { onDeleteStop(selectedStop.id, { title: selectedStop.title, dayIndex: selectedStop.dayIndex }); setSelectedStop(null) }}>Remove</button>
             )}
-            <button className="icon-btn" onClick={() => setSelectedStop(null)} aria-label="Close" style={{ flex: '0 0 auto', marginLeft: 'auto' }}><X size={14} aria-hidden /></button>
+            <button className="icon-btn" onClick={() => setSelectedStop(null)} aria-label="Close" style={{ flex: '0 0 auto', marginLeft: 'auto', minWidth: 44, minHeight: 44 }}><X size={14} aria-hidden /></button>
             </div>
           </div>
         )}

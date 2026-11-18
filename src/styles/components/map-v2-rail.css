@@ -896,7 +896,7 @@
 .map-edit-grip:focus-visible { outline: none; box-shadow: var(--ring); }
 /* The card's exit. A 44 px box, pulled back by its own margin so the X reads
    level with the day dot and the head stays one row tall. */
-.map-edit-close { flex: none; display: inline-grid; place-items: center; width: 44px; height: 44px; margin: -6px -8px -6px 0; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--pw-ink-3); cursor: pointer; transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper); }
+.map-edit-close { flex: none; display: inline-grid; place-items: center; width: 44px; height: 44px; min-width: 44px; min-height: 44px; margin: -6px -8px -6px 0; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--pw-ink-3); cursor: pointer; transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper); }
 .map-edit-close:hover { background: var(--pw-soft); color: var(--pw-ink); }
 .map-edit-close:focus-visible { outline: none; box-shadow: var(--ring); }
 .map-edit-stay-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

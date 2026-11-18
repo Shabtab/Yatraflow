@@ -125,6 +125,20 @@ describe('escapeClosesCardWithin', () => {
   })
 })
 
+describe('the stop-card close controls meet the 44 px floor', () => {
+  it('grows the bottom bar X past the shared 40 px icon box', () => {
+    const close = tripMap.slice(tripMap.indexOf('yf-stop-jump'))
+    expect(close).toContain("className=\"icon-btn\"")
+    expect(close).toMatch(/aria-label="Close" style=\{\{[^}]*minWidth: 44, minHeight: 44/)
+  })
+
+  it('carries the floor on the editor card X rule', () => {
+    const rule = css.split('\n').find(line => line.startsWith('.map-edit-close {'))
+    expect(rule).toContain('min-width: 44px')
+    expect(rule).toContain('min-height: 44px')
+  })
+})
+
 describe('the bottom stop bar closes on Escape too', () => {
   it('binds the shared decision while the bar is on screen', () => {
     expect(tripMap).toContain('cardCloseFromEventWithin')
