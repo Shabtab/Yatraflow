@@ -1,6 +1,6 @@
 // One pinned row links to the parts of Look inside.
 // The section in the middle of the screen is marked as current.
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type JSX } from 'react'
 import { scrollBehavior } from '../../lib/motion'
 
 export interface SectionTab {

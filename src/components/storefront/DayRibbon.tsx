@@ -1,7 +1,7 @@
 // P11 trip kit: the day ribbon. One button per day, drawn over a route line
 // that runs teal where a day is open and marigold where it is not.
 // A locked day shows its number and a count, never a place name.
-import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, type CSSProperties, type JSX, type ReactNode } from 'react'
 import { Lock } from 'lucide-react'
 import { motionTiming, prefersReducedMotion, staggerStep } from '../../lib/motion'
 import { ribbonScrollTarget } from '../../lib/ribbonScroll'

@@ -1130,7 +1130,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
             <div className="tpl-name">
               <div className="namebox-in">
                 <PenLine size={14} aria-hidden />
-                <input className="namebox-input" autoComplete="off" ref={el => (fieldRefs.current.name = el)}
+                <input className="namebox-input" autoComplete="off" ref={el => { fieldRefs.current.name = el }}
                   aria-invalid={!!errs.name} aria-labelledby="ct-name-h"
                   aria-describedby={errs.name ? 'ct-name-err' : undefined}
                   value={f.name} onChange={e => { patchFields({ name: e.target.value }); setNameSugSeen(true) }}
@@ -1467,7 +1467,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                       stepper is the control people actually touch, so the stepper is
                       the target — and the range travels with it, since `min`/`max`
                       live on the input nobody can see. */}
-                  <span className="ct-step" role="group" ref={el => (fieldRefs.current.travellers = el)}
+                  <span className="ct-step" role="group" ref={el => { fieldRefs.current.travellers = el }}
                     tabIndex={-1} aria-label={`Party size, ${CREW_MIN} to ${CREW_MAX} travellers`}
                     aria-describedby={errs.travellers ? 'ct-travellers-err' : undefined}>
                     <button type="button" aria-label="One fewer traveller"
@@ -1693,7 +1693,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 <label className="ct-bud-exact">
                   Exact amount
                   <input className="mono" type="number" min={0} step={500} data-create-field="budgetPerPersonInr"
-                    ref={el => (fieldRefs.current.budgetPerPersonInr = el)}
+                    ref={el => { fieldRefs.current.budgetPerPersonInr = el }}
                     aria-label="Budget per person, exact amount"
                     aria-invalid={!!errs.budgetPerPersonInr}
                     aria-describedby={errs.budgetPerPersonInr ? 'ct-budget-err' : undefined}

@@ -348,7 +348,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
           marked on the control it was talking about. The wrapper carries the
           focus target: the picker is a group of buttons, and its own message
           node is the focusable fallback. */}
-      <div ref={el => (fieldRefs.current.cover = el)} tabIndex={-1}
+      <div ref={el => { fieldRefs.current.cover = el }} tabIndex={-1}
         aria-invalid={errs.cover ? true : undefined}
         aria-describedby={errs.cover ? 'pub-cover-err' : undefined}>
         <CoverImagePicker trip={trip} editable={isOwner} error={errs.cover ?? null} defaultArt={defaultArt} />
@@ -379,7 +379,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
           ? `At ${formatInr(priceNum)} a sale nets you at least ${formatInr(Math.floor(netOfFeeInr(priceNum)))}. The platform fee is ${PLATFORM_FEE_SUMMARY}.`
           : 'Leave empty or 0 for an entirely free itinerary.'}>
           <input className="input" type="number" min={0} inputMode="numeric" placeholder="e.g. 199"
-            ref={el => (fieldRefs.current.price = el)}
+            ref={el => { fieldRefs.current.price = el }}
             value={price} onChange={e => { setPrice(e.target.value); clearErr('price'); setSaveErr(null) }} />
         </Field>
         <Field label="Best season" hint="Optional. Shown as practical guidance.">
@@ -390,7 +390,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         <textarea className="textarea" rows={3} value={tips} onChange={e => { setTips(e.target.value); setSaveErr(null) }} />
       </Field>
       <Field label="Subscriber call-to-action" error={errs.cta} hint={hasPremiumDay ? 'Required while any day is premium.' : 'Used on premium days. Add one before charging.'}>
-        <input className="input" value={cta} ref={el => (fieldRefs.current.cta = el)}
+        <input className="input" value={cta} ref={el => { fieldRefs.current.cta = el }}
           onChange={e => { setCta(e.target.value); clearErr('cta'); setSaveErr(null) }} placeholder="e.g. Full checklist + stay contacts." />
       </Field>
 
@@ -402,7 +402,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
           to an arbitrary day would be worse than moving it to the group that
           owns the choice. `tabIndex={-1}` is the a11y-sanctioned way to make a
           non-interactive group focusable for exactly this. */}
-      <div className="ts-dayrows" ref={el => (fieldRefs.current.freeDays = el)} tabIndex={-1}
+      <div className="ts-dayrows" ref={el => { fieldRefs.current.freeDays = el }} tabIndex={-1}
         role="group" aria-label="Free preview days"
         aria-invalid={errs.freeDays ? true : undefined}
         aria-describedby={errs.freeDays ? 'pub-free-err' : undefined}>

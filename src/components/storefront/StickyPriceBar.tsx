@@ -1,6 +1,6 @@
 // P7 storefront: the fixed price bar. Hidden means aria-hidden and no tab stop.
 // It names the plan and price after the cover leaves the screen.
-import type { ReactNode } from 'react'
+import type { JSX, ReactNode } from 'react'
 
 export function StickyPriceBar(p: {
   visible: boolean
