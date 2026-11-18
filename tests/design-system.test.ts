@@ -1208,7 +1208,7 @@ describe("a popup's host claims the rung, never the popup", () => {
   // card's own node — not by reading z-indexes.
   const rule = (selector: string) => cssRules.find((r) => normalise(r.selector) === selector)
 
-  it('gives the filter bar of Explore and My trips a rung above the cards its menu opens over', () => {
+  it('gives the filter bar of Explore a rung above the cards its menu opens over', () => {
     const bar = rule('.filterbar-host')
     expect(bar, '.filterbar-host is missing from styles.css').toBeTruthy()
     expect(bar!.body).toMatch(/position:\s*relative/)
@@ -1216,7 +1216,8 @@ describe("a popup's host claims the rung, never the popup", () => {
     // The rule changes nothing unless the page carries the class on the bar
     // that actually holds the selects.
     expect(source('src/components/page/FilterBar.tsx')).toContain('ex-filterbar filterbar-host')
-    expect(source('src/pages/TripsList.tsx')).toContain('ex-filterbar filterbar-host')
+    // My trips has no popup menu in its toolbar now: its sort is a native select.
+    expect(source('src/pages/TripsList.tsx')).not.toContain('ex-filterbar')
   })
 
   it('keeps the card footer row clear of the corner it sits in', () => {

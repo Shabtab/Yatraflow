@@ -12,6 +12,7 @@ import {
 import { dayStrip, isReadyToGo, openChecks } from '../src/lib/tripDayStrip'
 import { activityStopCount, plannedDayFlags } from '../src/lib/tripNextStep'
 import { kmText, stopCountText } from '../src/lib/tripsCard'
+import { countdownTiles, ringLabel, ringTone, startsSubtitle } from '../src/lib/tripCountdown'
 import { clearDraft, loadDraft, saveDraft, type DraftStore } from '../src/lib/createDraft'
 
 const src = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
@@ -95,7 +96,7 @@ describe('Soonest first', () => {
     const page = src('../src/pages/TripsList.tsx')
     expect(page).toContain("'soonest'")
     expect(page).toContain('compareSoonest')
-    expect(page).toContain("label: 'Soonest first'")
+    expect(page).toContain('<option value="soonest">Soonest first</option>')
   })
 })
 
@@ -207,5 +208,87 @@ describe('draft dismiss undo path', () => {
     expect(body).toContain('clearDraft()')
     expect(body).toContain('undoToast(')
     expect(body).toContain('saveDraft(')
+  })
+})
+
+describe('Up next countdown row', () => {
+  const t = (over: Partial<Trip>) => trip({ id: 'c', startDate: '2026-11-27', endDate: '2026-11-30', ...over })
+  const stopAt = (id: string, order: number, title: string, extra: Record<string, unknown>) => ({ ...stop(id, order), title, ...extra }) as unknown as ItineraryStop
+
+  it('gives one tile per digit for an upcoming trip', () => {
+    expect(countdownTiles(t({ startDate: '2026-11-06', endDate: '2026-11-09' }), TODAY)).toEqual({ digits: ['9'], unit: 'days to go', label: '9 days to go' })
+    expect(countdownTiles(t({}), TODAY)?.label).toBe('30 days to go')
+    expect(countdownTiles(t({ startDate: '2026-11-14', endDate: '2026-11-17' }), new Date(2026, 9, 28))?.label).toBe('17 days to go')
+    expect(countdownTiles(t({ startDate: '2026-11-14', endDate: '2026-11-17' }), new Date(2026, 9, 28))?.digits).toEqual(['1', '7'])
+    expect(countdownTiles(t({ startDate: '2026-10-29', endDate: '2026-10-30' }), TODAY)?.label).toBe('1 day to go')
+  })
+
+  it('gives no tiles for today, a live trip, a past trip or no dates', () => {
+    expect(countdownTiles(t({ startDate: '2026-10-28', endDate: '2026-10-30' }), TODAY)).toBeNull()
+    expect(countdownTiles(t({ startDate: '2026-10-20', endDate: '2026-10-30' }), TODAY)).toBeNull()
+    expect(countdownTiles(t({ startDate: '2026-03-01', endDate: '2026-03-03' }), TODAY)).toBeNull()
+    expect(countdownTiles(t({ startDate: '', endDate: '' }), TODAY)).toBeNull()
+  })
+
+  it('names the first timed stop of day 1 in the chosen clock', () => {
+    const days = [day(0, [stopAt('a', 0, 'Kochi', { departTime: '08:00' }), stopAt('b', 1, 'Munnar', { departTime: '13:30' })])]
+    expect(startsSubtitle(t({ days }), '24h')).toBe('Day 1 starts at 08:00 in Kochi')
+    expect(startsSubtitle(t({ days }), '12h')).toBe('Day 1 starts at 8:00 AM in Kochi')
+  })
+
+  it('skips stops without a clock and falls back to the start date', () => {
+    const untimed = [day(0, [stopAt('a', 0, 'Kochi', {}), stopAt('b', 1, 'Munnar', { arrivalTime: '11:15' })])]
+    expect(startsSubtitle(t({ days: untimed }), '24h')).toBe('Day 1 starts at 11:15 in Munnar')
+    const none = [day(0, [stopAt('a', 0, 'Kochi', {})])]
+    expect(startsSubtitle(t({ days: none }), '24h')).toBe('Starts Fri 27 Nov')
+    expect(startsSubtitle(t({ days: [stopAt('x', 0, 'Bad', { departTime: '25:99' })].length ? [day(0, [stopAt('x', 0, 'Bad', { departTime: '25:99' })])] : [] }), '24h')).toBe('Starts Fri 27 Nov')
+    expect(startsSubtitle(t({ startDate: '', endDate: '', days: [] }), '24h')).toBeNull()
+  })
+
+  it('never invents a time for a rejected stop', () => {
+    const rejected = { ...stopAt('r', 0, 'Kochi', { departTime: '06:00' }), status: 'rejected' } as unknown as ItineraryStop
+    expect(startsSubtitle(t({ days: [day(0, [rejected])] }), '24h')).toBe('Starts Fri 27 Nov')
+  })
+
+  it('maps the health band to a ring tone and a label', () => {
+    expect(ringTone('Comfortable')).toBe('teal')
+    expect(ringTone('Manageable')).toBe('teal')
+    expect(ringTone('Tight')).toBe('marigold')
+    expect(ringTone('Unrealistic')).toBe('bloom')
+    expect(ringLabel({ score: 74, band: 'Manageable' })).toBe('Estimated trip health 74, Manageable')
+  })
+
+  it('draws the ring from the same estimated warnings as the strip', () => {
+    const page = src('../src/pages/TripsList.tsx')
+    expect(page).toContain('health={scoreWarnings(tripChecks.get(upNext.id) ?? [])}')
+    const css = src('../src/styles/legacy/09-trips-list.css')
+    expect(css).toContain('.mt-ring-arc { animation: none; }')
+  })
+})
+
+describe('Coming up toolbar row', () => {
+  const page = () => src('../src/pages/TripsList.tsx')
+
+  it('sorts Soonest first by default', () => {
+    expect(page()).toContain("useState<SortKey>('soonest')")
+  })
+
+  it('has no When filter, and nothing imports one', () => {
+    const p = page()
+    expect(p).not.toContain('WhenKey')
+    expect(p).not.toContain('aria-label="When"')
+    expect(p).not.toContain('setWhen')
+    expect(p).not.toContain("components/Select'")
+    expect(p).not.toContain('Upcoming & live')
+  })
+
+  it('keeps Trash and Clear filters in the one row', () => {
+    const p = page()
+    const row = p.slice(p.indexOf('className="mt-listhead"'), p.indexOf('<p className="sr-only" role="status">'))
+    expect(row).toContain('Trash</button>')
+    expect(row).toContain('Clear filters')
+    expect(row).toContain('onClick={toggleTrash}')
+    expect(row).toContain('<ViewSwitch')
+    expect(row).not.toContain('ex-filterbar')
   })
 })
