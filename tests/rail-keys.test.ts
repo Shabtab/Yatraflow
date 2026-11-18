@@ -193,7 +193,7 @@ describe('the rail states scope in words, and keeps nothing unreachable (#333 A4
     // row's own action buttons read as disabled while they were still pressable.
     expect(mapTabSrc).not.toMatch(/opacity: inScope \? undefined : 0\.6/)
     expect(omniSrc).toContain('className="chip chip-saffron"')
-    expect(omniSrc).toContain("'beyond your detour scope'")
+    expect(omniSrc).toContain("'Beyond your detour scope'")
     expect(omniSrc).not.toMatch(/opacity: inScope/)
     // the phrase must not still be trailing the muted comma-run
     expect(mapTabSrc).not.toMatch(/, beyond your detour scope'/)

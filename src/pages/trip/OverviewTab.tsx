@@ -249,7 +249,7 @@ export function OverviewTab({ trip, onOpenDecisions, onOpenTimeline, onOpenMap, 
             >
               <span className="ovw2-score-core">
                 <b>{hasPlan ? health.score : '–'}</b>
-                <small>{hasPlan ? 'of 100' : 'no score'}</small>
+                <small>{hasPlan ? 'of 100' : 'No score'}</small>
               </span>
             </span>
             <div className="ovw2-health-copy">
@@ -1172,7 +1172,7 @@ function SlotMatrix({
                             {state === 'filled'
                               ? <Check size={16} aria-hidden />
                               : state === 'auto'
-                                ? <span className="mx-app" aria-hidden>app</span>
+                                ? <span className="mx-app" aria-hidden>App</span>
                                 : state === 'empty'
                                   ? <span className="mx-bang" aria-hidden>!</span>
                                   : <span className="mx-dash" aria-hidden>–</span>}
@@ -1252,7 +1252,7 @@ function SlotMatrix({
                         {state === 'filled'
                           ? <Check size={14} />
                           : state === 'auto'
-                            ? <span className="mx-app">app</span>
+                            ? <span className="mx-app">App</span>
                             : state === 'empty'
                               ? <span className="mx-bang">!</span>
                               : <span className="mx-dash">–</span>}

@@ -1066,7 +1066,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
                 {rec && (
                   <p className="small gin-guide-rec">
                     <InlineIcon icon={Sparkles} size={12} gap={4} />
-                    <b>{rec.label}</b>: {rec.reason} <Chip tone="info">offline</Chip>
+                    <b>{rec.label}</b>: {rec.reason} <Chip tone="info">Offline</Chip>
                   </p>
                 )}
               </div>

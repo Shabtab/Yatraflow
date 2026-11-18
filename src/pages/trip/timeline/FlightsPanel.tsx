@@ -176,7 +176,7 @@ function FlightDayCard({ trip, day, editable }: { trip: Trip; day: ItineraryDay;
             <span className="tps-label">Fare ₹ / person</span>
             <input type="number" min={0} step={100} className="input input--compact flight-w-fare"
               value={flight.costInrPerPerson ?? ''} onChange={e => patch({ costInrPerPerson: numOrUndef(e.target.value) })}
-              placeholder="as paid" />
+              placeholder="As paid" />
           </label>
           <label className="hp-field">
             <span className="tps-label">Booking ref</span>

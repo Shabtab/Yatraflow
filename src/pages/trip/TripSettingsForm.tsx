@@ -984,10 +984,10 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
           <span className="tset-nav-lbl">The plan at a glance</span>
           {preview?.estimated && <p className="muted small">Route changes need fresh road measurements after saving.</p>}
           <div className="tset-glance-grid">
-            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.totalDistanceKm > 0 ? `${Math.round(tripTotals.totalDistanceKm)} km` : '–'}</span><span className="tset-stat-k">road measured</span></div>
-            <div className="tset-stat"><span className="tset-stat-v">{minutesToHM(tripTotals.totalTravelMinutes)}</span><span className="tset-stat-k">driving</span></div>
-            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.stopCount} stops</span><span className="tset-stat-k">on {daysWithStops} of {dayCount} days</span></div>
-            <div className="tset-stat"><span className="tset-stat-v">{formatInr(tripTotals.totalCostInr)}</span><span className="tset-stat-k">plan total, estimate</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.totalDistanceKm > 0 ? `${Math.round(tripTotals.totalDistanceKm)} km` : '–'}</span><span className="tset-stat-k">Road measured</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{minutesToHM(tripTotals.totalTravelMinutes)}</span><span className="tset-stat-k">Driving</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.stopCount} stops</span><span className="tset-stat-k">On {daysWithStops} of {dayCount} days</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{formatInr(tripTotals.totalCostInr)}</span><span className="tset-stat-k">Plan total, estimate</span></div>
           </div>
           <div className="tset-read">
             <span className="tset-diff-lbl">The engine&apos;s read</span>

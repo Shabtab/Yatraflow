@@ -615,7 +615,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
                 <code className="invite-code-text" aria-label={`Trip code ${inviteCode}`}>{inviteCode}</code>
                 <CopyButton text={inviteCode} />
               </div>
-              <span className="small muted">read it out loud. Friends type it on the home screen</span>
+              <span className="small muted">Read it out loud. Friends type it on the home screen</span>
             </div>
           )}
           {/* Minting the code is a write, so its three outcomes are three
