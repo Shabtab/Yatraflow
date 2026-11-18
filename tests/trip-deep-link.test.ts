@@ -36,9 +36,12 @@ describe('a step\u2019s deep link \u2014 every caller reads that one builder', (
   const upNext = codeOf('../src/components/trips/UpNextCard.tsx')
   const card = codeOf('../src/components/trips/TripCard.tsx')
 
-  it('the featured button builds its target through it, and the trip root when there is no step', () => {
-    expect(upNext).toMatch(/const targetRoute = step \? nextStepRoute\(trip, step\) : detailRoute/)
-    expect(upNext).toMatch(/\{\.\.\.appLink\(targetRoute\)\}/)
+  // The redesign splits the featured card's links: the next-step callout's
+  // action button opens the step, and Open trip opens the trip root.
+  it('the featured next-step button builds its target through it, and Open trip goes to the trip root', () => {
+    expect(upNext).toMatch(/className="btn btn-primary btn-sm mt-next-go" \{\.\.\.appLink\(nextStepRoute\(trip, step\)\)\}/)
+    expect(upNext).toMatch(/const detailRoute: `\/\$\{string\}` = `\/trip\/\$\{trip\.id\}`/)
+    expect(upNext).toMatch(/\{\.\.\.appLink\(detailRoute\)\}>Open trip/)
   })
 
   it('the card task row builds its link through it', () => {
