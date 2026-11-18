@@ -139,7 +139,8 @@ describe('Map interaction round two', () => {
     expect(tripMap).toContain(".some(f => f.layer.id.startsWith('clusters-') || f.layer.id.startsWith('cluster-count-'))")
     expect(tripMap).toContain('onBlankMapClickRef.current?.()')
     expect(tripMap).toContain("document.addEventListener('pointerdown', onPointerDown, true)")
-    expect(tab).toContain('onBlankMapClick={() => { if (detailId != null) setDetailId(null) }}')
+    // The stop edit card closes on the same bare-map click, with no focus grab.
+    expect(tab).toContain('onBlankMapClick={() => { if (detailId != null) setDetailId(null); if (selectedStop != null) closeSelectedStop(false) }}')
   })
   it('glides the camera on one eased curve, with no zero-time settle jump', () => {
     expect(tripMap).toContain('duration, easing: easeInOutCubic')
