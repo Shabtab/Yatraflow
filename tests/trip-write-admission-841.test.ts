@@ -11,6 +11,7 @@ const { state } = vi.hoisted(() => ({
     count: undefined as number | undefined,
     deny: false,
     configured: false,
+    accessCalls: 0,
   },
 }))
 
@@ -46,7 +47,17 @@ vi.mock('../src/lib/supabase', async () => {
     }
     return builder
   }
-  return { get isSupabaseConfigured() { return state.configured }, supabase: tripWriteClient({ auth: { signOut: async () => ({ error: null }) }, from: (t: string) => makeBuilder(t) }) }
+  return { get isSupabaseConfigured() { return state.configured }, supabase: tripWriteClient({
+    auth: { signOut: async () => ({ error: null }) }, from: (t: string) => makeBuilder(t),
+    rpc: () => {
+      const request = { setHeader: () => request,
+        then: (resolve: (value: unknown) => unknown) => {
+          state.accessCalls += 1
+          return (state.hold ?? Promise.resolve({ data: null, error: null })).then(resolve)
+        } }
+      return request
+    },
+  }) }
 })
 
 // The queue normally lives in IndexedDB, which Node does not have. Swap only the
@@ -105,6 +116,7 @@ beforeEach(async () => {
   state.count = undefined
   state.deny = false
   state.configured = false
+  state.accessCalls = 0
 })
 
 afterEach(() => {
@@ -240,7 +252,7 @@ describe('operation-bound preview admission', () => {
     state.hold = new Promise(() => {})
     void ensureInviteCode(trip.id)
     await tick()
-    expect(state.updates).toHaveLength(1)
+    expect(state.accessCalls).toBe(1)
     await expect(admitTripPreview({ tripId: trip.id, expectedBase: baseOf(trip.id), patch: { name: 'Preview' } }))
       .resolves.toMatchObject({ kind: 'conflict' })
   })

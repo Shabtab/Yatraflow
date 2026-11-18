@@ -95,9 +95,15 @@ _Recent release highlights, newest first. See [CHANGELOG.md](CHANGELOG.md) for t
 
 Pending notes live in [change fragments](changelog.d/README.md). The release owner assembles them into the public record.
 
+## The v0.88.1 release
+
+The repository is at v0.88.1. See the [release record](CHANGELOG.md) for its full scope.
+
+- **Removed trip members stay out.** A removed member cannot rejoin with a new invite link. A member who leaves keeps their assigned role when they rejoin. Existing invite links expire once.
+
 ## The v0.88.0 release
 
-The repository is at v0.88.0. See the [release record](CHANGELOG.md) for its full scope.
+The previous release. Its highlights stay here until the next release.
 
 - **Group input is one Decide together page.** Decisions, stop ideas and activity share one layout. A decision can close at a set time, and each member can answer a short interest quiz.
 - **Creators can copy a route as a weekend trip.** Pick a start date and a party size, and the copy keeps both. Storefronts also show the Indian states their routes cover.

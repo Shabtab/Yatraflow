@@ -41,7 +41,8 @@ const { state, toast } = vi.hoisted(() => ({
 
 vi.mock('../src/components/ui', () => ({ toast }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { memberBootstrapClient } = await import('./helpers/memberBootstrapClient')
   function query(table: string) {
     const qb: any = { table }
     qb.select = () => qb
@@ -72,7 +73,7 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: () => true,
-    supabase: {
+    supabase: memberBootstrapClient({
       from: (table: string) => {
         const qb = query(table)
         qb.insert = (p: any) => write(table, 'insert', p)
@@ -91,7 +92,7 @@ vi.mock('../src/lib/supabase', () => {
         if (fn !== 'get_public_trip') return { data: null, error: null }
         return { data: state.rpcRows, error: state.rpcError }
       },
-    },
+    }),
   }
 })
 
