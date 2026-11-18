@@ -125,13 +125,13 @@ describe('My trips Trash toggle and hero wiring (source)', () => {
     expect(p).toContain('{!showsOtherTripsHeader && (')
   })
 
-  it('gates the headline, stats, postcards and note on the same ready flag', () => {
+  it('gates the greeting counts on the ready flag, so a loading read never shows zeros', () => {
     const p = page()
+    expect(p).toContain("const greetingCountsText = tripsReady ? countsLine(")
+    expect(p).toContain('counts={greetingCountsText}')
+    // The shared hero stays with Explore: My trips no longer builds its pieces.
     for (const call of ['heroHeadline', 'heroStats', 'heroPostcards', 'heroNote']) {
-      const start = p.indexOf(`${call}({`)
-      expect(start, call).toBeGreaterThan(-1)
-      const argsEnd = p.indexOf('})', start)
-      expect(p.slice(start, argsEnd), call).toContain('ready: tripsReady')
+      expect(p, call).not.toContain(call)
     }
   })
 

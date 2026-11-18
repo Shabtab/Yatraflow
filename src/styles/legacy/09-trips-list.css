@@ -76,11 +76,37 @@
 }
 @keyframes mt-pulse { 50% { transform: scale(1.5); opacity: .55; } }
 
+/* ---------- Glass date stamp and status pill ---------- */
+.mt-stamp {
+  position: absolute; top: 10px; left: 10px; z-index: var(--z-content);
+  display: flex; flex-direction: column; align-items: center; min-width: 48px; padding: 6px 8px 7px;
+  border: 1px solid color-mix(in srgb, var(--card) 80%, transparent); border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--card) 84%, transparent); color: var(--text); line-height: 1.1;
+  box-shadow: var(--shadow-card);
+  -webkit-backdrop-filter: blur(var(--yf-blur-chip)); backdrop-filter: blur(var(--yf-blur-chip));
+}
+.mt-stamp span { color: var(--pw-marigold-ink); font-size: 11px; font-weight: 700; letter-spacing: .1em; }
+.mt-stamp b { font-size: 21px; font-weight: 800; line-height: 1; }
+.mt-stamp em { color: var(--text-2); font-size: 11px; font-style: normal; font-weight: 600; }
+.mt-stamp--none { min-width: 0; padding: 5px 10px; }
+.mt-stamp--none b { font-size: 12px; font-weight: 700; }
+.mt-status {
+  position: absolute; top: 10px; right: 10px; z-index: var(--z-content); max-width: calc(100% - 92px);
+  padding: 4px 10px; overflow: hidden; border-radius: 999px; white-space: nowrap; text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--card) 90%, transparent); color: var(--ink-teal);
+  font-size: 11.5px; font-weight: 700; line-height: 1.4;
+  -webkit-backdrop-filter: blur(var(--yf-blur-chip)); backdrop-filter: blur(var(--yf-blur-chip));
+}
+.mt-status--ready { color: color-mix(in srgb, var(--ok) 70%, var(--text)); }
+.mt-status--draft { color: var(--pw-marigold-ink); }
+.mt-status--live { background: var(--saffron); color: var(--color-accent-foreground); }
+
 /* ---------- Card text ---------- */
 .mt-card-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .mt-card-body { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 14px 12px 8px; }
+.mt-card-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .mt-card-title {
-  margin: 0; color: var(--text); font-family: var(--font-body); font-size: 19px; font-weight: 700; line-height: 1.28; letter-spacing: -.015em; text-wrap: balance;
+  margin: 0; color: var(--text); font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; letter-spacing: -.01em; text-wrap: balance;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 /* One link covers the whole card. The delete button sits above it. */
@@ -88,114 +114,195 @@
 .mt-card-link::after { content: ''; position: absolute; inset: 0; z-index: var(--z-content); border-radius: var(--radius); }
 .mt-card-link:focus-visible { outline: none; }
 .mt-card-link:focus-visible::after { box-shadow: var(--ring); }
-.mt-route { margin: 0; color: var(--text-2); font-size: 14px; }
+/* The status line shows on the cover pill in the grid. List rows hide the pill and show this line. */
+.mt-card-state { display: none; margin: 0; color: var(--ink-teal); font-size: 12.5px; font-weight: 700; }
+.mt-meta { margin: 0; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
 
-/* Three labelled columns: the label sits above the value, with no icons. */
-.mt-stats {
-  display: grid; grid-template-columns: repeat(3, minmax(0, auto)); justify-content: space-between; gap: 0 8px;
-  margin: 0; padding: 12px 0 0; border-top: 1px solid var(--line); list-style: none;
-}
-.mt-stats li { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
-.mt-stat-ico { display: none; color: var(--text-3); }
-.mt-stat-lab { color: var(--text-2); font-size: var(--kicker-size); font-weight: var(--kicker-weight); letter-spacing: var(--kicker-tracking); text-transform: uppercase; }
-.mt-stat-val { color: var(--text); font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* One segment per day. A filled segment is a day with an activity. The empty
+   segment keeps a --gray-400 edge, so it stays visible on the card (3:1 or more). */
+.mt-prog { display: flex; gap: 4px; }
+.mt-prog i { box-sizing: border-box; flex: 1; min-width: 4px; height: 8px; border: 1px solid var(--gray-400); border-radius: 999px; background: transparent; }
+.mt-prog i.is-full { border-color: var(--teal-deep); background: var(--teal-deep); }
 
-.mt-card-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 2px; }
-.mt-chip { display: inline-flex; align-items: center; min-height: 26px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); font-size: 12.5px; font-weight: 600; }
-.mt-chip--plain { border-color: transparent; background: var(--bg-soft); }
-
-/* No divider above the footer. */
-.mt-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 12px; padding: 4px 0 6px; }
+.mt-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 12px; padding: 8px 0 6px; border-top: 1px dashed var(--line); }
 .mt-solo { color: var(--text-2); font-size: 13.5px; }
 .mt-planners { max-height: none; overflow: visible; min-height: 30px; }
-.mt-del { position: relative; z-index: var(--z-raised); color: var(--text-2); }
+.mt-card-foot .mt-task { flex: 1 1 130px; min-width: 0; min-height: 36px; padding: 4px 0; background: transparent; color: var(--ink-teal); font-size: 12.5px; font-weight: 700; }
+.mt-card-foot .mt-task:hover { background: transparent; text-decoration: underline; }
+.mt-card-foot .mt-task--done { color: var(--text-2); font-weight: 500; }
+.mt-del { position: relative; z-index: var(--z-raised); margin-left: auto; color: var(--text-2); }
 .mt-del:hover { background: var(--color-destructive-soft); color: var(--ink-coral); }
 
 /* ---------- Up next ---------- */
 .mt-feat { display: grid; grid-template-columns: minmax(0, 1fr); }
 .mt-feat .mt-cover { aspect-ratio: 16 / 9; }
-.mt-feat-body { display: flex; flex-direction: column; gap: 12px; padding: 16px 14px 14px; }
-.mt-feat .mt-card-title { display: block; overflow: visible; font-size: 24px; font-weight: 700; line-height: 1.2; letter-spacing: -.02em; }
+.mt-feat .mt-tag { top: 12px; right: 12px; left: auto; }
+.mt-feat-over {
+  position: absolute; right: 0; bottom: 0; left: 0; z-index: var(--z-content);
+  display: flex; flex-direction: column; gap: 4px; padding: 56px 18px 16px; color: rgb(255 255 255);
+  background: linear-gradient(to top, rgba(var(--shadow-navy-rgb), .78), rgba(var(--shadow-navy-rgb), 0));
+}
+.mt-feat-kicker { color: var(--pw-marigold-300); font-size: var(--kicker-size); font-weight: var(--kicker-weight); letter-spacing: .1em; text-transform: uppercase; }
+.mt-feat .mt-card-title { display: block; overflow: visible; color: rgb(255 255 255); font-size: 26px; font-weight: 800; line-height: 1.15; letter-spacing: -.02em; }
+.mt-feat-route { margin: 0; color: rgb(255 255 255 / .92); font-size: 14px; }
+.mt-feat-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 14px 14px; }
 .mt-feat-when { margin: 0; font-size: 15px; font-variant-numeric: tabular-nums; }
-.mt-feat-when b { color: var(--ink-teal); font-weight: 800; }
+.mt-feat-when b { color: var(--ink-teal); font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
+.mt-next { display: flex; align-items: center; gap: 12px; margin: 0; padding: 12px; border: 1px solid var(--pw-marigold-300); border-radius: var(--radius); background: var(--pw-marigold-50); color: var(--text); }
+.mt-next-tile { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--pw-marigold-100); color: var(--pw-marigold-ink); }
+.mt-next-copy { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mt-next-copy b { font-size: 14.5px; font-weight: 800; line-height: 1.35; overflow-wrap: anywhere; }
+.mt-next-kicker { color: var(--pw-marigold-ink); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.mt-next--done { border-color: transparent; background: var(--teal-soft); }
+.mt-next--done .mt-next-tile { background: transparent; color: var(--ink-teal); }
+.mt-next-go { flex: none; }
+
+/* ---------- Per-day state strip ---------- */
+.mt-days-wrap { display: flex; flex-direction: column; gap: 6px; }
+.mt-days-cap { margin: 0; color: var(--text-2); font-size: 12.5px; }
+.mt-days { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.mt-day { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--teal-soft); }
+.mt-day-n { color: var(--text); font-size: 11.5px; font-weight: 700; }
+.mt-day-bar { display: block; height: 4px; border-radius: 999px; background: var(--ok); }
+.mt-day-label { font-size: 11px; font-weight: 700; line-height: 1.3; }
+.mt-day--clear .mt-day-label { color: color-mix(in srgb, var(--ok) 70%, var(--text)); }
+.mt-day--fix .mt-day-bar { background: var(--saffron); }
+.mt-day--fix .mt-day-label { color: var(--pw-marigold-ink); }
+.mt-day--risk .mt-day-bar { background: var(--color-destructive); }
+.mt-day--risk .mt-day-label { color: var(--ink-coral); }
+.mt-day--empty .mt-day-bar { background: var(--gray-400); }
+.mt-day--empty .mt-day-label { color: var(--text-2); }
+
+.mt-feat-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: auto; }
 .mt-feat-planners { display: flex; align-items: center; gap: 12px; color: var(--text); font-size: 14px; font-weight: 600; }
 .mt-feat-planners .mt-planners { min-height: 32px; }
-.mt-meter { display: grid; gap: 6px; }
-.mt-meter-label { margin: 0; color: var(--text-2); font-size: 13.5px; }
-.mt-meter-label b { color: var(--text); font-weight: 700; }
-/* The track edge uses --gray-400, so the empty track is visible on the card (3:1 or more). */
-.mt-meter-bar { box-sizing: border-box; height: 8px; overflow: hidden; border: 1px solid var(--gray-400); border-radius: 999px; background: color-mix(in srgb, var(--teal-deep) 18%, var(--card)); }
-.mt-meter-bar i { display: block; height: 100%; border-radius: 999px; background: var(--teal-deep); transition: width var(--motion-slow) var(--ease-out); }
-.mt-next { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--teal-soft); color: var(--text); font-size: 14.5px; line-height: 1.4; }
-.mt-next svg { flex: none; margin-top: 2px; color: var(--ink-teal); }
-.mt-next b { font-weight: 800; }
-.mt-feat-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+.mt-feat-cost { margin: 0; color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+.mt-feat-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .mt-feat-actions .btn { position: relative; z-index: var(--z-raised); }
-.mt-feat-actions .mt-del { margin-left: auto; }
+.mt-feat-actions .mt-del { margin-right: auto; margin-left: 0; }
 @container mt-catalog (min-width: 640px) {
-  .mt-feat { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); }
-  .mt-feat .mt-cover { aspect-ratio: auto; height: 100%; min-height: 300px; }
-  .mt-feat-body { gap: 12px; padding: 18px 20px 16px 22px; }
-  .mt-feat .mt-card-title { font-size: 28px; line-height: 1.18; }
+  .mt-feat { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  .mt-feat .mt-cover { aspect-ratio: auto; height: 100%; min-height: 340px; }
+  .mt-feat .mt-card-title { font-size: 30px; }
+  .mt-feat-over { padding: 64px 24px 22px; }
+  .mt-feat-body { gap: 16px; padding: 22px 22px 18px; }
 }
+
+/* ---------- Draft banner ---------- */
+.mt-draft { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin: 0 0 18px; padding: 14px 16px; border: 1.5px dashed var(--line-strong); border-radius: var(--radius); background: var(--card); }
+.mt-draft-tile { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: var(--radius-sm); background: var(--pw-marigold-100); color: var(--pw-marigold-ink); }
+.mt-draft-copy { flex: 1 1 200px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mt-draft-name { font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
+.mt-draft-meta { color: var(--text-2); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.mt-draft-bar { flex: none; width: 140px; }
+.mt-draft-dismiss { color: var(--text-2); }
+
+/* ---------- Greeting header ---------- */
+.mt-greet { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; margin: 6px 0 24px; }
+.mt-greet-copy { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mt-greet-date { color: var(--pw-marigold-ink); font-size: var(--kicker-size); font-weight: var(--kicker-weight); letter-spacing: .1em; text-transform: uppercase; }
+.mt-greet-title { margin: 0; color: var(--text); font-family: var(--font-display); font-size: 38px; font-weight: 700; line-height: 1.1; letter-spacing: -.02em; text-wrap: balance; overflow-wrap: anywhere; }
+.mt-greet-counts { margin: 0; color: var(--text-2); font-size: 15px; font-variant-numeric: tabular-nums; }
+.mt-greet-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+
+/* ---------- Coming up count and filters ---------- */
+.mt-count { margin-left: 6px; color: var(--text-2); font-size: 14px; font-weight: 600; letter-spacing: 0; font-variant-numeric: tabular-nums; vertical-align: middle; }
+.mt-catalog .ex-chip:not([aria-pressed='true']) { border-color: transparent; background: var(--teal-soft); }
+
+/* ---------- Memories ---------- */
+.mt-memories { margin-top: 8px; }
+.mt-pc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 0; padding: 4px 6px 10px; list-style: none; }
+@container mt-catalog (min-width: 640px) { .mt-pc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container mt-catalog (min-width: 880px) { .mt-pc-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.mt-pc {
+  display: flex; flex-direction: column; min-width: 0; padding: 10px 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-card);
+  transform: rotate(var(--mt-tilt, 0deg));
+  transition: transform var(--motion-slow) var(--ease-out), box-shadow var(--motion-slow) var(--ease-out);
+}
+.mt-pc:hover, .mt-pc:focus-within { transform: translateY(-3px) rotate(0deg); box-shadow: var(--shadow-card-hover); }
+.mt-pc .mt-cover { border-radius: var(--radius-xs); }
+.mt-pc-mark {
+  position: absolute; top: 8px; right: 8px; z-index: var(--z-content); max-width: calc(100% - 16px); padding: 4px 8px; overflow: hidden;
+  border: 2px solid rgb(255 255 255 / .9); border-radius: var(--radius-xs); background: rgba(var(--shadow-navy-rgb), .32); color: rgb(255 255 255);
+  font-size: 11px; font-weight: 800; letter-spacing: .08em; white-space: nowrap; text-overflow: ellipsis; transform: rotate(6deg);
+}
+.mt-pc-body { display: flex; flex-direction: column; gap: 4px; padding: 10px 4px 0; }
+.mt-pc-title { margin: 0; color: var(--text); font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.mt-pc-when, .mt-pc-facts { margin: 0; color: var(--text-2); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.mt-pc-actions { display: flex; flex-wrap: wrap; gap: 0 16px; margin-top: 6px; }
+.mt-pc-link {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0; border: 0; border-radius: 4px; background: none;
+  color: var(--ink-teal); font: inherit; font-size: 13px; font-weight: 700; text-decoration: none; cursor: pointer;
+}
+.mt-pc-link:hover { text-decoration: underline; }
+.mt-pc-link:focus-visible { outline: none; box-shadow: var(--ring); }
+.mt-pc-link:disabled { opacity: .55; cursor: default; text-decoration: none; }
+.mt-travel { display: flex; flex-direction: column; justify-content: center; gap: 10px; min-width: 0; padding: 18px; border-radius: var(--radius); background: var(--teal-soft); }
+.mt-travel-kicker { color: var(--text-2); font-size: var(--kicker-size); font-weight: var(--kicker-weight); letter-spacing: .1em; text-transform: uppercase; }
+.mt-travel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
+.mt-travel-grid > div { display: flex; flex-direction: column-reverse; min-width: 0; }
+.mt-travel-grid dd { margin: 0; color: var(--text); font-family: var(--font-display); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mt-travel-grid dt { color: var(--text-2); font-size: 11.5px; }
 
 /* ---------- List layout ---------- */
 .mt-grid.is-list { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .mt-grid.is-list > .mt-card { display: grid; grid-template-columns: 112px minmax(0, 1fr); }
 .mt-grid.is-list .mt-cover { aspect-ratio: auto; height: 100%; min-height: 100%; }
-.mt-grid.is-list .mt-tag { top: 6px; left: 6px; gap: 5px; padding: 2px 8px 2px 6px; font-size: 11px; }
-.mt-grid.is-list .mt-tag-dot { width: 7px; height: 7px; }
+/* In a row the cover is small. The body shows the status line, and the stamp shrinks. */
+.mt-grid.is-list .mt-status { display: none; }
+.mt-grid.is-list .mt-card-state { display: block; }
+.mt-grid.is-list .mt-stamp { top: 6px; left: 6px; transform: scale(.8); transform-origin: top left; }
 .mt-grid.is-list .mt-card-body { gap: 6px; padding: 12px 12px 6px 14px; }
 .mt-grid.is-list .mt-card-title { font-size: 17px; }
 .mt-grid.is-list .mt-card-foot { margin: 0 4px 0 14px; }
-/* In a row the labels stay for screen readers and the icons carry the look. */
-.mt-grid.is-list .mt-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 0; border-top: 0; }
-.mt-grid.is-list .mt-stats li { flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
-.mt-grid.is-list .mt-stat-ico { display: block; }
-.mt-grid.is-list .mt-stat-lab { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.mt-grid.is-list .mt-stat-val { color: var(--text-2); font-weight: 500; }
 @container mt-catalog (min-width: 720px) {
   .mt-grid.is-list > .mt-card { grid-template-columns: 168px minmax(0, 1fr); }
-  .mt-grid.is-list .mt-tag { top: 8px; left: 8px; gap: 6px; padding: 4px 12px 4px 8px; font-size: 12px; }
-  .mt-grid.is-list .mt-tag-dot { width: 8px; height: 8px; }
-  .mt-grid.is-list .mt-card-main { display: grid; grid-template-columns: minmax(0, 1.6fr) 150px minmax(0, 1fr) 150px; align-items: center; gap: 0 20px; padding: 4px 8px 4px 18px; }
-  .mt-grid.is-list .mt-card-body { display: contents; }
-  /* Head, stats and foot span two grid rows. The next-step row and the chips
-     stack in column 3, so a row with a step stays about as tall as one without. */
-  .mt-grid.is-list .mt-card-head { grid-column: 1; grid-row: 1 / span 2; min-width: 0; }
-  .mt-grid.is-list .mt-stats { grid-column: 2; grid-row: 1 / span 2; flex-direction: column; flex-wrap: nowrap; gap: 2px; }
-  .mt-grid.is-list .mt-task { grid-column: 3; grid-row: 1; }
-  .mt-grid.is-list .mt-card-chips { grid-column: 3; grid-row: 1 / span 2; margin-top: 0; padding: 0; }
-  .mt-grid.is-list .mt-task + .mt-card-chips { grid-row: 2; }
-  .mt-grid.is-list .mt-card-foot { grid-column: 4; grid-row: 1 / span 2; justify-content: flex-end; gap: 12px; margin: 0; padding: 0; }
+  .mt-grid.is-list .mt-card-main { display: grid; grid-template-columns: minmax(0, 1.6fr) 150px minmax(0, 1fr) auto auto; align-items: center; gap: 0 20px; padding: 4px 8px 4px 18px; }
+  .mt-grid.is-list .mt-card-body, .mt-grid.is-list .mt-card-foot { display: contents; }
+  /* The title, the status line and the meta stack in column 1. The day bar, the next
+     step, the planners and the delete button each take one column of their own. */
+  .mt-grid.is-list .mt-card-head { grid-column: 1; grid-row: 1; }
+  .mt-grid.is-list .mt-meta { grid-column: 1; grid-row: 2; }
+  .mt-grid.is-list .mt-prog { grid-column: 2; grid-row: 1 / span 2; }
+  .mt-grid.is-list .mt-task { grid-column: 3; grid-row: 1 / span 2; }
+  .mt-grid.is-list .mt-planners, .mt-grid.is-list .mt-solo { grid-column: 4; grid-row: 1 / span 2; }
+  .mt-grid.is-list .mt-del { grid-column: 5; grid-row: 1 / span 2; margin-left: 0; }
   .mt-grid.is-list .mt-card-title { font-size: 18px; }
 }
 
 /* ---------- Phones ---------- */
 @media (max-width: 720px), (pointer: coarse) {
-  .mt-del { width: 44px; height: 44px; }
+  .mt-del, .mt-draft-dismiss { width: 44px; height: 44px; }
   .mt-seg button { min-height: 44px; min-width: 44px; }
-  .mt-feat-actions .btn { min-height: 44px; }
-  .draft-card .btn { min-height: 44px; }
+  .mt-feat-actions .btn, .mt-next-go { min-height: 44px; }
+  .mt-draft .btn { min-height: 44px; }
+  .mt-pc-link { min-height: 44px; min-width: 44px; }
 }
 @media (max-width: 640px) {
   .mt-section-title { font-size: 24px; }
   .mt-section-head { margin-top: 22px; }
   .mt-card:hover { transform: none; }
+  .mt-greet-title { font-size: 30px; }
+  .mt-greet-actions { width: 100%; }
+  .mt-greet-actions > .btn { flex: 1 1 auto; justify-content: center; }
+  .mt-draft-bar { order: 5; width: 100%; }
+  .mt-next { flex-wrap: wrap; }
+  .mt-next-go { margin-left: auto; }
+  .mt-pc-grid { gap: 14px; padding-inline: 2px; }
+  /* The sort and When selects take a full row each, so "Recently edited" is not cut. */
+  .mt-catalog .mt-sort, .mt-catalog .mt-when { flex: 1 1 100%; }
   /* Compact rows: a small square cover, the text, and the delete button. */
   .mt-grid.is-list { gap: 8px; }
   .mt-grid.is-list > .mt-card { grid-template-columns: 76px minmax(0, 1fr) 44px; align-items: center; column-gap: 12px; padding: 6px 4px 6px 6px; }
   .mt-grid.is-list .mt-card-main { display: contents; }
   .mt-grid.is-list .mt-cover { aspect-ratio: 1 / 1; height: auto; min-height: 0; align-self: center; }
-  .mt-grid.is-list .mt-tag { top: 4px; left: 4px; padding: 2px 6px; font-size: 10.5px; gap: 4px; }
-  .mt-grid.is-list .mt-tag-dot { display: none; }
+  .mt-grid.is-list .mt-stamp { display: none; }
   .mt-grid.is-list .mt-card-body { gap: 2px; padding: 0; }
   .mt-grid.is-list .mt-card-title { font-size: 16px; line-height: 1.25; }
-  .mt-grid.is-list .mt-route { font-size: 13px; line-height: 1.4; }
-  .mt-grid.is-list .mt-stats { gap: 0 10px; font-size: 12.5px; line-height: 1.4; }
-  .mt-grid.is-list .mt-stat-ico { display: none; }
-  .mt-grid.is-list .mt-card-chips, .mt-grid.is-list .mt-task, .mt-grid.is-list .mt-planners, .mt-grid.is-list .mt-solo { display: none; }
-  .mt-grid.is-list .mt-card-foot { justify-self: end; margin: 0; padding: 0; }
+  .mt-grid.is-list .mt-meta { font-size: 12.5px; line-height: 1.4; }
+  .mt-grid.is-list .mt-prog, .mt-grid.is-list .mt-task, .mt-grid.is-list .mt-planners, .mt-grid.is-list .mt-solo { display: none; }
+  .mt-grid.is-list .mt-card-foot { justify-self: end; margin: 0; padding: 0; border-top: 0; }
 }
 @media (max-width: 360px) {
   .mt-grid.is-list > .mt-card { grid-template-columns: 64px minmax(0, 1fr) 44px; column-gap: 10px; }
@@ -207,20 +314,10 @@
   .mt-card { animation: none; transition: none; }
   .mt-card:hover { transform: none; }
   .mt-card:hover .mt-motif { transform: none; }
-  .mt-motif, .mt-meter-bar i, .mt-seg button { transition: none; }
+  .mt-motif, .mt-seg button { transition: none; }
   .mt-tag--live .mt-tag-dot { animation: none; }
-}
-
-/* ---------- My trips fixes: phone list rows ---------- */
-@media (max-width: 640px) {
-  /* The status tag shrinks to a dot. The word stays for screen readers. */
-  .mt-grid.is-list .mt-tag { width: 18px; height: 18px; padding: 0; justify-content: center; gap: 0; }
-  .mt-grid.is-list .mt-tag-dot { display: block; width: 8px; height: 8px; }
-  .mt-grid.is-list .mt-tag-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  /* Meta stack: budget on its own line, then travel and dates with a dot. */
-  .mt-grid.is-list .mt-stats { flex-wrap: wrap; justify-content: flex-start; gap: 0; }
-  .mt-grid.is-list .mt-stats li:first-child { flex-basis: 100%; }
-  .mt-grid.is-list .mt-stats li:last-child::before { content: '·'; margin: 0 6px; color: var(--text-3); }
+  /* The postcards stand straight and do not lift. */
+  .mt-pc, .mt-pc:hover, .mt-pc:focus-within { transform: none; transition: none; }
 }
 
 /* ---------- Empty-state icon weight ---------- */

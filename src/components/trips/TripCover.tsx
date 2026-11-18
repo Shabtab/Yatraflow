@@ -3,6 +3,7 @@
 // the trip's own places, else their emoji. The raw destination strings go in,
 // not just the collapsed region, so a trip to Bhubaneswar can reach Odisha's
 // scene. The status tag sits on top.
+import type { ReactNode } from 'react'
 import { CoverMedia } from '../CoverMedia'
 import { regionFor, type TripStatus } from '../../lib/tripsPage'
 import { coverPlanFor } from '../../lib/regionArt'
@@ -10,11 +11,15 @@ import { sizedCoverUrl } from '../../lib/tripThumb'
 import type { Trip } from '../../data/types'
 import { StatusTag } from './StatusTag'
 
-export function TripCover({ trip, status, sizes = GRID_SIZES }: {
+export function TripCover({ trip, status, sizes = GRID_SIZES, showTag = true, children }: {
   trip: Trip
   status: TripStatus
   /** The slot's real width. The list layout is a narrow fixed column, so it passes its own. */
   sizes?: string
+  /** False when the card draws its own status line instead of the dot tag. */
+  showTag?: boolean
+  /** Overlays on the cover: the date stamp, the status pill, the title. */
+  children?: ReactNode
 }) {
   const plan = coverPlanFor({
     // Sized on the way in, exactly as the shared card does. A Wikimedia cover
@@ -37,7 +42,8 @@ export function TripCover({ trip, status, sizes = GRID_SIZES }: {
         className="mt-cover-img"
         emojiClassName="itin-cover-fallback"
       />
-      <StatusTag status={status} />
+      {showTag && <StatusTag status={status} />}
+      {children}
     </div>
   )
 }
@@ -77,14 +83,14 @@ export const GRID_SIZES = [
 export const LIST_SIZES = '(min-width: 760px) 168px, (min-width: 641px) 112px, (min-width: 361px) 76px, 64px'
 
 /**
- * `.mt-feat` is two columns above a 640px catalog, the cover taking 1.05 of
- * 2.05 (8333-8335), on the card's content box, so 0.5122 of it. A 640px
- * catalog is a 695px viewport. Measured: 607 at 1280, 528 at 1100, 477 at 1000,
- * 426 at 900, 358 at 768, 334 at 721, 598 at 640 (one column), 348 at 390.
+ * `.mt-feat` is two columns above a 640px catalog, the cover taking 1.25 of
+ * 2.25 (see 09-trips-list.css), on the card's content box, so 0.5556 of it. A
+ * 640px catalog is a 695px viewport. The catalog caps at 1200px, so the card's
+ * content box is 1186px and the cover is 659px wide there.
  */
 export const FEATURED_SIZES = [
-  '(min-width: 1255px) 608px',
-  '(min-width: 695px) calc((100vw - 69px) * .5122)',
+  '(min-width: 1255px) 659px',
+  '(min-width: 695px) calc((100vw - 69px) * .5556)',
   // One column between 641 and 694: the catalog less its own 14px.
   '(min-width: 641px) calc(100vw - 69px)',
   'calc(100vw - 42px)',
