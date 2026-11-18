@@ -16,6 +16,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.88.1] - 2026-11-18
+
+### Fixed
+
+- **Removed trip members need an owner restore to regain access.** Undo and a later restore option use the same server check. Demotions survive leaving and rejoining. Removals and demotions replace the invite. Existing links expire once; current members keep their roles. Trip creation and unsaved plan edits keep their normal save behavior. Historical STE fixtures fetch only their pinned commit. (#931)
+
 ## [0.88.0] - 2026-11-17
 
 ### Added
