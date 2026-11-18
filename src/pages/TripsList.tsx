@@ -279,9 +279,9 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
     viewChangedByUser.current = true
     setView(v => v === 'trash' ? 'trips' : 'trash')
   }
-  // The Trash toggle lives in the "Other trips" header. That header is drawn
+  // The Trash toggle lives in the "Coming up" header. That header is drawn
   // only when trips are ready and the list is not the first-run empty state,
-  // and never in the Trash view. In every other case the hero carries the
+  // and never in the Trash view. In every other case the greeting header carries the
   // toggle, so the Trash stays reachable while trips load, after a failed read
   // with no trips, and when there are no trips at all.
   const showsOtherTripsHeader = !isTrashView && tripsReady && !(trips.length === 0 && !hasFilters)

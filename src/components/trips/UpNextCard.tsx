@@ -44,7 +44,6 @@ export function UpNextCard({ trip, today, budget, distanceKm, dayCells, users, m
       <TripCover trip={trip} status={status} sizes={FEATURED_SIZES}>
         <TripStamp stamp={dateStamp(trip)} />
         <div className="mt-feat-over">
-          <span className="mt-feat-kicker">Up next</span>
           <h3 className="mt-card-title">
             <a className="mt-card-link" {...appLink(detailRoute)}>{trip.name}</a>
           </h3>

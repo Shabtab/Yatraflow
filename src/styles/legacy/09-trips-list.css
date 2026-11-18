@@ -127,7 +127,10 @@
 .mt-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 12px; padding: 8px 0 6px; border-top: 1px dashed var(--line); }
 .mt-solo { color: var(--text-2); font-size: 13.5px; }
 .mt-planners { max-height: none; overflow: visible; min-height: 30px; }
-.mt-card-foot .mt-task { flex: 1 1 130px; min-width: 0; min-height: 36px; padding: 4px 0; background: transparent; color: var(--ink-teal); font-size: 12.5px; font-weight: 700; }
+/* The planners and the delete button share the first row. The next step takes the row below. */
+.mt-card-foot > :not(.mt-task):not(.mt-del) { order: 1; }
+.mt-card-foot .mt-del { order: 2; }
+.mt-card-foot .mt-task { order: 3; flex: 1 1 100%; min-width: 0; min-height: 36px; padding: 4px 0; background: transparent; color: var(--ink-teal); font-size: 12.5px; font-weight: 700; }
 .mt-card-foot .mt-task:hover { background: transparent; text-decoration: underline; }
 .mt-card-foot .mt-task--done { color: var(--text-2); font-weight: 500; }
 .mt-del { position: relative; z-index: var(--z-raised); margin-left: auto; color: var(--text-2); }
@@ -142,7 +145,6 @@
   display: flex; flex-direction: column; gap: 4px; padding: 56px 18px 16px; color: rgb(255 255 255);
   background: linear-gradient(to top, rgba(var(--shadow-navy-rgb), .78), rgba(var(--shadow-navy-rgb), 0));
 }
-.mt-feat-kicker { color: var(--pw-marigold-300); font-size: var(--kicker-size); font-weight: var(--kicker-weight); letter-spacing: .1em; text-transform: uppercase; }
 .mt-feat .mt-card-title { display: block; overflow: visible; color: rgb(255 255 255); font-size: 26px; font-weight: 800; line-height: 1.15; letter-spacing: -.02em; }
 .mt-feat-route { margin: 0; color: rgb(255 255 255 / .92); font-size: 14px; }
 .mt-feat-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 14px 14px; }
