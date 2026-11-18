@@ -120,10 +120,19 @@ export function settingsSnapshot(t: Trip): string {
   return JSON.stringify([formFromTrip(t), t.destinations, t.destinationCoords ?? null, t.startLocationCoords ?? null])
 }
 
-/** #414 follow-up: only another owner or editor can change trip settings. On a
- *  trip where you are the only editor, a remote edit cannot exist. */
+/** #414 follow-up: true when another owner or editor can change trip settings.
+ *  When it is false, the change came from your own other tab or device, and the
+ *  banner names that source instead of "a crew member". An unknown session
+ *  (null id) answers false, so a loading session never blames a crew member. */
 export function hasOtherEditor(members: readonly { userId: string; role: string }[], meId: string | null | undefined): boolean {
+  if (!meId) return false
   return members.some(m => m.userId !== meId && (m.role === 'owner' || m.role === 'editor'))
+}
+
+/** The banner's actor: blank means "A crew member"; a solo editor's change can
+ *  only come from their own other tab or device. */
+export function remoteEditorLabel(members: readonly { userId: string; role: string }[], meId: string | null | undefined): string {
+  return hasOtherEditor(members, meId) ? '' : 'Your other tab or device'
 }
 
 export type SettingsDryRun =
@@ -575,7 +584,9 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
     if (trip.updatedAt <= openedAtRef.current) return
     // A newer row that changes none of this form's fields (the echo of our own
     // save, a stop edit, a background write) is not a conflict: rebase quietly.
-    if (snap === openedSnapRef.current || !hasOtherEditor(membersOf(trip), meId)) {
+    // A changed field always warns, even on a solo trip: your other tab or
+    // device can change it, and a Save from this draft would overwrite it.
+    if (snap === openedSnapRef.current) {
       openedAtRef.current = trip.updatedAt; openedSnapRef.current = snap
       return
     }
@@ -1000,7 +1011,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
       {remoteAt !== null && (
         <RemoteEditBanner
           noun="trip settings"
-          byName=""
+          byName={remoteEditorLabel(members, meId)}
           onKeepMine={() => { openedAtRef.current = trip.updatedAt; openedSnapRef.current = settingsSnapshot(trip); setRemoteAt(null) }}
           onTakeTheirs={() => reseedFrom(trip)}
         />

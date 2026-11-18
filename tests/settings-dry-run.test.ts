@@ -68,7 +68,8 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 import { readFileSync } from 'node:fs'
 // The predicate and the seed factory live on the form; the store import chain
 // rides the same mock the session-lifecycle harness uses.
-import { settingsDryRun, settingsAreDirty, formFromTrip, settingsSnapshot, hasOtherEditor } from '../src/pages/trip/TripSettingsForm'
+import { settingsDryRun, settingsAreDirty, formFromTrip, settingsSnapshot, hasOtherEditor, remoteEditorLabel } from '../src/pages/trip/TripSettingsForm'
+import { rowToTrip, tripUpdateRow, type TripRow, type OptionalColumnsProbe } from '../src/lib/tripRow'
 import { zipDests, splitDests, renameDest } from '../src/lib/destPairs'
 import { parseCapacityL, parseVehicleEconomy } from '../src/lib/vehicleProfile'
 import { reconcileDays } from '../src/store/store'
@@ -265,7 +266,9 @@ describe('#408/#412/#414 — the form and its neighbours are wired as pinned', (
     expect(banner).toMatch(/noun = 'stop'/)
     expect(banner).toMatch(/edited this \{noun\} while you had it open/)
     // The banner needs a changed settings field AND another editor (#414 follow-up).
-    expect(form).toMatch(/snap === openedSnapRef\.current \|\| !hasOtherEditor\(membersOf\(trip\), meId\)/)
+    expect(form).toMatch(/if \(snap === openedSnapRef\.current\) \{/)
+    expect(form).not.toMatch(/!hasOtherEditor\(membersOf\(trip\), meId\)/)
+    expect(form).toMatch(/byName=\{remoteEditorLabel\(members, meId\)\}/)
     expect(form).toMatch(/openedSnapRef\.current = settingsSnapshot\(t\)/)
   })
 
@@ -420,5 +423,28 @@ describe('#414 follow-up — the settings banner needs a real remote edit', () =
     expect(hasOtherEditor([{ userId: 'me', role: 'owner' }, { userId: 'e', role: 'editor' }], 'me')).toBe(true)
     expect(hasOtherEditor([{ userId: 'o', role: 'owner' }, { userId: 'me', role: 'editor' }], 'me')).toBe(true)
     expect(hasOtherEditor([], 'me')).toBe(false)
+    // A loading session (no id yet) never blames a crew member.
+    expect(hasOtherEditor([{ userId: 'o', role: 'owner' }, { userId: 'e', role: 'editor' }], null)).toBe(false)
+  })
+
+  it('a solo editor is told the change came from their own other tab or device', () => {
+    expect(remoteEditorLabel([{ userId: 'me', role: 'owner' }], 'me')).toBe('Your other tab or device')
+    expect(remoteEditorLabel([{ userId: 'me', role: 'owner' }, { userId: 'e', role: 'editor' }], 'me')).toBe('')
+  })
+
+  it('a saved settings patch reads back from the server row with the same snapshot', () => {
+    const trip = trip4()
+    trip.destinations = ['Kochi', 'Munnar']
+    trip.destinationCoords = [{ lat: 9.9, lng: 76.3 }, null]
+    const f = { ...formFromTrip(trip), name: 'Renamed', travellers: 3 }
+    const run = settingsDryRun(f, zipDests(trip.destinations, trip.destinationCoords), null, trip)
+    expect(run.ok).toBe(true)
+    if (!run.ok) return
+    const saved: Trip = { ...trip, ...run.patch }
+    // A migrated database: every optional column exists, as in production.
+    const cols: OptionalColumnsProbe = { economy: true, price: true, roundTrip: true, cover: true, inviteCode: true, deleted: true, stayStyle: true, driverCount: true, hasVulnerable: true, driveAfterDinner: true, vehicleProfile: true, tankL: true, rentPerDayInr: true, localTrain: true, drivesPart: true, flights: true, ref: true, growth: true }
+    const row = { ...tripUpdateRow(saved, 'owner-1', cols), owner_id: 'owner-1', created_at: new Date(saved.createdAt).toISOString(), updated_at: new Date(saved.updatedAt + 5_000).toISOString() } as TripRow
+    const echoed = rowToTrip(JSON.parse(JSON.stringify(row)) as TripRow, saved.members ?? [])
+    expect(settingsSnapshot(echoed)).toBe(settingsSnapshot(saved))
   })
 })
