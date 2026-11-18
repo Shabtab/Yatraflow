@@ -18,7 +18,7 @@ export function useShortPlaceholder(): boolean {
   return short
 }
 
-export function SearchField({ value, onChange, label, placeholder, shortPlaceholder }: {
+export function SearchField({ value, onChange, label, placeholder, shortPlaceholder, pill = false }: {
   value: string
   onChange: (next: string) => void
   /** The accessible name of the field. It is not drawn. */
@@ -26,11 +26,13 @@ export function SearchField({ value, onChange, label, placeholder, shortPlacehol
   placeholder: string
   /** The placeholder to use on a phone. */
   shortPlaceholder: string
+  /** A 250px pill for a one-row toolbar. The default is the wide field Explore uses. */
+  pill?: boolean
 }) {
   const inputId = useId()
   const useShort = useShortPlaceholder()
   return (
-    <div className="ex-search">
+    <div className={pill ? 'ex-search ex-search--pill' : 'ex-search'}>
       <label className="sr-only" htmlFor={inputId}>{label}</label>
       <Search className="ex-search-icon" size={18} aria-hidden />
       <input id={inputId} className="ex-search-input" type="search" autoComplete="off"

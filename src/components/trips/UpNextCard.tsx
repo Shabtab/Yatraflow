@@ -10,8 +10,12 @@ import { nextStepRoute } from '../../lib/tripNextStep'
 import { kmText, meterLabel, routeLine } from '../../lib/tripsCard'
 import { cardNextStep, countdownText, dateStamp, planning, statusOf, stepActionLabel } from '../../lib/tripsPage'
 import type { DayCell } from '../../lib/tripDayStrip'
+import type { HealthResult } from '../../lib/engine'
+import { countdownTiles, startsSubtitle } from '../../lib/tripCountdown'
+import { useTimeFormat } from '../../lib/timefmt'
 import type { Trip, CachedUser } from '../../data/types'
 import { DayStrip } from './DayStrip'
+import { HealthRing } from './HealthRing'
 import { Planners } from './Planners'
 import { TripCover, FEATURED_SIZES } from './TripCover'
 import { TripStamp } from './TripStamp'
@@ -24,14 +28,19 @@ export interface UpNextCardProps {
   distanceKm: number
   /** One cell per day, from the engine's warnings. */
   dayCells: DayCell[]
+  /** The engine's score from the same estimated warnings as the strip. */
+  health: Pick<HealthResult, 'score' | 'band'>
   users: CachedUser[]
   meId: string | null
   onDelete: (trip: Trip) => void
 }
 
-export function UpNextCard({ trip, today, budget, distanceKm, dayCells, users, meId, onDelete }: UpNextCardProps) {
+export function UpNextCard({ trip, today, budget, distanceKm, dayCells, health, users, meId, onDelete }: UpNextCardProps) {
+  const timeFormat = useTimeFormat()
   const status = statusOf(trip, today)
   const countdown = countdownText(trip, today)
+  const tiles = countdownTiles(trip, today)
+  const subtitle = tiles ? startsSubtitle(trip, timeFormat) : null
   const { planned, total } = planning(trip)
   const meterText = meterLabel(planned, total)
   const step = cardNextStep(trip, today)
@@ -51,7 +60,22 @@ export function UpNextCard({ trip, today, budget, distanceKm, dayCells, users, m
         </div>
       </TripCover>
       <div className="mt-feat-body">
-        {countdown && <p className="mt-feat-when"><b>{countdown}</b></p>}
+        <div className="mt-when-row">
+          {tiles ? (
+            <>
+              <div className="mt-flip" role="img" aria-label={tiles.label}>
+                {tiles.digits.map((digit, index) => <span key={index} aria-hidden="true">{digit}</span>)}
+              </div>
+              <div className="mt-when-copy">
+                <b aria-hidden="true">{tiles.unit}</b>
+                {subtitle && <span>{subtitle}</span>}
+              </div>
+            </>
+          ) : (
+            countdown && <p className="mt-feat-when"><b>{countdown}</b></p>
+          )}
+          <HealthRing health={health} />
+        </div>
         {step && (step.kind === 'done' ? (
           <p className="mt-next mt-next--done">
             <span className="mt-next-tile"><Check size={18} aria-hidden /></span>

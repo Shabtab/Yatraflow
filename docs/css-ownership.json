@@ -126,7 +126,8 @@
         "ex-search",
         "ex-search-icon",
         "ex-search-input",
-        "ex-search-clear"
+        "ex-search-clear",
+        "ex-search--pill"
       ],
       "configClasses": [],
       "variables": [

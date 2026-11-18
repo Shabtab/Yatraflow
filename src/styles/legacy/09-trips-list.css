@@ -150,6 +150,27 @@
 .mt-feat-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 14px 14px; }
 .mt-feat-when { margin: 0; font-size: 15px; font-variant-numeric: tabular-nums; }
 .mt-feat-when b { color: var(--ink-teal); font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
+/* ---------- Countdown row: flip tiles, subtitle and health ring ---------- */
+.mt-when-row { display: flex; align-items: center; gap: 14px; }
+.mt-when-row .mt-feat-when { flex: 1; min-width: 0; }
+.mt-flip { display: flex; flex: none; gap: 4px; }
+.mt-flip span {
+  position: relative; display: flex; align-items: center; justify-content: center; width: 28px; height: 38px;
+  border-radius: var(--radius-xs); background: var(--pw-ink); color: var(--card);
+  font-family: var(--font-display); font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.mt-flip span::after { content: ''; position: absolute; top: 50%; right: 0; left: 0; height: 1px; background: color-mix(in srgb, var(--card) 18%, transparent); }
+.mt-when-copy { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.mt-when-copy b { color: var(--text); font-size: 15px; font-weight: 700; }
+.mt-when-copy span { color: var(--text-2); font-size: 12.5px; }
+.mt-ring { flex: none; margin-left: auto; }
+.mt-ring-track { fill: none; stroke: var(--teal-soft); stroke-width: 5; }
+.mt-ring-arc { fill: none; stroke: var(--pw-lagoon-400); stroke-width: 5; stroke-linecap: round; animation: mt-ring-draw var(--motion-slower) var(--ease-out) backwards; }
+.mt-ring--marigold .mt-ring-arc { stroke: var(--pw-marigold-500); }
+.mt-ring--bloom .mt-ring-arc { stroke: var(--pw-bloom-500); }
+.mt-ring text { fill: var(--text); font-family: var(--font-display); font-size: 13px; font-weight: 700; }
+@keyframes mt-ring-draw { from { stroke-dashoffset: var(--mt-ring-full); } }
+
 .mt-next { display: flex; align-items: center; gap: 12px; margin: 0; padding: 12px; border: 1px solid var(--pw-marigold-300); border-radius: var(--radius); background: var(--pw-marigold-50); color: var(--text); }
 .mt-next-tile { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--pw-marigold-100); color: var(--pw-marigold-ink); }
 .mt-next-copy { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -209,7 +230,34 @@
 
 /* ---------- Coming up count and filters ---------- */
 .mt-count { margin-left: 6px; color: var(--text-2); font-size: 14px; font-weight: 600; letter-spacing: 0; font-variant-numeric: tabular-nums; vertical-align: middle; }
-.mt-catalog .ex-chip:not([aria-pressed='true']) { border-color: transparent; background: var(--teal-soft); }
+
+/* One toolbar row: heading and count on the left, the tools on the right. */
+.mt-listhead { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin: 24px 0 14px; }
+.mt-listhead-title { display: flex; align-items: baseline; gap: 12px; margin-right: auto; }
+.mt-listhead .mt-section-title { margin: 0; }
+.mt-listhead .mt-count { margin: 0; }
+.mt-listhead-tools { display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+.mt-chips { display: flex; align-items: center; gap: 8px; }
+.mt-chips .ex-chip { flex: none; min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--teal-soft); color: var(--text); font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+.mt-chips .ex-chip:hover { background: color-mix(in srgb, var(--teal-deep) 14%, var(--card)); }
+.mt-chips .ex-chip[aria-pressed='true'] { background: var(--pw-sea-700); color: var(--card); font-weight: 700; }
+.mt-sort { position: relative; display: inline-flex; flex: none; align-items: center; }
+.mt-sort select {
+  min-height: 36px; padding: 0 32px 0 14px; border: 0; border-radius: 999px; background: var(--teal-soft); color: var(--text);
+  font: inherit; font-size: 13.5px; font-weight: 600; -webkit-appearance: none; appearance: none; cursor: pointer;
+}
+.mt-sort select:focus-visible { outline: none; box-shadow: var(--ring); }
+.mt-sort svg { position: absolute; right: 12px; color: var(--text-2); pointer-events: none; }
+.mt-listhead .mt-seg { padding: 4px; border: 0; background: var(--bg-soft); }
+.mt-listhead .mt-seg::before { top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 2); background: var(--card); box-shadow: var(--shadow-card); }
+.mt-listhead .mt-seg[data-layout='list']::before { left: 50%; }
+.mt-listhead .mt-seg button { min-height: 34px; padding: 0 12px; }
+.mt-listhead .mt-seg button[aria-pressed='true'] { color: var(--text); }
+.mt-clear, .mt-trash { flex: none; white-space: nowrap; }
+/* Below a 1150px catalog the tools take their own line under the heading. */
+@container mt-catalog (max-width: 1150px) {
+  .mt-listhead-tools { flex-wrap: wrap; flex-basis: 100%; justify-content: flex-start; }
+}
 
 /* ---------- Memories ---------- */
 .mt-memories { margin-top: 8px; }
@@ -280,6 +328,8 @@
   .mt-feat-actions .btn, .mt-next-go { min-height: 44px; }
   .mt-draft .btn { min-height: 44px; }
   .mt-pc-link { min-height: 44px; min-width: 44px; }
+  .mt-chips .ex-chip, .mt-sort select { min-height: 44px; }
+  .mt-listhead .mt-seg button { min-height: 44px; }
 }
 @media (max-width: 640px) {
   .mt-section-title { font-size: 24px; }
@@ -292,8 +342,8 @@
   .mt-next { flex-wrap: wrap; }
   .mt-next-go { margin-left: auto; }
   .mt-pc-grid { gap: 14px; padding-inline: 2px; }
-  /* The sort and When selects take a full row each, so "Recently edited" is not cut. */
-  .mt-catalog .mt-sort, .mt-catalog .mt-when { flex: 1 1 100%; }
+  /* The search takes the full row and the chips scroll sideways in one line. */
+  .mt-chips { flex: 1 1 100%; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
   /* Compact rows: a small square cover, the text, and the delete button. */
   .mt-grid.is-list { gap: 8px; }
   .mt-grid.is-list > .mt-card { grid-template-columns: 76px minmax(0, 1fr) 44px; align-items: center; column-gap: 12px; padding: 6px 4px 6px 6px; }
@@ -318,6 +368,7 @@
   .mt-card:hover .mt-motif { transform: none; }
   .mt-motif, .mt-seg button { transition: none; }
   .mt-tag--live .mt-tag-dot { animation: none; }
+  .mt-ring-arc { animation: none; }
   /* The postcards stand straight and do not lift. */
   .mt-pc, .mt-pc:hover, .mt-pc:focus-within { transform: none; transition: none; }
 }

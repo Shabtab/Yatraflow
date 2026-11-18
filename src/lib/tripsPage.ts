@@ -616,3 +616,10 @@ export function postmark(t: Pick<Trip, 'name' | 'startLocation' | 'destinations'
   const when = `${MONTH_NAMES[end.month - 1].toUpperCase()} ${String(end.year).slice(-2)}`
   return place ? `${place} · ${when}` : when
 }
+
+/** Whole calendar days from `today` to the start day of an upcoming trip. Null for a live, past or dateless trip. */
+export function daysUntilStart(t: TripDates, today: Date): number | null {
+  const start = parseYmd(t.startDate)
+  if (!start || statusOf(t, today) !== 'upcoming') return null
+  return diffDays(localDay(today), start)
+}

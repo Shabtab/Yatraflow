@@ -1,12 +1,11 @@
 // ============ My trips ============
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { Compass, Plus, Rocket, ShoppingBag, Trash2, X } from 'lucide-react'
+import { ChevronDown, Compass, Plus, Rocket, ShoppingBag, Trash2, X } from 'lucide-react'
 import { InlineIcon } from '../components/icons'
 import { useTrips, useTrashedTrips, useUsers, useSessionUserId, useSliceReads, useTrashLoaded, useTrashFailed, tripsForUser, trashTrip, restoreTrashedTrip, restoreTrashedTripById, permanentlyDeleteTrip, fetchTrashedTrips, rereadTrips, addDemoTrips, duplicateTripPersisted } from '../store/store'
-import { collectWarnings, computeTotals, formatInrShort } from '../lib/engine'
+import { collectWarnings, computeTotals, formatInrShort, scoreWarnings } from '../lib/engine'
 import { cap } from '../lib/labels'
 import { toast, undoToast, ConfirmDialog } from '../components/ui'
-import { Select } from '../components/Select'
 import { loadDraft, saveDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, type StoredDraft } from '../lib/createDraft'
 import { readinessFromDraft } from '../lib/createReadiness'
 import { createFunnelOn } from '../lib/featureFlags'
@@ -14,7 +13,7 @@ import { ImportTripButton } from '../components/ImportTripButton'
 import { sliceState, emptyCopyFor, readState, rowsView } from '../lib/readState'
 import type { Trip } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
-import { compareSoonest, countsLine, greetingCounts, greetingDateLabel, greetingHeadline, otherTripsEmptyKind, pickUpNext, splitByMemory, travelSoFar, whenBucket, type WhenKey } from '../lib/tripsPage'
+import { compareSoonest, countsLine, greetingCounts, greetingDateLabel, greetingHeadline, otherTripsEmptyKind, pickUpNext, splitByMemory, travelSoFar, whenBucket } from '../lib/tripsPage'
 import { dayStrip, isReadyToGo, openChecks } from '../lib/tripDayStrip'
 import { layoutFromPref, startOfLocalDay, TRIPS_LAYOUT_PREF } from '../lib/tripsCard'
 import { loadPref, savePref } from '../lib/uiPrefs'
@@ -120,8 +119,8 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   // private page, unlike Explore's shareable links) ----
   const [q, setQ] = useState('')
   const [style, setStyle] = useState<'all' | Trip['travelStyle']>('all')
-  const [when, setWhen] = useState<WhenKey>('all')
-  const [sortKey, setSortKey] = useState<SortKey>('recent')
+  // Past trips live in Memories, so the grid has no When filter. Soonest first is the default.
+  const [sortKey, setSortKey] = useState<SortKey>('soonest')
   // The Grid | List choice is the one view pref this page keeps. It is read on
   // mount and written on each change; a stored value that names no layout reads
   // as the grid, and a storage failure keeps the default.
@@ -134,12 +133,9 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const mine = useMemo(() => tripsForUser(meId), [allTrips, meId])
 
   const trips = useMemo(() => {
-    // The memo re-runs when the calendar day changes, not on every render.
-    const filterToday = new Date(todayStart)
     const needle = q.trim().toLowerCase()
     const filtered = mine.filter(t => {
       if (style !== 'all' && t.travelStyle !== style) return false
-      if (when !== 'all' && whenBucket(t, filterToday) !== when) return false
       if (!needle) return true
       const hay = [
         t.name, t.startLocation, ...t.destinations,
@@ -158,7 +154,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         default: return b.updatedAt - a.updatedAt
       }
     })
-  }, [mine, q, style, when, sortKey, todayStart])
+  }, [mine, q, style, sortKey])
 
   // style chips carry counts of the *unfiltered-by-style* set so they stay
   // stable while toggling (same behavior as Explore's style chips).
@@ -168,7 +164,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
     return m
   }, [allTrips, meId])
 
-  const hasFilters = q !== '' || style !== 'all' || when !== 'all' || sortKey !== 'recent'
+  const hasFilters = q !== '' || style !== 'all' || sortKey !== 'soonest'
 
   // Up next ignores the style, When and sort choices, so it stays pinned while
   // you change them. Only a text search hides it: a search is a question about
@@ -217,7 +213,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   // all four fields while the empty-state action reset three and left
   // `sortKey`, so a sort-only empty was unfixable by its own button. The
   // toolbar's set is the superset — adopt it once, call it twice.
-  function clearFilters() { setQ(''); setStyle('all'); setWhen('all'); setSortKey('recent') }
+  function clearFilters() { setQ(''); setStyle('all'); setSortKey('soonest') }
 
   // P4 - the unfinished trip shows up where people look for their trips. It is
   // not a trip yet, so it is not a row among them: one card, above the grid.
@@ -424,6 +420,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                 budget={<BudgetText totals={upNextTotals} />}
                 distanceKm={upNextTotals.totalDistanceKm}
                 dayCells={dayStrip(upNext, tripChecks.get(upNext.id) ?? [])}
+                health={scoreWarnings(tripChecks.get(upNext.id) ?? [])}
                 users={users}
                 meId={meId}
                 onDelete={setPendingDelete}
@@ -434,61 +431,45 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
           <SavedShelfSection trips={mine} />
 
           <section aria-labelledby={otherTitleId}>
-            <SectionHead id={otherTitleId}
-              title={<>Coming up <span className="mt-count">{otherTrips.length}</span></>}
-              actions={(
-                <>
-                  <button ref={headerTrashToggleRef} type="button" className="btn btn-quiet" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
-                  <ViewSwitch layout={layout} onChange={pickLayout} />
-                </>
-              )} />
-
-            {/* ---- Explore's filter bar: search, selects, then chips ---- */}
-            <div className="ex-filterbar filterbar-host" role="search" aria-label="Filter your trips">
-              <div className="ex-filter-row">
+            {/* One row, as in the mockup: the heading and its count, then search, pace
+                chips, the sort chip, the Grid | List switch, Clear and Trash. */}
+            <div className="mt-listhead">
+              <div className="mt-listhead-title">
+                <h2 className="mt-section-title" id={otherTitleId}>Coming up</h2>
+                <span className="mt-count">{otherTrips.length} {otherTrips.length === 1 ? 'trip' : 'trips'}</span>
+              </div>
+              <div className="mt-listhead-tools" role="search" aria-label="Filter your trips">
                 <SearchField value={q} onChange={setQ} label="Search your trips"
-                  placeholder="Search places or stops…" shortPlaceholder="Search trips" />
-              </div>
-              <div className="ex-filter-row">
-                <div className="ex-select mt-when">
-                  <Select value={when} onChange={v => setWhen(v as WhenKey)} aria-label="When"
-                    options={[
-                      { value: 'all', label: 'Any time' },
-                      { value: 'upcoming', label: 'Upcoming & live' },
-                      { value: 'past', label: 'Past trips' },
-                      { value: 'draft', label: 'Drafts' },
-                    ]} />
-                </div>
-                <div className="ex-select mt-sort">
-                  <Select value={sortKey} onChange={v => setSortKey(v as SortKey)} aria-label="Sort by"
-                    options={[
-                      { value: 'recent', label: 'Recently edited' },
-                      { value: 'soonest', label: 'Soonest first' },
-                      { value: 'name', label: 'Name A–Z' },
-                      { value: 'length-desc', label: 'Longest first' },
-                      { value: 'budget-asc', label: 'Budget: low → high' },
-                      { value: 'budget-desc', label: 'Budget: high → low' },
-                    ]} />
-                </div>
-              </div>
-              <div className="ex-chip-row">
-                <div className="ex-chips" role="group" aria-label="Travel style">
-                  <FilterChip pressed={style === 'all'} onClick={() => setStyle('all')}>All styles</FilterChip>
-                  {TRAVEL_STYLES.filter(s => styleCounts.get(s)).map(s => (
-                    <FilterChip key={s} pressed={style === s} count={styleCounts.get(s)}
-                      onClick={() => setStyle(style === s ? 'all' : s)}>
-                      {cap(s)}
+                  placeholder="Search places or stops" shortPlaceholder="Search trips" pill />
+                <div className="mt-chips" role="group" aria-label="Travel style">
+                  <FilterChip pressed={style === 'all'} onClick={() => setStyle('all')}>All</FilterChip>
+                  {TRAVEL_STYLES.filter(st => styleCounts.get(st)).map(st => (
+                    <FilterChip key={st} pressed={style === st} onClick={() => setStyle(style === st ? 'all' : st)}>
+                      {cap(st)}
                     </FilterChip>
                   ))}
                 </div>
-                {/* Always mounted, so the row never gains or loses an element when a
-                    filter starts or stops. Idle, it is hidden but keeps its place. */}
-                {/* "Clear filters" (review finding 4): the empty state's action said
-                    "Clear filters" while this ghost button said "Clear" — the same
-                    reset under two names, both once visible in one frame. */}
-                <button type="button" className="btn btn-quiet ex-clear" style={{ visibility: hasFilters ? 'visible' : 'hidden', opacity: hasFilters ? 1 : 0 }} onClick={clearFilters}>
-                  <X size={13} aria-hidden />Clear filters
-                </button>
+                <label className="mt-sort">
+                  <span className="sr-only">Sort by</span>
+                  <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}>
+                    <option value="soonest">Soonest first</option>
+                    <option value="recent">Recently edited</option>
+                    <option value="name">Name A–Z</option>
+                    <option value="length-desc">Longest first</option>
+                    <option value="budget-asc">Budget: low → high</option>
+                    <option value="budget-desc">Budget: high → low</option>
+                  </select>
+                  <ChevronDown size={14} aria-hidden />
+                </label>
+                <ViewSwitch layout={layout} onChange={pickLayout} />
+                {/* Shown only while a search, a chip or a sort choice is active. The
+                    empty-results block keeps its own Clear filters button. */}
+                {hasFilters && (
+                  <button type="button" className="btn btn-quiet mt-clear" onClick={clearFilters}>
+                    <X size={13} aria-hidden />Clear filters
+                  </button>
+                )}
+                <button ref={headerTrashToggleRef} type="button" className="btn btn-quiet mt-trash" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
               </div>
             </div>
 
