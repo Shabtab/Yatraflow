@@ -998,7 +998,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
           <div className="draft-banner-copy">
             <b>Picking up where you left off</b>
             <span className="draft-banner-meta">
-              {draftReadiness ? `${draftReadiness.pct}% ready` : 'saved'} - saved {draftAgeLabel(draft.savedAt)}
+              {draftReadiness ? `${draftReadiness.pct}% ready` : 'Saved'} - saved {draftAgeLabel(draft.savedAt)}
             </span>
           </div>
           <div className="draft-banner-acts">
@@ -1042,7 +1042,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <button type="button" className="tpl-blank" key="blank" onClick={clearTemplate}>
                 <span>
                   Start blank
-                  <small>{guided ? 'Six short steps. Most take one tap.' : 'three questions and a live ticket'}</small>
+                  <small>{guided ? 'Six short steps. Most take one tap.' : 'Three questions and a live ticket'}</small>
                 </span>
               </button>
             </div>
@@ -1476,7 +1476,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     <button type="button" aria-label="One more traveller"
                       onClick={() => { haptic(HAPTIC.tick); patchFields({ travellers: clampCrew(f.travellers + 1) }) }}>+</button>
                   </span>
-                  <span className="ct-party-sub">traveller{f.travellers !== 1 ? 's' : ''}</span>
+                  <span className="ct-party-sub">Traveller{f.travellers !== 1 ? 's' : ''}</span>
                   {/* The shortcut opens the driving drawer. With no driving
                       fields to open, both the button and the drawer go, rather
                       than an empty section wearing a new label. */}

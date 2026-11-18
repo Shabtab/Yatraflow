@@ -447,7 +447,7 @@ export function PlanBench() {
               </div>
               <BenchRange value={input.nights} min={1} max={7} step={1}
                 fmt={v => `${v} night${v === 1 ? '' : 's'}`} ariaLabel="Number of nights" onChange={v => patch({ nights: v })} />
-              <div className="bench-scale-ends" aria-hidden="true"><span>weekend</span><span>week+</span></div>
+              <div className="bench-scale-ends" aria-hidden="true"><span>Weekend</span><span>Week+</span></div>
             </div>
           </div>
           {fuelMode && (
@@ -497,7 +497,7 @@ export function PlanBench() {
             <div className="bench-split-bar bench-split-meal" style={{ width: `${pct(shown.mealCost)}%` }} />
           </div>
           <div className="bench-split-legend">
-            <span><span className="dot dot-transport" />{fuelMode ? 'fuel' : 'fares'} {pct(shown.transportCost)}%</span>
+            <span><span className="dot dot-transport" />{fuelMode ? 'Fuel' : 'Fares'} {pct(shown.transportCost)}%</span>
             <span><span className="dot dot-stay" />stays {pct(shown.stayCost)}%</span>
             <span><span className="dot dot-meal" />food {pct(shown.mealCost)}%</span>
           </div>
@@ -530,7 +530,7 @@ export function PlanBench() {
             <button type="button" className="btn btn-primary btn-lg bench-cta" onClick={handleCta}>
               Turn these numbers into a real trip →
             </button>
-            <a className="bench-alt-link" {...appLink('/explore')}>or browse ready itineraries →</a>
+            <a className="bench-alt-link" {...appLink('/explore')}>Or browse ready itineraries →</a>
           </div>
           <div className="bench-receipt-actions">
             <button type="button" className={`chip chip-outline${copied ? ' chip-copied' : ''}`} onClick={copyBill}>
