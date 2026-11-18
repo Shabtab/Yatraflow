@@ -394,7 +394,7 @@ describe('#406 — the shelf surfaces the flag instead of printing the number', 
 
   it('never renders the price chip for an unreadable amount', () => {
     // A `formatInr(0)` chip would claim the plan was free.
-    expect(pageSrc).toContain('price unavailable')
+    expect(pageSrc).toContain('Price unavailable')
   })
 
   it('says the date is unknown rather than printing an invalid one', () => {
