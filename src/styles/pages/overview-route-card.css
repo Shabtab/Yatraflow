@@ -67,6 +67,11 @@
   .ovw-elev-inset { display: none; }
 }
 
+/* A route that starts high puts its first stroke and its start label in the
+   corner. OverviewElevationProfile reads the real geometry and sets this flag,
+   so the overlay hides instead of covering them. */
+.ovw-elev[data-inset-room='false'] .ovw-elev-inset { display: none; }
+
 /* ===== The header side group (caption and "Open map") ===== */
 .ovw-head-side {
   display: flex;

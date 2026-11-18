@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RouteHeightPoint, RouteHeightStats } from '../src/lib/elevation'
-import { buildRouteHeightPlot, heightLabelY, niceRouteHeightTop, smoothRouteHeightPath } from '../src/lib/elevationPlot'
+import { buildRouteHeightPlot, heightLabelY, niceRouteHeightTop, smoothRouteHeightPath, strokeClearOfBox } from '../src/lib/elevationPlot'
 
 const point = (distanceKm: number, elevationM: number | null, title = `p${distanceKm}`): RouteHeightPoint => ({
   key: `k${distanceKm}`,
@@ -204,5 +204,22 @@ describe('the height curve is a bounded illustrative stroke', () => {
       const coordinate = `${mark.x.toFixed(2)} ${mark.y.toFixed(2)}`
       expect(plot.runs.some(run => run.line.includes(coordinate))).toBe(true)
     }
+  })
+})
+
+describe('strokeClearOfBox', () => {
+  const box = { left: 2, top: 2, right: 90, bottom: 90 }
+  const run = (...ys: number[]) => [{ points: ys.map((y, index) => ({ x: index * 100, y })) }]
+  it('is clear when the stroke stays below the box', () => {
+    expect(strokeClearOfBox(run(180, 150, 60), box)).toBe(true)
+  })
+  it('is blocked when the stroke starts high inside the box', () => {
+    expect(strokeClearOfBox(run(60, 150, 180), box)).toBe(false)
+  })
+  it('is clear when the run lies entirely right of the box', () => {
+    expect(strokeClearOfBox([{ points: [{ x: 200, y: 20 }, { x: 300, y: 20 }] }], box)).toBe(true)
+  })
+  it('is clear with no runs', () => {
+    expect(strokeClearOfBox([], box)).toBe(true)
   })
 })

@@ -17,8 +17,9 @@ export type CardCloseKey = {
 
 /** A text field keeps Escape: it belongs to whatever the user is typing in. */
 const TEXT_FIELD = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
-/** Another dialog keeps Escape: it closes that dialog, not this card. */
-const OTHER_DIALOG = '[role="dialog"], [role="alertdialog"], .modal, .ai-drawer'
+/** Another dialog or an open menu keeps Escape: it closes that surface, not this card.
+ *  The phone day menu listens on the document and does not stop the key itself. */
+const OTHER_DIALOG = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [aria-haspopup][aria-expanded="true"], .modal, .ai-drawer'
 
 /**
  * Escape closes the stop card only when no other surface took the key first.

@@ -34,6 +34,12 @@ describe('escapeClosesCard', () => {
     expect(escapeClosesCard({ ...base, inTextField: true })).toBe(false)
     expect(escapeClosesCard({ ...base, inOtherDialog: true })).toBe(false)
   })
+
+  it('leaves Escape to an open menu that listens on the document', () => {
+    const closer = read('src/pages/trip/map/editing/cardClose.ts')
+    expect(closer).toContain('[role="menu"]')
+    expect(closer).toContain('[aria-haspopup][aria-expanded="true"]')
+  })
 })
 
 describe('the card carries its own close control', () => {
