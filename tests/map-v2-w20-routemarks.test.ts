@@ -23,8 +23,8 @@ describe('W20 route marks', () => {
     expect(long.map(tick => tick.km)).toEqual([20, 40, 60])
   })
   it('writes the clock in the reader format', () => {
-    expect(tickText({ km: 21, min: 665 }, '12h')).toEqual({ clock: '11:05 AM', km: 'km 21' })
-    expect(tickText({ km: 21, min: 665 }, '24h')).toEqual({ clock: '11:05', km: 'km 21' })
+    expect(tickText({ km: 21, min: 665 }, '12h')).toEqual({ clock: '11:05 AM', km: 'Km 21' })
+    expect(tickText({ km: 21, min: 665 }, '24h')).toEqual({ clock: '11:05', km: 'Km 21' })
     expect(windowLabel('Lunch', 690, 870, '12h')).toBe('Lunch · 11:30 AM–2:30 PM')
   })
   it('words a pick past the scope and a pick over budget', () => {

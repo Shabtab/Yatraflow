@@ -1214,7 +1214,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       if (!p.auto && !warned && !(showTag && isBase) && clockMilestones && clockOn && stopClock.has(p.id)) {
         const c = stopClock.get(p.id)!
         const arriveText = `${c.arrive}${c.estimated ? ' (est.)' : ''}`
-        const kmText = `km ${Math.max(0, c.cumKm - dayKmBase)}`
+        const kmText = `Km ${Math.max(0, c.cumKm - dayKmBase)}`
         spreadMarks.push({ id: `clock:${p.id}`, layer: 'clock', follows: `stop:${p.id}`, x: 0, y: CLOCK_BOX.dy, w: stopClockBox(arriveText, kmText).w, h: CLOCK_BOX.h, ...base })
       }
       if (stopWarning?.stopId === p.id && stopWarning.text != null && stopWarning.text.trim() !== '') {
@@ -2519,7 +2519,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                       {showTag && <span className={`mv2-stop-tag${isBase ? ' mv2-stop-tag--base' : ''}`} data-collapsed={camMoving || tagSpot?.hidden ? 'true' : undefined} style={tagSpot && !tagSpot.hidden ? { transform: `translate(${tagSpot.dx + dx}px, ${tagSpot.dy + dy}px)` } : undefined}>{isBase ? baseTagText(p.title) : p.title}</span>}
                       {warn?.text != null && <span className="mv2-stop-tag mv2-stop-tag--fix" data-collapsed={camMoving || warnTagSpot?.hidden ? 'true' : undefined} style={warnTagSpot && !warnTagSpot.hidden ? { transform: `translate(${warnTagSpot.dx + dx}px, ${warnTagSpot.dy + dy}px)` } : undefined}>{warn.text}</span>}
                       {c && !warn && !(showTag && isBase) && (workspaceChrome
-                        ? <span className="mv2-pin-clock" data-collapsed={camMoving || clockSpot?.hidden ? 'true' : undefined} style={clockSpot && !clockSpot.hidden ? { transform: `translate(${clockSpot.dx + dx}px, ${clockSpot.dy + dy}px)` } : undefined}>{formatHM(c.arrive, timeFormat)}{c.estimated ? ' (est.)' : ''} <small>km {Math.max(0, c.cumKm - dayKmBase)}</small></span>
+                        ? <span className="mv2-pin-clock" data-collapsed={camMoving || clockSpot?.hidden ? 'true' : undefined} style={clockSpot && !clockSpot.hidden ? { transform: `translate(${clockSpot.dx + dx}px, ${clockSpot.dy + dy}px)` } : undefined}>{formatHM(c.arrive, timeFormat)}{c.estimated ? ' (est.)' : ''} <small>Km {Math.max(0, c.cumKm - dayKmBase)}</small></span>
                         : <span className="yf-pin-time">{formatHM(c.arrive, timeFormat)}{c.estimated ? ' (est.)' : ''}</span>)}
                       </>)}
                     </MarkerContent>

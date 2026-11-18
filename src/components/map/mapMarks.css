@@ -134,7 +134,7 @@ button.mv2-lens-gap-ring:focus-visible { outline: 2px solid var(--pw-marigold-50
 }
 
 /* W20: marks the Drive map draws on the route from the plan's own schedule. A
-   tick reads like the stop chips ("11:05 | km 21"). The lunch window and the
+   tick reads like the stop chips ("11:05 | Km 21"). The lunch window and the
    words beside a pick past the scope are pills on the same card surface. */
 .mv2-route-tick { transform: none; }
 .mv2-route-window, .mv2-pick-tag {
