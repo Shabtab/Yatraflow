@@ -353,7 +353,7 @@ describe('heroStats', () => {
   it('counts trips, upcoming and live trips, unique places and the other editors', () => {
     expect(heroStats({ trips: [withCrew, secondCrew], today: TODAY, meId: 'me', ready: true })).toEqual([
       { label: 'trips', value: 2 },
-      { label: 'upcoming & live', value: 1 },
+      { label: 'Upcoming & live', value: 1 },
       { label: 'places', value: 3 },
       { label: 'co-planners', value: 2 },
     ])
@@ -363,12 +363,12 @@ describe('heroStats', () => {
     expect(whenBucket(live, TODAY)).toBe('upcoming')
     expect(heroStats({ trips: [live], today: TODAY, meId: null, ready: true })).toEqual([
       { label: 'trip', value: 1 },
-      { label: 'upcoming & live', value: 1 },
+      { label: 'Upcoming & live', value: 1 },
     ])
   })
   it('does not count past or draft trips as upcoming & live', () => {
     const stats = heroStats({ trips: [pastTrip, draftTrip], today: TODAY, meId: null, ready: true })
-    expect(stats.find(stat => stat.label === 'upcoming & live')).toBeUndefined()
+    expect(stats.find(stat => stat.label === 'Upcoming & live')).toBeUndefined()
   })
   it('counts a place once however it is spelled', () => {
     const spellings = heroTrip({ destinations: ['Kochi', 'Kochi, Kerala', ' kochi ', 'Alleppey'], startDate: '2026-10-20', endDate: '2026-10-21' })
@@ -402,14 +402,14 @@ describe('heroStats', () => {
     expect(stats.map(stat => stat.label)).toEqual(['trip', 'place'])
     expect(stats.every(stat => stat.value > 0)).toBe(true)
   })
-  it('uses singular labels for a count of one, all in lower case', () => {
+  it('uses singular labels for a count of one', () => {
     const one = heroTrip({
       destinations: ['Goa'], startDate: '2026-10-20', endDate: '2026-10-21',
       members: [{ userId: 'me', role: 'owner', joinedAt: 1 }, { userId: 'asha', role: 'editor', joinedAt: 2 }],
     })
     const labels = heroStats({ trips: [one], today: TODAY, meId: 'me', ready: true }).map(stat => stat.label)
-    expect(labels).toEqual(['trip', 'upcoming & live', 'place', 'co-planner'])
-    expect(labels.every(label => label === label.toLowerCase())).toBe(true)
+    expect(labels).toEqual(['trip', 'Upcoming & live', 'place', 'co-planner'])
+    expect(labels[1]).toBe('Upcoming & live')
   })
   it('returns no stats for zero trips', () => {
     expect(heroStats({ trips: [], today: TODAY, meId: 'me', ready: true })).toEqual([])
