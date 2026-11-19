@@ -1855,8 +1855,9 @@ a.creator-line:focus-visible { outline: 2px solid var(--teal); outline-offset: 2
   z-index: var(--z-ai-fab);
   width: 56px; height: 56px; border-radius: 50%; border: none;
   /* Chakra is the companion: the face is dark, so it sits on a light disc
-     with a teal ring rather than on the old navy gradient. */
-  background: var(--card); box-shadow: inset 0 0 0 2px var(--yf-teal-600), var(--shadow-glow-teal);
+     with a teal ring rather than on the old navy gradient. The disc stays light
+     in the dark theme too, because the face has no night variant. */
+  background: rgb(255 255 255 / .96); box-shadow: inset 0 0 0 2px var(--yf-teal-600), var(--shadow-glow-teal);
   display: flex; align-items: center; justify-content: center;
   transition: transform var(--motion-fast) var(--ease-out);
 }

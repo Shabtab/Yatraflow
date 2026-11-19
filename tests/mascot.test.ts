@@ -113,3 +113,12 @@ describe('inline warning heads', () => {
     expect(warningHead('not-a-warning')).toBeNull()
   })
 })
+
+describe('Chakra is the AI companion', () => {
+  const drawer = readFileSync('src/components/AiDrawer.tsx', 'utf8').replace(/\r\n/g, '\n')
+  it('the button and the header show Chakra, not the sparkle icon', () => {
+    expect(drawer).not.toMatch(/\bSparkles\b/)
+    expect(drawer.match(/<Mascot pose="mark-face"/g)?.length).toBe(2)
+    expect(drawer).toContain('Chakra · Trip companion')
+  })
+})
