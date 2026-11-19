@@ -85,16 +85,19 @@ interface OsrmRoute {
   legs?: { annotation?: { distance?: number[]; duration?: number[] } }[]
 }
 
-/** The chain-request shape: route.legs[i] carries ITS OWN geometry. */
+/** One leg of a chain answer. It has no geometry of its own: `annotation` gives one entry per segment. */
+interface OsrmChainLeg {
+  distance?: number
+  duration?: number
+  annotation?: { distance?: number[]; duration?: number[] }
+}
+
+/** The chain-request shape. The road shape sits on the route, and the legs cut it. */
 interface OsrmChainRoute {
   code?: string
   routes?: {
-    legs?: {
-      distance?: number
-      duration?: number
-      geometry?: { coordinates: [number, number][] }
-      annotation?: { distance?: number[]; duration?: number[] }
-    }[]
+    geometry?: { coordinates: [number, number][] }
+    legs?: OsrmChainLeg[]
   }[]
 }
 
@@ -197,6 +200,33 @@ async function osrmRouteChain(points: LatLng[], signal?: AbortSignal): Promise<R
   }
 }
 
+/**
+ * Cuts the route's road shape into one slice per leg. Leg i starts where leg i-1
+ * ends. It spans its own segment count, one `annotation.distance` entry per
+ * segment, so adjacent slices share a waypoint. Returns null when the shape is
+ * missing or a leg has no usable count. Returns null when the counts do not sum
+ * to the coordinate count. The caller then falls back. It never tags a chord as
+ * measured road.
+ */
+function sliceRouteGeometry(coords: [number, number][] | undefined, legs: OsrmChainLeg[]): [number, number][][] | null {
+  if (!Array.isArray(coords) || coords.length < 2) return null
+  const counts: number[] = []
+  for (const l of legs) {
+    const dist = l.annotation?.distance
+    const dur = l.annotation?.duration
+    if (!Array.isArray(dist) || !Array.isArray(dur) || dist.length < 1 || dist.length !== dur.length) return null
+    counts.push(dist.length)
+  }
+  if (counts.reduce((sum, n) => sum + n, 0) !== coords.length - 1) return null
+  const slices: [number, number][][] = []
+  let start = 0
+  for (const n of counts) {
+    slices.push(coords.slice(start, start + n + 1))
+    start += n
+  }
+  return slices
+}
+
 async function osrmChainOnce(points: LatLng[], signal?: AbortSignal): Promise<RoadLeg[] | null> {
   const coords = points.map(coordParam)
   if (coords.some(c => c === null)) return null
@@ -208,18 +238,18 @@ async function osrmChainOnce(points: LatLng[], signal?: AbortSignal): Promise<Ro
     const data = (await res.json()) as OsrmChainRoute
     const r = data.routes?.[0]
     if (data.code !== 'Ok' || !r || !r.legs || r.legs.length !== points.length - 1) return null
+    const shapes = sliceRouteGeometry(r.geometry?.coordinates, r.legs)
+    if (!shapes) return null
     const out: RoadLeg[] = []
     for (let i = 0; i < r.legs.length; i++) {
       const l = r.legs[i]
-      const a = points[i]
-      const b = points[i + 1]
       if (typeof l.distance !== 'number' || typeof l.duration !== 'number') return null
       const segs = annotationsToProfile(l.annotation)
       out.push({
         distanceKm: l.distance / 1000,
         durationMinutes: Math.round(l.duration / 60),
         source: 'osrm',
-        geometry: l.geometry?.coordinates?.length ? l.geometry.coordinates : [[a.lng, a.lat], [b.lng, b.lat]],
+        geometry: shapes[i],
         ...(segs ? { segments: segs } : {}),
       })
     }
@@ -513,7 +543,7 @@ export async function roadLegBetween(
 }
 
 /**
- * Google Routes chain for a span: one request per chunk of up to 25 waypoints.
+ * Google Routes chain for a span: one request per chunk of up to 12 waypoints.
  * Throws on any failure; the caller classifies it. A chunk of exactly two points
  * (a short span, or the tail of a long one) has no intermediates, so Google
  * answers with ONE route and no `legs` — that is the whole answer, one leg.
@@ -574,8 +604,11 @@ async function measureSpanChain(span: LatLng[], mode: string, signal?: AbortSign
   return shareInFlight(pendingChains, key, s => measureSpanChainOnce(span, mode, s), signal, CHAIN_REFUSED)
 }
 
-/** Waypoints per Google Routes chain request (Google caps intermediates at 25). */
-const GOOGLE_CHAIN_WAYPOINTS = 25
+/**
+ * Points per Google Routes chain request: origin, up to 10 intermediates, destination.
+ * Essentials covers up to 10 intermediates, so 12 points keeps each request in that tier.
+ */
+const GOOGLE_CHAIN_WAYPOINTS = 12
 
 /**
  * Route every consecutive pair of points — the corridor as ONE chain request

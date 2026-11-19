@@ -11,6 +11,9 @@ That layout sets `--search-field-flex` and `--select-leading-space` for composit
 The entry imports select after legacy section 04 and search before section 10.
 Other legacy sections keep their order. Shared tokens and motion remain in legacy files.
 
+- Keep non-interactive grid tiles square with `aspect-ratio` and zero minimum dimensions.
+  A minimum height can exceed a phone column and make adjacent tiles overlap.
+
 - Give segmented answer controls a dedicated class.
   Shared form layout classes must not generate selection decoration.
 
@@ -195,6 +198,21 @@ Other legacy sections keep their order. Shared tokens and motion remain in legac
   animation's end state equals the element's own resting state; it applies the `from` state during the stagger delay
   exactly as `both` did, then releases the property. Debugging tell: compare the same component on a surface that
   animates it against one that doesn't.
+
+- **An entrance and a hover on the same element must not both own `transform`.** Even with `backwards`, the
+  entrance wins the property while it runs. A pointer already on the card gets no lift, and the card snaps to the lift
+  when the entrance ends. A slow pace makes the window long enough to see as a jerk (My trips, 2026-11-19). Give the
+  entrance the separate `translate` and `scale` properties and leave `transform` to the hover and any static tilt:
+  they compose and nothing snaps. The same rule stops a keyframe from blending different transform lists
+  (`translateY rotate scale` into `rotate`) as matrices, which wobbles a tilted card. Pinned by `tests/trips-motion.test.ts`.
+
+- **A card's entrance, hover shadow and cover overlay each have a motion trap (2026-11-19).** The shared `cardIn` and
+  `sf-rise` keyframes animated `transform` on cards that also lift on hover with `transform`: the hover could not
+  apply while the entrance ran, and the card snapped when it ended. Entrances move `translate`, `scale` and `opacity`.
+  A `box-shadow` transition repaints every frame, so a large card shows its hover shadow as a `::before` layer
+  that fades on opacity (`inset: -1px; z-index: -1; isolation: isolate` on the card). A card with `overflow: hidden`
+  would clip that layer, so it keeps a plain shadow change with no fade. A `backdrop-filter` chip over a cover that
+  zooms on hover recomputes its blur every frame: use a 95% background instead. Pinned by `tests/card-hover-motion.test.ts`.
 
 - **A grid or flex item's automatic minimum size is its MIN-CONTENT, so one unbreakable run sets the width of the
   whole document.** The published page's sticky sidebar held a nowrap share URL in a flex row: that gave the column

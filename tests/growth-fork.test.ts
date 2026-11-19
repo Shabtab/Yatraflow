@@ -12,6 +12,7 @@ vi.mock('../src/lib/unlock', () => ({ fetchMyEntitlements: async () => [] }))
 vi.mock('../src/components/ui', () => ({ toast: mocks.toast }))
 import { forkPublication } from '../src/lib/forkPub'
 import { finishPendingFork, takeForkAttribution } from '../src/lib/growthAttribution'
+import { authNext } from '../src/lib/authNext'
 
 const source = structuredClone(seedData.trips[0])
 const pub = { id: 'pub_growth', title: 'Public fixture', tripId: source.id, creatorId: 'creator', freeDayIndexes: source.days.map(day => day.index) } as PublishedItinerary
@@ -78,5 +79,35 @@ describe('persisted fork activation', () => {
       expect(mocks.publicDuplicate).not.toHaveBeenCalled()
       expect(mocks.register).not.toHaveBeenCalled()
     } finally { vi.unstubAllGlobals() }
+  })
+
+  it('carries the storefront answers through sign-in and back to the creator page', async () => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+    })
+    try {
+      const plan = { startDate: '2026-11-21', travellers: 6, startTown: 'Kochi' }
+      const navigate = vi.fn()
+      expect(await forkPublication(pub, null, navigate, false, 'creator', null, plan)).toBe(false)
+      expect(navigate).toHaveBeenCalledWith('/auth?next=%2Fcreator%2Fcreator')
+      expect(authNext('%2Fcreator%2Fcreator')).toBe('/creator/creator')
+      expect(takeForkAttribution(pub.id, false)?.plan).toEqual(plan)
+      expect(mocks.publicDuplicate).not.toHaveBeenCalled()
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('forks with the storefront dates and party applied to the copy', async () => {
+    const dated = { ...source, startDate: '2026-11-01', endDate: '2026-11-05', travellers: 2,
+      days: Array.from({ length: 3 }, (_, index) => ({ ...source.days[0], index })) }
+    mocks.fetch.mockResolvedValueOnce(dated)
+    const navigate = vi.fn()
+    const plan = { startDate: '2026-11-21', travellers: 6, startTown: 'Kochi' }
+    expect(await forkPublication({ ...pub, durationDays: 3 }, 'growth-owner', navigate, false, 'creator', null, plan)).toBe(true)
+    const [copy] = mocks.publicDuplicate.mock.calls[0]
+    expect(copy).toMatchObject({ startDate: '2026-11-21', endDate: '2026-11-23', travellers: 6 })
+    expect(dated.startDate).toBe('2026-11-01')
   })
 })

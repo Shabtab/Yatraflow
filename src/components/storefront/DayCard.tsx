@@ -4,7 +4,7 @@
 // locked day's picture and names off the card.
 // #914: the card follows the Look inside mockup. The tag answers to the band, the
 // day badge to the body, and a locked card still knows no town or place name.
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, JSX, ReactNode } from 'react'
 import type { DaySummary, PaceKey, StorefrontKind } from '../../lib/publicStorefront'
 import { KindChip, KIND_CATEGORY } from './KindChip'
 import { DayBudgetBar, type DayBudget } from './DayBudgetBar'

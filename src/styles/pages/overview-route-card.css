@@ -1,10 +1,75 @@
-/* Overview route-card header: the true-shape inset beside the caption group.
+/* Overview route-card: the true-shape inset and the header side group.
    Owner module for these .ovw-* rules; they follow legacy/15-overview.css. */
 
-/* ===== #914 true-shape inset in the route-card header ===== */
-/* The inset and the caption/link group share the header's right side. The
-   inset is top-aligned, so it sits beside "Illustrative elevation" and
-   "Open map" without moving either of them. */
+/* ===== #914 true-shape inset, inside the height chart ===== */
+/* The inset rides INSIDE the height chart, in its top-left corner. The
+   top-right corner is the peak callout's fixed home (peakBoxY is 8 and the
+   box is right-anchored), and the curve rides high at the right on typical
+   hill-end routes, so top-left is the least-ink corner. The surface is a
+   soft paper tint over a hairline border: no shadow of its own, and it never
+   takes pointer events, so the chart keeps its single interactive surface.
+   The chart box (.ovw-elev) is already position: relative and clips to its
+   corner radius. */
+.ovw-elev-inset {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 60px;
+  height: 60px;
+  padding: 5px;
+  pointer-events: none;
+  border: 1px solid var(--pw-line-soft);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--pw-card) 82%, transparent);
+}
+
+.ovw-elev-inset-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ovw-elev-inset-grid { fill: none; stroke: var(--pw-line); stroke-width: .8px; }
+
+.ovw-elev-inset-case {
+  fill: none;
+  stroke: var(--pw-card);
+  stroke-width: 5.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ovw-elev-inset-line {
+  fill: none;
+  stroke: var(--pw-sea-700);
+  stroke-width: 2.6px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ovw-elev-inset-start { fill: var(--pw-sea-700); stroke: var(--pw-card); stroke-width: 1.5px; }
+.ovw-elev-inset-n { fill: var(--pw-sunken); }
+.ovw-elev-inset-n-text { fill: var(--pw-ink-2); font-family: var(--font-body); font-size: 11px; font-weight: 800; }
+
+/* The overlay fades in with the chart's labels and axes. */
+.ovw2-route .ovw-elev-inset {
+  animation: fadeIn var(--motion-med) var(--ease-paper) backwards;
+  animation-delay: calc(var(--stagger-step) * 11);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ovw2-route .ovw-elev-inset { animation: none; }
+}
+
+/* The one hide rule is the component's own: OverviewElevationProfile reads the
+   real geometry and sets this flag, so the overlay hides when the chart is
+   too narrow (below 280 px) or the route's stroke and end labels would sit
+   under it. No viewport media query here: the desktop chart is about 320 to
+   470 px and the 390 phone chart about 340 px, and both can hold the 60 px
+   corner when the geometry leaves it free. */
+.ovw-elev[data-inset-room='false'] .ovw-elev-inset { display: none; }
+
+/* ===== The header side group (caption and "Open map") ===== */
 .ovw-head-side {
   display: flex;
   flex-wrap: nowrap;
@@ -14,6 +79,3 @@
   min-width: 0;
 }
 .ovw-head-side .ovw-head-meta { min-width: 0; }
-/* A header that carries the 88 px square aligns its title with the square's
-   top edge, so the row reads as one line. */
-.ovw2-route .ovw-head:has(.ovw-elev-inset) { align-items: flex-start; }

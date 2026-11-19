@@ -16,6 +16,178 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.88.1] - 2026-11-18
+
+### Fixed
+
+- **Removed trip members need an owner restore to regain access.** Undo and a later restore option use the same server check. Demotions survive leaving and rejoining. Removals and demotions replace the invite. Existing links expire once; current members keep their roles. Trip creation and unsaved plan edits keep their normal save behavior. Historical STE fixtures fetch only their pinned commit. (#931)
+
+## [0.88.0] - 2026-11-17
+
+### Added
+
+- **A decision can close at a set time, and an editor can add an option before then.** Raise a decision with an optional Closes time and an optional Day. Its card shows when voting closes. After the closing time, the server refuses new votes, vote changes and new options. The card then shows who leads, or the tied options, and an editor applies the winner. Nothing resolves on its own. (#972)
+
+- **Each trip member can answer a short interest quiz, and Group input shows the crew's answers.** The Crew preferences card shows how many members answered and a bar for each interest that someone picked. Any trip member can answer, viewers included. The quiz leaves out hotel, transport hub, travel and event. A member's answer is deleted when the member leaves the trip. The engine does not read these answers yet. Run supabase/migrations/20261117_group_input_phase2.sql before you deploy the client. (#972)
+
+- **A route needs a republish to show its states.** A publish now records the Indian states and union territories a route covers. Old rows stay null until the creator publishes again.
+
+- **The creator storefront shows a "States covered" tile grid.** Each of the 36 states and union territories is one square, placed where it sits. A tile shows the ISO code and the count of planned routes. The grid stays hidden while no live route has codes. A framed card holds teal planned tiles, pale dashed empty tiles, and a route legend. Equal square tiles fit phone screens in both themes.
+
+- **The publish path probes the optional columns before it writes them.** One probe covers `state_codes` and the three G3 columns. A publish still succeeds on a database where the new SQL has not run.
+
+- **A creator's route can now be copied as a weekend trip.** Pick a start date and a party size on the storefront card. The copy starts on that date with that party. Sign-in keeps those answers, and the card brings them back.
+
+### Changed
+
+- **Dependencies move to the latest minor and patch releases.** The update covers Capacitor 8.6, Supabase 2.119, MapLibre 6.18, Vite 8.3 and the dev tools in the same major lines.
+
+- **The compiler moves to TypeScript 6.0.** This release is the bridge to TypeScript 7. The typescript-eslint tools do not support TypeScript 7 yet.
+
+- **The maps standards record two routing lessons.** A provider mock must copy a captured live response. A fallback that runs on every call can hide a broken primary, so you must probe each new endpoint live.
+
+- **Expand is one tap on the Map.** On a tablet or desktop, the Expand button has its own place in the map tools, below the view switch. It is no longer in the More map tools menu. A phone keeps it in that menu, so the tools column stays short.
+
+- **The test runner moves to Vitest 5.** The upgrade keeps the same test files and config.
+
+- **The browser check guide explains when the settle wait applies.** Without a click, the harness reads the page about 4 seconds after load. Use expected text or a click. Then a slow load does not look like a stuck page.
+
+- **Group input now reads as one Decide together page.** Decisions, stop ideas and activity sit in three columns under a pill bar. The pill counts show only after their read has settled. Each option shows its vote share, its voters and its detail. The engine marks its best fit when it picks one. A stop idea is a row. It opens to vote, comment, add to the timeline or decline. A row that needs your vote says so in words. Resolved decisions show their context. Activity shows the newest four entries first. The three sections are named regions with a visible focus ring. (#972)
+
+- **The Group input tab now moves like the Budget tab.** The header, the pill bar and the cards rise in one after another, in reading order. The rows inside a card trail the card. The vote bars and the crew preference bars grow from the left when you can see them. Their percentage labels fade in after them. An idea that you add or decline fades out, and the rest of the list glides into the gap. A decision that moves to decided stays one card. Your comment draft, the day picker and your focus stay, and its decided body rises in. On a narrow screen, a column does not play its entrance again when you return to it. The idea panel, the comment field and the add-option field open and close smoothly. So do the activity list and the quiz. The "Needs your vote" and "Best fit" chips pop in. Every effect stops when the reader asks for reduced motion. (#972)
+
+- **Google route requests now share one monthly limit across all users.** The limit counts every user together, not each browser. When the limit is reached, or the check fails, the app uses OpenStreetMap routes instead. The per-browser counter stays in place as a runaway guard.
+
+- **The roadmap snapshot records v0.87.0 as released.** The snapshot names the promotion PR #961 and the tag `v0.87.0`. It no longer says that promotion and the tag are pending.
+
+### Fixed
+
+- **Dependencies no longer carry known moderate advisories.** The lockfile now resolves uuid, minimatch and glob to patched versions. The npm audit command reports no vulnerabilities.
+
+- **The state lookup handles the Puducherry enclaves.** Mahe and Yanam have small hand-made polygons, because Natural Earth has no part for them. Daman, Diu, Silvassa, Karaikal and Kavaratti also resolve to their own unit now.
+
+- **Preview tests cover both decision resolution controls.** The test counts the guard on the closed-vote card as well as the open-vote details.
+
+- **Day-card date tests use two distinct fixed dates.** A moving demo seed date cannot turn the cache invalidation check into an unchanged-date check.
+
+- **The expanded Map covers the whole screen again.** The trip name and the tab pill no longer show through on top of it. The map buttons stay at the right edge. They no longer keep space for the hidden deck.
+
+- **Decision closing labels use the shared day duration.** The date threshold reads the constant from the day-count helper.
+
+- **Google route lines work again.** The app now calls the correct Google address. Every request stays in Google's basic price tier.
+
+- **Group input store tests use complete decision receipts.** The mock keeps closing times, day IDs, options, and ballots in its stored rows.
+
+- **Weekend ticket dates match the copied itinerary days.** Source dates and publication summaries do not set the span. Stored start dates must use a complete, valid YYYY-MM-DD date. The card uses the mockup spacing and fixed ticket header colours in both themes.
+
+## [0.87.1] - 2026-11-16
+
+### Fixed
+
+- **Map route lines follow the roads again.** Each leg of a trip follows its own section of the road route. If the routing service cannot give a road shape, the app measures each leg again or estimates it.
+
+## [0.87.0] - 2026-11-16
+
+### Added
+
+- **Creator pages share components for section heads, stat tiles, rank tiles, change markers and meter rows.** Each takes its values as props and reads no store and fetches nothing. A missing value shows "Unavailable", never a placeholder number.
+
+- **Creator storefront, rank and hub pages now share three pure read-model modules.** `src/lib/creatorStorefront.ts` gives the public creator page its five figures. It also gives the publishing-since date, the start-place chips and filter, the lead route, and one section decision point. `src/lib/creatorRank.ts` ranks creators with the same order the Explore strip uses. Disabled creators never rank. `src/lib/creatorHub.ts` derives the owner dashboard's KPI windows, activity feed, month series, readiness audit and CSV export. A figure that could not be read is Unavailable, never 0. A window the log starts inside says No earlier data. The activity feed never carries a buyer identity. These are internal read models for the creator pages.
+
+- **The Creator storefront page has its styles.** A new stylesheet, `src/styles/pages/creator.css`, holds them. It covers the cover band, the identity card, the stamps, the route library and the call-to-action band. The file uses design-system tokens only. It has phone rules at 699px and 359px. The cover artwork settles with the shared cover animation. A `prefers-reduced-motion` rule stops the animation.
+
+- **Creator pages show saved picks, planning notes, planned kilometres, and review dates.** Creators can save picks and notes in the hub.
+
+- **Travellers can follow creators on YatraFlow.** Public pages and the creator hub show follower counts and report failed reads.
+
+- **Creator share sources and page visits have SQL contracts.** The operator applied both migrations on 2026-11-15. G1 returns only the caller's publication counts by source. G2 records page visits without visitor identities and returns only the caller's daily counts. Raw page events have no client access. The public bump accepts only known sources and active creators. Local checks cover roles, account state, date limits and retention.
+
+- **Creators can link public posts to their live routes, and see which posts bring visits.** A creator adds an Instagram, YouTube or Threads link in the hub Profile tab. Each link has a route, an optional day and a short caption. The storefront shows a "From the posts" section only when posts exist. Each post has a tagged link, and the hub block "Posts bringing visits" counts the page visits that used it. The app stores links only. It fetches nothing from the platforms and keeps no visitor identity. The operator applied the SQL on 2026-11-16. Hosted probes confirm public post reads and deny anonymous inserts and private visit reads with `42501`. Both page-view function signatures run.
+
+- **The shared Creator kit ships as `cr-` classes.** A new stylesheet, `src/styles/components/creator-kit.css`, holds the Creator suite styles. It covers the section head, the card, the stat tile and the tile grid. It covers the rank tile, the delta mark, the meter row, the identity block, the band and the divider. Components place these classes instead of re-deriving values. The stylesheet uses design-system tokens only. It has phone rules at 699px and 359px. The meter fill grows with a scale animation. A `prefers-reduced-motion` rule stops the animation.
+
+- **The public creator page now uses the v2 storefront layout.** The hero, featured route, route library and creator band render. Stat figures count live public routes only. Failed or pending reads show "Unavailable", never zero.
+
+- **Route facts, creator picks and private follows have SQL contracts.** The operator applied both migrations on 2026-11-15. Owners write bounded route facts, live publication picks and short planning notes. The server stamps review dates, and publish upserts must omit them. Planning notes must contain text. Publication renames retain picks, while unpublish clears them. Unchanged picks allow note cleanup. Public cards expose only reviewed fields. Follow rows stay private, and visitors receive counts only. Counts exclude disabled followers. Local PGlite checks cover roles, invalid inputs and repeat runs.
+
+- **Creator pages show private activity and readiness to their owner.** Owners can export dated counts and fix route details. Visitor page counts exclude the owner.
+
+- **A dev fixture page renders every creator page state.** Open dev/creator-fixture.html to see the storefront, owner view, hub and rankings. URL parameters pick the case, read state, viewer and theme. A kit gallery shows the shared creator components.
+
+- **The new creator rankings page lists live route forks honestly.** The full rankings card shows only when creators rank below the podium. Its count cannot be negative.
+
+### Changed
+
+- **Creator hub uses the seller's desk layout.** Each tab now shows its figures in titled sections, with recent activity and a readiness checklist at the side. Window figures use recorded activity. Sales, fees and payout calculations stay the same. Read failures keep their recovery controls.
+
+- **Earnings tiles stay readable in both themes.** The ledger fills its container. The profile form is centered with space above the bio. Readiness needs a live publication before it can show Ready. Rankings filter chips wrap so every choice is visible on phones.
+
+- **Publication rows fit their columns.** An out-of-date page shows "Needs update". The live count includes pages that need an update.
+
+- **The trip cover keeps one height on every content tab, so the tab pill stays in one place.** Overview, Timeline, Group input, Budget, Share and Settings use one cover height at each width. It is 308px on a tablet or desktop, 306px on a phone, and 324px below 380px. The cover no longer resizes when you switch tabs. Settings and Timeline no longer resize it again after they load. The Settings cover keeps the common width, so the pill does not slide sideways on a wide screen.
+
+- **The trip name has one rule on every content tab: two lines, then an ellipsis.** The meta line is one line on a tablet or desktop and two lines on a phone. Hover the name or the meta line to read the full text. A long name or a long place list can no longer push the member row under the tab pill.
+
+- **The Map and Board tabs show the same slim bar instead of the cover.** The bar holds "All trips" and the trip name, with the tab pill on the row below. The photo, the meta line, the member row and the invite button are hidden. They are also out of the keyboard tab order. The canvas gets the freed height.
+
+- **The tab pill keeps the same left edge on every tab.** The bar keeps the cover's width, so the pill does not slide sideways between Map, Board and the content tabs.
+
+- **The switch to the slim bar and back is one smooth glide.** The cover height glides between the cover and the bar, and the photo fades. The tab pill stays at the bottom left and moves with the bottom edge. It never jumps to a new row. The cover has its own width cap, so the pill does not slide sideways when the wide Board canvas narrows.
+
+- **Creator links show YouTube and Instagram icons.** The storefront, route cards and public route pages now show brand-shaped icons. Before, they showed a camera and a TV.
+
+- **The creator storefront, owner view, hub and rankings page now follow their mockups in light and dark.** The featured route card sits cover left and text right. The route library fits its container at every width from 320 to 1440 pixels. The owner view puts readiness beside activity and sources. The hub shows light stat tiles and a route table that stacks on a narrow column. The rankings page gets a podium, a filter pill and table rows. All values come from design tokens.
+
+- **The Map tab has four lenses: Drive, Stay, Gap and Fix, as in the approved mockups.** The separate Plan lens is gone. An open part in the day list, such as lunch, now opens the Gap panel on that part. The Gap panel header holds Fill the day and a Day plan button. Day plan opens the full list of parts, with search, votes, the pinned rest and the Shape view. Its day chips, its legend and two of its three counts are gone. The Day plan button shows how many parts are still open, and the Day plan header shows the planned count. A rain chance of 40% or more shows there too.
+
+- **Day plan rows use labels, not sentences.** An empty part reads "Open · 2 picks". A part the app adds reads "Added by the app". A past habit reads "Usual detour · +8 min".
+
+- **Creator pages show separate plan prices and estimated trip costs.** The featured card keeps season and review facts together.
+
+- **Creator routes show confirmed best months.** A month filter and seasonal shelf use known route facts only. Seasonal cards omit repeated month strips.
+
+- **Creator identity cards use complete stat grids and a secondary Share button.** Known planned distance appears with route totals.
+
+- **Creator pages and the hub show India rank summaries.** Failed reads show Unavailable. Creators without a rank have no summary.
+
+- **Creator card titles follow the shared 18px title role.** A source guard covers library, featured and hub Publications titles.
+
+- **YouTube post cards show public thumbnails without letterbox bars.** Failed images return to text cards. Instagram and Threads keep text cards. Post cards fill their row, with route links at the bottom.
+
+- **Creator social links wrap together.** YouTube and Instagram stay in one group below the main actions when needed.
+
+- **Text post cards use light platform tints and faint platform icons.** Icons fill spare space on wide screens and hide on phones.
+
+- **The release procedure now cuts the version tag with the promotion.** `changelog.d/README.md` tells the promotion agent to tag the merge commit `vX.Y.Z` in the same pass as the merge. The tag is lightweight, as every tag since `v0.79.0` is, and it sits on the promotion PR's merge commit. `AGENTS.md` §2.17 and `docs/agents/AGENTS-FULL.md` §2.17 name the same step. Nothing in the gate reads tags, so the procedure names the two checks by hand: `git tag -l -n1 vX.Y.Z` and `git ls-remote --tags origin vX.Y.Z`. The 0.86.0 promotion shipped with no tag until a later pass, and the same gap ran from v0.44.0 to v0.47.0.
+
+- **Page headings use the serif accent again.** The accent word in each page heading uses Playfair Display. Other text keeps Sora and Plus Jakarta Sans.
+
+- **The underline clears the serif descenders and shows on Explore too.** The marigold strip sits below Playfair Display descenders and now draws on Explore as well.
+
+### Fixed
+
+- **A failed refresh keeps the creator's route cards on screen.** The public creator page treated a failed request as an empty result. A dropped connection then removed the loaded cards. The page showed the failure block instead.
+
+- **The page now shows four different read states.** A failed refresh with rows on screen keeps every card. It adds a short note with a retry, so a visitor can still open the routes.
+
+- **The three figures on the creator page read "Unavailable" until the latest publications read succeeds.** A figure from a failed read is never shown as a number.
+
+- **A failed read with no rows on screen shows the failure copy and a retry.** The "no routes yet" copy appears only after a read that succeeded with no rows.
+
+- **The Creator kit fits its phone layout.** A stat tile without an icon now spans the full tile width. The meter fill takes its colour from the tone pinned on the fill. The band button reads on the sea band at 52px tall. Grid children no longer overflow at 390px and 320px. The unavailable value keeps 14px type at every width. The phone tile gap is 10px.
+
+- **A dragged Board stop stays visible in map focus and stays on the pointer on a scrolled long day.** Map focus moves each column down to show the map. Before, the next day's column painted over a stop that you dragged toward it. The column that you drag from is now above the other columns while the drag is live. On a day with many stops, the stop list scrolls. Before, a drag reset that scroll. The list jumped to its first stop, and the card moved far from the pointer. A release could then open an impact preview for a move that you did not make. Now a list that you scrolled down keeps its scroll position during a drag. From such a list, the card is cut at the column edge when you drag it toward the next day.
+
+- **Release checks accept final fragment corrections in the freeze commit.** The corrected input must match the checked base in that commit's parent. Earlier fragment drift still fails. Receipt hashes, source ancestry and released history checks stay in place.
+
+- **A trip page load now sends one Google Routes request, not sixteen.** One signed-in load sent two whole-route requests, then fourteen more, one for each leg. In development, React replayed the workspace effect. Nothing shared a request that was still in flight, so the same route was requested twice. Then the first request failed in transport. The app asked Google for every leg, and that could not work. Now two callers that ask for the same route, or the same leg, wait on one request. A caller that cancels no longer cancels the other caller. A failure that splitting cannot fix makes one OpenStreetMap route request, then falls back to estimates. Examples are a rejected fetch, an auth or quota refusal (401, 403, 429), and a quota guard refusal. Per-leg Google requests remain only for an answer with the wrong shape, such as a wrong leg count. When OpenStreetMap also fails, the page tries once more after 2 seconds, so a second Google request follows (#959). The cancel signal of the page now reaches the Google request. A route with two stops now uses the single route answer from Google. The last part of a long route can have two stops, and it now does the same.
+
+- **Creator pages now use the right singular and plural forms, readable labels and one fix action per readiness check.** A count of 1 reads "1 route", "1 fork" or "1 view". The owner view shows "Instagram" where it showed "ig". Each readiness check shows one link, such as "Fix 3 routes", with its own accessible name. Unavailable figures in the hub route table are now readable. The rankings page title carries an accent word, and its podium section is titled "Top three".
+
+### Removed
+
+- **The old creator hero styles are gone.** The `.creator-hero*` rules and the `.creator-badge` rule in the legacy sheets were unused by any page. They are replaced by the `cr-*` kit and the storefront styles. Their grandfathered gate entries are retired in the same change.
+
 ## [0.86.0] - 2026-11-14
 
 ### Added

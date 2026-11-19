@@ -85,6 +85,7 @@ describe('buildDayCards — reuse while a day\'s inputs are unchanged', () => {
 
   it('rebuilds every day when the trip dates move (each chip\'s forecast date)', () => {
     const t = baseTrip()
+    t.startDate = '2026-11-30'
     const first = build(t)
     const edited = structuredClone(t)
     edited.startDate = '2026-12-01'

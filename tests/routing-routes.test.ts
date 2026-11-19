@@ -1,3 +1,20 @@
+// The account-wide Routes quota asks Supabase before each Google request. These
+// tests drive the Google path, so the shared counter always grants here. The
+// fail-closed cases are covered in tests/shared-routes-quota.test.ts.
+vi.mock('../src/lib/supabase', () => {
+  const granted = () => {
+    const b: {
+      abortSignal: () => unknown
+      then: (ok: (v: unknown) => unknown, fail?: (e: unknown) => unknown) => Promise<unknown>
+    } = {
+      abortSignal: () => b,
+      then: (ok, fail) => Promise.resolve({ data: true, error: null }).then(ok, fail),
+    }
+    return b
+  }
+  return { isSupabaseConfigured: true, supabase: { rpc: () => granted() } }
+})
+
 // ============ Routing facade: Google-first, OSRM fallback (issue #6) ============
 // Verified without any real network: the polyline codec against Google's own
 // test vector, the Google→OSRM→estimate fallback chain with a stubbed fetch,
@@ -29,14 +46,10 @@ describe('decodePolyline', () => {
 })
 
 describe('travelModeFor', () => {
-  it('maps the engine modes to Google travelModes', () => {
-    expect(travelModeFor('car')).toBe('DRIVE')
-    expect(travelModeFor('taxi')).toBe('DRIVE')
-    expect(travelModeFor('motorcycle')).toBe('TWO_WHEELER')
-    expect(travelModeFor('bus')).toBe('BUS')
-    expect(travelModeFor('train')).toBe('TRAIN')
-    expect(travelModeFor('flight')).toBe('FLYING')
-    expect(travelModeFor(undefined)).toBe('DRIVE')
+  it('maps every engine mode to DRIVE', () => {
+    for (const mode of ['car', 'taxi', 'motorcycle', 'bus', 'train', 'flight', undefined]) {
+      expect(travelModeFor(mode)).toBe('DRIVE')
+    }
   })
 })
 

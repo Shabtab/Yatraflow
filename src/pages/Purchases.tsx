@@ -275,7 +275,7 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                     </p>
                   ) : (
                     <p className="pur-by">
-                      {row.creatorName ? <>by <b>{row.creatorName}</b></> : <>creator no longer listed</>}
+                      {row.creatorName ? <>By <b>{row.creatorName}</b></> : <>Creator no longer listed</>}
                       {' · '}bought {boughtOn(row.grantedAt, row.dateReadable)}
                     </p>
                   )}
@@ -292,7 +292,7 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                       ? <Chip tone="saffron">{formatInr(row.amountPaidInr)} paid</Chip>
                       // "₹0 paid" would be a claim that this plan was free. It
                       // was not — the price simply could not be read.
-                      : <Chip tone="saffron">price unavailable</Chip>}
+                      : <Chip tone="saffron">Price unavailable</Chip>}
                     {/* #554 — a partial refund is money that came back while
                         the plan is still owned: both facts, side by side. */}
                     {row.refundedPaise > 0 && <Chip tone="info">{formatInr(Math.round(row.refundedPaise / 100))} refunded</Chip>}

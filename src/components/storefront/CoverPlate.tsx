@@ -1,7 +1,7 @@
 // P7 storefront: the cover plate. A photo when there is one, a ticket otherwise.
 // The ticket sits on a pattern of round kind icons built from the trip's own mix.
 import { useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, JSX } from 'react'
 import type { CoverPlan } from '../../lib/publicStorefront'
 import { staggerStep } from '../../lib/motion'
 import { KindChip, KIND_CATEGORY } from './KindChip'

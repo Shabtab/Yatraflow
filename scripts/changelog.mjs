@@ -224,7 +224,12 @@ function checkDelta(root, baseRef, headRef) {
     for (const input of plan.fragments) {
       if (list(pendingRoot).includes(input.file)) throw new Error('Selected fragment was not consumed')
       const previous = beforeInputs.fragments.find((fragment) => fragment.id === input.id)
-      if (previous && previous.sha256 !== input.sha256) throw new Error('Stale release inputs')
+      if (previous && previous.sha256 !== input.sha256) {
+        const parents = git(root, ['rev-list', '--parents', '-n', '1', receipt.source]).trim().split(' ')
+        if (parents.length !== 2 || git(root, ['merge-base', common, receipt.source]).trim() !== common ||
+            !filesAt(root, parents[1], pendingRoot).includes(input.file) ||
+            blob(root, parents[1], input.file) !== previous.text) throw new Error('Stale release inputs')
+      }
     }
     for (const previous of beforeInputs.fragments) {
       if (!plan.fragments.some((fragment) => fragment.id === previous.id) && !afterInputs.fragments.some((fragment) => fragment.id === previous.id && fragment.sha256 === previous.sha256)) throw new Error('Unselected fragment changed during release')

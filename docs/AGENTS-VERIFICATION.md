@@ -30,6 +30,8 @@ The direct-entry bridge ends at the next release. Existing Unreleased notes stay
 The promotion agent freezes the release input, reviews the diff, and applies the checked patch with editor primitives.
 Assembly must preserve the preamble and released bytes. The line count must include every inserted line.
 An uncommitted merge can fail the release-source ancestry check. Test the local merge commit before a push.
+Correct final fragment wording in the freeze commit immediately before assembly.
+Each corrected fragment must match the checked base in the freeze commit's parent. Earlier fragment drift still fails.
 See [the fragment guide](../changelog.d/README.md) for commands and receipt checks.
 
 Locate a named unpublished dependency before planning its replacement.
@@ -414,6 +416,8 @@ discriminates a migration-gated table in one call — **`200 []` means the table
   with grep before moving on. Related: Vercel Agent opens its PRs as **drafts**;
   `gh pr merge` fails with "still a draft" until `gh pr ready <n>` runs.
 
+- **A cloud worktree can fail the two STE fixture tests on git ownership (2026-11-17).** `tests/lint-ste.test.ts` fetches this worktree into a fixture repo. Git refuses that fetch when the worktree directory belongs to another user. The fix is per session: `git config --global --add safe.directory '*'`. The exact paths did not match the linked-worktree gitdir. Both fixture tests pass after the wildcard.
+
 - **In a harness sandbox, `git rev-list --count <base>..HEAD` is not the release's size — the clone is shallow and it undercounts (measured on the v0.68.0 cut: it answered `3` where the promotion was 41 commits).** Quote the promotion in the units that survive a shallow clone: `gh api repos/<org>/<repo>/compare/<base>...<head> --jq '{ahead: .ahead_by, behind: .behind_by}'` for the count, and `git diff --stat <base>..HEAD` for the size — the diffstat is what the release actually carries, and the same compare call answers "does this release touch `supabase/`" (`.files[] | select(.filename | startswith("supabase/"))`) in one query, which is what tells you whether a SQL handover is owed. Only `git log --oneline` for the *coverage* audit is affected the same way: prefer the compare API's commit list, and remember a shallow `git log` cannot reach the CHANGELOG commits a coverage audit needs.
 
 - **A release bullet can name the wrong tag, and nothing in the gate reads tag names — so grep the tag you quote.** Writing the v0.68.0 cut turned up the v0.67.0 promotion bullet asserting the tag `v0.66.0` on its merge commit (the tag itself was right; only the prose was wrong). Compare `git tag -l -n1 vX.Y.Z` against the sentence in the same session you touch the release's status lines, and treat every `vX.Y.Z` in prose as a claim about `refs/tags` — the same rule as §2.6c for "done"/"missing" claims, applied to version strings.
@@ -431,7 +435,7 @@ the same job:
 | Destination | `ci.yml` (tsc + vitest + build) | `yatraflow-apk.yml` (Android APK) |
 | --- | --- | --- |
 | push to `test` | yes | **no** |
-| push to `main` | yes | **yes** |
+| push to `main` | yes | **yes** (creates the release from `CHANGELOG.md` when none exists, then attaches the APK) |
 | push to `redesign/**` | yes | **no** |
 | PR into `main` | yes | **no** |
 | PR into `test` | yes | **no** |

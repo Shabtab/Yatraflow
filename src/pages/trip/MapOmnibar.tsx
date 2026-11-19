@@ -186,7 +186,7 @@ export function MapOmnibar({
                 <span style={{ minWidth: 0 }}>
                   <InlineIcon icon={MapPin} size={12} gap={4} vAlign="-1px" />
                   {r.h.name}
-                  {!inScope && <span className="chip chip-saffron">{r.off == null ? 'detour unknown' : 'beyond your detour scope'}</span>}
+                  {!inScope && <span className="chip chip-saffron">{r.off == null ? 'Detour unknown' : 'Beyond your detour scope'}</span>}
                   <span className="muted small">
                     {r.km == null ? ' · position unknown' : ` · ~${Math.round(r.km)} km in`}
                     {r.off == null ? ' · detour unknown' : ` · ${r.off <= scopeKm ? `${Math.round(r.off)} km off-route` : `${Math.round(r.off)} km off-route, beyond your ${scopeMinutes}-minute scope`}`}

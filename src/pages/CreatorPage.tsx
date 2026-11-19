@@ -21,7 +21,9 @@ import {
 } from '../lib/creatorStorefront'
 import { FeaturedCard } from '../components/explore/FeaturedCard'
 import { StoreHero } from '../components/creator/StoreHero'
+import { StoreStatesGrid } from '../components/creator/StoreStatesGrid'
 import { StoreFeaturedFacts } from '../components/creator/StoreFeaturedFacts'
+import { StoreWeekend } from '../components/creator/StoreWeekend'
 import { CreatorIndiaRank } from '../components/creator/CreatorIndiaRank'
 import { creatorPick, plannedKilometres } from '../lib/creatorFacts'
 import { StoreLibrary } from '../components/creator/StoreLibrary'
@@ -60,7 +62,7 @@ function useOwnerRows<T>(identity: string, enabled: boolean, attempt: number, lo
         const read = failedOwnerRead(kept)
         return { identity, attempt, load, read }
       })
-    }).finally(() => clearTimeout(timer))
+    }).finally(() => { clearTimeout(timer) })
     return () => { alive = false; clearTimeout(timer); ac.abort() }
   }, [identity, enabled, attempt, load])
   if (settled?.identity !== identity) return { kind: 'reading', data: null, at: null }
@@ -173,7 +175,7 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
       <div className="container page-enter">
         <StateBlock kind="empty" icon={<Link2 size={38} aria-hidden />} title="Creator not found"
           body="This page may have been removed, or the link is wrong."
-          actions={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Back to Explore</button>} />
+          actions={<button className="btn btn-primary" onClick={() => { onNavigate('/explore') }}>Back to Explore</button>} />
       </div>
     )
   }
@@ -228,9 +230,20 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
             saved={isSaved(featured.id)}
             needsLogin={!me}
             onFork={() => { void forkPublication(featured, me, onNavigate, undefined, 'creator') }}
-            onToggleSave={() => toggleSaved(featured.id)}
+            onToggleSave={() => { toggleSaved(featured.id) }}
           />
         </section>
+      )}
+
+      <StoreStatesGrid pubs={pubs} read={pubsRead} />
+      {featured && (
+        <StoreWeekend
+          key={featured.id}
+          pub={featured}
+          creatorName={creator.profile.name}
+          signedIn={Boolean(me)}
+          onCopy={plan => { void forkPublication(featured, me, onNavigate, undefined, 'creator', null, plan) }}
+        />
       )}
 
       {pubsRead === 'failed' ? <p className="cr-store-facts" role="status">Route facts: Unavailable</p>
@@ -258,12 +271,12 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
       />
 
       <StorePosts creatorName={creator.profile.name} posts={posts} pubs={pubs} isOwner={isOwner}
-        retry={() => setPostAttempt(n => n + 1)} />
+        retry={() => { setPostAttempt(n => n + 1) }} />
 
       {!me && <StoreBand />}
       {isOwner && (previewCreator === ownerIdentity
         ? <div className="container cr-own-preview">
-            <button className="btn btn-secondary btn-sm" onClick={() => setPreviewCreator(null)}>Back to your view</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => { setPreviewCreator(null) }}>Back to your view</button>
           </div>
         : <OwnerLayer creator={{ id: creator.id, kind: 'public', profile: creator.profile }} pubs={pubs}
             pubsRead={pubsRead} retryPubs={retry} shareLink={shareLink} now={ownerNow}
@@ -273,7 +286,7 @@ export function CreatorPage({ creatorId, onNavigate, ownerReads, onOwnerRetry, o
               if (onOwnerRetry) onOwnerRetry()
               else setOwnerAttempt(attempt => attempt + 1)
             }}
-            onPreview={() => setPreviewCreator(ownerIdentity)} />)}
+            onPreview={() => { setPreviewCreator(ownerIdentity) }} />)}
     </div>
   )
 }

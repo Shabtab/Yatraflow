@@ -984,7 +984,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
               { value: String(pub.durationDays), label: 'days' },
               ...(!hasLockedDays ? [{ value: kmOf(totalsN.totalDistanceKm), label: 'on the route' }] : []),
               { value: String(placeTotal), label: 'places' },
-              ...(pub.bestSeason ? [{ value: pub.bestSeason, label: 'best season' }] : []),
+              ...(pub.bestSeason ? [{ value: pub.bestSeason, label: 'Best season' }] : []),
             ],
             // The first three readable days, with three different pictures.
             photos: mosaicPhotos.map(p => ({
@@ -1311,7 +1311,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
               <aside className="pi-ride-aside" aria-label="Take this plan">
                 <div className="pi-card pi-aside-card">
                   {showUnlockCta && <>
-                    <p className="pi-buy-price"><b>{formatInr(price)}</b><span>one payment · no subscription</span></p>
+                    <p className="pi-buy-price"><b>{formatInr(price)}</b><span>One payment · no subscription</span></p>
                     <div className="pi-split" role="img" aria-label={previewSplit ? `${previewSplit.freeCount} of ${previewSplit.dayCount} days are free` : undefined}>
                       {orderedDays.map(d => <span key={d.index} className={'pi-split-seg pi-split-' + (pub.freeDayIndexes.includes(d.index) ? 'open' : 'locked')} />)}
                     </div>
@@ -1451,7 +1451,7 @@ function DayStops({ stops, sim, assumptions, timeFormat, stayDay, mode }: {
                       <span><MetaIcon icon={ Clock } tone="time" />Depart {depHM} → arrive {arrHM}</span>
                       <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(inbound.durationMinutes)}</span>
                       <span><MetaIcon icon={ MapPin } tone="place" />{inbound.distanceKm.toFixed(0)} km</span>
-                      <span><MetaIcon icon={ Car } tone="money" />est {formatInr(cost)} ({assumptions.mode})</span>
+                      <span><MetaIcon icon={ Car } tone="money" />Est {formatInr(cost)} ({assumptions.mode})</span>
                     </>
                   ) : (
                     <span>Departure {depHM}</span>

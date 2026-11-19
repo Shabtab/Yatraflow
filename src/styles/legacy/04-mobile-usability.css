@@ -603,9 +603,13 @@ html.vt-active :where(*) {
    twitch and no movement, while the same component on a creator page (no
    `enterIndex`, no entrance) lifted properly. */
 .trip-enter { animation: cardIn var(--t-slow) var(--ease-out) backwards; }
+/* The entrance moves the separate translate and scale properties, never
+   transform. Many cards that use it also lift on hover with transform, so the
+   two compose: the hover applies while the entrance runs and nothing snaps when
+   it ends. There is no `to` frame: the card lands on its own resting state.
+   Pinned by tests/card-hover-motion.test.ts. */
 @keyframes cardIn {
-  from { opacity: 0; transform: translateY(14px) scale(.98); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; translate: 0 14px; scale: .98; }
 }
 @media (prefers-reduced-motion: reduce) {
   .trip-enter { animation: none; }
@@ -1168,6 +1172,9 @@ html.vt-active :where(*) {
 .bench-receipt-actions { position: relative; }
 .chip-copied { border-color: var(--yf-teal-600) !important; color: var(--yf-teal-700) !important; }
 .bench-confetti { position: absolute; left: 50%; top: 0; pointer-events: none; }
+/* Chakra's proud head rides the confetti: it is decoration on a moment, so it
+   takes no layout row and sits just above the chips it congratulates. */
+.bench-confetti-head { position: absolute; left: -14px; top: -30px; }
 .cf-bit { position: absolute; width: 7px; height: 7px; border-radius: 2px; background: var(--c); opacity: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .cf-bit { animation: cf-pop .7s ease-out forwards; }
@@ -1818,25 +1825,14 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 
 /* ---- Group input: the count-pill stat strip retired 2026-09 — counts live in the filter pillbar badges ----
 
-/* ---- Group input: needs-you emphasis + digest ---- */
+/* ---- Group input: needs-you emphasis ---- */
 .gi-needs-you { border-left: 4px solid var(--saffron); }
-.digest-row {
-  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
-  background: none; border: none; padding: 9px 2px; border-bottom: 1px dashed var(--line);
-  font-size: 13.5px; color: var(--text); cursor: pointer; border-radius: 6px;
-}
-.digest-row:last-of-type { border-bottom: none; }
-.digest-row:hover { background: var(--bg-soft); }
-.digest-row > svg { color: var(--warn); flex: none; }
-.digest-title { font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.digest-sub { color: var(--text-3); font-size: 11.5px; white-space: nowrap; }
 
 /* ---- Group input: who-voted avatar stack + tally verdict ---- */
 .who-voted { display: inline-flex; align-items: center; }
 .who-voted .avatar { width: 22px; height: 22px; font-size: 10px; margin-left: -7px; box-shadow: 0 0 0 2px var(--card); }
 .who-voted .avatar:first-child { margin-left: 0; }
 .who-more { margin-left: 4px; font-size: 11px; font-weight: 700; color: var(--text-3); }
-.decision-option-row.leading { background: var(--yf-teal-100); border-radius: 10px; padding: 7px 9px; margin: 0 -9px; }
 .verdict-line { margin: 2px 0 8px; }
 .verdict-line b { color: var(--text); }
 

@@ -16,7 +16,7 @@ import type { PublishedItinerary, CachedUser } from '../../data/types'
 import { appLink } from '../../lib/appLink'
 import type { PresenceAttrs } from '../../lib/usePresenceList'
 import { cap } from '../../lib/labels'
-import { staggerDelay } from '../../lib/motion'
+import { staggerDelayAfter } from '../../lib/motion'
 import { Avatar } from '../ui'
 import { ExploreCover, EX_GRID_SIZES } from './ExploreCover'
 import { ExploreFacts } from './ExploreFacts'
@@ -53,7 +53,7 @@ export function ExploreCard({
   // The pill says "Fork" for every visitor, as in the mockup. A signed-out click
   // leads to the login page, and the accessible name below says so.
   const label = forkLabel ?? 'Fork'
-  const enterDelay: CSSProperties | undefined = enterIndex == null ? undefined : { animationDelay: staggerDelay(enterIndex) }
+  const enterDelay: CSSProperties | undefined = enterIndex == null ? undefined : { animationDelay: staggerDelayAfter(enterIndex, '--ex-list-at') }
   return (
     <article className={`ex-card${enterIndex == null ? '' : ' ex-enter'}`} data-id={pub.id}
       style={enterDelay} {...presence}>

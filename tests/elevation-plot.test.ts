@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import type { RouteHeightPoint, RouteHeightStats } from '../src/lib/elevation'
-import { buildRouteHeightPlot, heightLabelY, niceRouteHeightTop, smoothRouteHeightPath } from '../src/lib/elevationPlot'
+import { buildRouteHeightPlot, heightLabelY, niceRouteHeightTop, smoothRouteHeightPath, strokeClearOfBox } from '../src/lib/elevationPlot'
 
 const point = (distanceKm: number, elevationM: number | null, title = `p${distanceKm}`): RouteHeightPoint => ({
   key: `k${distanceKm}`,
@@ -204,5 +205,50 @@ describe('the height curve is a bounded illustrative stroke', () => {
       const coordinate = `${mark.x.toFixed(2)} ${mark.y.toFixed(2)}`
       expect(plot.runs.some(run => run.line.includes(coordinate))).toBe(true)
     }
+  })
+})
+
+describe('strokeClearOfBox', () => {
+  const box = { left: 2, top: 2, right: 90, bottom: 90 }
+  const run = (...ys: number[]) => [{ points: ys.map((y, index) => ({ x: index * 100, y })) }]
+  it('is clear when the stroke stays below the box', () => {
+    expect(strokeClearOfBox(run(180, 150, 60), box)).toBe(true)
+  })
+  it('is blocked when the stroke starts high inside the box', () => {
+    expect(strokeClearOfBox(run(60, 150, 180), box)).toBe(false)
+  })
+  it('is clear when the run lies entirely right of the box', () => {
+    expect(strokeClearOfBox([{ points: [{ x: 200, y: 20 }, { x: 300, y: 20 }] }], box)).toBe(true)
+  })
+  it('is clear with no runs', () => {
+    expect(strokeClearOfBox([], box)).toBe(true)
+  })
+})
+
+// The inset's own fit lives in the component (it reads the real geometry), so
+// its contract is pinned off the sources. The desktop card's chart is about
+// 320 to 470 px, so the old 480 px floor hid the inset on every desktop card.
+describe('the corner inset fits the desktop chart', () => {
+  const tsx = readFileSync(new URL('../src/components/trips/OverviewElevationProfile.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  const css = readFileSync(new URL('../src/styles/pages/overview-route-card.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+
+  it('clears the width floor at 280 px, under the desktop chart', () => {
+    expect(tsx).toContain('const INSET_MIN_WIDTH = 280')
+  })
+
+  it('draws a 60 px box: 8 px in, right and bottom at 68', () => {
+    expect(tsx).toContain('const INSET_BOX = { left: 8, top: 8, right: 68, bottom: 68 }')
+    expect(css).toMatch(/\.ovw-elev-inset \{[^}]*width: 60px;[^}]*height: 60px;/)
+  })
+
+  it('hides only through the component flag, never through a viewport rule', () => {
+    expect(css).toMatch(/\.ovw-elev\[data-inset-room='false'\] \.ovw-elev-inset \{ display: none; \}/)
+    expect(css).not.toMatch(/max-width[^{]*\{[^{]*\.ovw-elev-inset/)
+  })
+
+  it('steps the sun right of the inset by its halo when the inset shows', () => {
+    expect(tsx).toContain('const SUN_CLEAR = 26')
+    expect(tsx).toContain('const sunCx = insetRoom ? Math.max(width * 0.141, INSET_BOX.right + SUN_CLEAR) : width * 0.141')
+    expect(tsx.match(/cx=\{sunCx\}/g)).toHaveLength(2)
   })
 })

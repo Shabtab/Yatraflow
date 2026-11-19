@@ -623,7 +623,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
                     const off = (channelNeedsPhone(ch) && !m.phone) || !joinUrl
                     return (
                       <button key={ch} type="button" className="created-ch" disabled={off}
-                        title={!joinUrl ? 'the invite link is not ready' : off ? 'needs a number - Telegram or the share sheet work without one' : `Send via ${channelLabel(ch)}`}
+                        title={!joinUrl ? 'The invite link is not ready' : off ? 'Needs a number - Telegram or the share sheet work without one' : `Send via ${channelLabel(ch)}`}
                         aria-label={`Send the invite via ${channelLabel(ch)}`}
                         onClick={() => void sendInvite(i, ch)}>
                         {channelLabel(ch)}
@@ -631,7 +631,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
                     )
                   })}
                 </span>
-                {!m.phone && <span className="created-crew-hint">no number - Telegram or the share sheet still work</span>}
+                {!m.phone && <span className="created-crew-hint">No number - Telegram or the share sheet still work</span>}
                 <span className="created-crew-status">{statusLabel(inviteRowStatus(statuses.get(i) ?? null), m.phone)}</span>
               </div>
             ))}
@@ -683,11 +683,11 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
           </button>
           {joinUrl && <button type="button" className="share-ghost" onClick={() => void copyAll()}>Copy the invite</button>}
           <div className="created-broadcast" role="group" aria-label="Send the invite">
-            <span className="created-broadcast-label">or send the invite on</span>
+            <span className="created-broadcast-label">Or send the invite on</span>
             {CREW_CHANNELS.map(ch => (
               <button key={ch} type="button" className="created-ch" aria-label={`Send the invite via ${channelLabel(ch)}`}
                 disabled={!joinUrl}
-                title={joinUrl ? undefined : 'the invite link is not ready'}
+                title={joinUrl ? undefined : 'The invite link is not ready'}
                 onClick={() => void broadcastInvite(ch)}>
                 {channelLabel(ch)}
               </button>
@@ -726,7 +726,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
             )}
           </p>
           <p className="created-detail">Same rows the ticket printed - the workspace refines them as the route resolves. Excludes tolls, parking and entry fees.</p>
-          <p className="created-sig">every number shows its math - YatraFlow</p>
+          <p className="created-sig">Every number shows its math - YatraFlow</p>
           </div>
         </section>
       )}
@@ -767,7 +767,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
                 <span className="bench-line-formula">{bill.mealFormula}</span>
               </div>
             </div>
-            <p className="bench-line-formula">every number shows its math \u00b7 YatraFlow</p>
+            <p className="bench-line-formula">Every number shows its math \u00b7 YatraFlow</p>
           </div>
         </div>
       )}
@@ -830,9 +830,9 @@ function badgeFor(kind: AnticipationItem['kind']): string {
 }
 
 function statusLabel(status: InviteRowStatus, phone: string | null): string {
-  if (status === 'opened') return 'invite opened'
-  if (status === 'copied') return 'copied'
-  if (status === 'blocked') return 'not sent - copy the link'
+  if (status === 'opened') return 'Invite opened'
+  if (status === 'copied') return 'Copied'
+  if (status === 'blocked') return 'Not sent - copy the link'
   if (!phone) return ''
-  return 'ready'
+  return 'Ready'
 }

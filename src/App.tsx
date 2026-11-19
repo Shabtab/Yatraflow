@@ -69,8 +69,8 @@ const CreatorHubPage = lazy(() => import('./pages/CreatorHubPage').then(m => ({ 
 const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })))
 const DMCAPage = lazy(() => import('./pages/DMCAPage').then(m => ({ default: m.DMCAPage })))
 
-/** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. The `page-enter` root gives the block the shared entrance, so it never pops in. */
-const lazyRouteFallback = <div className="container page-enter"><StateBlock kind="loading" titleLevel="h2" art={<Mascot pose="loading" size={112} />} title="Loading…" /></div>
+/** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. The `page-enter` root gives the block the shared entrance. The `route-fallback` root stays invisible for a short grace period. It also holds a page's height. A fast load then shows no loader and no footer jump. */
+const lazyRouteFallback = <div className="container page-enter route-fallback"><StateBlock kind="loading" titleLevel="h2" art={<Mascot pose="loading" size={112} />} title="Loading…" /></div>
 
 export type ProfileLookupState = 'anonymous' | 'reading' | 'failed' | 'missing' | 'ready'
 

@@ -46,7 +46,7 @@ export function MapEditAddPanel({ edit, onChooseDay }: { edit: MapEdit; onChoose
 }
 
 /** The editor for the selected planned stop, with the fixed-time confirm. */
-export function MapEditStopPanel({ edit, trip, stopId, editable }: { edit: MapEdit; trip: Trip; stopId: string | null; editable: boolean }) {
+export function MapEditStopPanel({ edit, trip, stopId, editable, onClose }: { edit: MapEdit; trip: Trip; stopId: string | null; editable: boolean; onClose: () => void }) {
   const fmt = useTimeFormat()
   if (!editable || stopId == null) return null
   const day = trip.days.find(d => d.stops.some(s => s.id === stopId))
@@ -72,6 +72,7 @@ export function MapEditStopPanel({ edit, trip, stopId, editable }: { edit: MapEd
         onMoveToDay={toDay => edit.moveToDay(stopId, toDay)}
         onSwap={target => edit.swapNeighbour(stopId, target)}
         onRemove={() => edit.removeSelected(stopId)}
+        onClose={onClose}
         onReorderKey={event => edit.onReorderKey(event, stopId, day.index)}
       />
       {edit.confirm && <FixedTimeConfirm guard={edit.confirm.fixed} onConfirm={edit.confirmFixed} onCancel={edit.cancelFixed} />}

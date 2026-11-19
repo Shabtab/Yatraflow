@@ -164,6 +164,20 @@ export function plannedDayRatio(trip: Pick<Trip, 'days'>): { planned: number; to
 }
 
 /**
+ * One flag per day, in day order: true when the day holds an activity. The
+ * per-day progress bar on a trip card draws one segment from each flag, so it
+ * reads the same definition as `plannedDayRatio`.
+ */
+export function plannedDayFlags(trip: Pick<Trip, 'days'>): boolean[] {
+  return byIndex(trip.days ?? []).map(isPlannedDay)
+}
+
+/** Stops that are real activities. A route anchor and a rejected stop do not count. */
+export function activityStopCount(trip: Pick<Trip, 'days'>): number {
+  return (trip.days ?? []).reduce((sum, day) => sum + usableStops(day).filter(isActivity).length, 0)
+}
+
+/**
  * Where a step's own action goes (#645).
  *
  * The card's task row and the featured card's primary button both read this, so

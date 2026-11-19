@@ -96,7 +96,7 @@
     "src/pages/trip/GroupInputTab.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 2,
+      "inlineStyle": 1,
       "rawH1": 0
     },
     "src/pages/trip/map/editing/EditCards.tsx": {
@@ -222,7 +222,7 @@
     "src/pages/TripsList.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 6,
+      "inlineStyle": 5,
       "rawH1": 0
     },
     "src/pages/TripWorkspace.tsx": {
@@ -232,7 +232,7 @@
       "rawH1": 1
     }
   },
-  "cardHoverViolations": 8,
+  "cardHoverViolations": 6,
   "fontScopeViolations": 0,
   "fontNameFiles": {}
 }

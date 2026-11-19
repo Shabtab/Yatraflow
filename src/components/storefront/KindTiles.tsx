@@ -1,6 +1,6 @@
 // P11 trip kit: the places of a plan, by kind, as tiles. Counts only, so a
 // locked day's places may be part of the tally without a name.
-import type { CSSProperties } from 'react'
+import type { CSSProperties, JSX } from 'react'
 import { KIND_LABEL, type KindCount } from '../../lib/publicStorefront'
 import { staggerStep } from '../../lib/motion'
 import { KIND_CATEGORY } from './KindChip'

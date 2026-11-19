@@ -181,7 +181,7 @@ describe('W8 rail top and stay rail', () => {
     expect(css).toContain('.mv2-day-arrows .mv2-icon-btn::before { content: ""; position: absolute; inset: -6px;')
     expect(css).toContain('.mv2-fold-day {\n  position: absolute; bottom: var(--space-3); right: var(--space-7); z-index: 2;')
     expect(css).toContain('.mv2-itinerary .mv2-fold-day::before { content: ""; position: absolute; inset: -8px;')
-    expect(css).toContain('.mv2-day-header { position: relative; padding: var(--space-7) var(--space-7) calc(var(--space-5) + 1px); }')
+    expect(css).toContain('.mv2-day-header { position: relative; padding: var(--mv2-panel-pad) var(--mv2-panel-pad) calc(var(--space-5) + 1px); }')
     expect(css).toContain('margin: 0; font: var(--pw-title); font-size: 17px; line-height: 21px;')
     expect(css).toContain('.mv2-lens-window-time {\n  white-space: nowrap; text-align: right;')
     expect(css).toContain('.mv2-window-row .mv2-stop-copy strong { display: block; color: var(--pw-marigold-ink);')

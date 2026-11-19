@@ -36,6 +36,7 @@ import { Avatar, Chip, Field, toast, undoToast, useInView, usePageVisible } from
 import { StateBlock } from '../../components/page/StateBlock'
 import { Surface } from '../../components/page/Surface'
 import { refuseWhileStaged } from '../../lib/mutationLifecycle'
+import { Mascot } from '../../components/mascot/Mascot'
 
 // ================= Budget tab =================
 
@@ -555,6 +556,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, stagedRef, onOp
           <div className="bud-glance-figure">
             <span className="bud-glance-num">{formatInr(totals.totalCostInr)}</span>
             <span className="bud-glance-each">
+              {hasTarget && isOver && <Mascot pose="head-worried" size={26} inline />}
               {formatInr(totals.costPerPersonInr)} each · {trip.travellers} traveller{trip.travellers === 1 ? '' : 's'}
               {hasTarget
                 ? perPersonDeltaPct !== 0 && <> · <b className={perPersonDeltaPct > 0 ? 'bud-delta-bad' : 'bud-delta-ok'}>{perPersonDeltaPct > 0 ? '+' : '−'}{Math.abs(perPersonDeltaPct)}%</b></>
@@ -934,7 +936,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, stagedRef, onOp
                   <>
                     <div className="bud-balances" ref={balancesRef} data-motion-paused={!visible || !balancesInView}>
                       <div className="bud-bal-head" aria-hidden="true">
-                        <span /><span><span>← owes</span><span>gets back →</span></span><span />
+                        <span /><span><span>← owes</span><span>Gets back →</span></span><span />
                       </div>
                       {balances.map((b, i) => {
                         const bal = Math.abs(b.bal) <= 0.5 ? 0 : b.bal
@@ -962,7 +964,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, stagedRef, onOp
                               <b className={bal === 0 ? 'muted' : bal > 0 ? 'bud-bal-pos' : 'bud-bal-neg'}>
                                 {bal === 0 ? 'Settled' : bal > 0 ? `+${formatInr(bal)}` : fmtNeg(bal)}
                               </b>
-                              <span className="bud-bal-note">{bal === 0 ? 'even' : bal > 0 ? 'gets back' : 'owes'}</span>
+                              <span className="bud-bal-note">{bal === 0 ? 'Even' : bal > 0 ? 'Gets back' : 'Owes'}</span>
                             </span>
                           </div>
                         )
@@ -1212,8 +1214,8 @@ export function BudgetTab({ trip, totals, editable, previewOpen, stagedRef, onOp
                       <th scope="row">
                         <span className="bud-line-name">
                           {e.label}
-                          {e.perPerson && <span className="chip chip-info bud-line-chip">per person</span>}
-                          {e.optional && <span className="chip chip-saffron bud-line-chip">optional</span>}
+                          {e.perPerson && <span className="chip chip-info bud-line-chip">Per person</span>}
+                          {e.optional && <span className="chip chip-saffron bud-line-chip">Optional</span>}
                         </span>
                         <span className="bud-line-amount-inline">
                           <b>{formatInr(lineTotal(e, trip.travellers))}</b>

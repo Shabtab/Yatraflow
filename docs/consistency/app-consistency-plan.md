@@ -116,6 +116,7 @@ Routes come from `src/App.tsx:296-385`. "Lines" is the page file only. The verdi
 
 - Signed-in. 483 lines + `components/trips/*`. Verdict: **OK, small enhance** (the three gaps in section 2).
 - To do (2026-10-12): restore the card hover on `.itin-card` and `.trip-card-hit` to the catalog shadow. See 3.2.
+- Update (2026-11-18): the My trips redesign replaced the shared hero with a greeting header on this page only. It also removed the emoji thumb from the draft card. Memories, a status line on each card and a per-day strip on Up next are new. Explore keeps the shared hero.
 
 ### 3.4 Trip workspace header and tab bar (`/trip/:id`)
 

@@ -1,7 +1,24 @@
+// The account-wide Routes quota asks Supabase before each Google request. These
+// tests drive the Google path, so the shared counter always grants here. The
+// fail-closed cases are covered in tests/shared-routes-quota.test.ts.
+vi.mock('../src/lib/supabase', () => {
+  const granted = () => {
+    const b: {
+      abortSignal: () => unknown
+      then: (ok: (v: unknown) => unknown, fail?: (e: unknown) => unknown) => Promise<unknown>
+    } = {
+      abortSignal: () => b,
+      then: (ok, fail) => Promise.resolve({ data: true, error: null }).then(ok, fail),
+    }
+    return b
+  }
+  return { isSupabaseConfigured: true, supabase: { rpc: () => granted() } }
+})
+
 // ============ Google Routes corridor measurement (intermediates) ============
 // #polylines: with a key configured, the whole corridor used to cost ONE
 // Google event PER LEG (19 events for a 20-stop trip). computeRoutes accepts
-// intermediates in one call, so a keyed corridor now costs ONE event — and
+// intermediates in one call, so a keyed corridor now costs ONE event per 12-point chunk — and
 // per #187's rule, the response geometry is ASSERTED before it is drawn:
 // every requested waypoint must sit on the returned polyline.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -153,7 +170,7 @@ describe('routePath over a keyed corridor', () => {
     const legs = await routePath(pts, asm)
     expect(legs.length).toBe(29)
     expect(legs.every(l => l.source === 'google')).toBe(true)
-    expect(fetchCalls.length).toBe(2) // 25 + 6 waypoints
+    expect(fetchCalls.length).toBe(3) // 12 + 12 + 8 waypoints, the joints shared
   })
 
   it('falls back to per-leg measurement when the corridor is refused', async () => {

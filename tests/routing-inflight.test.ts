@@ -1,3 +1,20 @@
+// The account-wide Routes quota asks Supabase before each Google request. These
+// tests drive the Google path, so the shared counter always grants here. The
+// fail-closed cases are covered in tests/shared-routes-quota.test.ts.
+vi.mock('../src/lib/supabase', () => {
+  const granted = () => {
+    const b: {
+      abortSignal: () => unknown
+      then: (ok: (v: unknown) => unknown, fail?: (e: unknown) => unknown) => Promise<unknown>
+    } = {
+      abortSignal: () => b,
+      then: (ok, fail) => Promise.resolve({ data: true, error: null }).then(ok, fail),
+    }
+    return b
+  }
+  return { isSupabaseConfigured: true, supabase: { rpc: () => granted() } }
+})
+
 // ============ Routing: one Google request per cold load ============
 // A signed-in trip page load used to fire 16 Google computeRoutes requests:
 // two whole-chain requests (React StrictMode replays the workspace effect, and
@@ -11,7 +28,7 @@ import { SOFT_CAPS, quotaResetForTests } from '../src/lib/providers/quota'
 import { getAssumptions } from '../src/lib/engine'
 
 const asm = getAssumptions({ transportMode: 'car' })
-const GOOGLE_URL = 'https://routes.googleapis.com/v2:computeRoutes'
+const GOOGLE_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes'
 
 /** 15 stops on a line, like the Kerala trip (14 legs, 13 intermediates). */
 const KERALA: LatLng[] = Array.from({ length: 15 }, (_, i) => ({ lat: 10 + i * 0.01, lng: 77 + i * 0.01 }))
@@ -61,11 +78,13 @@ function googleBody(body: Body, legCount?: number, polylinePoints?: LatLng[]): R
   return new Response(JSON.stringify({ routes: [(body.intermediates ?? []).length ? { ...base, legs } : base] }), { status: 200 })
 }
 
-/** An OSRM chain response for the coordinates named in the URL. */
+/** An OSRM chain response for the coordinates named in the URL, in the real
+ *  shape: the road shape sits on the route, and each leg carries its own counts. */
 function osrmChain(url: string): Response {
   const pts = url.split('/route/v1/driving/')[1]!.split('?')[0]!.split(';').map(s => s.split(',').map(Number))
-  const legs = pts.slice(0, -1).map((p, i) => ({ distance: 5000, duration: 300, geometry: { coordinates: [p, pts[i + 1]] } }))
-  return new Response(JSON.stringify({ code: 'Ok', routes: [{ legs }] }), { status: 200 })
+  const legs = pts.slice(0, -1).map(() => ({ distance: 5000, duration: 300, annotation: { distance: [5000], duration: [300] } }))
+  const route = { distance: 5000 * legs.length, duration: 300 * legs.length, geometry: { type: 'LineString', coordinates: pts }, legs }
+  return new Response(JSON.stringify({ code: 'Ok', routes: [route] }), { status: 200 })
 }
 
 interface Calls { google: Body[]; googleSignals: (AbortSignal | undefined)[]; osrm: string[] }
@@ -112,12 +131,12 @@ afterEach(() => {
 })
 
 describe('a cold load makes one Google attempt', () => {
-  it('success: a 15-stop chain is exactly one Google request', async () => {
+  it('success: a 15-stop chain is two Google requests, one per 12-point chunk', async () => {
     stubFetch({ google: ok })
     const legs = await routePath(KERALA, asm)
     expect(legs).toHaveLength(14)
     expect(legs.every(l => l.source === 'google')).toBe(true)
-    expect(calls.google).toHaveLength(1)
+    expect(calls.google).toHaveLength(2)
     expect(calls.osrm).toHaveLength(0)
   })
 
@@ -163,10 +182,10 @@ describe('a cold load makes one Google attempt', () => {
 })
 
 describe('in-flight sharing', () => {
-  it('two concurrent identical routePath calls share one Google request', async () => {
+  it('two concurrent identical routePath calls share one Google request per chunk', async () => {
     stubFetch({ google: ok })
     const [x, y] = await Promise.all([routePath(KERALA, asm), routePath(KERALA, asm)])
-    expect(calls.google).toHaveLength(1)
+    expect(calls.google).toHaveLength(2)
     expect(x.every(l => l.source === 'google')).toBe(true)
     expect(y.map(l => l.distanceKm)).toEqual(x.map(l => l.distanceKm))
   })
@@ -185,7 +204,7 @@ describe('in-flight sharing', () => {
       routePath(KERALA, getAssumptions({ transportMode: 'motorcycle' })),
       routePath(KERALA.slice(0, 5), asm),
     ])
-    expect(calls.google).toHaveLength(3)
+    expect(calls.google).toHaveLength(5) // 2 + 2 + 1 chunks
   })
 
   it('concurrent single legs share one Google request by the leg cache key', async () => {
@@ -217,17 +236,17 @@ describe('in-flight sharing', () => {
     const [r1, r2] = await Promise.all([p1, p2])
     expect(r2.every(l => l.source === 'google')).toBe(true)
     expect(r1.every(l => l.source === 'estimate')).toBe(true) // the aborted caller degrades, never throws
-    expect(calls.google).toHaveLength(1)
+    expect(calls.google).toHaveLength(2)
   })
 
-  it('StrictMode replay (subscribe, abort, subscribe in one tick) is still one Google request', async () => {
+  it('StrictMode replay (subscribe, abort, subscribe in one tick) is still one Google request per chunk', async () => {
     stubFetch({ google: ok })
     const first = new AbortController()
     const p1 = routePath(KERALA, asm, first.signal)
     first.abort() // effect cleanup
     const p2 = routePath(KERALA, asm, new AbortController().signal) // effect replay
     const [, r2] = await Promise.all([p1, p2])
-    expect(calls.google).toHaveLength(1)
+    expect(calls.google).toHaveLength(2)
     expect(r2.every(l => l.source === 'google')).toBe(true)
   })
 
@@ -286,13 +305,13 @@ describe('two-point chains', () => {
     expect(calls.google).toHaveLength(1)
   })
 
-  it('a 26-point chain ends in a two-point chunk and still costs two requests', async () => {
+  it('a 26-point chain splits into three chunks and costs three requests', async () => {
     stubFetch({ google: ok })
     const pts = Array.from({ length: 26 }, (_, i) => ({ lat: 10 + i * 0.01, lng: 77 + i * 0.01 }))
     const legs = await routePath(pts, asm)
     expect(legs).toHaveLength(25)
     expect(legs.every(l => l.source === 'google')).toBe(true)
-    expect(calls.google).toHaveLength(2)
+    expect(calls.google).toHaveLength(3)
   })
 })
 

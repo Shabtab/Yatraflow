@@ -17,12 +17,12 @@ const page = () => src('../src/pages/TripsList.tsx')
 const storeSrc = () => src('../src/store/store.ts')
 
 describe('#385 — one reset for both Clear filters buttons', () => {
-  it('defines a single helper that resets all four fields', () => {
+  it('defines a single helper that resets every filter field', () => {
     const p = page()
     const at = p.indexOf('function clearFilters()')
     expect(at).toBeGreaterThan(-1)
     const body = p.slice(at, p.indexOf('}', at) + 1)
-    for (const setter of [`setQ('')`, `setStyle('all')`, `setWhen('all')`, `setSortKey('recent')`]) {
+    for (const setter of [`setQ('')`, `setStyle('all')`, `setSortKey('soonest')`]) {
       expect(body, `the shared reset must ${setter}`).toContain(setter)
     }
   })
@@ -32,13 +32,12 @@ describe('#385 — one reset for both Clear filters buttons', () => {
     expect(p.split('onClick={clearFilters}').length - 1).toBe(2)
     // The sort reset lives in exactly one place now: a second literal would be
     // a second reset waiting to drift again.
-    expect(p.split(`setSortKey('recent')`).length - 1).toBe(1)
-    expect(p.split(`setWhen('all')`).length - 1).toBe(1)
+    expect(p.split(`setSortKey('soonest')`).length - 1).toBe(1)
   })
 
-  it('keeps the ghost mounting and the screen-reader match count', () => {
+  it('shows Clear filters only while a filter is set, and keeps the screen-reader match count', () => {
     const p = page()
-    expect(p).toContain('visibility: hasFilters')
+    expect(p).toContain('{hasFilters && (')
     expect(p).toContain('role="status"')
   })
 })
@@ -125,13 +124,13 @@ describe('My trips Trash toggle and hero wiring (source)', () => {
     expect(p).toContain('{!showsOtherTripsHeader && (')
   })
 
-  it('gates the headline, stats, postcards and note on the same ready flag', () => {
+  it('gates the greeting counts on the ready flag, so a loading read never shows zeros', () => {
     const p = page()
+    expect(p).toContain("const greetingCountsText = tripsReady ? countsLine(")
+    expect(p).toContain('counts={greetingCountsText}')
+    // The shared hero stays with Explore: My trips no longer builds its pieces.
     for (const call of ['heroHeadline', 'heroStats', 'heroPostcards', 'heroNote']) {
-      const start = p.indexOf(`${call}({`)
-      expect(start, call).toBeGreaterThan(-1)
-      const argsEnd = p.indexOf('})', start)
-      expect(p.slice(start, argsEnd), call).toContain('ready: tripsReady')
+      expect(p, call).not.toContain(call)
     }
   })
 

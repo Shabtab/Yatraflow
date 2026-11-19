@@ -2,7 +2,7 @@
 // The page builds every gate: which button shows, which notice shows, which
 // price. These components draw what they are handed and decide nothing about
 // access.
-import type { ReactNode } from 'react'
+import type { JSX, ReactNode } from 'react'
 import { DAY_MS } from '../../lib/dayCount'
 
 /** The id the "Overview" section link scrolls to. */

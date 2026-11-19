@@ -46,6 +46,8 @@ import { coverPlanFor, type CoverPlan } from '../../../lib/regionArt'
 import { regionFor } from '../../../lib/tripsPage'
 import { sizedCoverUrl } from '../../../lib/tripThumb'
 import { currentUser } from '../../../store/store'
+import { Mascot } from '../../../components/mascot/Mascot'
+import { warningHead } from '../../../lib/mascot'
 
 /**
  * The day's cover plan: the traveller's own upload when there is one, else the
@@ -333,34 +335,46 @@ const COLLAPSE_UNMOUNT_SLACK_MS = 40
  *
  *  Pass `fold` to move on a clock a sibling shares (the day cover rides the
  *  body's); without it the clip keeps its own. */
-function SmoothCollapse({ open, children, fallbackFocus, fold }: {
+export function SmoothCollapse({ open, children, fallbackFocus, fold, onExpanded }: {
   open: boolean
   children: React.ReactNode
   fallbackFocus?: React.RefObject<HTMLButtonElement | null>
   fold?: FoldState
+  /** Runs each time the clip starts to open, when its `open` class lands. The
+   *  content is mounted and visible then, but the clip is still about 0px high
+   *  with `overflow: hidden`. A caller that moves focus here must pass
+   *  `preventScroll: true`, or the browser scrolls the clip's inner box.
+   *  Group input moves focus here. */
+  onExpanded?: () => void
 }) {
   return fold
-    ? <FoldClip open={open} fold={fold} fallbackFocus={fallbackFocus}>{children}</FoldClip>
-    : <OwnFoldClip open={open} fallbackFocus={fallbackFocus}>{children}</OwnFoldClip>
+    ? <FoldClip open={open} fold={fold} fallbackFocus={fallbackFocus} onExpanded={onExpanded}>{children}</FoldClip>
+    : <OwnFoldClip open={open} fallbackFocus={fallbackFocus} onExpanded={onExpanded}>{children}</OwnFoldClip>
 }
 
-function OwnFoldClip({ open, children, fallbackFocus }: {
+function OwnFoldClip({ open, children, fallbackFocus, onExpanded }: {
   open: boolean
   children: React.ReactNode
   fallbackFocus?: React.RefObject<HTMLButtonElement | null>
+  onExpanded?: () => void
 }) {
   const fold = useFold(open)
-  return <FoldClip open={open} fold={fold} fallbackFocus={fallbackFocus}>{children}</FoldClip>
+  return <FoldClip open={open} fold={fold} fallbackFocus={fallbackFocus} onExpanded={onExpanded}>{children}</FoldClip>
 }
 
-function FoldClip({ open, fold, children, fallbackFocus }: {
+function FoldClip({ open, fold, children, fallbackFocus, onExpanded }: {
   open: boolean
   fold: FoldState
   children: React.ReactNode
   fallbackFocus?: React.RefObject<HTMLButtonElement | null>
+  onExpanded?: () => void
 }) {
   const { mounted, expanded } = fold
   const clipRef = useRef<HTMLDivElement>(null)
+  // The newest callback runs when the open class lands, never a stale one.
+  const expandedCallback = useRef(onExpanded)
+  useEffect(() => { expandedCallback.current = onExpanded })
+  useEffect(() => { if (expanded) expandedCallback.current?.() }, [expanded])
   useEffect(() => {
     if (open) return
     // This clip is on its way out, so hand focus back to the day's disclosure
@@ -1188,7 +1202,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                   <span>
                     {i === 0 ? `Start: ${cleanName}` : isFinal ? `Destination: ${cleanName}` : cleanName}
                   </span>
-                  {isFinal && <span className="small muted tl-arrive-gap">arrives ~{row?.arrive ? formatHM(row.arrive, timeFormat) : '--:--'}</span>}
+                  {isFinal && <span className="small muted tl-arrive-gap">Arrives ~{row?.arrive ? formatHM(row.arrive, timeFormat) : '--:--'}</span>}
                 </div>
               </div>
             )
@@ -1259,7 +1273,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                   <span className={`stop-kind-tag kind-${kind}`}>{label}</span>
                   {s.priority === 'must-do' && <Chip tone="danger">Must do</Chip>}
                   {s.priority === 'optional' && <Chip tone="saffron">Optional</Chip>}
-                  {s.weatherSensitive && <Chip tone="info"><InlineIcon icon={CloudRain} size={11} gap={3} vAlign="-1px" />weather-sensitive</Chip>}
+                  {s.weatherSensitive && <Chip tone="info"><InlineIcon icon={CloudRain} size={11} gap={3} vAlign="-1px" />Weather-sensitive</Chip>}
                 </div>
                 {/* One " · " line, the way Ride along reads: place, time here, fee.
                     Money fields stay finite-guarded (#343): an absent fee prints
@@ -1274,7 +1288,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                 </div>
                 {s.openTime && <div className="stop-meta">Open {formatHMRange(s.openTime, s.closeTime, timeFormat)}</div>}
                 {s.departTime && s.arrivalTime && (
-                  <div className="stop-meta">dep {formatHM(s.departTime, timeFormat)} · arr {formatHM(s.arrivalTime, timeFormat)}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</div>
+                  <div className="stop-meta">Dep {formatHM(s.departTime, timeFormat)} · arr {formatHM(s.arrivalTime, timeFormat)}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</div>
                 )}
                 {s.description && <ClampedText className="stop-desc">{s.description}</ClampedText>}
                 {s.notes && <ClampedText className="stop-desc muted"><InlineIcon icon={PenLine} size={12} gap={3} />{s.notes}</ClampedText>}
@@ -1382,7 +1396,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                 <div className="travel-endpoint">
                   <span className="travel-anchor-ico"><Flag size={13} aria-hidden /></span>
                   <span>{journey.direction === 'return' ? `Home: ${last.title}` : `Destination: ${last.title}`}</span>
-                  <span className="small muted tl-arrive-gap">arrives ~{last.arrive ? formatHM(last.arrive, timeFormat) : '--:--'}</span>
+                  <span className="small muted tl-arrive-gap">Arrives ~{last.arrive ? formatHM(last.arrive, timeFormat) : '--:--'}</span>
                 </div>
               </div>
             </>
@@ -1399,12 +1413,12 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
         <div className="brief-card">
           <div className="brief-kicker">Day brief</div>
           <div className="brief-grid">
-            <div><b>{minutesToHM(budgetDrive)}</b><span>driving</span></div>
-            <div><b>{minutesToHM(budgetDwell)}</b><span>at stops</span></div>
-            <div><b>{formatHM(sim.endsAt, timeFormat)}</b><span>back at {journey.endTitle}</span></div>
+            <div><b>{minutesToHM(budgetDrive)}</b><span>Driving</span></div>
+            <div><b>{minutesToHM(budgetDwell)}</b><span>At stops</span></div>
+            <div><b>{formatHM(sim.endsAt, timeFormat)}</b><span>Back at {journey.endTitle}</span></div>
             <div>
               <b>{dayTotal ? formatInr(dayTotal.totalInr) : 'Not available'}</b>
-              <span>est. for the group</span>
+              <span>Est. for the group</span>
             </div>
           </div>
           {dayTotal && (dayTotal.transportInr > 0 || dayTotal.expensesInr > 0) && (
@@ -1475,12 +1489,15 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
         {warnings.length > 0 && (
           <div className="brief-card">
             <div className="brief-kicker">Needs attention <span className="brief-count">{warnings.length}</span></div>
-            {warnings.slice(0, 3).map((w, i) => (
-              <div key={`${w.code}-${i}`} className={`brief-warn sev-${w.severity}`}>
-                <b>{w.title.replace(/^Day \d+:\s*/, '')}</b>
-                {w.fix && <p>{w.fix}</p>}
-              </div>
-            ))}
+            {warnings.slice(0, 3).map((w, i) => {
+              const head = warningHead(w.code)
+              return (
+                <div key={`${w.code}-${i}`} className={`brief-warn sev-${w.severity}`}>
+                  <b>{head && <Mascot pose={head} size={22} inline />}{w.title.replace(/^Day \d+:\s*/, '')}</b>
+                  {w.fix && <p>{w.fix}</p>}
+                </div>
+              )
+            })}
           </div>
         )}
         <div className="brief-card">

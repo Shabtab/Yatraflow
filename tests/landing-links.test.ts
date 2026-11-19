@@ -50,7 +50,7 @@ describe('landing links open their pages through appLink', () => {
   })
 
   it('sends or browse ready itineraries to /explore', () => {
-    expect(linksTo(planBench, '/explore', 'or browse ready itineraries')).toBe(true)
+    expect(linksTo(planBench, '/explore', 'Or browse ready itineraries')).toBe(true)
   })
 
   it('imports the shared helper in both files', () => {

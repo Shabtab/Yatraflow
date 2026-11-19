@@ -126,7 +126,8 @@
         "ex-search",
         "ex-search-icon",
         "ex-search-input",
-        "ex-search-clear"
+        "ex-search-clear",
+        "ex-search--pill"
       ],
       "configClasses": [],
       "variables": [
@@ -437,7 +438,16 @@
     {
       "id": "overview-route-card",
       "file": "src/styles/pages/overview-route-card.css",
-      "owned": [],
+      "owned": [
+        "ovw-elev-inset",
+        "ovw-elev-inset-svg",
+        "ovw-elev-inset-grid",
+        "ovw-elev-inset-case",
+        "ovw-elev-inset-line",
+        "ovw-elev-inset-start",
+        "ovw-elev-inset-n",
+        "ovw-elev-inset-n-text"
+      ],
       "configClasses": [],
       "variables": []
     },
@@ -452,6 +462,26 @@
       "id": "creator",
       "file": "src/styles/pages/creator.css",
       "owned": [],
+      "configClasses": [],
+      "variables": []
+    },
+    {
+      "id": "group-input",
+      "file": "src/styles/pages/group-input.css",
+      "owned": [
+        "gin-head", "gin-head-text", "gin-eyebrow", "gin-eyebrow--amber", "gin-eyebrow--ok", "gin-title",
+        "gin-summary", "gin-pillbar", "gin-grid", "gin-col", "gin-col--decisions", "gin-col--ideas",
+        "gin-col--activity", "gin-col--shown", "gin-col--seen", "gin-card-title", "gin-panel", "gin-card-head", "gin-help",
+        "gin-composer", "gin-composer-hint", "gin-submit", "gin-option-grid", "gin-option-form", "gin-decision", "gin-sub",
+        "gin-decision-context", "gin-decision-options", "gin-option", "gin-radio", "gin-option-label", "gin-option-detail", "gin-option-end", "gin-option-pct", "gin-option-top", "gin-option-meta",
+        "gin-track", "gin-fill", "gin-fill--lead", "gin-guide-block", "gin-guide-note", "gin-guide-rec",
+        "gin-foot", "gin-foot-spacer", "gin-details", "gin-decided", "gin-stamp", "gin-row", "gin-row-head", "gin-cat-tile", "gin-row-main",
+        "gin-row-title", "gin-row-meta", "gin-row-by", "gin-heart", "gin-row-panel", "gin-stop-meta",
+        "gin-vote-row", "gin-item-actions", "gin-comments", "gin-comment-form", "gin-resolved",
+        "gin-disclosure", "gin-text-btn", "gin-crew-count", "gin-crew-list", "gin-crew-row",
+        "gin-crew-label", "gin-quiz", "gin-quiz-title", "gin-quiz-chips", "gin-decision-head", "gin-decision-head-text",
+        "gin-page", "gin-state", "gin-rows", "gin-feed", "gin-feed--more", "gin-feed-text", "gin-feed-time", "gin-pop", "gin-quiz-body"
+      ],
       "configClasses": [],
       "variables": []
     }

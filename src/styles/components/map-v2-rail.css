@@ -41,12 +41,22 @@
 
 /* Map workspace. The real map sits behind the itinerary, search and pick deck. */
 .container.yf-workspace.yf-workspace[data-map-active='true'] { width: 100%; max-width: none; }
-.mv2-workspace { --mv2-day-width: 380px; --mv2-deck-width: 372px; --mv2-inset: var(--space-5); --mv2-ribbon-h: 72px; --mv2-edge-tab-w: 22px; position: relative; min-width: 0; }
+/* --mv2-panel-pad: the one inner inset both deck panels read. The Day plan and
+   the suggestion deck keep the same 16px edge, so the right panel matches the
+   left one and the mockup. */
+.mv2-workspace { --mv2-day-width: 380px; --mv2-deck-width: 372px; --mv2-inset: var(--space-5); --mv2-panel-pad: var(--space-7); --mv2-ribbon-h: 72px; --mv2-edge-tab-w: 22px; position: relative; min-width: 0; }
 .mv2-workspace .map-ideas-grid { display: block; position: relative; height: var(--mv2-canvas-height, max(640px, calc(100dvh - 200px))); min-height: 320px; margin-top: 0; isolation: isolate; overflow: clip; border-radius: var(--radius-lg); background: var(--bg-soft); transition: none; }
 .mv2-workspace .map-ideas-map { position: absolute; inset: 0; min-width: 0; }
 .mv2-workspace .map-shell--workspace { height: 100%; border-radius: 0; box-shadow: none; border: 0; }
 .mv2-workspace .map-ideas-grid .map-ideas-map .map-shell--workspace:not(.map-shell--expanded) .map-frame { height: 100%; min-height: 0; }
 .mv2-workspace .yf-maplibre { height: 100%; }
+/* The expanded map is a fixed layer at --z-map-expanded, above the nav. The
+   canvas isolates its stack, so the canvas itself takes that rung while the map
+   is expanded. Otherwise the trip header bar and the tab pill paint over the map. */
+.mv2-workspace .map-ideas-grid:has(.map-shell--expanded) { z-index: var(--z-map-expanded); }
+/* The expanded map covers the day rail and the deck, so the map controls must
+   not keep space for them. */
+.mv2-workspace .map-shell--expanded { --mv2-day-width: 0px; --mv2-deck-width: 0px; --mv2-deck-gutter: 0px; }
 .mv2-workspace .map-shell--workspace .map-toolbar { position: absolute; z-index: 7; top: 86px; right: calc(var(--mv2-deck-width) + var(--mv2-inset) + var(--mv2-edge-tab-w) + var(--space-4)); width: 48px; display: flex; flex-direction: column; align-items: stretch; padding: 0; gap: var(--space-4); border: 0; border-radius: 0; background: transparent; color: var(--text); box-shadow: none; bottom: auto; overflow: visible; pointer-events: auto; }
 /* F1: the control column stays between the lens toolbar and the journey ribbon at every height.
    It ends above the ribbon. When its cards are taller than that space, the gaps close first and
@@ -87,7 +97,7 @@
 .mv2-icon-btn:disabled { color: var(--text-3); cursor: default; }
 .mv2-workspace :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 .mv2-itinerary { --mv2-rail-time-w: 42px; position: absolute; left: var(--mv2-inset); top: var(--mv2-inset); bottom: var(--mv2-inset); z-index: 4; width: var(--mv2-day-width); display: flex; flex-direction: column; overflow: visible; border-radius: 22px; background: var(--card); color: var(--text); box-shadow: var(--shadow-soft); }
-.mv2-day-header { position: relative; padding: var(--space-7) var(--space-7) calc(var(--space-5) + 1px); }
+.mv2-day-header { position: relative; padding: var(--mv2-panel-pad) var(--mv2-panel-pad) calc(var(--space-5) + 1px); }
 .mv2-day-arrows { --mv2-day-arrow: 32px; display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .mv2-day-head { display: flex; flex: 1; min-width: 0; flex-direction: column; align-items: center; gap: 1px; }
 /* The board draws a 34px circle. The shared control keeps its 44px hit box:
@@ -108,7 +118,7 @@
   transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper), box-shadow var(--motion-fast) var(--ease-paper);
 }
 .mv2-fold-day:hover { background: var(--bg-soft); color: var(--text); }
-.mv2-budget { display: flex; align-items: center; gap: var(--space-5); margin: 0 var(--space-7) var(--space-5); padding: var(--space-5); border-radius: var(--radius-sm); background: var(--bg-soft); color: var(--text); }
+.mv2-budget { display: flex; align-items: center; gap: var(--space-5); margin: 0 var(--mv2-panel-pad) var(--space-5); padding: var(--space-5); border-radius: var(--radius-sm); background: var(--bg-soft); color: var(--text); }
 .mv2-budget > svg { color: var(--ink-teal); flex: 0 0 auto; }
 .mv2-budget strong, .mv2-budget span { display: block; }
 .mv2-budget strong { font-size: var(--text-xs); }
@@ -138,15 +148,15 @@
 .mv2-workspace [hidden] { display: none; }
 .mv2-workspace .poi-col.is-sheet-hidden:not([hidden]) { display: block; }
 .mv2-workspace .poi-col--see > .poi-col-head { display: none; }
-.mv2-workspace .poi-col--needs > .poi-col-head { padding: var(--space-7); background: transparent; color: var(--text); }
-.mv2-workspace .poi-plan-list { padding: var(--space-7); }
-.mv2-workspace .poi-col--needs > :not(.mv2-sheet-handle):not(.poi-col-head) { margin-inline: var(--space-7); }
+.mv2-workspace .poi-col--needs > .poi-col-head { padding: var(--mv2-panel-pad); row-gap: var(--space-4); background: transparent; color: var(--text); }
+.mv2-workspace .poi-plan-list { padding: var(--mv2-panel-pad); }
+.mv2-workspace .poi-col--needs > :not(.mv2-sheet-handle, .poi-col-head) { margin-inline: var(--mv2-panel-pad); }
 .mv2-workspace .lrow-new { border-bottom: 1px solid var(--line); }
-.mv2-workspace .lrow-sum { display: grid; grid-template-columns: 12px 1fr 16px; padding: var(--space-7) 0; row-gap: var(--space-2); }
+.mv2-workspace .lrow-sum { display: grid; grid-template-columns: 12px 1fr 16px; padding: var(--mv2-panel-pad) 0; row-gap: var(--space-2); }
 .mv2-workspace .lr-name { font-size: 13px; font-weight: 700; }
 .mv2-workspace .lr-meta { grid-column: 2; font-size: var(--text-xs); color: var(--text-2); }
 .mv2-workspace .lr-go { grid-column: 3; grid-row: 1 / 3; align-self: center; }
-.mv2-deck-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-7); border-bottom: 1px solid var(--line); }
+.mv2-deck-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--mv2-panel-pad); border-bottom: 1px solid var(--line); }
 .mv2-deck-header h2 { display: flex; align-items: center; gap: var(--space-3); font: var(--pw-title); margin: var(--space-2) 0 0; }
 .mv2-deck-header h2 > span { font-size: var(--text-xs); color: var(--text-2); }
 .mv2-reopen-day { position: absolute; top: var(--mv2-inset); left: var(--mv2-inset); z-index: 5; box-shadow: var(--shadow-soft); }
@@ -157,7 +167,7 @@
 .mv2-place-art > span { position: absolute; left: var(--space-5); bottom: var(--space-5); padding: var(--space-1) var(--space-4); border-radius: var(--radius-pill); background: color-mix(in srgb, var(--card) 80%, transparent); font-size: 11px; font-weight: 700; }
 .mv2-place-art > button { position: absolute; top: var(--space-5); right: var(--space-5); width: 32px; height: 32px; padding: 0; background: color-mix(in srgb, var(--card) 90%, transparent); color: var(--text-2); }
 .mv2-place-art > button::before { content: ''; position: absolute; inset: -6px; }
-.mv2-place-body { display: flex; flex-direction: column; gap: var(--space-5); padding: var(--space-7); }
+.mv2-place-body { display: flex; flex-direction: column; gap: var(--space-5); padding: var(--mv2-panel-pad); }
 .mv2-place-body h2 { margin: 0; font: 700 19px/1.25 var(--font-display); overflow-wrap: anywhere; }
 .mv2-rating { display: flex; align-items: center; gap: var(--space-1); flex: none; margin: 0; font-size: 12.5px; color: var(--pw-ink-2); }
 .mv2-rating svg { color: var(--ink-amber); }
@@ -172,7 +182,7 @@
 .mv2-place-heart { position: relative; width: 42px; height: 42px; padding: 0; }
 .mv2-place-heart::before { content: ''; position: absolute; inset: -1px; }
 .mv2-directions { width: 100%; display: var(--mv2-directions-display, flex); align-items: center; justify-content: center; gap: var(--space-3); min-height: 44px; margin: 0; padding: var(--space-4); border: 0; background: transparent; color: var(--pw-ink-3); font-size: var(--text-xs); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.mv2-source { display: flex; align-items: flex-start; gap: var(--space-3); margin: 0; padding: var(--space-5) var(--space-7) var(--space-7); color: var(--pw-ink-3); font-size: 11.5px; font-weight: 400; line-height: 1.4; }
+.mv2-source { display: flex; align-items: flex-start; gap: var(--space-3); margin: 0; padding: var(--space-5) var(--mv2-panel-pad) var(--mv2-panel-pad); color: var(--pw-ink-3); font-size: 11.5px; font-weight: 400; line-height: 1.4; }
 .mv2-source svg { flex: 0 0 auto; margin-top: var(--space-1); }
 .mv2-viewer-note { font-size: var(--text-xs); color: var(--text-2); }
 .mv2-ribbon, .mv2-ribbon-sheet { position: absolute; z-index: 4; bottom: var(--mv2-inset); left: calc(var(--mv2-day-width) + var(--space-10)); right: calc(var(--mv2-deck-width) + var(--space-10)); display: grid; grid-template-columns: minmax(94px, max-content) minmax(0, 1fr); column-gap: 10px; align-items: stretch; height: var(--mv2-ribbon-h); min-height: var(--mv2-ribbon-h); padding: 0 var(--space-8) 0 var(--space-6); border-radius: 18px; background: var(--card); color: var(--text); box-shadow: var(--shadow-soft); }
@@ -257,12 +267,12 @@
   .mv2-workspace .map-ideas-grid > .poi-col, .mv2-workspace .mv2-detail { top: auto; bottom: 0; left: 0; right: 0; width: 100%; height: var(--mv2-sheet-height); padding-bottom: var(--safe-bottom); border-radius: var(--radius-lg) var(--radius-lg) 0 0; transition: height var(--motion-med) var(--ease-resize); }
   .mv2-sheet-handle { display: flex; align-items: center; justify-content: center; position: sticky; top: 0; z-index: 2; width: 100%; height: 44px; flex: 0 0 auto; padding: 0; border: 0; background: var(--card); color: var(--text-2); touch-action: none; cursor: ns-resize; }
   .mv2-sheet-handle > span { height: 4px; width: 36px; border-radius: var(--radius-pill); background: var(--line); transition: background var(--motion-fast) var(--ease-paper), box-shadow var(--motion-fast) var(--ease-paper); }
-  .mv2-workspace .mv2-deck-header { padding: 0 var(--space-7) var(--space-4); }
+  .mv2-workspace .mv2-deck-header { padding: 0 var(--mv2-panel-pad) var(--space-4); }
   .mv2-deck-header h2 { font-size: 17px; }
   .mv2-workspace .poi-plan-list { padding-top: var(--space-2); }
   .mv2-workspace .mv2-ribbon { left: var(--space-4); right: var(--space-4); bottom: calc(var(--mv2-sheet-height) + var(--space-3)); min-height: 56px; height: 56px; padding-block: var(--space-3); gap: var(--space-3); transition: bottom var(--motion-med) var(--ease-resize); }
   .mv2-workspace.is-deck-folded .mv2-ribbon { bottom: var(--space-4); }
-  .mv2-place-art { height: 44px; flex-direction: row; justify-content: flex-start; padding-inline: var(--space-7); }
+  .mv2-place-art { height: 44px; flex-direction: row; justify-content: flex-start; padding-inline: var(--mv2-panel-pad); }
   .mv2-place-art > svg { width: 22px; height: 22px; }
   .mv2-place-art > button { top: var(--space-2); }
   .mv2-place-art > span { position: static; padding: 0; background: transparent; font-size: var(--text-xs); }
@@ -276,7 +286,7 @@
   .mv2-workspace .map-toolbar { width: 52px; }
   .mv2-workspace .map-toolbar .map-day-chip { width: 44px; min-width: 44px; }
   .mv2-workspace[data-snap='peek'] .poi-col--see > .mv2-deck-header, .mv2-workspace[data-snap='peek'] .poi-col--see > .poi-plan-list { display: none; }
-  .mv2-workspace[data-snap='peek'] .mv2-peek { display: flex; align-items: center; min-height: 80px; gap: var(--space-4); padding: 0 var(--space-7) var(--space-5); }
+  .mv2-workspace[data-snap='peek'] .mv2-peek { display: flex; align-items: center; min-height: 80px; gap: var(--space-4); padding: 0 var(--mv2-panel-pad) var(--space-5); }
   .mv2-peek-mark { display: grid; place-items: center; flex: 0 0 auto; width: 40px; height: 44px; border-radius: var(--radius-sm); background: var(--bg-soft); color: var(--ink-teal); }
   .mv2-peek-place { flex: 1; min-width: 0; min-height: 44px; padding: 0; text-align: left; border: 0; background: transparent; color: var(--text); cursor: pointer; }
   .mv2-peek-place > small, .mv2-peek-place > strong { display: block; }
@@ -391,7 +401,7 @@
 .mv2-workspace .lrow-deck { border: 0; border-bottom: 1px solid var(--pw-line-soft, var(--line)); border-radius: 0; background: transparent; margin: 0; }
 .mv2-workspace .lrow-deck:last-of-type { border-bottom: 0; }
 .mv2-workspace .lrow-deck[open] { padding-bottom: 0; }
-.mv2-workspace .lrow-deck .lrow-sum { grid-template-columns: 34px 1fr 16px; padding: var(--space-7) 0; border-radius: var(--radius-sm); transition: none; }
+.mv2-workspace .lrow-deck .lrow-sum { grid-template-columns: 34px 1fr 16px; padding: var(--mv2-panel-pad) 0; border-radius: var(--radius-sm); transition: none; }
 .mv2-workspace .lrow-deck .lrow-sum:hover { background: color-mix(in srgb, var(--color-primary) 5%, transparent); }
 .mv2-workspace .lrow-deck .lrow-sum:focus-visible { outline: none; box-shadow: var(--ring); }
 .mv2-workspace .lrow-deck .lrow-tile { display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--pw-sunken, var(--bg-soft)); color: var(--ink-teal, var(--color-primary)); }
@@ -511,7 +521,7 @@
 /* Map edit: the Swap with list. Its control keeps a 44px touch target. */
 
 /* ===== Map v2 lens decks (package 911-W2): DriveTabs and FixDeck ===== */
-.mv2-lens { display: flex; flex-direction: column; gap: var(--space-5); padding: 0 var(--space-7) var(--space-7); color: var(--pw-ink); }
+.mv2-lens { display: flex; flex-direction: column; gap: var(--space-5); padding: 0 var(--mv2-panel-pad) var(--mv2-panel-pad); color: var(--pw-ink); }
 .mv2-lens-phase { margin: 0; padding: 12px; border-radius: 12px; background: var(--pw-soft); color: var(--pw-ink); font: var(--pw-meta); }
 .mv2-lens-tabs { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--pw-sunken); }
 .mv2-lens-tab { flex: 0 0 auto; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--pw-ink); font: var(--pw-ui); cursor: pointer; transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper); }
@@ -568,11 +578,12 @@
   --mv2-lens-edge: var(--pw-line);
   --mv2-lens-accent: var(--pw-marigold-500);
   --mv2-lens-accent-ink: var(--pw-on-marigold);
-  padding: 0 var(--space-4) var(--space-4);
+  /* One panel inset like the Drive deck and the Day plan: 0 on top (the deck
+     head carries the shared inset), the shared pad inline and at the bottom. */
+  padding: 0 var(--mv2-panel-pad) var(--mv2-panel-pad);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4);
   color: var(--pw-ink);
 }
 :root:where([data-theme='dark']) .mv2-lens-deck {
@@ -650,7 +661,7 @@
 }
 
 /* ============ Map v2 lens decks (package 911-W4-decks) ============ */
-.mv2-lens-deck-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-4); }
+.mv2-lens-deck-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding-top: var(--mv2-panel-pad); }
 .mv2-lens-deck-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .mv2-lens-deck-kicker { color: var(--pw-marigold-ink); font: var(--pw-kicker); font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
 .mv2-lens-deck-title { margin: 0; color: var(--pw-ink); font: var(--pw-title); }
@@ -765,7 +776,7 @@
   bottom: auto;
   z-index: auto;
   width: auto;
-  margin: var(--space-5) var(--space-7) 0;
+  margin: var(--space-5) var(--mv2-panel-pad) 0;
   padding: 10px var(--space-5);
   border: 0;
   border-radius: 14px;
@@ -883,6 +894,11 @@
 .map-edit-grip::before { content: ''; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
 .map-edit-grip:hover { background: var(--pw-soft); color: var(--pw-ink); }
 .map-edit-grip:focus-visible { outline: none; box-shadow: var(--ring); }
+/* The card's exit. A 44 px box, pulled back by its own margin so the X reads
+   level with the day dot and the head stays one row tall. */
+.map-edit-close { flex: none; display: inline-grid; place-items: center; width: 44px; height: 44px; min-width: 44px; min-height: 44px; margin: -6px -8px -6px 0; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--pw-ink-3); cursor: pointer; transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper); }
+.map-edit-close:hover { background: var(--pw-soft); color: var(--pw-ink); }
+.map-edit-close:focus-visible { outline: none; box-shadow: var(--ring); }
 .map-edit-stay-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .map-edit-stay-label { font-size: 12.5px; color: var(--pw-ink-2); }
 .map-edit-editor .map-edit-stepper { flex: none; gap: 0; border: 1px solid var(--pw-line); border-radius: var(--radius-pill); }
@@ -914,7 +930,7 @@
 .map-edit-fixed svg { flex: none; }
 :root:where([data-theme='dark']) .map-edit-editor { box-shadow: var(--shadow); }
 @media (prefers-reduced-motion: reduce) {
-  .map-edit-grip, .map-edit-pill, .map-edit-editor .map-edit-actions .map-edit-remove, .map-edit-editor .map-edit-stepper button, .map-edit-menu-item { transition: none; }
+  .map-edit-grip, .map-edit-close, .map-edit-pill, .map-edit-editor .map-edit-actions .map-edit-remove, .map-edit-editor .map-edit-stepper button, .map-edit-menu-item { transition: none; }
 }
 
 /* 911-W8-card: place card and scope band. Board values read with getComputedStyle;
@@ -985,7 +1001,7 @@
   .yf-workspace[data-map-fullscreen='true'] .yf-page { display: none; }
   .yf-workspace[data-map-fullscreen='true'] .mv2-workspace { height: 100dvh; display: flex; flex-direction: column; }
   .yf-workspace[data-map-fullscreen='true'] .map-ideas-grid { --mv2-canvas-height: calc(100dvh - var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) - var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); flex: 1 1 auto; min-height: 0; margin-top: 0; border-radius: 0; }
-  .mv2-sheet-settings { flex: 0 0 auto; margin: 0; padding: 0 var(--space-7); }
+  .mv2-sheet-settings { flex: 0 0 auto; margin: 0; padding: 0 var(--mv2-panel-pad); }
   .mv2-sheet-settings .mv2-tools { margin: 0; }
   .mv2-sheet-settings .mv2-tools > summary { width: 100%; justify-content: flex-start; min-height: 44px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-2); font-size: 12.5px; }
   .mv2-sheet-settings .mv2-tools-body { margin: 0 0 var(--space-4); padding: var(--space-5) 0; border-radius: 0; background: transparent; }
@@ -1292,10 +1308,10 @@
 .mv2-workspace .mv2-tool-menu-body .map-filters-pop { position: static; width: auto; max-height: none; box-shadow: none; }
 .mv2-workspace .mv2-lens-scope-band {
   position: static; display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4);
-  width: auto; margin: 0; padding: var(--space-5) var(--space-7); border-radius: 0; box-shadow: none;
+  width: auto; margin: 0; padding: var(--space-5) var(--mv2-panel-pad); border-radius: 0; box-shadow: none;
   background: transparent; font-size: var(--text-xs);
 }
-.mv2-deck-footer { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-4) var(--space-7); border-top: 1px solid var(--line); }
+.mv2-deck-footer { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-4) var(--mv2-panel-pad); border-top: 1px solid var(--line); }
 .mv2-deck-footer .mv2-lens-source { flex: 1; }
 .mv2-suggestion-info > summary { list-style: none; }
 .mv2-suggestion-notes { padding-block: var(--space-5); font-size: var(--text-xs); }
@@ -1381,7 +1397,7 @@
 
 /* ---- Live suggestion states on top of the deck ---- */
 .mv2-workspace .mv2-suggestion-notes:empty { display: none; }
-.mv2-workspace .mv2-suggestion-notes { padding: var(--space-3) var(--space-5) 0; }
+.mv2-workspace .mv2-suggestion-notes { padding: var(--mv2-panel-pad) var(--mv2-panel-pad) 0; }
 .mv2-workspace .mv2-suggestion-notes > p { margin: 0 0 var(--space-2); }
 
 /* ---- Motion: panels slide in, the deck content rises on each lens change ---- */
@@ -1453,10 +1469,12 @@
 .mv2-workspace .mv2-map-view .mv2-map-tools-btn { font-size: 12px; font-weight: 800; letter-spacing: .02em; transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper), scale var(--motion-fast) var(--ease-paper); }
 /* One button cycles the view. The glyph pops in on each change. The phone keeps the switch in the More menu. */
 .mv2-map-view-glyph { display: inline-grid; place-items: center; animation: mv2-pick-pop var(--motion-med) var(--ease-paper) backwards; }
-.mv2-workspace .mv2-map-view-menu { display: none; }
+.mv2-workspace .mv2-map-view-menu, .mv2-workspace .mv2-map-expand-menu { display: none; }
 @media (max-width: 760px) {
   .mv2-workspace .map-toolbar .mv2-map-tools-card.mv2-map-view { display: none; }
+  .mv2-workspace .map-toolbar .mv2-map-tools-card.mv2-map-expand { display: none; }
   .mv2-workspace .mv2-tool-menu-body > .mv2-map-view-menu { display: flex; font-size: 12px; font-weight: 800; }
+  .mv2-workspace .mv2-tool-menu-body > .mv2-map-expand-menu { display: flex; }
 }
 @media (prefers-reduced-motion: reduce) { .mv2-map-view-glyph { animation: none; } }
 
@@ -1471,3 +1489,132 @@
 /* An edge tab joins its panel, so the side that meets the panel draws no line. */
 .mv2-workspace .mv2-edge-tab--day { border-left: 0; }
 .mv2-workspace .mv2-edge-tab--deck { border-right: 0; }
+
+/* ---- Day plan rail: the needs panel in the Map V2 language ----
+   Scoped to the V2 workspace so the legacy day-slot rules that other pages
+   share stay untouched. Only paint and rhythm change; every control keeps its
+   markup, state and behaviour. Values come from the Map tab v2 mockups. */
+/* Head: a centred title with a day-tone dot, a small count line and pill chips. */
+.mv2-workspace .poi-col--needs .poi-col-head-txt { align-items: center; text-align: center; gap: var(--space-1); }
+.mv2-workspace .poi-col--needs .poi-col-head-txt > b {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-3);
+  font: var(--pw-title); font-size: 17px; line-height: 21px; letter-spacing: 0;
+  color: var(--pw-ink); white-space: normal;
+}
+.mv2-workspace .poi-col--needs .poi-col-head-txt > b::before {
+  content: ''; flex: none; width: 9px; height: 9px; border-radius: var(--radius-pill);
+  background: var(--mv2-day-tone, var(--pw-lagoon-600));
+}
+.mv2-workspace .poi-col--needs .poi-col-head-txt > .small {
+  margin: 0; font-size: 12px; line-height: 15px; color: var(--pw-ink-3); text-align: center;
+}
+.mv2-workspace .poi-col--needs > .poi-col-head > .mv2-plan-chip {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  min-height: 32px; padding: 0 var(--space-4); border-radius: var(--radius-pill);
+  border: 1px solid var(--pw-line); background: var(--pw-sunken); color: var(--pw-ink-2);
+  font-size: 11.5px; font-weight: 700;
+  transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper);
+}
+.mv2-workspace .poi-col--needs > .poi-col-head > .mv2-plan-chip::after {
+  content: ''; position: absolute; inset: -6px; border-radius: inherit;
+}
+.mv2-workspace .poi-col--needs > .poi-col-head > .mv2-plan-chip[aria-pressed='true'] {
+  background: var(--pw-sea-700); border-color: var(--pw-sea-700); color: var(--pw-card);
+}
+.mv2-workspace .poi-col--needs > .poi-col-head > .poi-fold {
+  background: var(--pw-sunken); border-color: var(--pw-line); color: var(--pw-ink-2);
+}
+
+/* Slots: flat rows on hairlines, a 24px state tile, name over a small meta line. */
+.mv2-workspace .poi-col--needs .slots-list { gap: 0; padding: 0; }
+.mv2-workspace .poi-col--needs .slots-list .day-slot {
+  border: 0; border-bottom: 1px solid var(--pw-line-soft); border-radius: 0;
+  background: transparent; box-shadow: none;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot:last-child { border-bottom: 0; }
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-auto { background: transparent; border-style: solid; }
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-open {
+  background: var(--pw-marigold-50); border-bottom-color: transparent;
+  border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1.5px var(--pw-marigold-500);
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot-top {
+  display: grid; grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto; align-items: center;
+  column-gap: var(--space-4); row-gap: 0;
+  width: 100%; padding: var(--space-4) var(--space-3); text-align: left;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot-st {
+  grid-column: 1; grid-row: 1 / span 2; width: 24px; height: 24px; font-size: 11px;
+  border: 1.5px solid var(--pw-line); background: var(--pw-card); color: var(--pw-ink-3);
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-filled .day-slot-st {
+  background: var(--pw-lagoon-100); border-color: var(--pw-lagoon-600); color: var(--pw-sea-700);
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-auto .day-slot-st {
+  border-style: dashed; border-color: var(--pw-ink-4); background: transparent;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-empty .day-slot-st {
+  border: 2px dashed var(--pw-marigold-500); background: transparent;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot-lab {
+  grid-column: 2; grid-row: 1; min-width: 0;
+  font-size: 13.5px; font-weight: 700; line-height: 1.3; color: var(--pw-ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-open .day-slot-lab { color: var(--pw-marigold-ink); }
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-auto .day-slot-lab { color: var(--pw-ink-3); font-weight: 600; }
+.mv2-workspace .poi-col--needs .slots-list .day-slot-win {
+  grid-column: 2; grid-row: 2;
+  font-size: 11.5px; line-height: 1.3; color: var(--pw-ink-3);
+  letter-spacing: 0; text-transform: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* A filled or auto slot carries its time, or its Auto mark, at line 1's right; the
+   empty slot keeps its window under the label as its meta line. */
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-filled .day-slot-win,
+.mv2-workspace .poi-col--needs .slots-list .day-slot.is-auto .day-slot-win {
+  grid-column: 3; grid-row: 1; justify-self: end; text-align: right;
+}
+/* The meta line sits under the label: the filled stop name, or "Added by the app",
+   one line with an ellipsis when long. No wrapped right column. */
+.mv2-workspace .poi-col--needs .slots-list .day-slot-val {
+  grid-column: 2 / -1; grid-row: 2; min-width: 0; justify-self: stretch; text-align: left; margin-left: 0;
+  font-size: 11.5px; line-height: 1.3; color: var(--pw-ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot-urgent,
+.mv2-workspace .poi-col--needs .slots-list .day-slot-missed {
+  grid-column: 3; grid-row: 1; margin-left: var(--space-3); font-size: 11.5px;
+}
+.mv2-workspace .poi-col--needs .slots-list .day-slot-hint {
+  margin: 0; padding: 0 var(--space-3) var(--space-4) calc(24px + var(--space-4));
+  font-size: 11.5px; color: var(--pw-ink-3);
+}
+
+/* The open slot's source shelf and its Find / Fill pills. */
+.mv2-workspace .poi-col--needs .day-slot-cands {
+  margin: 0 var(--space-3) var(--space-4); padding: var(--space-4);
+  border: 1px solid var(--pw-line-soft); border-radius: var(--radius-sm);
+  background: var(--pw-card);
+}
+.mv2-workspace .poi-col--needs .day-slot-cand { padding: var(--space-4) 0; }
+.mv2-workspace .poi-col--needs .day-slot-cand-nm b { font-size: 13px; font-weight: 700; }
+.mv2-workspace .poi-col--needs .day-slot-cand-nm > span { font-size: 11.5px; color: var(--pw-ink-3); }
+.mv2-workspace .poi-col--needs .day-slot-fill {
+  position: relative; min-height: 30px; padding: 0 var(--space-5);
+  border: 1px solid transparent; border-radius: var(--radius-pill);
+  background: var(--pw-sea-700); color: var(--pw-card);
+  font-size: 12px; font-weight: 700;
+  transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper);
+}
+.mv2-workspace .poi-col--needs .day-slot-fill::after {
+  content: ''; position: absolute; inset: -7px; border-radius: inherit;
+}
+.mv2-workspace .poi-col--needs .day-slot-fill:hover:not(:disabled) { background: var(--pw-sea-900); }
+.mv2-workspace .poi-col--needs .day-slot-fill:focus-visible { outline: 2px solid var(--pw-sea-700); outline-offset: 2px; }
+/* The pills' 44 px hit area reaches 7 px past the pill, so its neighbour sits 8 px away. */
+.mv2-workspace .poi-col--needs .day-slot-search,
+.mv2-workspace .poi-col--needs .day-slot-drift-a { gap: var(--space-4); }
+.mv2-workspace .poi-col--needs .day-slot-drift-t,
+.mv2-workspace .poi-col--needs .day-slot-vote-lead,
+.mv2-workspace .poi-col--needs .day-slot-pattern { font-size: 11.5px; color: var(--pw-ink-2); }

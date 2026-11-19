@@ -3,7 +3,7 @@
 // locked note, already built from the read model the viewer is allowed to see.
 // A locked panel takes no photo prop and no timeline, so the type keeps a
 // locked day's picture and names off it.
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useState, type CSSProperties, type JSX, type ReactNode } from 'react'
 import { ChevronDown, Lock } from 'lucide-react'
 import { staggerStep } from '../../lib/motion'
 import { RegionArt } from '../RegionArt'

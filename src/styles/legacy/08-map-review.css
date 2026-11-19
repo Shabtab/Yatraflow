@@ -387,12 +387,6 @@
    for the line-keyed ratchet reason as with the blocks above.
    ============================================================ */
 
-.draft-card { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 18px; padding: 12px 14px; border: 1px dashed var(--teal); border-radius: var(--radius-sm); background: var(--card); }
-.draft-card-thumb { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 10px; background: var(--teal-soft); font-size: 16px; }
-.draft-card-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.draft-card-body b { font-size: 13.5px; }
-.draft-card-meta { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-.draft-card > .btn { margin-left: auto; }
 /* ============================================================
    Create Trip - the crew collector (P5)
    Local only: nothing here is written to the trip or sent anywhere. Appended

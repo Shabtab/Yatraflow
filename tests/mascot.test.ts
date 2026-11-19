@@ -4,7 +4,7 @@
 // without a browser.
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
-import { MASCOT_FILES, mascotFile, type MascotPose } from '../src/lib/mascot'
+import { MASCOT_FILES, mascotFile, warningHead, type MascotPose } from '../src/lib/mascot'
 
 const root = new URL('../public/brand/mascot/', import.meta.url)
 const poses = Object.keys(MASCOT_FILES) as MascotPose[]
@@ -72,5 +72,53 @@ describe('mascotFile', () => {
         }
       }
     }
+  })
+})
+
+describe('inline warning heads', () => {
+  // Every code the engine raises, so a new warning cannot ship headless by
+  // accident: a code with no mapping is allowed, but it must be a deliberate
+  // null rather than a typo that silently falls through the switch.
+  const CODES = [
+    'flight-checkin', 'travel', 'fatigue', 'density', 'late-arrival', 'hours',
+    'backtrack', 'meals', 'weather', 'commitment', 'commitment-unlinked',
+    'buffer', 'short-rest', 'hotels',
+  ]
+
+  it('maps only codes to poses that ship a file', () => {
+    for (const code of CODES) {
+      const head = warningHead(code)
+      if (head == null) continue
+      expect(poses, `${code} -> ${head}`).toContain(head)
+      expect(() => read(mascotFile(head).replace('brand/mascot/', '')), code).not.toThrow()
+    }
+  })
+
+  it('gives the four planned warnings their own head (plan §3)', () => {
+    // Night halt and the offline banner are placement decisions, not engine
+    // codes: their heads are pinned where they render. These four are the
+    // engine warnings the plan names.
+    expect(warningHead('meals')).toBe('head-chai')
+    expect(warningHead('fatigue')).toBe('head-sleepy')
+    expect(warningHead('density')).toBe('head-worried')
+    expect(warningHead('commitment')).toBe('head-worried')
+  })
+
+  it('keeps the lost head off engine warnings: its no-signal badge means offline', () => {
+    for (const code of CODES) expect(warningHead(code), code).not.toBe('head-lost')
+    expect(warningHead('commitment-unlinked')).toBeNull()
+  })
+
+  it('returns null for an unknown code rather than guessing a face', () => {
+    expect(warningHead('not-a-warning')).toBeNull()
+  })
+})
+
+describe('Chakra is the AI companion', () => {
+  const drawer = readFileSync('src/components/AiDrawer.tsx', 'utf8').replace(/\r\n/g, '\n')
+  it('the button and the header show Chakra, not the sparkle icon', () => {
+    expect(drawer).not.toMatch(/\bSparkles\b/)
+    expect(drawer.match(/<Mascot pose="mark-face"/g)?.length).toBe(2)
+    expect(drawer).toContain('Chakra · Trip companion')
   })
 })

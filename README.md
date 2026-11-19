@@ -95,11 +95,41 @@ _Recent release highlights, newest first. See [CHANGELOG.md](CHANGELOG.md) for t
 
 Pending notes live in [change fragments](changelog.d/README.md). The release owner assembles them into the public record.
 
+## The v0.88.1 release
+
+The repository is at v0.88.1. See the [release record](CHANGELOG.md) for its full scope.
+
+- **Removed trip members stay out.** A removed member cannot rejoin with a new invite link. A member who leaves keeps their assigned role when they rejoin. Existing invite links expire once.
+
+## The v0.88.0 release
+
+The previous release. Its highlights stay here until the next release.
+
+- **Group input is one Decide together page.** Decisions, stop ideas and activity share one layout. A decision can close at a set time, and each member can answer a short interest quiz.
+- **Creators can copy a route as a weekend trip.** Pick a start date and a party size, and the copy keeps both. Storefronts also show the Indian states their routes cover.
+- **Map Expand has its own control.** A tablet or desktop keeps it beside the view switch, not in the More menu.
+- **Google route requests share one monthly limit across all users.** Past the limit, routes come from OpenStreetMap. The compiler moves to TypeScript 6 and the test runner to Vitest 5.
+
+## The v0.87.1 release
+
+The previous release. Its highlights stay here until the next release.
+
+- **Map route lines follow the roads again.** Each leg of a trip follows its own section of the road route.
+
+## The v0.87.0 release
+
+The previous release. Its highlights stay here until the next release.
+
+- **Creators get a storefront, an owner hub and a rankings page.** The pages show route facts, saved picks, follows and private owner activity. A failed read never shows as zero.
+- **Creators can link public posts to their routes.** The hub counts the visits that each post brings. The app stores links only and keeps no visitor identity.
+- **The trip cover keeps one height on every content tab.** Map and Board show a slim bar, so the tab pill stays in one place. The Plan lens now lives in the Gap panel.
+- **Board drags and Google routing are steadier.** A dragged stop stays on the pointer, and one trip load sends one Google Routes request.
+
 ## The v0.86.0 release
 
-The repository is at v0.86.0. See the [release record](CHANGELOG.md) for its full scope.
+The previous release. Its highlights stay here until the next release.
 
-- **Chakra the koel meets you at the quiet moments.** The loading, failed, empty and not-found screens carry the mascot, which takes the night art in the dark theme. The trip-created column and the unlock reveal celebrate with it. The AI drawer shows it thinking.
+- <img src="public/brand/mascot/chakra-hero.svg" alt="" width="96" align="right" /> **Chakra the koel meets you at the quiet moments.** The loading, failed, empty and not-found screens carry the mascot, which takes the night art in the dark theme. The trip-created column and the unlock reveal celebrate with it. The AI companion wears its face and shows it thinking. The Y logo stays the brand mark.
 - **The Board tab shows each stop's place, time and cost in full.** Each fact has one home, and the stop cards wrap instead of cutting their details.
 - **Explore and the published itinerary move in one calm sequence.** Explore has one search field and one shared publication card. The Look inside day cards and the road height charts match the reference design.
 - **Phone map fits keep the trip large and the pins apart.** Side insets use measured covers, and a user pan is never undone.

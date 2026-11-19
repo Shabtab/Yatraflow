@@ -1,25 +1,28 @@
 // ============ My trips ============
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { Compass, Plus, Rocket, ShoppingBag, Trash2, X } from 'lucide-react'
+import { useArrival } from '../lib/useArrival'
+import { ChevronDown, Compass, Plus, Rocket, ShoppingBag, Trash2, X } from 'lucide-react'
 import { InlineIcon } from '../components/icons'
-import { useTrips, useTrashedTrips, useUsers, useSessionUserId, useSliceReads, useTrashLoaded, useTrashFailed, tripsForUser, trashTrip, restoreTrashedTrip, restoreTrashedTripById, permanentlyDeleteTrip, fetchTrashedTrips, rereadTrips, addDemoTrips } from '../store/store'
-import { computeTotals, formatInrShort } from '../lib/engine'
+import { useTrips, useTrashedTrips, useUsers, useSessionUserId, useSliceReads, useTrashLoaded, useTrashFailed, tripsForUser, trashTrip, restoreTrashedTrip, restoreTrashedTripById, permanentlyDeleteTrip, fetchTrashedTrips, rereadTrips, addDemoTrips, duplicateTripPersisted } from '../store/store'
+import { collectWarnings, computeTotals, formatInrShort, scoreWarnings } from '../lib/engine'
 import { cap } from '../lib/labels'
 import { toast, undoToast, ConfirmDialog } from '../components/ui'
-import { Select } from '../components/Select'
-import { loadDraft, draftIsWorthKeeping, draftAgeLabel } from '../lib/createDraft'
+import { loadDraft, saveDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, type StoredDraft } from '../lib/createDraft'
 import { readinessFromDraft } from '../lib/createReadiness'
 import { createFunnelOn } from '../lib/featureFlags'
 import { ImportTripButton } from '../components/ImportTripButton'
 import { sliceState, emptyCopyFor, readState, rowsView } from '../lib/readState'
 import type { Trip } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
-import { heroHeadline, heroNote, heroPostcards, heroStats, otherTripsEmptyKind, pickUpNext, whenBucket, type WhenKey } from '../lib/tripsPage'
+import { compareSoonest, countsLine, greetingCounts, greetingDateLabel, greetingHeadline, otherTripsEmptyKind, pickUpNext, splitByMemory, travelSoFar, whenBucket } from '../lib/tripsPage'
+import { dayStrip, isReadyToGo, openChecks } from '../lib/tripDayStrip'
 import { layoutFromPref, startOfLocalDay, TRIPS_LAYOUT_PREF } from '../lib/tripsCard'
 import { loadPref, savePref } from '../lib/uiPrefs'
 import { usePresenceList, presenceAttrs } from '../lib/usePresenceList'
 import { TripArtSprite } from '../components/trips/TripArt'
-import { TripsHero } from '../components/trips/TripsHero'
+import { MyTripsGreeting } from '../components/trips/MyTripsGreeting'
+import { DraftBanner } from '../components/trips/DraftBanner'
+import { MemoriesSection } from '../components/trips/MemoriesSection'
 import { FilterChip } from '../components/filters/FilterChip'
 import { SearchField } from '../components/filters/SearchField'
 import { UpNextCard } from '../components/trips/UpNextCard'
@@ -31,7 +34,7 @@ import { SectionHead } from '../components/page/SectionHead'
 import { StateBlock } from '../components/page/StateBlock'
 import { Mascot } from '../components/mascot/Mascot'
 
-type SortKey = 'recent' | 'name' | 'budget-asc' | 'budget-desc' | 'length-desc'
+type SortKey = 'recent' | 'soonest' | 'name' | 'budget-asc' | 'budget-desc' | 'length-desc'
 
 /** The per-person figure is an unmeasured estimate until the workspace measures
  *  the real road, so it keeps the "~" marker. The cards receive this as text. */
@@ -69,6 +72,9 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const trashHeadingRef = useRef<HTMLHeadingElement>(null)
   const headerTrashToggleRef = useRef<HTMLButtonElement>(null)
   const heroTrashToggleRef = useRef<HTMLButtonElement>(null)
+  // The first grid waits for the toolbar while the page arrives (09-trips-list.css).
+  const rootRef = useRef<HTMLDivElement>(null)
+  useArrival(rootRef)
   const viewChangedByUser = useRef(false)
   // A restored or deleted trip leaves the Trash with a short exit. Focus that
   // sat on its button moves to the Trash heading, because the row goes inert.
@@ -117,8 +123,8 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   // private page, unlike Explore's shareable links) ----
   const [q, setQ] = useState('')
   const [style, setStyle] = useState<'all' | Trip['travelStyle']>('all')
-  const [when, setWhen] = useState<WhenKey>('all')
-  const [sortKey, setSortKey] = useState<SortKey>('recent')
+  // Past trips live in Memories, so the grid has no When filter. Soonest first is the default.
+  const [sortKey, setSortKey] = useState<SortKey>('soonest')
   // The Grid | List choice is the one view pref this page keeps. It is read on
   // mount and written on each change; a stored value that names no layout reads
   // as the grid, and a storage failure keeps the default.
@@ -131,12 +137,9 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const mine = useMemo(() => tripsForUser(meId), [allTrips, meId])
 
   const trips = useMemo(() => {
-    // The memo re-runs when the calendar day changes, not on every render.
-    const filterToday = new Date(todayStart)
     const needle = q.trim().toLowerCase()
     const filtered = mine.filter(t => {
       if (style !== 'all' && t.travelStyle !== style) return false
-      if (when !== 'all' && whenBucket(t, filterToday) !== when) return false
       if (!needle) return true
       const hay = [
         t.name, t.startLocation, ...t.destinations,
@@ -147,6 +150,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
     const budgetOf = (t: Trip) => computeTotals(t).costPerPersonInr
     return filtered.sort((a, b) => {
       switch (sortKey) {
+        case 'soonest': return compareSoonest(a, b)
         case 'name': return a.name.localeCompare(b.name)
         case 'budget-asc': return budgetOf(a) - budgetOf(b)
         case 'budget-desc': return budgetOf(b) - budgetOf(a)
@@ -154,7 +158,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         default: return b.updatedAt - a.updatedAt
       }
     })
-  }, [mine, q, style, when, sortKey, todayStart])
+  }, [mine, q, style, sortKey])
 
   // style chips carry counts of the *unfiltered-by-style* set so they stay
   // stable while toggling (same behavior as Explore's style chips).
@@ -164,7 +168,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
     return m
   }, [allTrips, meId])
 
-  const hasFilters = q !== '' || style !== 'all' || when !== 'all' || sortKey !== 'recent'
+  const hasFilters = q !== '' || style !== 'all' || sortKey !== 'soonest'
 
   // Up next ignores the style, When and sort choices, so it stays pinned while
   // you change them. Only a text search hides it: a search is a question about
@@ -173,8 +177,31 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const upNext = isSearching ? null : pickUpNext(mine, today)
   const upNextIsOutsideFilters = upNext !== null && !trips.includes(upNext)
   const upNextTotals = upNext ? computeTotals(upNext) : null
-  const otherTrips = upNext ? trips.filter(t => t.id !== upNext.id) : trips
-  const otherEmptyKind = otherTripsEmptyKind({ matchCount: trips.length, otherCount: otherTrips.length, hasFilters })
+  // Trips that ended leave the grid for Memories. The filters and the search
+  // still reach both groups, so "Past trips" in the When select shows them.
+  const split = splitByMemory(trips, today)
+  // Soonest first reads oldest-first for a past trip, so Memories flips it.
+  const memoryTrips = sortKey === 'soonest' ? [...split.past].reverse() : split.past
+  const otherTrips = upNext ? split.comingUp.filter(t => t.id !== upNext.id) : split.comingUp
+  const otherEmptyKind = otherTripsEmptyKind({ matchCount: split.comingUp.length, otherCount: otherTrips.length, hasFilters })
+  // When the filters match only past trips, Memories shows them and the grid
+  // stays quiet instead of claiming there are none.
+  const filtersMatchOnlyMemories = hasFilters && split.comingUp.length === 0 && memoryTrips.length > 0
+  // One engine pass per trip that has not ended. The Up next strip, the status
+  // line and the "Ready to go" rule all read these warnings.
+  const tripChecks = useMemo(() => {
+    const checks = new Map<string, ReturnType<typeof collectWarnings>>()
+    const checkToday = new Date(todayStart)
+    for (const t of mine) if (whenBucket(t, checkToday) !== 'past') checks.set(t.id, collectWarnings(t))
+    return checks
+  }, [mine, todayStart])
+  const memoryCards = memoryTrips.map(t => ({ trip: t, distanceKm: computeTotals(t).totalDistanceKm }))
+  const pastAll = useMemo(() => splitByMemory(mine, new Date(todayStart)).past, [mine, todayStart])
+  const travel = useMemo(
+    () => travelSoFar({ trips: pastAll, meId, kmOf: t => computeTotals(t as Trip).totalDistanceKm }),
+    [pastAll, meId],
+  )
+  const [copyingId, setCopyingId] = useState<string | null>(null)
   // A trip that a filter or the Trash takes out of the list leaves with a short
   // exit. The empty copy waits until the last card has gone.
   const { entries: tripEntries, exiting: tripsExiting, attachList: attachGrid } = usePresenceList(
@@ -184,41 +211,77 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   )
   const upNextTitleId = useId()
   const otherTitleId = useId()
+  const memoriesTitleId = useId()
 
   // #385: ONE reset for both "Clear filters" buttons. The toolbar ghost reset
   // all four fields while the empty-state action reset three and left
   // `sortKey`, so a sort-only empty was unfixable by its own button. The
   // toolbar's set is the superset — adopt it once, call it twice.
-  function clearFilters() { setQ(''); setStyle('all'); setWhen('all'); setSortKey('recent') }
+  function clearFilters() { setQ(''); setStyle('all'); setSortKey('soonest') }
 
   // P4 - the unfinished trip shows up where people look for their trips. It is
   // not a trip yet, so it is not a row among them: one card, above the grid.
-  const draft = useMemo(() => {
+  const [draft, setDraft] = useState<StoredDraft | null>(() => {
     if (!createFunnelOn('drafts')) return null
     const d = loadDraft()
     return draftIsWorthKeeping(d) ? d : null
-  }, [])
+  })
   const draftReady = useMemo(() => (draft ? readinessFromDraft(draft.form, draft.dests.length) : null), [draft])
+  // The dismiss removes the saved draft, so it follows the trip delete: remove
+  // at once, then offer an undo that writes the same draft back. A storage
+  // failure keeps the banner and says so, because a draft that comes back on
+  // reload is not dismissed.
+  function dismissDraft() {
+    if (!draft) return
+    const kept = draft
+    if (!clearDraft()) {
+      toast('Couldn’t remove the draft', 'err')
+      return
+    }
+    setDraft(null)
+    undoToast('Draft removed', () => {
+      saveDraft({ form: kept.form, dests: kept.dests, returnCount: kept.returnCount, crew: kept.crew, step: kept.step }, { now: new Date(kept.savedAt) })
+      setDraft(kept)
+      toast('Draft restored')
+    })
+  }
 
-  // The hero reads all of the viewer's trips, not the filtered list, so a
-  // search or a filter never changes its headline, counts or postcards.
+  // "Plan it again" copies a past trip into My trips and opens the copy's
+  // Settings, where its dates are. The copy keeps the old dates until then. A
+  // failed save says so and opens nothing.
+  async function planAgain(source: Trip) {
+    if (!meId || copyingId !== null) return
+    setCopyingId(source.id)
+    try {
+      const { trip: copy, persisted } = await duplicateTripPersisted(source, meId)
+      if (!persisted) {
+        toast('Couldn’t save the copy. Check your connection and try again.', 'err')
+        return
+      }
+      toast(`Copied “${source.name}”. Set new dates.`)
+      onNavigate(`/trip/${copy.id}/settings`)
+    } finally {
+      setCopyingId(null)
+    }
+  }
+
+  // The greeting counts all of the viewer's trips, not the filtered list, so a
+  // search or a filter never changes them.
   // #704: a failed refresh with rows already loaded is 'kept'. The page keeps
-  // showing those rows, so the hero and the Other trips header read them as
+  // showing those rows, so the greeting and the Coming up header read them as
   // ready. Only a failed or pending read with no rows is not ready.
   const tripsView = rowsView(tripsRead, mine.length)
   const tripsReady = tripsView !== 'failed' && tripsView !== 'reading'
-  const heroHeadlineText = heroHeadline({ trips: mine, today, ready: tripsReady })
-  const heroStatRow = heroStats({ trips: mine, today, meId, ready: tripsReady })
-  const heroCards = heroPostcards({ trips: mine, today, ready: tripsReady })
-  const heroNoteText = heroNote({ trips: mine, today, ready: tripsReady })
+  const me = users.find(u => u.id === meId)
+  const greetingCountsText = tripsReady ? countsLine(greetingCounts({ trips: mine, today, hasCreateDraft: draft !== null })) : ''
   const isTrashView = view === 'trash'
   function toggleTrash() {
     viewChangedByUser.current = true
     setView(v => v === 'trash' ? 'trips' : 'trash')
   }
-  // The Trash toggle lives in the "Other trips" header. That header is drawn
+  // The Trash toggle lives in the "Coming up" header. That header is drawn
   // only when trips are ready and the list is not the first-run empty state,
-  // and never in the Trash view. In every other case the hero carries the
+  // and never in the Trash view. In every other case the greeting header carries the
   // toggle, so the Trash stays reachable while trips load, after a failed read
   // with no trips, and when there are no trips at all.
   const showsOtherTripsHeader = !isTrashView && tripsReady && !(trips.length === 0 && !hasFilters)
@@ -233,27 +296,25 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   }
 
   return (
-    <div className="container trips-page page-enter">
+    <div className="container trips-page page-enter" ref={rootRef} data-arriving="">
       <TripArtSprite />
-      <TripsHero
-        headline={heroHeadlineText}
-        lede="All your plans, in one place."
-        stats={heroStatRow}
-        postcards={heroCards}
-        note={heroNoteText}
+      <MyTripsGreeting
+        dateLabel={greetingDateLabel(today)}
+        title={greetingHeadline(me?.profile.name, today)}
+        counts={greetingCountsText}
         primary={
-          <button className="btn btn-primary ex-cta" onClick={() => onNavigate('/new')}><Plus size={18} aria-hidden />Plan a new trip</button>
+          <button className="btn btn-primary mt-greet-cta" onClick={() => onNavigate('/new')}><Plus size={18} aria-hidden />Plan a new trip</button>
         }
         secondary={
           <>
             {/* I-20: the shelf has to be reachable from where people look for
                 their travel — a bought plan is not one of your trips, so it gets
                 its own list rather than a row among them. */}
-            <button className="btn btn-quiet" onClick={() => onNavigate('/purchases')}>
+            <button className="btn btn-secondary" onClick={() => onNavigate('/purchases')}>
               <InlineIcon icon={ShoppingBag} size={15} gap={5} />My purchases
             </button>
-            <ImportTripButton ownerId={meId} onNavigate={onNavigate} label="Import trip" className="btn btn-quiet" />
-            {/* The Trash button lives in the "Other trips" header. When that
+            <ImportTripButton ownerId={meId} onNavigate={onNavigate} label="Import a plan" className="btn btn-secondary" />
+            {/* The Trash button lives in the "Coming up" header. When that
                 header is not drawn, the button stays here instead. */}
             {!showsOtherTripsHeader && (
               <button ref={heroTrashToggleRef} type="button" className="btn btn-quiet" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
@@ -302,18 +363,13 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
       )}
 
       {view !== 'trash' && draft && (
-        <div className="draft-card" role="status">
-          <span className="draft-card-thumb" aria-hidden>&#128221;</span>
-          <div className="draft-card-body">
-            <b>{String((draft.form as Record<string, unknown>).name || 'Untitled trip')}</b>
-            <span className="draft-card-meta">
-              {draftReady ? `${draftReady.pct}% ready` : 'saved'}
-              {draft.dests.length > 0 ? ` - ${draft.dests.length} stop${draft.dests.length === 1 ? '' : 's'}` : ''}
-              {' - saved '}{draftAgeLabel(draft.savedAt)}
-            </span>
-          </div>
-          <button className="btn btn-primary btn-sm" onClick={() => onNavigate('/new')}>Finish planning</button>
-        </div>
+        <DraftBanner
+          name={String((draft.form as Record<string, unknown>).name || 'Untitled trip')}
+          meta={`Draft${draft.dests.length > 0 ? ` · ${draft.dests.length} stop${draft.dests.length === 1 ? '' : 's'}` : ''} · Saved ${draftAgeLabel(draft.savedAt)}`}
+          readiness={draftReady}
+          onContinue={() => onNavigate('/new')}
+          onDismiss={dismissDraft}
+        />
       )}
 
       {view !== 'trash' && (!tripsReady ? (
@@ -349,6 +405,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         <div className="mt-catalog">
           {tripsView === 'kept' && (
             // #704: the refresh failed. The rows below are the ones that loaded.
+            <div className="mt-block">
             <StateBlock
               size="compact"
               kind="kept"
@@ -356,16 +413,19 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
               title="Couldn’t refresh your trips. Showing the ones that loaded."
               actions={<button className="btn btn-secondary" onClick={retryTrips}>Try again</button>}
             />
+            </div>
           )}
           {upNext && upNextTotals && (
-            <section aria-labelledby={upNextTitleId}>
+            <section className="mt-block" aria-labelledby={upNextTitleId}>
               <SectionHead id={upNextTitleId}
                 title={<>Up next{upNextIsOutsideFilters && <span className="mt-kicker-note"> · outside your filters</span>}</>} />
               <UpNextCard
                 trip={upNext}
                 today={today}
                 budget={<BudgetText totals={upNextTotals} />}
-                totalTravelMinutes={upNextTotals.totalTravelMinutes}
+                distanceKm={upNextTotals.totalDistanceKm}
+                dayCells={dayStrip(upNext, tripChecks.get(upNext.id) ?? [])}
+                health={scoreWarnings(tripChecks.get(upNext.id) ?? [])}
                 users={users}
                 meId={meId}
                 onDelete={setPendingDelete}
@@ -376,60 +436,45 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
           <SavedShelfSection trips={mine} />
 
           <section aria-labelledby={otherTitleId}>
-            <SectionHead id={otherTitleId}
-              title={`${upNext ? 'Other trips' : 'All trips'} (${otherTrips.length})`}
-              actions={(
-                <>
-                  <button ref={headerTrashToggleRef} type="button" className="btn btn-quiet" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
-                  <ViewSwitch layout={layout} onChange={pickLayout} />
-                </>
-              )} />
-
-            {/* ---- Explore's filter bar: search, selects, then chips ---- */}
-            <div className="ex-filterbar filterbar-host" role="search" aria-label="Filter your trips">
-              <div className="ex-filter-row">
+            {/* One row, as in the mockup: the heading and its count, then search, pace
+                chips, the sort chip, the Grid | List switch, Clear and Trash. */}
+            <div className="mt-listhead mt-block">
+              <div className="mt-listhead-title">
+                <h2 className="mt-section-title" id={otherTitleId}>Coming up</h2>
+                <span className="mt-count">{otherTrips.length} {otherTrips.length === 1 ? 'trip' : 'trips'}</span>
+              </div>
+              <div className="mt-listhead-tools" role="search" aria-label="Filter your trips">
                 <SearchField value={q} onChange={setQ} label="Search your trips"
-                  placeholder="Search places or stops…" shortPlaceholder="Search trips" />
-              </div>
-              <div className="ex-filter-row">
-                <div className="ex-select">
-                  <Select value={when} onChange={v => setWhen(v as WhenKey)} aria-label="When"
-                    options={[
-                      { value: 'all', label: 'Any time' },
-                      { value: 'upcoming', label: 'Upcoming & live' },
-                      { value: 'past', label: 'Past trips' },
-                      { value: 'draft', label: 'Drafts' },
-                    ]} />
-                </div>
-                <div className="ex-select">
-                  <Select value={sortKey} onChange={v => setSortKey(v as SortKey)} aria-label="Sort by"
-                    options={[
-                      { value: 'recent', label: 'Recently edited' },
-                      { value: 'name', label: 'Name A–Z' },
-                      { value: 'length-desc', label: 'Longest first' },
-                      { value: 'budget-asc', label: 'Budget: low → high' },
-                      { value: 'budget-desc', label: 'Budget: high → low' },
-                    ]} />
-                </div>
-              </div>
-              <div className="ex-chip-row">
-                <div className="ex-chips" role="group" aria-label="Travel style">
-                  <FilterChip pressed={style === 'all'} onClick={() => setStyle('all')}>All styles</FilterChip>
-                  {TRAVEL_STYLES.filter(s => styleCounts.get(s)).map(s => (
-                    <FilterChip key={s} pressed={style === s} count={styleCounts.get(s)}
-                      onClick={() => setStyle(style === s ? 'all' : s)}>
-                      {cap(s)}
+                  placeholder="Search places or stops" shortPlaceholder="Search trips" pill />
+                <div className="mt-chips" role="group" aria-label="Travel style">
+                  <FilterChip pressed={style === 'all'} onClick={() => setStyle('all')}>All</FilterChip>
+                  {TRAVEL_STYLES.filter(st => styleCounts.get(st)).map(st => (
+                    <FilterChip key={st} pressed={style === st} onClick={() => setStyle(style === st ? 'all' : st)}>
+                      {cap(st)}
                     </FilterChip>
                   ))}
                 </div>
-                {/* Always mounted, so the row never gains or loses an element when a
-                    filter starts or stops. Idle, it is hidden but keeps its place. */}
-                {/* "Clear filters" (review finding 4): the empty state's action said
-                    "Clear filters" while this ghost button said "Clear" — the same
-                    reset under two names, both once visible in one frame. */}
-                <button type="button" className="btn btn-quiet ex-clear" style={{ visibility: hasFilters ? 'visible' : 'hidden', opacity: hasFilters ? 1 : 0 }} onClick={clearFilters}>
-                  <X size={13} aria-hidden />Clear filters
-                </button>
+                <label className="mt-sort">
+                  <span className="sr-only">Sort by</span>
+                  <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}>
+                    <option value="soonest">Soonest first</option>
+                    <option value="recent">Recently edited</option>
+                    <option value="name">Name A–Z</option>
+                    <option value="length-desc">Longest first</option>
+                    <option value="budget-asc">Budget: low → high</option>
+                    <option value="budget-desc">Budget: high → low</option>
+                  </select>
+                  <ChevronDown size={14} aria-hidden />
+                </label>
+                <ViewSwitch layout={layout} onChange={pickLayout} />
+                {/* Shown only while a search, a chip or a sort choice is active. The
+                    empty-results block keeps its own Clear filters button. */}
+                {hasFilters && (
+                  <button type="button" className="btn btn-quiet mt-clear" onClick={clearFilters}>
+                    <X size={13} aria-hidden />Clear filters
+                  </button>
+                )}
+                <button ref={headerTrashToggleRef} type="button" className="btn btn-quiet mt-trash" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
               </div>
             </div>
 
@@ -437,7 +482,16 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
 
             {/* 'no-trips' never reaches this list: the page-level branch above
                 shows the first-run copy for it, so it renders nothing here. */}
-            {otherEmptyKind === 'none-other' && !tripsExiting ? (
+            {filtersMatchOnlyMemories && !tripsExiting ? null : otherEmptyKind === 'no-trips' && !tripsExiting ? (
+              // Only past trips exist, so nothing is coming up. The page-level
+              // branch handles the user with no trips at all.
+              <StateBlock
+                kind="empty"
+                icon={<Compass size={38} aria-hidden />}
+                title="No upcoming trips"
+                actions={<button className="btn btn-secondary" onClick={() => onNavigate('/new')}>Plan a new trip</button>}
+              />
+            ) : otherEmptyKind === 'none-other' && !tripsExiting ? (
               <StateBlock
                 kind="empty"
                 icon={<Compass size={38} aria-hidden />}
@@ -464,7 +518,8 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                       trip={t}
                       today={today}
                       budget={<BudgetText totals={totals} />}
-                      totalTravelMinutes={totals.totalTravelMinutes}
+                      readyToGo={isReadyToGo(t, today, tripChecks.get(t.id) ?? [])}
+                      toFix={openChecks(t, tripChecks.get(t.id) ?? [])}
                       users={users}
                       meId={meId}
                       enterIndex={exiting ? 0 : i}
@@ -477,6 +532,15 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
               </div>
             ) : null}
           </section>
+
+          <MemoriesSection
+            titleId={memoriesTitleId}
+            memories={memoryCards}
+            today={today}
+            travel={travel}
+            copyingId={copyingId}
+            onPlanAgain={t => { void planAgain(t) }}
+          />
         </div>
       ))}
 

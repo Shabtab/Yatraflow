@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "version": "0.87.0",
+  "date": "2026-11-16",
+  "source": "bf3ded2796cb26724d50b34caef63e5c8e97039e",
+  "fragments": [
+    {
+      "id": "1e5464ec-c3a8-4b58-b4a8-a4cca2cd6511",
+      "sha256": "8f2ebe7d9ce4fefb3f2060ab8f13357b6b195851d703fabf3d4664ae5c6e7a06"
+    },
+    {
+      "id": "2268d228-2612-413f-8e3b-1dd3007f5c52",
+      "sha256": "0331bf3d6d6d6009c46cd4fa88b9ffebeeaa6257d5e61bfc2d64ca507baf8c48"
+    },
+    {
+      "id": "37d8f1c3-cbfa-4976-a70c-baa42df2182b",
+      "sha256": "dadbe71ee8da3e21dfe2f25465413ebd9144a65f009f1473a839e684518c537e"
+    },
+    {
+      "id": "39cb5c4a-0ec3-4077-9fc4-4b38979642e9",
+      "sha256": "05ca0b74e8ef20463d25851b1644e92bd3a484505cbdaf80cebfc1a5b974aa03"
+    },
+    {
+      "id": "3d6a8f52-91c4-4b7e-a2d3-6f0b1c9e4a17",
+      "sha256": "22b2d94e8d2ac47938c5bfc33e706d27e457eb20d1ee7c110297c4d315f4e313"
+    },
+    {
+      "id": "3f7a1c02-9d4e-4b6a-8c51-2e0f9b7d4a63",
+      "sha256": "9c95a5ccee6b53f1a295c69df68d7976bd32c0d69a042a340416b929748d5ad5"
+    },
+    {
+      "id": "4c2d0362-7b0a-4657-a996-dcf354c59d50",
+      "sha256": "fbabd9e261fe4665b5dfd22fd02e6cbdc4f8673d8766cd30cecc80329bc9ca31"
+    },
+    {
+      "id": "5632d4f0-9c9e-4828-a334-4f037c6b66ed",
+      "sha256": "c48e1cd9e7216310cb3a69e398cad62435f0346cf5f70007047ec3952bdeeebd"
+    },
+    {
+      "id": "5a215772-bcda-47f6-96be-4f360d156af3",
+      "sha256": "d4449faa331eccf1e9e47211427404193a77122c78ac8fceb2f6343cdde00e21"
+    },
+    {
+      "id": "5c0544f3-8619-4f73-a10c-58f8ef7571ec",
+      "sha256": "e36a59a557213e56bf95956227fc881fff4b2a2874c96c67f425425e7c07d069"
+    },
+    {
+      "id": "5da07a18-f469-4304-b013-f06118f36813",
+      "sha256": "0bca0a64a1df2e3f39019537330cbe5e70270c078849df55c1581415c126eb32"
+    },
+    {
+      "id": "61a91e19-46f7-4d0d-960c-32816456e82e",
+      "sha256": "1a12391d51338fbfeb32d8f035a581e7a6c066b253cd5334ae3b87e75625c577"
+    },
+    {
+      "id": "6b48d870-113b-481c-b6f9-d2fa1bc5e990",
+      "sha256": "2816dd9814e814f6c483b78659c0444afa8d938a865145b4a8d497db96c6129d"
+    },
+    {
+      "id": "77f5d6a2-61bd-4985-9e63-15ca4b35253d",
+      "sha256": "371efc8800cf6d8c622e2d059ca87dbf47f3dfa6a8e325ff842d8c85b0161bee"
+    },
+    {
+      "id": "781381ee-275d-4218-91b6-5a4486ab0577",
+      "sha256": "f16c46167890a099f77203dbad8faff623d2db538d7a1d02e3cf4680aee70df9"
+    },
+    {
+      "id": "7cf54794-4a45-4cb2-a904-a390023b90c3",
+      "sha256": "62ec33aaf577d94f783be896a25abf220da2c2791262e1ebafe9aef84804ad2d"
+    },
+    {
+      "id": "84927952-79d5-4c2b-a62d-7e8e417afed8",
+      "sha256": "3ed8a7323753156f848a6cdd94bdfd262ff80c0313d48a99d0ae694524816f9c"
+    },
+    {
+      "id": "92b63197-f956-43c6-a0e9-036501782845",
+      "sha256": "80911be80189540ce7c86166eee2b67d1c5bb3a8b7eb48e3882d73fbede2fdc8"
+    },
+    {
+      "id": "9b1f6c3e-4d52-4a8b-b7e0-2c6a1f0d8e47",
+      "sha256": "57918c223b065b77601fef5eceffc03aaaa56936bd5cefa39774e977a494341b"
+    },
+    {
+      "id": "9eac30c5-d87d-43ba-b519-0bbd59af6375",
+      "sha256": "ada8144af53dcffb6f585c537c0d2edfc061365b92ab625b344692b49ebc93f2"
+    },
+    {
+      "id": "9f4b1d5c-7e32-4a6b-8c1d-2f0e5b9a7d64",
+      "sha256": "6f0d853d68907a3ddae060b74e973de9ac4cbc9910ad415be05325a54f08109a"
+    },
+    {
+      "id": "a2559798-6236-431b-8365-0c19a56865d6",
+      "sha256": "4e1513ad51e43c05ded7627cb8d30ae0e7a3ce90f0c3afb52962534008dbaa78"
+    },
+    {
+      "id": "b8e7ea65-6012-4dc2-811c-49a658effd41",
+      "sha256": "8fe4e3fe8e58829303b22d694767ac48ba0620c8643c8352286f5a23b126bb84"
+    },
+    {
+      "id": "dc6af121-9c6d-4129-9f19-5f7f0ed00a0f",
+      "sha256": "7993b12b3248156796d099a8d01f09bc7b3eb254ddd82decc304ecd2516bdff4"
+    },
+    {
+      "id": "ea77d8df-64c8-4d78-9525-a3ef5210a60f",
+      "sha256": "52e5c4330dab33488842329bb0277a95433e1e748cf5cf306b19c0e53960d33f"
+    },
+    {
+      "id": "f8c2b7d3-9a41-4e6b-8c25-3d7e10a95b64",
+      "sha256": "972d9e84def0722a6188f5f83dc46c30e321f94b697aec90e65950aeea038766"
+    }
+  ],
+  "blockHash": "4edd7af5c87e7d5f830fdd6624099a01c4ace05b06b775226a796a562c73a56c",
+  "changelogHash": "4b5a67f21764b0cb5ec404b8b663d86f82079352435843dca04a2f5f75d1dc27"
+}

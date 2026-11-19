@@ -998,7 +998,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
           <div className="draft-banner-copy">
             <b>Picking up where you left off</b>
             <span className="draft-banner-meta">
-              {draftReadiness ? `${draftReadiness.pct}% ready` : 'saved'} - saved {draftAgeLabel(draft.savedAt)}
+              {draftReadiness ? `${draftReadiness.pct}% ready` : 'Saved'} - saved {draftAgeLabel(draft.savedAt)}
             </span>
           </div>
           <div className="draft-banner-acts">
@@ -1042,7 +1042,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <button type="button" className="tpl-blank" key="blank" onClick={clearTemplate}>
                 <span>
                   Start blank
-                  <small>{guided ? 'Six short steps. Most take one tap.' : 'three questions and a live ticket'}</small>
+                  <small>{guided ? 'Six short steps. Most take one tap.' : 'Three questions and a live ticket'}</small>
                 </span>
               </button>
             </div>
@@ -1130,7 +1130,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
             <div className="tpl-name">
               <div className="namebox-in">
                 <PenLine size={14} aria-hidden />
-                <input className="namebox-input" autoComplete="off" ref={el => (fieldRefs.current.name = el)}
+                <input className="namebox-input" autoComplete="off" ref={el => { fieldRefs.current.name = el }}
                   aria-invalid={!!errs.name} aria-labelledby="ct-name-h"
                   aria-describedby={errs.name ? 'ct-name-err' : undefined}
                   value={f.name} onChange={e => { patchFields({ name: e.target.value }); setNameSugSeen(true) }}
@@ -1467,7 +1467,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                       stepper is the control people actually touch, so the stepper is
                       the target — and the range travels with it, since `min`/`max`
                       live on the input nobody can see. */}
-                  <span className="ct-step" role="group" ref={el => (fieldRefs.current.travellers = el)}
+                  <span className="ct-step" role="group" ref={el => { fieldRefs.current.travellers = el }}
                     tabIndex={-1} aria-label={`Party size, ${CREW_MIN} to ${CREW_MAX} travellers`}
                     aria-describedby={errs.travellers ? 'ct-travellers-err' : undefined}>
                     <button type="button" aria-label="One fewer traveller"
@@ -1476,7 +1476,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     <button type="button" aria-label="One more traveller"
                       onClick={() => { haptic(HAPTIC.tick); patchFields({ travellers: clampCrew(f.travellers + 1) }) }}>+</button>
                   </span>
-                  <span className="ct-party-sub">traveller{f.travellers !== 1 ? 's' : ''}</span>
+                  <span className="ct-party-sub">Traveller{f.travellers !== 1 ? 's' : ''}</span>
                   {/* The shortcut opens the driving drawer. With no driving
                       fields to open, both the button and the drawer go, rather
                       than an empty section wearing a new label. */}
@@ -1693,7 +1693,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 <label className="ct-bud-exact">
                   Exact amount
                   <input className="mono" type="number" min={0} step={500} data-create-field="budgetPerPersonInr"
-                    ref={el => (fieldRefs.current.budgetPerPersonInr = el)}
+                    ref={el => { fieldRefs.current.budgetPerPersonInr = el }}
                     aria-label="Budget per person, exact amount"
                     aria-invalid={!!errs.budgetPerPersonInr}
                     aria-describedby={errs.budgetPerPersonInr ? 'ct-budget-err' : undefined}

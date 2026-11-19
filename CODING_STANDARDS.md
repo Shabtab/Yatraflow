@@ -42,6 +42,7 @@ anywhere in this repo means the entry labelled `6b` below.
 
 Source-contract tests must handle both LF and CRLF line endings.
 Tests for helper use must check the call site. A function definition does not prove that callers use it.
+Tests that change a seeded date must set both dates. Demo seed dates move with the clock and can match a fixed replacement date.
 
 Meal names override a stale meal slot key. Other meal stops use the shared engine arrival before venue opening hours.
 Stay free windows must exclude scheduled stops after check-in. A missing window must distinguish a full day from unknown times.
@@ -64,6 +65,8 @@ Query changes can remount a form when its page key includes the full URL. Exclud
 
 Payment grants and refunds must lock the same order row before they check state or change access.
 Webhook adapters must not grant access through a separate table insert.
+
+Weekend tickets and fork dates must use the copied itinerary day count. Source date ranges and publication summaries can differ from that count.
 
 Flight records can exist without stored stops. Protect their days during date reconciliation and preserve them through imports and snapshots.
 Use resolved journey points for exports and insertion origins. Stored stops can omit airports and arrival anchors.
@@ -1163,6 +1166,19 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    meta line) with a clamp and a `title` tooltip. Prove it with a probe that
    fails first: the pill rect on every tab, a click sampler at 0 to 400ms, and
    a long-name stress case.
+6bs. **Collab migration, types and live-channel pitfalls (learned 2026-11-17,
+   group input phase 2).**
+   - A new collab function in a migration needs the same body in
+     `supabase/schema.sql`, or `collab-command-parity` fails.
+   - Each literal `.from('x')` or `.rpc('x')` needs its name in
+     `src/types/database.generated.ts`, or `database-types.test.ts` fails.
+     Regenerate the file after the migration is live.
+   - `changelog:new --message` bolds the whole message. End it with `.`, `!` or
+     `?`, use no `*`, and add the detail afterwards.
+   - A source-guard grep for a class prefix such as `gin-` also matches
+     `margin-`. Anchor it with a dot or a lookbehind.
+   - A realtime binding for a new table goes on its own channel, so a missing
+     or unpublished table cannot break the shared live channel.
 
 ## 2. Conventions (`AGENTS.md` §4)
 
@@ -1497,4 +1513,5 @@ The editor primitives are the default; a script is the exception.
 **Proposal previews.** A preview must derive from the proposed trip. An Apply action that adds empty days must not show the current journey as a preview.
 
 - Map UI labels start with a capital and use short label and value pairs. Use middle dots between facts. Keep full sentences in tooltips, accessible names, and suggestion help only.
+- Every visible label in `src/` starts with a capital or a number, not only on the Map. `tests/ui-label-capitals.test.ts` scans all of `src/`. Fix the string. Allowlist only a piece that follows other words, a unit after a number, or text that never shows. Give each entry a reason.
 - UI strings in `src/` must not contain an em dash or its HTML entity. Preserve en dashes in time ranges. The source scan reports the file and line.

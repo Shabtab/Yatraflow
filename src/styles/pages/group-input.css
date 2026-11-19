@@ -1,0 +1,238 @@
+/* Group input tab, S9 "Decide together". This file owns the gin- classes that
+   docs/css-ownership.json lists. The gi- classes and the gin-followup entrance
+   stay in the legacy files. Spacing stays on the ladder. Colour and motion use
+   tokens only. */
+
+/* Header and summary */
+.gin-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.gin-head-text { min-width: 0; }
+.gin-eyebrow { margin: 0; font: var(--pw-kicker); letter-spacing: var(--pw-kicker-tracking); text-transform: uppercase; color: var(--ink-teal); }
+.gin-eyebrow--amber { color: var(--ink-amber); }
+.gin-eyebrow--ok { color: var(--ink-ok); }
+.gin-title { margin: 4px 0 0; }
+.gin-summary { margin: 4px 0 0; }
+.gin-pillbar { flex-wrap: wrap; }
+
+/* Three columns: decisions, stop ideas and composers, activity */
+.gin-grid { display: grid; grid-template-columns: 1.15fr 1fr 0.8fr; gap: 18px; align-items: start; }
+.gin-col { display: grid; align-content: start; gap: 14px; }
+.gin-col--decisions, .gin-col--ideas, .gin-col--activity { min-width: 0; }
+.gin-col:focus { border-radius: var(--radius); box-shadow: var(--ring); }
+.gin-row.gi-needs-you { padding-left: 12px; }
+@media (max-width: 1180px) {
+  .gin-grid { grid-template-columns: 1.15fr 1fr; }
+  .gin-col--activity { grid-column: 1 / -1; }
+}
+@media (max-width: 860px) {
+  .gin-grid { grid-template-columns: minmax(0, 1fr); }
+  .gin-col { display: none; }
+  .gin-col.gin-col--shown { display: grid; }
+}
+
+/* Card skin for the panels and the decision cards */
+.gin-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
+.yf-surface.gin-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); border-color: var(--line-soft); }
+.gin-card-head { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 10px; }
+.gin-help { margin: 4px 0 0; }
+.gin-composer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.gin-composer-hint { margin: 6px 0 12px; }
+.gin-submit { width: 100%; }
+.gin-option-grid { display: grid; gap: 8px; }
+.gin-option-form { display: flex; align-items: flex-end; gap: 8px; margin-top: 10px; }
+.gin-option-form > :first-child { flex: 1; min-width: 0; }
+
+/* Decision cards: option rows, vote bars and the footer */
+.gin-decision { display: grid; gap: 10px; }
+.gin-decision-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.gin-decision-head-text { display: grid; gap: 4px; min-width: 0; }
+.gin-sub { margin: 0; }
+.gin-decision-context { margin: 6px 0 10px; }
+.gin-decision-options { display: grid; gap: 8px; margin: 8px 0; }
+.gin-option { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: var(--radius-sm); background: var(--card); cursor: pointer; transition: border-color var(--motion-fast) var(--ease-paper), background-color var(--motion-fast) var(--ease-paper); }
+.gin-option-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gin-radio { flex: none; margin: 0; width: 20px; height: 20px; accent-color: var(--teal); }
+.gin-option-label { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; }
+.gin-option-detail { flex: 1; min-width: 0; margin: 0; }
+.gin-track { display: block; height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--line); }
+.gin-fill { display: block; height: 100%; width: 0; border-radius: var(--radius-pill); background: var(--teal); opacity: 0.35; transition: width var(--motion-med) var(--ease-paper); }
+.gin-fill--lead { opacity: 1; }
+.gin-option-end { flex: none; }
+.gin-option-pct { display: inline-block; min-width: 36px; text-align: right; font-size: 13px; font-weight: 700; color: var(--text-2); }
+.gin-option-meta { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+@media (hover: hover) { .gin-option:hover { border-color: var(--line); background-color: var(--pw-lagoon-100); } }
+.gin-option:focus-within { box-shadow: var(--ring); }
+.gin-guide-block { margin-top: 10px; }
+.gin-guide-note { margin: 0; }
+.gin-guide-rec { margin: 4px 0 0; }
+.gin-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gin-foot .gin-text-btn { display: inline-flex; align-items: center; gap: 6px; }
+.gin-foot-spacer { flex: 1; }
+.gin-details { display: grid; gap: 10px; padding-top: 10px; }
+.gin-decided { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.gin-stamp { animation: gin-stamp-in var(--motion-med) var(--ease-settle) both; }
+@keyframes gin-stamp-in { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: none; } }
+
+/* Stop idea rows: a category tile, the title block and the upvote tally */
+.gin-row { border-top: 1px solid var(--line); }
+.gin-row-head { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.gin-cat-tile { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--pw-lagoon-100); color: var(--ink-teal); }
+.gin-row-main { display: grid; gap: 4px; min-width: 0; }
+.gin-row-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: 600; }
+.gin-row-meta { margin: 0; }
+.gin-row-by { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.gin-heart { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; min-width: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 12px; }
+.gin-heart svg { color: var(--pw-bloom-700); }
+.gin-row-panel { display: grid; gap: 10px; padding: 0 0 14px 56px; }
+.stop-meta.gin-stop-meta { margin-top: 8px; }
+.gin-vote-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gin-item-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.gin-comments { margin-top: 8px; }
+.gin-comment-form { display: flex; gap: 8px; margin-top: 10px; }
+.gin-resolved { display: grid; gap: 4px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.gin-disclosure { justify-self: start; padding: 6px 0; border: 0; background: none; color: var(--ink-teal); font: inherit; font-weight: 600; cursor: pointer; }
+.gin-text-btn { justify-self: start; padding: 6px 0; border: 0; background: none; color: var(--ink-teal); font: inherit; font-weight: 600; cursor: pointer; }
+
+/* Crew preferences: share bars, the answered count and the quiz */
+.gin-crew-count { margin: 0 0 8px; }
+.gin-crew-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.gin-crew-row { display: grid; grid-template-columns: minmax(72px, 0.5fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.gin-crew-label { font-weight: 600; }
+.gin-quiz { display: grid; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.gin-quiz-title { margin: 0; font-weight: 600; }
+.gin-quiz-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Small parts that wrap or arrange the motion below */
+.gin-feed-text { min-width: 0; }
+.gin-feed-time { display: block; margin-left: 0; }
+.gin-feed--more > .feed-item:last-child { border-bottom: 1px dashed var(--line); }
+.gin-quiz-body { display: grid; gap: 10px; }
+/* The day collapse (SmoothCollapse) adds a 16px spacer inside its clip for a
+   day body. A row panel, a field or the quiz sits flush instead. */
+.gin-panel .day-body-clip-inner::before { content: none; }
+
+/* ---------- Entrance: one cascade, owned by the tab body ----------
+   Beat order, one `--stagger-step` each, and no two cards on a
+   beat. Header 0 (eyebrow, title, summary), pill bar 1. Then the cards in
+   reading order. Column 1 holds the decisions: first card 2, second card 3,
+   every later card 4. Column 2 follows the last decision beat: Stop ideas,
+   then Raise a decision. Column 3 ends it: Activity, then Crew preferences.
+   The tab computes where each column starts and writes it as `--col-beat`
+   on the column, so a tab with no decision cards starts Stop ideas on beat 2
+   and leaves no empty beat. Without that value the beats are 2, 5 and 7 (three
+   decisions). A long list of decisions shares the last beat of its column, so
+   nothing waits for a late card. The header and the bar carry their own beat;
+   each card writes its beat into `--gin-beat`, and the rows and bars inside it
+   trail from there.
+   `div[role="tabpanel"]:has(> .gin-page)` takes the block fade off this tab only;
+   other tabs keep theirs. A wrapper that cascades its children (`.gin-head`,
+   `.gin-grid`, `.gin-col`) carries no fade, so nothing fades twice. The state
+   banners sit in `.gin-state` and are states, not content: they keep `errIn`, as `.bud-state` does.
+   Top level, not in a media query, so the design-system gates can read it. The
+   reduced-motion opt-out is the block at the end.
+   The staggered delays wait for `data-intro` on the root. It starts when the list
+   read first settles and holds for three `--motion-slower` steps. After that a
+   card or a row that mounts later (a new idea) rises at once. */
+div[role="tabpanel"]:has(> .gin-page) { animation: none; }
+.gin-page > * { animation: none; }
+.gin-state > [data-kind] { animation: errIn var(--motion-med) var(--ease-paper); }
+
+/* Header 0 and the pill bar 1. */
+.gin-head > * { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
+.gin-head > .gin-pillbar { animation-delay: calc(var(--stagger-step) * 1); }
+
+/* The cards. Each one carries its beat, and the intro turns the beat into a delay. */
+.gin-col > .yf-surface { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
+.gin-col--decisions > .yf-surface:nth-of-type(1) { --gin-beat: calc(var(--col-beat, 2) + 0); }
+.gin-col--decisions > .yf-surface:nth-of-type(2) { --gin-beat: calc(var(--col-beat, 2) + 1); }
+.gin-col--decisions > .yf-surface:nth-of-type(n+3) { --gin-beat: calc(var(--col-beat, 2) + 2); }
+.gin-col--ideas > .yf-surface:nth-of-type(1) { --gin-beat: calc(var(--col-beat, 5) + 0); }
+.gin-col--ideas > .yf-surface:nth-of-type(2) { --gin-beat: calc(var(--col-beat, 5) + 1); }
+.gin-col--activity > .yf-surface:nth-of-type(1) { --gin-beat: calc(var(--col-beat, 7) + 0); }
+.gin-col--activity > .yf-surface:nth-of-type(2) { --gin-beat: calc(var(--col-beat, 7) + 1); }
+.gin-page[data-intro='true'] .gin-col > .yf-surface:not([data-presence='exit']) { animation-delay: calc(var(--stagger-step) * var(--gin-beat, 0)); }
+
+/* Rows inside a card trail the card: its beat, then one step per row, and the
+   fourth row and every later one share the fourth step. A row keeps its own
+   entrance (docs/MOTION-TOKENS.md), so a row that mounts later rises on its own. */
+.gin-rows > .gin-row { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
+.gin-feed > .feed-item { animation: pageRise var(--motion-slow) var(--ease-paper) backwards; }
+.gin-rows > .gin-row:nth-child(1), .gin-feed > .feed-item:nth-child(1), .gin-option:nth-child(1), .gin-crew-row:nth-child(1) { --gin-k: 1; }
+.gin-rows > .gin-row:nth-child(2), .gin-feed > .feed-item:nth-child(2), .gin-option:nth-child(2), .gin-crew-row:nth-child(2) { --gin-k: 2; }
+.gin-rows > .gin-row:nth-child(3), .gin-feed > .feed-item:nth-child(3), .gin-option:nth-child(3), .gin-crew-row:nth-child(3) { --gin-k: 3; }
+.gin-rows > .gin-row:nth-child(n+4), .gin-feed > .feed-item:nth-child(n+4), .gin-option:nth-child(n+4), .gin-crew-row:nth-child(n+4) { --gin-k: 4; }
+.gin-page[data-intro='true'] .gin-rows > .gin-row[data-presence='live'],
+.gin-page[data-intro='true'] .gin-feed > .feed-item { animation-delay: calc(var(--stagger-step) * (var(--gin-beat, 0) + var(--gin-k, 0))); }
+
+/* Chart entrance: the vote bars and the crew bars grow from the zero edge on
+   `scaleX`, as one element, `--motion-slower` on `--ease-paper`. Only the entrance
+   grows. A later vote moves the width on the transition that `.gin-fill` carries.
+   Each bar starts one step after its row. The percentage label is a label, so it
+   fades in after its bar (the bar's step plus one `--motion-slower`). While the bars
+   are off screen or the tab is hidden, `data-motion-paused` holds both. */
+.gin-option .gin-fill, .gin-crew-row .gin-fill {
+  transform-origin: left center;
+  animation: gin-grow-x var(--motion-slower) var(--ease-paper) backwards;
+}
+.gin-option-end .gin-option-pct, .gin-crew-row .gin-option-pct {
+  animation: fadeIn var(--motion-med) var(--ease-paper) backwards;
+  animation-delay: var(--motion-slower);
+}
+.gin-page[data-intro='true'] .gin-option .gin-fill,
+.gin-page[data-intro='true'] .gin-crew-row .gin-fill { animation-delay: calc(var(--stagger-step) * (var(--gin-beat, 0) + var(--gin-k, 0))); }
+.gin-page[data-intro='true'] .gin-option-end .gin-option-pct,
+.gin-page[data-intro='true'] .gin-crew-row .gin-option-pct { animation-delay: calc(var(--stagger-step) * (var(--gin-beat, 0) + var(--gin-k, 0)) + var(--motion-slower)); }
+[data-motion-paused='true'] .gin-fill,
+[data-motion-paused='true'] .gin-option-pct { animation-play-state: paused; }
+@keyframes gin-grow-x { from { transform: scaleX(0); } to { transform: none; } }
+
+/* Small pop: the "Needs your vote" and "Best fit" chips, both under 48px. They pop
+   one step after the row or option that holds them. */
+.gin-pop { display: inline-flex; animation: gin-pop-in var(--motion-fast) var(--ease-settle) backwards; }
+.gin-page[data-intro='true'] .gin-pop { animation-delay: calc(var(--stagger-step) * (var(--gin-beat, 0) + var(--gin-k, 0) + 1)); }
+@keyframes gin-pop-in { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: none; } }
+
+/* Open to decided: one decision card lives through the resolve, so its drafts and
+   focus stay. The decided body (the title row and its footer) rises in on the
+   page-rise tokens. Only a card that changed phase on screen carries
+   `data-turned`; a card that loads as decided has its own entrance and no more. */
+.gin-decision[data-turned='true'] .gin-decided,
+.gin-decision[data-turned='true'] .gin-decided + .gin-foot { animation: pageRise var(--motion-med) var(--ease-paper) backwards; }
+
+/* Below 860px one column shows at a time, and `display: none` would replay a
+   column's entrance on every pill press. A column that has been on screen and left
+   it is `gin-col--seen` (set by the tab), and its entrance stays off. Only the
+   narrow layout does this, so wide screens still rise a card or row that mounts later. */
+@media (max-width: 860px) {
+  .gin-col.gin-col--seen > .yf-surface,
+  .gin-col.gin-col--seen .gin-rows > .gin-row,
+  .gin-col.gin-col--seen .gin-feed > .feed-item,
+  .gin-col.gin-col--seen .gin-option .gin-fill,
+  .gin-col.gin-col--seen .gin-crew-row .gin-fill,
+  .gin-col.gin-col--seen .gin-option-pct,
+  .gin-col.gin-col--seen .gin-pop,
+  .gin-col.gin-col--seen .gin-stamp,
+  .gin-col.gin-col--seen .gin-decided,
+  .gin-col.gin-col--seen .gin-decided + .gin-foot { animation: none; }
+}
+
+/* Reduced motion: every entrance, the bars, the labels, the pops and the stamp
+   stop moving. Each selector repeats its animated rule, so the opt-out has the
+   same weight and comes last. The row exit and the collapse have their own
+   opt-outs: `usePresenceList` drops an item at once, and `.day-body-clip` is off
+   in its own file. */
+@media (prefers-reduced-motion: reduce) {
+  .gin-fill { transition: none; }
+  .gin-stamp { animation: none; }
+  .gin-page > * { animation: none; }
+  .gin-state > [data-kind] { animation: none; }
+  .gin-head > * { animation: none; }
+  .gin-col > .yf-surface { animation: none; }
+  .gin-rows > .gin-row { animation: none; }
+  .gin-feed > .feed-item { animation: none; }
+  .gin-option .gin-fill, .gin-crew-row .gin-fill { animation: none; }
+  .gin-option-end .gin-option-pct, .gin-crew-row .gin-option-pct { animation: none; }
+  .gin-pop { animation: none; }
+  .gin-decision[data-turned='true'] .gin-decided,
+  .gin-decision[data-turned='true'] .gin-decided + .gin-foot { animation: none; }
+  .gin-option { transition: none; }
+}
