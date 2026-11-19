@@ -148,6 +148,9 @@ export function deriveProbes(sql) {
  *  errors at call time) or covered by another live suite. A silent failure to
  *  apply is the one thing this check refuses to wave through. */
 export const NO_PROBE_SURFACE = {
+  '20261120_collab_commenter_commands.sql': {
+    reason: 'functions and grants only (`can_comment`, `submit_collab_command`). A missing helper fails a commenter command at call time, not silently.',
+  },
   '20261116_trip_settings_boundary.sql': {
     reason: 'Trigger and policies only. Actual SQL is tested in tests/trip-settings-boundary.test.ts; check the RLS contract too.',
   },

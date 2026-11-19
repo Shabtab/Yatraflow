@@ -445,6 +445,35 @@ as $$
   )
 $$;
 
+-- Helper: may the current user comment on and vote in a trip (#935)?
+-- True for the trip owner, an enabled admin, or a member with role
+-- owner, editor or commenter. A viewer gets false. Used by
+-- submit_collab_command for the four comment and ballot kinds only.
+create or replace function public.can_comment(trip uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select (
+    exists (
+      select 1 from public.trips t
+      where t.id = trip and t.owner_id = auth.uid()
+    )
+    or exists (
+      select 1 from public.trip_members m
+      where m.trip_id = trip and m.user_id = auth.uid()
+        and m.role in ('owner', 'editor', 'commenter')
+    )
+    or public.is_admin()
+  ) and not public.is_disabled()
+$$;
+
+-- anon must be named: revoke from public alone does not revoke from anon on Supabase.
+revoke all on function public.can_comment(uuid) from public, anon;
+grant execute on function public.can_comment(uuid) to authenticated;
+
 -- ============================================================
 -- New-user trigger: every auth signup gets a profiles row.
 -- ============================================================
@@ -1394,10 +1423,10 @@ begin
   if v_command_id is null or v_trip_id is null or jsonb_typeof(p_command) is distinct from 'object' then
     return jsonb_build_object('status','invalid','tripRevision',null);
   end if;
-  if not public.is_editor(v_trip_id) then
+  v_kind:=p_command->>'type';
+  if not (public.is_editor(v_trip_id) or (v_kind in ('suggestion.comment','suggestion.ballot','decision.comment','decision.ballot') and public.can_comment(v_trip_id))) then
     return jsonb_build_object('status','forbidden','tripRevision',null);
   end if;
-  v_kind:=p_command->>'type';
   if v_kind in ('suggestion.accept','suggestion.decline','decision.resolve') then
     select t.* into v_trip_row from public.trips t where t.id=v_trip_id and t.deleted_at is null for update;
     v_revision:=v_trip_row.write_version;

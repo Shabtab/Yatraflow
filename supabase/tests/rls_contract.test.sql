@@ -1620,3 +1620,33 @@ begin
     end if;
   end loop;
 end $$;
+
+-- ---- commenter commands (20261120_collab_commenter_commands.sql, #935) ----
+-- A commenter may comment and vote. can_comment is the helper that admits
+-- them, and it must stay closed to anon and PUBLIC. The RPC source must
+-- route the four comment and ballot kinds through it.
+do $$
+declare v_src text;
+begin
+  if to_regprocedure('public.can_comment(uuid)') is null then
+    raise exception 'can_comment(uuid) must exist -- apply 20261120_collab_commenter_commands.sql';
+  end if;
+  if has_function_privilege('anon', 'public.can_comment(uuid)', 'execute') then
+    raise exception 'can_comment must not be executable by anon -- revoke it from anon by name';
+  end if;
+  if exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) e
+    where n.nspname = 'public' and p.proname = 'can_comment'
+      and e.grantee = 0
+  ) then
+    raise exception 'can_comment must not be granted to PUBLIC';
+  end if;
+  select pg_get_functiondef('public.submit_collab_command(text,text,jsonb)'::regprocedure) into v_src;
+  if position('public.can_comment(v_trip_id)' in v_src) = 0
+    or position('suggestion.comment' in v_src) = 0
+    or position('decision.ballot' in v_src) = 0 then
+    raise exception 'submit_collab_command must admit commenters through can_comment for the comment and ballot kinds';
+  end if;
+end $$;
