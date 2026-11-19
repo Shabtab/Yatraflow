@@ -294,7 +294,29 @@
 .mt-listhead .mt-section-title { margin: 0; }
 .mt-listhead .mt-count { margin: 0; }
 .mt-listhead-tools { display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
-.mt-chips { display: flex; align-items: center; gap: 8px; }
+/* The chips are the part of the row that gives way (a shrink of 999 takes the
+   space from them, not from the search). When they do not fit,
+   they scroll sideways inside their own box. Without this, a long chip list
+   pushed the row off its left edge and squeezed the search to zero width. The
+   padding keeps the chip focus ring inside the scroll clip. */
+.mt-chips { display: flex; flex: 0 999 auto; align-items: center; gap: 8px; min-width: 0; margin-block: -3px; padding: 3px; overflow-x: auto; scrollbar-width: none; }
+/* Hidden chips show as a fade at the strip's edge. The fade follows the scroll
+   position, so it shows only on a side that has chips out of view. A strip that
+   fits has no scroll timeline, so it gets no fade. */
+@property --mt-fade-start { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --mt-fade-end { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@keyframes mt-chips-fade {
+  0% { --mt-fade-start: 0px; --mt-fade-end: 28px; }
+  10%, 90% { --mt-fade-start: 28px; --mt-fade-end: 28px; }
+  100% { --mt-fade-start: 28px; --mt-fade-end: 0px; }
+}
+@supports (animation-timeline: scroll()) {
+  .mt-chips {
+    mask-image: linear-gradient(to right, transparent, #000 var(--mt-fade-start), #000 calc(100% - var(--mt-fade-end)), transparent);
+    animation: mt-chips-fade linear both;
+    animation-timeline: scroll(self inline);
+  }
+}
 .mt-chips .ex-chip { flex: none; min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--teal-soft); color: var(--text); font-size: 13.5px; font-weight: 600; white-space: nowrap; transition: background-color var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper), transform var(--motion-instant) var(--ease-paper); }
 .mt-chips .ex-chip:hover { background: color-mix(in srgb, var(--teal-deep) 14%, var(--card)); }
 .mt-chips .ex-chip[aria-pressed='true'] { background: var(--pw-sea-700); color: var(--card); font-weight: 700; }
