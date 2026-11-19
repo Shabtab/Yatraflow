@@ -115,7 +115,9 @@ describe('the trip card and its cover', () => {
   })
 
   it('keeps the entrance and the list exit', () => {
-    expect(bodyOf(MAIN, '.mt-card')).toMatch(/animation:\s*cardIn var\(--mt-dur\) var\(--ease-out\) backwards/)
+    expect(bodyOf(MAIN, '.mt-card')).toMatch(/animation:\s*mt-card-in var\(--mt-dur\) var\(--ease-out\) backwards/)
+    // The entrance moves translate and scale only: transform belongs to the hover lift.
+    expect(MAIN).toMatch(/@keyframes mt-card-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*translate:\s*0 14px;\s*scale:\s*\.98;\s*\}\s*\}/)
     const page = read('src/pages/TripsList.tsx')
     expect(page).toContain('usePresenceList(')
     expect(page).toContain('presence={presenceAttrs({ exiting })}')
@@ -148,7 +150,8 @@ describe('the Memories postcards', () => {
     expect(body).toMatch(/animation:\s*mt-pc-in var\(--mt-dur\) var\(--ease-paper\) backwards/)
     expect(body).toMatch(/transition:\s*transform var\(--motion-med\) var\(--ease-paper\), box-shadow var\(--motion-med\) var\(--ease-paper\)/)
     // No end frame: the card lands on its resting tilt and does not snap.
-    expect(MAIN).toMatch(/@keyframes mt-pc-in\s*\{\s*from\s*\{[^}]*rotate\(var\(--mt-tilt, 0deg\)\)[^}]*\}\s*\}/)
+    // The tilt stays on transform; the entrance moves translate and scale, so the two never blend as matrices.
+    expect(MAIN).toMatch(/@keyframes mt-pc-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*translate:\s*0 14px;\s*scale:\s*\.98;\s*\}\s*\}/)
     expect(bodyOf(MAIN, '.mt-pc:hover, .mt-pc:focus-within')).toMatch(/translateY\(-3px\) rotate\(0deg\)/)
     expect(read('src/components/trips/MemoriesSection.tsx')).toContain("'--mt-i': staggerStep(index)")
   })

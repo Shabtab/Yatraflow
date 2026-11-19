@@ -184,7 +184,7 @@ describe('My trips replays the card entrance when the layout changes', () => {
   })
 
   it('gives every card an entrance that the remount can replay', () => {
-    expect(css).toMatch(/\.mt-card\s*\{[^}]*animation:\s*cardIn var\(--mt-dur\) var\(--ease-out\)/)
+    expect(css).toMatch(/\.mt-card\s*\{[^}]*animation:\s*mt-card-in var\(--mt-dur\) var\(--ease-out\)/)
   })
 
   it('keeps the entrance off under prefers-reduced-motion', () => {
