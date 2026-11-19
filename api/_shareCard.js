@@ -29,25 +29,28 @@ export function defaultCard(origin) {
   }
 }
 
+/** One meta tag. Every value is escaped, numbers too, so no raw text reaches the HTML. */
+function metaTag(attr, key, value) {
+  return `<meta ${attr}="${key}" content="${escapeHtml(String(value))}" />`
+}
+
 /** The Open Graph image tags. A size or type is written only when it is known. */
 export function ogImageTags(image) {
-  return [
-    `<meta property="og:image" content="${escapeHtml(image.url)}" />`,
-    ...(image.width && image.height ? [
-      `<meta property="og:image:width" content="${image.width}" />`,
-      `<meta property="og:image:height" content="${image.height}" />`,
-    ] : []),
-    ...(image.type ? [`<meta property="og:image:type" content="${escapeHtml(image.type)}" />`] : []),
-    ...(image.alt ? [`<meta property="og:image:alt" content="${escapeHtml(image.alt)}" />`] : []),
-  ].join('\n')
+  let html = metaTag('property', 'og:image', image.url)
+  if (image.width && image.height) {
+    html += '\n' + metaTag('property', 'og:image:width', image.width)
+    html += '\n' + metaTag('property', 'og:image:height', image.height)
+  }
+  if (image.type) html += '\n' + metaTag('property', 'og:image:type', image.type)
+  if (image.alt) html += '\n' + metaTag('property', 'og:image:alt', image.alt)
+  return html
 }
 
 /** The X image tags, with the same URL and alt text as the Open Graph tags. */
 export function twitterImageTags(image) {
-  return [
-    `<meta name="twitter:image" content="${escapeHtml(image.url)}" />`,
-    ...(image.alt ? [`<meta name="twitter:image:alt" content="${escapeHtml(image.alt)}" />`] : []),
-  ].join('\n')
+  let html = metaTag('name', 'twitter:image', image.url)
+  if (image.alt) html += '\n' + metaTag('name', 'twitter:image:alt', image.alt)
+  return html
 }
 
 const VIGNETTE_IDS = new Set(Object.values(artManifest.vignettes ?? {}))

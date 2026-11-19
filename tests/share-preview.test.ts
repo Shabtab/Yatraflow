@@ -921,9 +921,18 @@ describe('sending a publication on WhatsApp', () => {
   })
 })
 
+// Reads one meta tag's content with plain string search, so no pattern is built from input.
+const metaContent = (page: string, attr: 'property' | 'name', key: string): string | undefined => {
+  const open = `<meta ${attr}="${key}" content="`
+  const start = page.indexOf(open)
+  if (start < 0) return undefined
+  const from = start + open.length
+  const end = page.indexOf('"', from)
+  return end < 0 ? undefined : page.slice(from, end)
+}
+
 describe('the default share card agrees everywhere it is written', () => {
-  const tag = (page: string, attr: 'property' | 'name', key: string) =>
-    new RegExp(`<meta ${attr}="${key}" content="([^"]*)"\\s*/?>`).exec(page)?.[1]
+  const tag = (page: string, attr: 'property' | 'name', key: string) => metaContent(page, attr, key)
 
   it('declares the size and type the rendered PNG really has', async () => {
     const card = await import('../api/_shareCard.js')
@@ -986,7 +995,7 @@ describe('the default share card agrees everywhere it is written', () => {
 })
 
 describe('a scene card declares the size it really has', () => {
-  const tag = (page: string, key: string) => new RegExp(`<meta property="${key}" content="([^"]*)" />`).exec(page)?.[1]
+  const tag = (page: string, key: string) => metaContent(page, 'property', key)
   // A lossy WebP stores its frame size after the VP8 start code (RFC 9649, section 2.5).
   const webpSize = (file: Buffer) => {
     expect(file.subarray(12, 16).toString('ascii')).toBe('VP8 ')
