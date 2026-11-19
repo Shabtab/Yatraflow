@@ -137,21 +137,24 @@ describe('share preview handler in node', () => {
     expect(res.body).not.toContain('og:image:height')
   })
 
-  it('sizes a Wikimedia cover through the redirect instead of shipping the raw upload', async () => {
+  it('serves a Wikimedia cover through our own proxy instead of shipping the raw upload', async () => {
     // The one live publication with a cover carried the unscaled upload
-    // (`...?utm_content=thumbnail_unscaled`, 1.3 MB) because the picker only
-    // started sizing later. The client sizes the same URL on the display path
-    // and the handler cannot import it, so the rule is duplicated — this pins
-    // the duplication, including the `thumb/` and subdomain handling.
+    // (`...?utm_content=thumbnail_unscaled`, 587 KB) because the picker only
+    // started sizing later. Wikimedia answers Facebook's crawler 403, so the card
+    // advertises our own /api/cover: it asks for one known width and caches the
+    // bytes. The height follows the file, so no size is declared.
     respond([{
       ...publication,
       cover_image_url: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/Chandratal_1.JPG?utm_source=en.wikipedia.org&utm_content=thumbnail_unscaled',
     }])
     const res = await runHandler()
-    expect(res.body).toContain('og:image" content="https://commons.wikimedia.org/wiki/Special:Redirect/file/Chandratal_1.JPG?width=1200"')
+    const proxied = 'https://www.yatraflow.in/api/cover?f=Chandratal_1.JPG&amp;w=1200'
+    expect(res.body).toContain(`og:image" content="${proxied}"`)
     expect(res.body).not.toContain('upload.wikimedia.org')
-    // twitter:image carries the same sized URL, not the raw one.
-    expect(res.body).toContain('twitter:image" content="https://commons.wikimedia.org/wiki/Special:Redirect/file/Chandratal_1.JPG?width=1200"')
+    // twitter:image carries the same proxied URL, not the raw one.
+    expect(res.body).toContain(`twitter:image" content="${proxied}"`)
+    expect(res.body).not.toContain('og:image:width')
+    expect(res.body).not.toContain('og:image:height')
   })
 
   it('serves an uploaded cover exactly as stored, adding nothing to it', async () => {
@@ -170,6 +173,7 @@ describe('share preview handler in node', () => {
     expect(res.body).toContain(`twitter:image" content="${uploaded}"`)
     // No Wikimedia hop is invented for it, and our bucket host is not rewritten.
     expect(res.body).not.toContain('Special:Redirect')
+    expect(res.body).not.toContain('/api/cover')
     expect(res.body).not.toContain('upload.wikimedia.org')
   })
 
@@ -184,13 +188,13 @@ describe('share preview handler in node', () => {
     expect(res.body).not.toContain('og-default.png')
   })
 
-  it('leaves an already-sized Wikimedia redirect and other hosts alone', async () => {
+  it('proxies an already-sized Wikimedia redirect and keeps the file name from other hosts', async () => {
     respond([{ ...publication, cover_image_url: 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Chandratal_1.JPG?width=1200' }])
-    expect((await runHandler()).body).toContain('og:image" content="https://commons.wikimedia.org/wiki/Special:Redirect/file/Chandratal_1.JPG?width=1200"')
-    // An already-thumbed path keeps the file but re-asks at our width, and a
-    // non-commons project redirects through its own host.
+    expect((await runHandler()).body).toContain('og:image" content="https://www.yatraflow.in/api/cover?f=Chandratal_1.JPG&amp;w=1200"')
+    // An already-thumbed path keeps the file but asks at our width, and a
+    // non-commons project resolves to the same one proxied file name.
     respond([{ ...publication, cover_image_url: 'https://upload.wikimedia.org/wikipedia/en/thumb/1/23/Foo.png/800px-Foo.png?x=1' }])
-    expect((await runHandler()).body).toContain('https://en.wikipedia.org/wiki/Special:Redirect/file/Foo.png?width=1200')
+    expect((await runHandler()).body).toContain('https://www.yatraflow.in/api/cover?f=Foo.png&amp;w=1200')
   })
 
   it.each([undefined, null, '', 'http://images.example.test/cover.jpg'])(
