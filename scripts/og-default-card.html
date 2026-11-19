@@ -2,161 +2,127 @@
 <html lang="en">
 <head>
 <!--
-  Source for `public/og-default.png` — the 1200x630 card a shared itinerary
-  shows when its publication has no cover of its own. Regenerate after any
-  brand change, as a single command (the virtual-time budget is what lets the
-  CDN webfonts land before the capture; screenshotting early ships fallback
-  fonts and nothing in the gate would notice):
+  Source for `public/og-default.png`: the 1200x630 link-preview card. The home
+  page, the calculator page, every creator card and a coverless or missing
+  itinerary use it. Regenerate it after a brand change with one command. The
+  virtual-time budget lets the CDN webfonts load before the capture. An early
+  capture ships fallback fonts, and no gate catches that. Give the screenshot
+  an absolute path. With a relative path, Chrome can write nowhere and the
+  old PNG stays. Chrome prints "bytes written to file" when the capture lands.
 
-  "C:\Program Files\Google\Chrome\Application\chrome.exe" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1200,630 --virtual-time-budget=15000 --screenshot=public/og-default.png "file:///<repo>/scripts/og-default-card.html"
+  "C:\Program Files\Google\Chrome\Application\chrome.exe" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1200,630 --virtual-time-budget=15000 --screenshot="<repo>\public\og-default.png" "file:///<repo>/scripts/og-default-card.html"
 
-  A fixed canvas, so it positions absolutely and loads the app's own faces
-  (Sora for the headline, Plus Jakarta Sans for the rest). It is a picture, not a
-  responsive surface — do not reuse it as app UI.
+  Layout rules:
+  - WhatsApp and some apps crop the card to a centre square (x 285 to 915).
+    The Y mark, the wordmark, the headline and the four stop labels stay inside it.
+  - The Y mark is the brand mark. Chakra the koel is a supporting character at
+    the end of the route, outside the square, so a crop removes Chakra first.
+  - Every text size is 28 px or more, so it reads at the 600 px thumbnail.
+
+  The canvas is fixed and uses absolute positions. It loads the app's own faces:
+  Sora for the headline, Plus Jakarta Sans for the labels. It is a picture, not
+  a responsive surface. Do not reuse it as app UI.
 -->
 <meta charset="utf-8" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@700;800&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet" />
 <style>
+  /* Dark-theme brand values from src/styles/tokens.css: navy ground, the
+     bright teal and the dark saffron that the reversed mark uses. */
   :root {
-    --cream: #F8F7EF;
-    --teal: #0D8D82;
     --navy: #0B2545;
-    --saffron: #F59E2D;
-    --text-2: #45566E;
+    --cream: #F8F7EF;
+    --teal-hi: #2BB8AC;
+    --saffron: #F5A94A;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 1200px; height: 630px; overflow: hidden; }
   body {
     position: relative;
-    background: var(--cream);
+    background: var(--navy);
     font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-    color: var(--navy);
+    color: var(--cream);
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Background plane: light more like a map than a gradient. */
+  /* Light behind the headline, and a warm glow where the route ends. */
   .wash {
     position: absolute; inset: 0;
     background:
-      radial-gradient(700px 540px at 88% 22%, rgba(13,141,130,.11), rgba(13,141,130,0) 70%),
-      radial-gradient(400px 360px at 100% 98%, rgba(245,158,45,.09), rgba(245,158,45,0) 72%);
+      radial-gradient(620px 340px at 50% 30%, rgba(43,184,172,.20), rgba(43,184,172,0) 70%),
+      radial-gradient(520px 380px at 100% 100%, rgba(245,169,74,.16), rgba(245,169,74,0) 70%);
   }
-  /* Keeps the text column clean without a hard edge between column and art.
-     Stops short of the route's first stop so it never washes the road. */
-  .fade {
-    position: absolute; inset: 0;
-    background: linear-gradient(97deg, var(--cream) 34%, rgba(248,247,239,.85) 44%, rgba(248,247,239,0) 58%);
-  }
+  .route { position: absolute; inset: 0; }
 
-  /* Content plane */
-  .col {
-    position: absolute; inset: 0;
-    padding: 62px 0 66px 72px;
-    display: flex; flex-direction: column; justify-content: space-between;
-    width: 660px;
+  .center {
+    position: absolute; left: 285px; top: 66px; width: 630px;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
   }
-  .brand { display: flex; align-items: center; gap: 13px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
   .brand span {
     font-family: 'Sora', sans-serif; font-weight: 800;
-    font-size: 25px; letter-spacing: -.02em; color: var(--navy);
+    font-size: 40px; letter-spacing: -.02em; color: #FFFFFF;
   }
-  .brand em { font-style: normal; color: var(--teal); }
-
-  .msg { max-width: 570px; }
-  .chip {
-    display: inline-block; margin-bottom: 20px;
-    padding: 7px 15px; border-radius: 999px;
-    background: rgba(245,158,45,.16); border: 1px solid rgba(224,134,15,.30);
-    color: #8F5B06;
-    font-weight: 600; font-size: 15px;
-  }
+  .brand em, h1 em { font-style: normal; color: var(--teal-hi); }
   h1 {
+    margin-top: 32px;
     font-family: 'Sora', sans-serif; font-weight: 800;
-    font-size: 59px; line-height: 1.07; letter-spacing: -.033em; color: var(--navy);
+    font-size: 66px; line-height: 1.06; letter-spacing: -.035em;
   }
-  h1 em { font-style: normal; color: var(--teal); }
-  p { margin-top: 21px; font-size: 24px; line-height: 1.44; color: var(--text-2); max-width: 432px; }
 
-  /* Artifact plane: the route — a stop sequence, the thing the product plans. */
-  .route { position: absolute; top: 0; right: 0; width: 580px; height: 630px; }
+  /* The four parts of the product, as the stops of one route. */
+  .stops { position: absolute; top: 486px; left: 0; width: 1200px; }
+  .stops span {
+    position: absolute; width: 160px; margin-left: -80px; text-align: center;
+    font-weight: 700; font-size: 30px; color: var(--cream);
+  }
 
-  /* Chakra the koel perches below the road. Its tail already ends in a marigold
-     map dot, so the bird reads as part of the route. It is a picture asset
-     loaded by relative path: the render resolves it from scripts/ to
-     public/brand/mascot/. */
-  .chakra { position: absolute; left: 944px; top: 360px; width: 252px; height: 252px; }
+  /* Chakra stands at the end of the route. Its tail ends in a marigold map
+     dot, which the dashed last leg meets. The render resolves the relative
+     path from scripts/ to public/brand/mascot/. */
+  .chakra { position: absolute; left: 950px; top: 298px; width: 232px; height: 232px; }
 </style>
 </head>
 <body>
   <div class="wash"></div>
 
-  <svg class="route" viewBox="0 0 580 630" fill="none" aria-hidden="true">
-    <defs>
-      <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
-        <feGaussianBlur stdDeviation="8" result="b" />
-        <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-      </filter>
-      <filter id="sglow" x="-260%" y="-260%" width="620%" height="620%">
-        <feGaussianBlur stdDeviation="18" />
-      </filter>
-    </defs>
-
-    <!-- ground: contour rings gather around the destination, so the route reads
-         as a journey across terrain rather than a line climbing a chart -->
-    <g fill="none" stroke="#0D8D82" stroke-width="1.5" opacity=".075">
-      <circle cx="544" cy="124" r="120" />
-      <circle cx="544" cy="124" r="178" />
-      <circle cx="544" cy="124" r="252" />
-      <circle cx="544" cy="124" r="342" />
-      <circle cx="544" cy="124" r="448" />
-      <circle cx="544" cy="124" r="566" />
-    </g>
-
-    <!-- halo under the drawn road -->
-    <path d="M104,548 C170,548 184,506 250,506 C286,506 294,404 330,404 C385,404 397,300 452,300"
-          stroke="rgba(13,141,130,.13)" stroke-width="21" stroke-linecap="round" stroke-linejoin="round" />
-
-    <!-- the measured road -->
-    <path d="M104,548 C170,548 184,506 250,506 C286,506 294,404 330,404 C385,404 397,300 452,300"
-          stroke="#0D8D82" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)" />
-
-    <!-- the leg still to travel: dashed, as a plan is -->
-    <path d="M452,300 C493,300 503,124 544,124"
-          stroke="#0D8D82" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 14" opacity=".7" />
-
-    <!-- stops: origin solid, waypoints ringed -->
-    <circle cx="104" cy="548" r="12" fill="#F8F7EF" />
-    <circle cx="104" cy="548" r="10" fill="#0D8D82" />
-    <circle cx="250" cy="506" r="12.5" fill="#F8F7EF" stroke="#0D8D82" stroke-width="4" />
-    <circle cx="330" cy="404" r="12.5" fill="#F8F7EF" stroke="#0D8D82" stroke-width="4" />
-    <circle cx="452" cy="300" r="12.5" fill="#F8F7EF" stroke="#0D8D82" stroke-width="4" />
-
-    <!-- destination: the mark's sun, grown -->
-    <circle cx="544" cy="124" r="31" fill="rgba(245,158,45,.40)" filter="url(#sglow)" />
-    <circle cx="544" cy="124" r="16" fill="#F59E2D" />
+  <svg class="route" viewBox="0 0 1200 630" fill="none" aria-hidden="true">
+    <!-- halo, then the road: it enters from the left edge and runs through the stops -->
+    <path d="M-10,472 C120,472 220,450 360,450 L840,450"
+          stroke="rgba(43,184,172,.22)" stroke-width="22" stroke-linecap="round" />
+    <path d="M-10,472 C120,472 220,450 360,450 L840,450"
+          stroke="#2BB8AC" stroke-width="6" stroke-linecap="round" />
+    <!-- the leg still to travel: dashed, as a plan is, out to Chakra -->
+    <path d="M840,450 C910,450 950,500 1004,500"
+          stroke="#2BB8AC" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 14" opacity=".8" />
+    <!-- stops: Plan, Map and Budget ringed; Share is the destination sun -->
+    <circle cx="360" cy="450" r="14" fill="#0B2545" stroke="#2BB8AC" stroke-width="5" />
+    <circle cx="520" cy="450" r="14" fill="#0B2545" stroke="#2BB8AC" stroke-width="5" />
+    <circle cx="680" cy="450" r="14" fill="#0B2545" stroke="#2BB8AC" stroke-width="5" />
+    <circle cx="840" cy="450" r="27" fill="rgba(245,169,74,.30)" />
+    <circle cx="840" cy="450" r="15" fill="#F5A94A" />
   </svg>
 
-  <div class="fade"></div>
+  <img class="chakra" src="../public/brand/mascot/chakra-night-hero.svg" alt="" />
 
-  <img class="chakra" src="../public/brand/mascot/chakra-hero.svg" alt="" />
-
-  <div class="col">
+  <div class="center">
     <div class="brand">
-      <svg width="31" height="34" viewBox="7.5 5.5 49 56.5" aria-hidden="true">
-        <path d="M15 6C15 26 32 24 32 40" fill="none" stroke="#0B6B63" stroke-width="11" />
-        <path d="M49 6C49 26 32 24 32 40V46" fill="none" stroke="#0D8D82" stroke-width="11" />
-        <circle cx="32" cy="56" r="5.5" fill="#F59E2D" />
+      <svg width="52" height="60" viewBox="7.5 5.5 49 56.5" aria-hidden="true">
+        <path d="M15 6C15 26 32 24 32 40" fill="none" stroke="#BFE3DD" stroke-width="11" />
+        <path d="M49 6C49 26 32 24 32 40V46" fill="none" stroke="#FFFFFF" stroke-width="11" />
+        <circle cx="32" cy="56" r="5.5" fill="#F5A94A" />
       </svg>
       <span>Yatra<em>Flow</em></span>
     </div>
+    <h1>India trips,<br /><em>planned together</em></h1>
+  </div>
 
-    <div class="msg">
-      <span class="chip">Built for Indian travellers</span>
-      <h1>Plan trips<br />that actually<br /><em>flow together</em></h1>
-      <p>See the time, distance and cost impact of every stop.</p>
-    </div>
+  <div class="stops">
+    <span style="left:360px">Plan</span>
+    <span style="left:520px">Map</span>
+    <span style="left:680px">Budget</span>
+    <span style="left:840px">Share</span>
   </div>
 </body>
 </html>

@@ -120,10 +120,13 @@ These use a small head (24 to 32 px) next to the existing text, not a full scene
 1. **App icon and favicon: decided, no change.** The user keeps the Y logo as the app
    icon, the favicon and the brand mark. Chakra does not replace the Y logo anywhere. The
    mascot sits next to it, for example on the share image, but never in its place.
-2. **Social share image: done.** `public/og-default.png` now shows `chakra-hero.svg` below
-   the route, on the right of the card. The source is `scripts/og-default-card.html`. The
-   hero is on the route plane. It is not next to the 25 px wordmark, because it would be too small there.
-3. **README: done.** The hero sits at 96 px beside the Chakra highlight, not above the title, so it does not read as the logo. The expressions strip
+2. **Social share image: done.** `public/og-default.png` is a new navy card. The source is
+   `scripts/og-default-card.html`. The Y mark and the wordmark sit at the top centre, above the
+   headline "India trips, planned together". Plan, Map, Budget and Share are the four stops
+   of one route. `chakra-night-hero.svg` stands at the end of the route, outside the centre
+   square, so a square crop keeps the Y mark and removes Chakra first. Chakra is a supporting
+   character and never reads as the logo.
+3. **README: done.** The hero sits at 96 px beside the Chakra highlight, not above the title. So it does not read as the logo. The expressions strip
    is not in the README: `chakra-expressions.svg` still holds live `<text>` for its labels.
    GitHub renders SVG through an `<img>`, so the labels would fall back to a system font.
    Convert them to paths (section 5, item 1), then add the strip.
