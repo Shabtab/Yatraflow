@@ -38,11 +38,17 @@
 .mt-card {
   position: relative; display: flex; flex-direction: column; padding: 6px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-card);
-  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+  transition: transform var(--motion-med) var(--ease-paper), box-shadow var(--motion-med) var(--ease-paper), border-color var(--motion-med) var(--ease-paper);
   animation: cardIn var(--motion-slow) var(--ease-out) backwards;
 }
-.mt-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }
-.mt-card:hover .mt-motif { transform: scale(1.035); }
+/* Hover and keyboard focus lift the card the same way. The cover art or photo
+   grows inside its clip (.mt-cover), so the card keeps its outline. */
+.mt-card:hover,
+.mt-card:has(.mt-card-link:focus-visible) { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }
+.mt-card:hover .mt-motif,
+.mt-card:hover .mt-cover-img,
+.mt-card:has(.mt-card-link:focus-visible) .mt-motif,
+.mt-card:has(.mt-card-link:focus-visible) .mt-cover-img { transform: scale(1.04); }
 
 /* ---------- Cover and region art ---------- */
 .mt-cover { position: relative; isolation: isolate; overflow: hidden; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); }
@@ -50,7 +56,8 @@
 .mt-art { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(180deg, var(--mt-sky1) 0%, var(--mt-sky2) 100%); }
 .mt-art::after { content: ''; position: absolute; inset: 0; background: transparent; pointer-events: none; }
 [data-theme='dark'] .mt-art::after { background: rgba(6, 20, 24, .16); }
-.mt-motif { position: absolute; inset: 0; width: 100%; height: 100%; transition: transform var(--motion-slow) var(--ease-out); }
+.mt-motif { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mt-motif, .mt-cover .mt-cover-img { transition: transform var(--motion-med) var(--ease-paper); }
 .mt-art--coorg { --mt-sky1: #D3E6D4; --mt-sky2: #F2E8C4; color: #28543C; }
 .mt-art--kashmir { --mt-sky1: #C9DCEE; --mt-sky2: #F3E5D3; color: #2B4B62; }
 .mt-art--kerala { --mt-sky1: #D2E9E2; --mt-sky2: #F4E2BA; color: #10494A; }
@@ -84,7 +91,12 @@
   background: color-mix(in srgb, var(--card) 84%, transparent); color: var(--text); line-height: 1.1;
   box-shadow: var(--shadow-card);
   -webkit-backdrop-filter: blur(var(--yf-blur-chip)); backdrop-filter: blur(var(--yf-blur-chip));
+  /* Small pop: the stamp lands after its card has begun to rise. The card sets
+     --mt-enter to its grid step, so a later card's stamp lands later. */
+  animation: mt-pop-in var(--motion-med) var(--ease-settle) backwards;
+  animation-delay: calc(var(--stagger-step) * (var(--mt-enter, 0) + 2));
 }
+@keyframes mt-pop-in { from { opacity: 0; transform: scale(.4); } }
 .mt-stamp span { color: var(--pw-marigold-ink); font-size: 11px; font-weight: 700; letter-spacing: .1em; }
 .mt-stamp b { font-size: 21px; font-weight: 800; line-height: 1; }
 .mt-stamp em { color: var(--text-2); font-size: 11px; font-style: normal; font-weight: 600; }
@@ -153,23 +165,35 @@
 /* ---------- Countdown row: flip tiles, subtitle and health ring ---------- */
 .mt-when-row { display: flex; align-items: center; gap: 14px; }
 .mt-when-row .mt-feat-when { flex: 1; min-width: 0; }
-.mt-flip { display: flex; flex: none; gap: 4px; }
+.mt-flip { display: flex; flex: none; gap: 4px; perspective: 240px; }
+/* Each digit flips down about its hairline once, on arrival. The digits go one
+   step apart (--mt-i is the digit's place, capped at six steps by the page). */
 .mt-flip span {
   position: relative; display: flex; align-items: center; justify-content: center; width: 28px; height: 38px;
   border-radius: var(--radius-xs); background: var(--pw-ink); color: var(--card);
   font-family: var(--font-display); font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums;
+  animation: mt-flip-in var(--motion-slow) var(--ease-paper) backwards;
+  animation-delay: calc(var(--stagger-step) * (var(--mt-i, 0) + 1));
 }
+@keyframes mt-flip-in { from { opacity: 0; transform: rotateX(-90deg); } }
 .mt-flip span::after { content: ''; position: absolute; top: 50%; right: 0; left: 0; height: 1px; background: color-mix(in srgb, var(--card) 18%, transparent); }
 .mt-when-copy { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .mt-when-copy b { color: var(--text); font-size: 15px; font-weight: 700; }
 .mt-when-copy span { color: var(--text-2); font-size: 12.5px; }
 .mt-ring { flex: none; margin-left: auto; }
 .mt-ring-track { fill: none; stroke: var(--teal-soft); stroke-width: 5; }
-.mt-ring-arc { fill: none; stroke: var(--pw-lagoon-400); stroke-width: 5; stroke-linecap: round; animation: mt-ring-draw var(--motion-slower) var(--ease-out) backwards; }
+/* The arc carries a dasharray, so it fades in and does not draw (docs/MOTION-TOKENS.md,
+   Chart entrance). The score number pops in after the arc has begun. */
+.mt-ring-arc { fill: none; stroke: var(--pw-lagoon-400); stroke-width: 5; stroke-linecap: round; animation: mt-ring-fade var(--motion-slower) var(--ease-paper) backwards; animation-delay: var(--stagger-step); }
 .mt-ring--marigold .mt-ring-arc { stroke: var(--pw-marigold-500); }
 .mt-ring--bloom .mt-ring-arc { stroke: var(--pw-bloom-500); }
-.mt-ring text { fill: var(--text); font-family: var(--font-display); font-size: 13px; font-weight: 700; }
-@keyframes mt-ring-draw { from { stroke-dashoffset: var(--mt-ring-full); } }
+.mt-ring text {
+  fill: var(--text); font-family: var(--font-display); font-size: 13px; font-weight: 700;
+  transform-box: fill-box; transform-origin: center;
+  animation: mt-pop-in var(--motion-fast) var(--ease-settle) backwards;
+  animation-delay: calc(var(--stagger-step) * 3);
+}
+@keyframes mt-ring-fade { from { opacity: 0; } }
 
 .mt-next { display: flex; align-items: center; gap: 12px; margin: 0; padding: 12px; border: 1px solid var(--pw-marigold-300); border-radius: var(--radius); background: var(--pw-marigold-50); color: var(--text); }
 .mt-next-tile { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--pw-marigold-100); color: var(--pw-marigold-ink); }
@@ -184,9 +208,20 @@
 .mt-days-wrap { display: flex; flex-direction: column; gap: 6px; }
 .mt-days-cap { margin: 0; color: var(--text-2); font-size: 12.5px; }
 .mt-days { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
-.mt-day { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--teal-soft); }
+/* Each cell rises in turn (--mt-i is the cell's place, capped at six steps by the
+   page). Its tone bar grows from the left one step after the cell. */
+.mt-day {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--teal-soft);
+  animation: pageRise var(--motion-slow) var(--ease-paper) backwards;
+  animation-delay: calc(var(--stagger-step) * var(--mt-i, 0));
+}
 .mt-day-n { color: var(--text); font-size: 11.5px; font-weight: 700; }
-.mt-day-bar { display: block; height: 4px; border-radius: 999px; background: var(--ok); }
+.mt-day-bar {
+  display: block; height: 4px; border-radius: 999px; background: var(--ok); transform-origin: left center;
+  animation: mt-bar-grow var(--motion-med) var(--ease-paper) backwards;
+  animation-delay: calc(var(--stagger-step) * (var(--mt-i, 0) + 1));
+}
+@keyframes mt-bar-grow { from { transform: scaleX(0); } }
 .mt-day-label { font-size: 11px; font-weight: 700; line-height: 1.3; }
 .mt-day--clear .mt-day-label { color: color-mix(in srgb, var(--ok) 70%, var(--text)); }
 .mt-day--fix .mt-day-bar { background: var(--saffron); }
@@ -238,14 +273,16 @@
 .mt-listhead .mt-count { margin: 0; }
 .mt-listhead-tools { display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .mt-chips { display: flex; align-items: center; gap: 8px; }
-.mt-chips .ex-chip { flex: none; min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--teal-soft); color: var(--text); font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+.mt-chips .ex-chip { flex: none; min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--teal-soft); color: var(--text); font-size: 13.5px; font-weight: 600; white-space: nowrap; transition: background-color var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper), transform var(--motion-instant) var(--ease-paper); }
 .mt-chips .ex-chip:hover { background: color-mix(in srgb, var(--teal-deep) 14%, var(--card)); }
 .mt-chips .ex-chip[aria-pressed='true'] { background: var(--pw-sea-700); color: var(--card); font-weight: 700; }
 .mt-sort { position: relative; display: inline-flex; flex: none; align-items: center; }
 .mt-sort select {
   min-height: 36px; padding: 0 32px 0 14px; border: 0; border-radius: 999px; background: var(--teal-soft); color: var(--text);
   font: inherit; font-size: 13.5px; font-weight: 600; -webkit-appearance: none; appearance: none; cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper);
 }
+.mt-sort select:hover { background: color-mix(in srgb, var(--teal-deep) 14%, var(--card)); }
 .mt-sort select:focus-visible { outline: none; box-shadow: var(--ring); }
 .mt-sort svg { position: absolute; right: 12px; color: var(--text-2); pointer-events: none; }
 .mt-listhead .mt-seg { padding: 4px; border: 0; background: var(--bg-soft); }
@@ -268,8 +305,13 @@
   display: flex; flex-direction: column; min-width: 0; padding: 10px 10px 12px;
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-card);
   transform: rotate(var(--mt-tilt, 0deg));
-  transition: transform var(--motion-slow) var(--ease-out), box-shadow var(--motion-slow) var(--ease-out);
+  transition: transform var(--motion-med) var(--ease-paper), box-shadow var(--motion-med) var(--ease-paper);
+  /* The postcard rises into its own tilt: the keyframe has no end frame, so the
+     card lands on the rotate above. --mt-i is its place, capped by the page. */
+  animation: mt-pc-in var(--motion-slow) var(--ease-paper) backwards;
+  animation-delay: calc(var(--stagger-step) * var(--mt-i, 0));
 }
+@keyframes mt-pc-in { from { opacity: 0; transform: translateY(14px) rotate(var(--mt-tilt, 0deg)) scale(.98); } }
 .mt-pc:hover, .mt-pc:focus-within { transform: translateY(-3px) rotate(0deg); box-shadow: var(--shadow-card-hover); }
 .mt-pc .mt-cover { border-radius: var(--radius-xs); }
 .mt-pc-mark {
@@ -334,7 +376,7 @@
 @media (max-width: 640px) {
   .mt-section-title { font-size: 24px; }
   .mt-section-head { margin-top: 22px; }
-  .mt-card:hover { transform: none; }
+  .mt-card:hover, .mt-card:has(.mt-card-link:focus-visible) { transform: none; }
   .mt-greet-title { font-size: 30px; }
   .mt-greet-actions { width: 100%; }
   .mt-greet-actions > .btn { flex: 1 1 auto; justify-content: center; }
@@ -364,13 +406,21 @@
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   .mt-card { animation: none; transition: none; }
-  .mt-card:hover { transform: none; }
-  .mt-card:hover .mt-motif { transform: none; }
-  .mt-motif, .mt-seg button { transition: none; }
+  .mt-card:hover, .mt-card:has(.mt-card-link:focus-visible) { transform: none; }
+  .mt-card:hover .mt-motif,
+  .mt-card:hover .mt-cover-img,
+  .mt-card:has(.mt-card-link:focus-visible) .mt-motif,
+  .mt-card:has(.mt-card-link:focus-visible) .mt-cover-img { transform: none; }
+  .mt-motif, .mt-cover .mt-cover-img, .mt-seg button { transition: none; }
   .mt-tag--live .mt-tag-dot { animation: none; }
   .mt-ring-arc { animation: none; }
-  /* The postcards stand straight and do not lift. */
-  .mt-pc, .mt-pc:hover, .mt-pc:focus-within { transform: none; transition: none; }
+  .mt-ring text { animation: none; }
+  .mt-flip span { animation: none; }
+  .mt-day, .mt-day-bar { animation: none; }
+  .mt-stamp { animation: none; }
+  .mt-chips .ex-chip, .mt-sort select { transition: none; }
+  /* The postcards stand straight, do not rise in and do not lift. */
+  .mt-pc, .mt-pc:hover, .mt-pc:focus-within { transform: none; transition: none; animation: none; }
 }
 
 /* ---------- Empty-state icon weight ---------- */

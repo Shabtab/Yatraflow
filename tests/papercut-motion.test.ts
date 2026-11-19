@@ -140,6 +140,9 @@ describe('Papercut motion foundation', () => {
       .filter(selector => selector !== '.tset-nav-item i')
       // Group input: the Chosen stamp and the two chip pops, all under 48px and entrance only.
       .filter(selector => selector !== '.gin-stamp' && selector !== '.gin-pop')
+      // My trips: the glass date stamp and the health score number pop in once
+      // (tests/trips-motion.test.ts pins both).
+      .filter(selector => selector !== '.mt-stamp' && selector !== '.mt-ring text')
     expect(bounceRules).toEqual([])
     expect(css).not.toContain('.save-heart.save-heart')
     expect(gallery).toMatch(/\.gallery-final-pin\s*\{[^}]*width:\s*20px[^}]*height:\s*20px/)

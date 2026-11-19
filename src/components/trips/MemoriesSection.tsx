@@ -8,6 +8,7 @@ import { RotateCcw } from 'lucide-react'
 import { appLink } from '../../lib/appLink'
 import { daysText, kmText, stopCountText } from '../../lib/tripsCard'
 import { activityStopCount } from '../../lib/tripNextStep'
+import { staggerStep } from '../../lib/motion'
 import { postmark, rangeText, statusOf } from '../../lib/tripsPage'
 import type { Trip } from '../../data/types'
 import { SectionHead } from '../page/SectionHead'
@@ -36,7 +37,7 @@ export function MemoriesSection({ titleId, memories, today, travel, copyingId, o
       <SectionHead id={titleId} title={<>Memories <span className="mt-count">{memories.length}</span></>} />
       <ul className="mt-pc-grid">
         {memories.map(({ trip, distanceKm }, index) => (
-          <li key={trip.id} className="mt-pc" style={{ '--mt-tilt': TILTS[index % TILTS.length] } as CSSProperties}>
+          <li key={trip.id} className="mt-pc" style={{ '--mt-tilt': TILTS[index % TILTS.length], '--mt-i': staggerStep(index) } as CSSProperties}>
             <TripCover trip={trip} status={statusOf(trip, today)} sizes={GRID_SIZES} showTag={false}>
               <span className="mt-pc-mark">{postmark(trip)}</span>
             </TripCover>

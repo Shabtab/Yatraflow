@@ -3,7 +3,7 @@
 // date stamp, the title and the route. The body holds the countdown, the next
 // step with its action, the per-day state strip, the planners, the per-person
 // cost with the distance, and the Share and Open trip links.
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { ArrowRight, Check, Flag, Trash2 } from 'lucide-react'
 import { appLink } from '../../lib/appLink'
 import { nextStepRoute } from '../../lib/tripNextStep'
@@ -12,6 +12,7 @@ import { cardNextStep, countdownText, dateStamp, planning, statusOf, stepActionL
 import type { DayCell } from '../../lib/tripDayStrip'
 import type { HealthResult } from '../../lib/engine'
 import { countdownTiles, startsSubtitle } from '../../lib/tripCountdown'
+import { staggerStep } from '../../lib/motion'
 import { useTimeFormat } from '../../lib/timefmt'
 import type { Trip, CachedUser } from '../../data/types'
 import { DayStrip } from './DayStrip'
@@ -64,7 +65,9 @@ export function UpNextCard({ trip, today, budget, distanceKm, dayCells, health, 
           {tiles ? (
             <>
               <div className="mt-flip" role="img" aria-label={tiles.label}>
-                {tiles.digits.map((digit, index) => <span key={index} aria-hidden="true">{digit}</span>)}
+                {tiles.digits.map((digit, index) => (
+                  <span key={index} aria-hidden="true" style={{ '--mt-i': staggerStep(index) } as CSSProperties}>{digit}</span>
+                ))}
               </div>
               <div className="mt-when-copy">
                 <b aria-hidden="true">{tiles.unit}</b>

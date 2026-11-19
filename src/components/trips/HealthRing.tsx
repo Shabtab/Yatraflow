@@ -1,9 +1,9 @@
 // ============ My trips — estimated health ring ============
 // The engine's health score as a 54px ring. The arc colour follows the band
 // (see ringTone) and the number sits in the middle. The list page has no
-// measured road data, so the label says "Estimated". The arc draws in from
-// zero with a motion token; reduced motion shows the final arc at once.
-import type { CSSProperties } from 'react'
+// measured road data, so the label says "Estimated". The arc carries a
+// dasharray, so it fades in (it does not draw) and the score pops in after it.
+// Both ride motion tokens; reduced motion shows the final ring at once.
 import type { HealthResult } from '../../lib/engine'
 import { ringLabel, ringTone } from '../../lib/tripCountdown'
 
@@ -20,7 +20,6 @@ export function HealthRing({ health }: { health: Pick<HealthResult, 'score' | 'b
       <circle
         className="mt-ring-arc" cx="22" cy="22" r={RADIUS} transform="rotate(-90 22 22)"
         strokeDasharray={CIRCUMFERENCE} strokeDashoffset={offset}
-        style={{ '--mt-ring-full': CIRCUMFERENCE } as CSSProperties}
       />
       <text x="22" y="26.5" textAnchor="middle">{health.score}</text>
     </svg>
