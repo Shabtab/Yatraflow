@@ -316,10 +316,10 @@ export function heroStats({ trips, today, meId, ready }: {
   }
   const plural = (count: number, one: string, many: string) => (count === 1 ? one : many)
   const stats: HeroStat[] = [
-    { label: plural(trips.length, 'trip', 'trips'), value: trips.length },
+    { label: plural(trips.length, 'Trip', 'Trips'), value: trips.length },
     { label: 'Upcoming & live', value: upcomingAndLive },
-    { label: plural(places.size, 'place', 'places'), value: places.size },
-    { label: plural(coPlanners.size, 'co-planner', 'co-planners'), value: coPlanners.size },
+    { label: plural(places.size, 'Place', 'Places'), value: places.size },
+    { label: plural(coPlanners.size, 'Co-planner', 'Co-planners'), value: coPlanners.size },
   ]
   return stats.filter(stat => stat.value > 0)
 }

@@ -352,17 +352,17 @@ describe('heroStats', () => {
   })
   it('counts trips, upcoming and live trips, unique places and the other editors', () => {
     expect(heroStats({ trips: [withCrew, secondCrew], today: TODAY, meId: 'me', ready: true })).toEqual([
-      { label: 'trips', value: 2 },
+      { label: 'Trips', value: 2 },
       { label: 'Upcoming & live', value: 1 },
-      { label: 'places', value: 3 },
-      { label: 'co-planners', value: 2 },
+      { label: 'Places', value: 3 },
+      { label: 'Co-planners', value: 2 },
     ])
   })
   it('counts a live trip in the upcoming & live stat, the rule the filter uses', () => {
     const live = heroTrip({ startDate: '2026-10-09', endDate: '2026-10-12' })
     expect(whenBucket(live, TODAY)).toBe('upcoming')
     expect(heroStats({ trips: [live], today: TODAY, meId: null, ready: true })).toEqual([
-      { label: 'trip', value: 1 },
+      { label: 'Trip', value: 1 },
       { label: 'Upcoming & live', value: 1 },
     ])
   })
@@ -373,7 +373,7 @@ describe('heroStats', () => {
   it('counts a place once however it is spelled', () => {
     const spellings = heroTrip({ destinations: ['Kochi', 'Kochi, Kerala', ' kochi ', 'Alleppey'], startDate: '2026-10-20', endDate: '2026-10-21' })
     const stats = heroStats({ trips: [spellings], today: TODAY, meId: null, ready: true })
-    expect(stats.find(stat => stat.label === 'places')?.value).toBe(2)
+    expect(stats.find(stat => stat.label === 'Places')?.value).toBe(2)
   })
   it('does not count viewers or commenters as co-planners', () => {
     const crew = heroTrip({
@@ -385,7 +385,7 @@ describe('heroStats', () => {
       ],
     })
     const stats = heroStats({ trips: [crew], today: TODAY, meId: 'me', ready: true })
-    expect(stats.find(stat => stat.label.startsWith('co-planner'))).toBeUndefined()
+    expect(stats.find(stat => stat.label.startsWith('Co-planner'))).toBeUndefined()
   })
   it('counts an owner who is not you, and a person on two trips once', () => {
     const first = heroTrip({ startDate: '2026-10-20', endDate: '2026-10-21', members: [
@@ -395,11 +395,11 @@ describe('heroStats', () => {
       { userId: 'asha', role: 'editor', joinedAt: 1 }, { userId: 'me', role: 'owner', joinedAt: 2 },
     ] })
     const stats = heroStats({ trips: [first, second], today: TODAY, meId: 'me', ready: true })
-    expect(stats.find(stat => stat.label === 'co-planner')?.value).toBe(1)
+    expect(stats.find(stat => stat.label === 'Co-planner')?.value).toBe(1)
   })
   it('hides every stat that is zero', () => {
     const stats = heroStats({ trips: [pastTrip], today: TODAY, meId: 'me', ready: true })
-    expect(stats.map(stat => stat.label)).toEqual(['trip', 'place'])
+    expect(stats.map(stat => stat.label)).toEqual(['Trip', 'Place'])
     expect(stats.every(stat => stat.value > 0)).toBe(true)
   })
   it('uses singular labels for a count of one', () => {
@@ -408,7 +408,7 @@ describe('heroStats', () => {
       members: [{ userId: 'me', role: 'owner', joinedAt: 1 }, { userId: 'asha', role: 'editor', joinedAt: 2 }],
     })
     const labels = heroStats({ trips: [one], today: TODAY, meId: 'me', ready: true }).map(stat => stat.label)
-    expect(labels).toEqual(['trip', 'Upcoming & live', 'place', 'co-planner'])
+    expect(labels).toEqual(['Trip', 'Upcoming & live', 'Place', 'Co-planner'])
     expect(labels[1]).toBe('Upcoming & live')
   })
   it('returns no stats for zero trips', () => {
