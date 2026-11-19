@@ -115,7 +115,7 @@ describe('the trip card and its cover', () => {
   })
 
   it('keeps the entrance and the list exit', () => {
-    expect(bodyOf(MAIN, '.mt-card')).toMatch(/animation:\s*cardIn var\(--motion-slow\) var\(--ease-out\) backwards/)
+    expect(bodyOf(MAIN, '.mt-card')).toMatch(/animation:\s*cardIn var\(--mt-dur\) var\(--ease-out\) backwards/)
     const page = read('src/pages/TripsList.tsx')
     expect(page).toContain('usePresenceList(')
     expect(page).toContain('presence={presenceAttrs({ exiting })}')

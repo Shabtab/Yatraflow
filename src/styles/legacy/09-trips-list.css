@@ -43,7 +43,7 @@
   position: relative; display: flex; flex-direction: column; padding: 6px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-card);
   transition: transform var(--motion-med) var(--ease-paper), box-shadow var(--motion-med) var(--ease-paper), border-color var(--motion-med) var(--ease-paper);
-  animation: cardIn var(--motion-slow) var(--ease-out) backwards;
+  animation: cardIn var(--mt-dur) var(--ease-out) backwards;
 }
 /* Hover and keyboard focus lift the card the same way. The cover art or photo
    grows inside its clip (.mt-cover), so the card keeps its outline. */

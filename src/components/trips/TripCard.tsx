@@ -10,7 +10,7 @@ import { appLink } from '../../lib/appLink'
 import { nextStepRoute, plannedDayFlags } from '../../lib/tripNextStep'
 import { routeLine } from '../../lib/tripsCard'
 import { cardNextStep, cardStatusLine, dateStamp, planning, statusOf } from '../../lib/tripsPage'
-import { staggerDelay, staggerStep } from '../../lib/motion'
+import { staggerStep } from '../../lib/motion'
 import type { Trip, CachedUser } from '../../data/types'
 import type { PresenceAttrs } from '../../lib/usePresenceList'
 import { Planners } from './Planners'
@@ -44,7 +44,7 @@ export function TripCard({ trip, today, budget, readyToGo, toFix, users, meId, e
   const flags = plannedDayFlags(trip)
   const { planned, total } = planning(trip)
   // The stamp pops in after its own card, so it reads the same grid step.
-  const enterDelay = { animationDelay: staggerDelay(enterIndex), '--mt-enter': staggerStep(enterIndex) } as CSSProperties
+  const enterDelay = { animationDelay: `calc(var(--mt-step) * ${staggerStep(enterIndex)})`, '--mt-enter': staggerStep(enterIndex) } as CSSProperties
   return (
     <article className="mt-card" data-status={status} style={enterDelay} {...presence}>
       <TripCover trip={trip} status={status} sizes={coverSizes} showTag={false}>
