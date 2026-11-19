@@ -62,6 +62,17 @@
       "destination": "/api/android-manifest?apk=1"
     },
     {
+      "source": "/pub/:slug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(facebookexternalhit|facebookcatalog|meta-externalagent|whatsapp|twitterbot|linkedinbot|slackbot|slack-imgproxy|discordbot|telegrambot|skypeuripreview|applebot|googlebot|bingbot|pinterest|redditbot|embedly).*"
+        }
+      ],
+      "destination": "/api/i?id=:slug&via=pub"
+    },
+    {
       "source": "/((?!api/|i/|c/|sitemap.xml|ladakh-trip-cost-calculator/|sw.js|manifest.webmanifest|robots.txt).*)",
       "destination": "/index.html"
     }
