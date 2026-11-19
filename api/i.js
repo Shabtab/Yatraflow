@@ -26,7 +26,7 @@ const COVER_WIDTH = 1200
 // A found card is edge-cacheable for five minutes, then served stale for ten
 // while it revalidates. Everything else answers no-store.
 const CARD_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalidate=600'
-const WIKIMEDIA_PATH_RE = /^https:\/\/[^/]*wikimedia\.org\/wikipedia\/([^/]+)\/(.+)$/
+const WIKIMEDIA_HOST_RE = /^(?:[a-z]{2,3}(?:-[a-z]+)?\.wikipedia\.org|commons\.wikimedia\.org|upload\.wikimedia\.org)$/
 
 // The client's region rule. `src/lib/tripsPage.ts` `regionFor` owns the
 // definition, but this handler is plain JS and cannot import client code. A
@@ -67,26 +67,38 @@ function artworkCover(origin, publication) {
   return id ? `${origin}/art/${id}.webp` : null
 }
 
-/** The same Wikimedia file at a sane width.
+/** The Wikimedia/Commons file name behind a stored cover, or null.
  *
  *  A stored cover is frequently the RAW upload — the one live publication that
  *  has one carries `.../Chandratal_1.JPG?…thumbnail_unscaled`, 1.3 MB — because
  *  it was written before the picker started sizing, or by the destination-photo
- *  fallback. The client sizes these on the display path through the same
- *  redirect (src/lib/tripThumb.ts `sizedCoverUrl`); this function cannot import
- *  that (it sits behind the bundler, and this file stays dependency-free), so
- *  the rule is repeated here. Measured on that cover: 1,335,523 bytes → 147,351.
- *  Non-Wikimedia URLs come back untouched, and an already-sized redirect does
- *  not match the path shape, so this is idempotent. */
-function sizedCover(url) {
-  const [path] = url.split('?')
-  const match = WIKIMEDIA_PATH_RE.exec(path)
-  if (!match) return url
-  const rest = match[2].startsWith('thumb/') ? match[2].slice('thumb/'.length) : match[2]
-  const file = /^[0-9a-f]\/[0-9a-f]{2}\/([^/]+)/.exec(rest)?.[1]
+ *  fallback. Two shapes reach this handler: that upload path, and the
+ *  `Special:Redirect/file` URL the picker now stores. Both name one Commons file,
+ *  and the name is percent-encoded as it was stored — a second round of encoding
+ *  would miss the file. Non-Wikimedia URLs come back null, so nothing else is
+ *  ever proxied. */
+function wikimediaFile(url) {
+  let parsed
+  try { parsed = new URL(url) } catch { return null }
+  if (!WIKIMEDIA_HOST_RE.test(parsed.host)) return null
+  const redirect = /^\/wiki\/Special:Redirect\/file\/([^/]+)$/.exec(parsed.pathname)
+  if (redirect) return redirect[1] || null
+  const rest = parsed.pathname.replace(/^\/wikipedia\/[^/]+\//, '').replace(/^thumb\//, '')
+  // A `thumb/` path ends with its own scaled size (`800px-Foo.png`); the file
+  // name is the segment before it, so the tail is ignored.
+  return /^[0-9a-f]\/[0-9a-f]{2}\/([^/]+)/.exec(rest)?.[1] ?? null
+}
+
+/** The card image for a stored cover.
+ *
+ *  Wikimedia answers Facebook's crawler 403 and every other crawler the full
+ *  original, so a Wikimedia cover is advertised through our own `/api/cover`,
+ *  which asks for one known width and caches the bytes on the edge. Every other
+ *  cover keeps its own URL: our Supabase bucket already serves a sized photo. */
+function cardCover(origin, url) {
+  const file = wikimediaFile(url)
   if (!file) return url
-  const host = match[1] === 'commons' ? 'commons.wikimedia.org' : `${match[1]}.wikipedia.org`
-  return `https://${host}/wiki/Special:Redirect/file/${file}?width=${COVER_WIDTH}`
+  return `${origin}/api/cover?f=${encodeURIComponent(file)}&w=${COVER_WIDTH}`
 }
 
 /** Does this entitlement belong to this publication?
@@ -174,14 +186,16 @@ function renderPublication(publication, id, buyer = null, ref = null, trip = nul
   const description = buyer
     ? ['Bought on YatraFlow', ...facts].join(' · ')
     : (publication?.tagline || facts.join(' · ') || DEFAULT_DESCRIPTION)
-  const cover = typeof publication?.cover_image_url === 'string' && /^https:\/\/\S+$/.test(publication.cover_image_url)
-    ? sizedCover(publication.cover_image_url) : ''
+  const stored = typeof publication?.cover_image_url === 'string' && /^https:\/\/\S+$/.test(publication.cover_image_url)
+    ? publication.cover_image_url : ''
+  const cover = stored ? cardCover(origin, stored) : ''
   // A publication with no stored cover shows generated artwork, never a photo
   // the app picked. The scene files live at stable public paths, so a deploy
   // cannot break a card that is already indexed. The brand card is the last
   // resort. A scene's size is known, so its tags declare it, and a crawler can
   // lay out the first preview before it fetches the file. A photo's size is
-  // unknown here, so its tags declare none.
+  // unknown here, so its tags declare none — and a proxied Wikimedia cover is a
+  // photo: its height follows the file, so a width alone is not declared either.
   const generatedCover = cover ? '' : artworkCover(origin, publication)
   const coverAlt = publication?.title ? `Cover of ${publication.title}` : null
   const coverUrl = cover || generatedCover
