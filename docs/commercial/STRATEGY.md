@@ -2,7 +2,9 @@
 
 **Date:** 2026-10-12 · **Baseline:** `origin/test` = `23e7c8f` (v0.74.0 plus 71 unreleased commits) · **Revenue:** ₹699, one buyer account
 
-This is the **one strategy page**. It replaces the position, sequencing and targets in the
+> **2026-11-20:** This page owns the product and money strategy: position, fees, pricing and the order of revenue. Marketing execution (outreach, content, channels and public claims) lives in the founder's marketing workspace outside this repo. Where the two disagree on a money fact, this page wins.
+
+This is the **one product and money strategy page**. It replaces the position, sequencing and targets in the
 older commercial docs. Where an older doc disagrees with this page, this page wins. The older
 docs stay as reference for the detail they hold:
 
@@ -32,6 +34,8 @@ Travel Creator and Local Expert capabilities can overlap within one identity.
 The [creator portfolio brainstorm](BRAINSTORM-2026-10-12-creator-portfolio.md) records source limits and proposals. `ROADMAP.md` remains the plan of record.
 
 ## 1. Where we stand
+
+> Numbers in this section are dated 2026-10-12. Re-derive them before you quote them.
 
 The product is built far ahead of its demand. The gap is not features. It is time spent on
 users.
@@ -89,7 +93,10 @@ comment-to-DM tools claim it. The ten creator interviews in §4 measure it.
 
 ## 3. Position
 
-> **The road-trip plan your whole group can actually drive.**
+> **Plan Indian trips together — not in a chaotic group chat.**
+> Every stop, hour and rupee in one plan your group can actually follow.
+
+The founder locked these lines on 2026-11-20. The old road-trip line was too narrow, because the engine also plans train, flight and bus trips.
 
 YatraFlow is a logistics and coordination product. It is not an AI product. The rivals are a
 WhatsApp thread full of links and a chatbot plan that ignores the road.
@@ -139,6 +146,8 @@ Pilgrimage circuits and rider groups are the next wedges. Do not open them until
 wedge passes its gate.
 
 ## 4. The next six weeks
+
+> **Status (2026-11-20):** Not run. Kept for reference.
 
 ### Week 0 — close the risks
 
