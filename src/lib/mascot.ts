@@ -85,16 +85,16 @@ export function warningHead(code: string): MascotPose | null {
     // The halt the engine never found: the ride has no bed in it.
     case 'fatigue': return 'head-sleepy'
     // Over-packed, late, or against the clock: the day is straining.
+    // A fixed commitment the plan cannot meet is a worry too. The lost head
+    // carries a no-signal badge, so it stays on the offline banner only.
     case 'density':
     case 'late-arrival':
     case 'travel':
     case 'buffer':
     case 'short-rest':
-      return 'head-worried'
-    // A fixed commitment the plan cannot meet.
     case 'commitment':
-    case 'commitment-unlinked':
-      return 'head-lost'
+      return 'head-worried'
+    // 'commitment-unlinked' (no stop picked) has no honest head: plain text.
     default: return null
   }
 }

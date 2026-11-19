@@ -101,7 +101,12 @@ describe('inline warning heads', () => {
     expect(warningHead('meals')).toBe('head-chai')
     expect(warningHead('fatigue')).toBe('head-sleepy')
     expect(warningHead('density')).toBe('head-worried')
-    expect(warningHead('commitment')).toBe('head-lost')
+    expect(warningHead('commitment')).toBe('head-worried')
+  })
+
+  it('keeps the lost head off engine warnings: its no-signal badge means offline', () => {
+    for (const code of CODES) expect(warningHead(code), code).not.toBe('head-lost')
+    expect(warningHead('commitment-unlinked')).toBeNull()
   })
 
   it('returns null for an unknown code rather than guessing a face', () => {
