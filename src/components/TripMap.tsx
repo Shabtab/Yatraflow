@@ -13,6 +13,7 @@ import { dayColor } from '../lib/mapStyles/dayColors'
 import { buildJourney, coLocates, getAssumptions, isRoundTrip, isAirMode, type LegEstimate } from '../lib/engine'
 import { buildStopClock } from '../lib/stopClock'
 import type { RouteMark } from '../lib/map/routeMarks'
+import { cardCloseFromEventWithin } from '../pages/trip/map/editing/cardClose'
 import { clockHM, type ClockMilestone } from '../lib/clockOverlay'
 import { pointAtKm } from '../lib/geo'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
@@ -791,6 +792,28 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   // Selected stop (stop-pin click) — powers the compact cross-link popup that
   // jumps to the Timeline/Board tabs. Null = no popup.
   const [selectedStop, setSelectedStop] = useState<{ id: string; title: string; dayIndex: number } | null>(null)
+  // The popup's own dialog element, for the Escape decision (cardClose.ts).
+  const stopJumpRef = useRef<HTMLDivElement | null>(null)
+  // The control that opened the popup. Escape puts focus back on it.
+  const stopJumpOpener = useRef<HTMLElement | null>(null)
+  const stopJumpOpen = selectedStop != null && (onOpenInTimeline != null || onOpenInBoard != null || onDeleteStop != null)
+  // Escape closes the popup through the same card-close decision the stop edit
+  // card uses: a key that starts in an open menu, another dialog or a text
+  // field keeps its own surface. The popup is itself a role="dialog", so it is
+  // the decision's card root — a key that starts inside it still closes it.
+  useEffect(() => {
+    if (!stopJumpOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (!cardCloseFromEventWithin(event, stopJumpRef.current)) return
+      setSelectedStop(null)
+      requestAnimationFrame(() => {
+        const opener = stopJumpOpener.current
+        if (opener?.isConnected && opener.getClientRects().length) opener.focus({ preventScroll: true })
+      })
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [stopJumpOpen])
   // Collapse plays a short scale-down first (mapCollapse) so expand/collapse
   // both glide; the class is transient and the timer is cleared on unmount.
   const [closing, setClosing] = useState(false)
@@ -1191,7 +1214,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       if (!p.auto && !warned && !(showTag && isBase) && clockMilestones && clockOn && stopClock.has(p.id)) {
         const c = stopClock.get(p.id)!
         const arriveText = `${c.arrive}${c.estimated ? ' (est.)' : ''}`
-        const kmText = `km ${Math.max(0, c.cumKm - dayKmBase)}`
+        const kmText = `Km ${Math.max(0, c.cumKm - dayKmBase)}`
         spreadMarks.push({ id: `clock:${p.id}`, layer: 'clock', follows: `stop:${p.id}`, x: 0, y: CLOCK_BOX.dy, w: stopClockBox(arriveText, kmText).w, h: CLOCK_BOX.h, ...base })
       }
       if (stopWarning?.stopId === p.id && stopWarning.text != null && stopWarning.text.trim() !== '') {
@@ -2482,7 +2505,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                       <button
                         className={`yf-map-pin ${workspaceChrome ? `mv2-map-stop${p.category === 'hotel' || onLastNight ? ' is-stay' : ''}${isBase && frameStayRing ? ' is-stay-hero' : ''}${p.status === 'maybe' ? ' is-tentative' : ''}` : 'yf-map-tear'}${p.status === 'maybe' ? ' yf-map-maybe' : ''}`}
                         style={{ '--pin-color': colorForDay(p.dayIndex), ...(workspaceChrome ? { '--mv2-marker-ink': '#FFFFFF' } : {}) } as React.CSSProperties}
-                        onClick={() => { onOpenStop?.(p.id); if (onOpenInTimeline || onOpenInBoard || onDeleteStop) setSelectedStop({ id: p.id, title: p.title, dayIndex: p.dayIndex }) }}
+                        onClick={event => { stopJumpOpener.current = event.currentTarget; onOpenStop?.(p.id); if (onOpenInTimeline || onOpenInBoard || onDeleteStop) setSelectedStop({ id: p.id, title: p.title, dayIndex: p.dayIndex }) }}
                         data-active-day={workspaceChrome && activeTagDay != null && p.dayIndex === activeTagDay ? 'true' : undefined}
                         aria-label={`Stop ${num}: ${p.title}${workspaceChrome && trip.fixedCommitments?.some(lock => lock.stopId === p.id && lock.dayIndex === p.dayIndex) ? ', fixed time' : ''}`}
                         title={p.title}
@@ -2496,7 +2519,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                       {showTag && <span className={`mv2-stop-tag${isBase ? ' mv2-stop-tag--base' : ''}`} data-collapsed={camMoving || tagSpot?.hidden ? 'true' : undefined} style={tagSpot && !tagSpot.hidden ? { transform: `translate(${tagSpot.dx + dx}px, ${tagSpot.dy + dy}px)` } : undefined}>{isBase ? baseTagText(p.title) : p.title}</span>}
                       {warn?.text != null && <span className="mv2-stop-tag mv2-stop-tag--fix" data-collapsed={camMoving || warnTagSpot?.hidden ? 'true' : undefined} style={warnTagSpot && !warnTagSpot.hidden ? { transform: `translate(${warnTagSpot.dx + dx}px, ${warnTagSpot.dy + dy}px)` } : undefined}>{warn.text}</span>}
                       {c && !warn && !(showTag && isBase) && (workspaceChrome
-                        ? <span className="mv2-pin-clock" data-collapsed={camMoving || clockSpot?.hidden ? 'true' : undefined} style={clockSpot && !clockSpot.hidden ? { transform: `translate(${clockSpot.dx + dx}px, ${clockSpot.dy + dy}px)` } : undefined}>{formatHM(c.arrive, timeFormat)}{c.estimated ? ' (est.)' : ''} <small>km {Math.max(0, c.cumKm - dayKmBase)}</small></span>
+                        ? <span className="mv2-pin-clock" data-collapsed={camMoving || clockSpot?.hidden ? 'true' : undefined} style={clockSpot && !clockSpot.hidden ? { transform: `translate(${clockSpot.dx + dx}px, ${clockSpot.dy + dy}px)` } : undefined}>{formatHM(c.arrive, timeFormat)}{c.estimated ? ' (est.)' : ''} <small>Km {Math.max(0, c.cumKm - dayKmBase)}</small></span>
                         : <span className="yf-pin-time">{formatHM(c.arrive, timeFormat)}{c.estimated ? ' (est.)' : ''}</span>)}
                       </>)}
                     </MarkerContent>
@@ -2600,7 +2623,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
         )}
 
         {selectedStop && (onOpenInTimeline || onOpenInBoard || onDeleteStop) && (
-          <div className="yf-stop-jump" role="dialog" aria-label={`Selected stop: ${selectedStop.title}`}
+          <div ref={stopJumpRef} className="yf-stop-jump" role="dialog" aria-label={`Selected stop: ${selectedStop.title}`}
             style={{ position: 'absolute', left: '50%', bottom: 'calc(var(--mv2-sheet-height, 0px) + 14px)', transform: 'translateX(-50%)', zIndex: 5, display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 10px', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-soft)', maxWidth: 'calc(100% - 24px)' }}>
             {/* #612: the name gets its own row. It used to share one flex row
                 with every action, so at phone width the buttons kept their
@@ -2619,7 +2642,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
             {onDeleteStop && (
               <button className="btn btn-sm btn-danger" onClick={() => { onDeleteStop(selectedStop.id, { title: selectedStop.title, dayIndex: selectedStop.dayIndex }); setSelectedStop(null) }}>Remove</button>
             )}
-            <button className="icon-btn" onClick={() => setSelectedStop(null)} aria-label="Close" style={{ flex: '0 0 auto', marginLeft: 'auto' }}><X size={14} aria-hidden /></button>
+            <button className="icon-btn" onClick={() => setSelectedStop(null)} aria-label="Close" style={{ flex: '0 0 auto', marginLeft: 'auto', minWidth: 44, minHeight: 44 }}><X size={14} aria-hidden /></button>
             </div>
           </div>
         )}
