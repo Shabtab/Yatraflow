@@ -129,7 +129,7 @@ The previous release. Its highlights stay here until the next release.
 
 The previous release. Its highlights stay here until the next release.
 
-- **Chakra the koel meets you at the quiet moments.** The loading, failed, empty and not-found screens carry the mascot, which takes the night art in the dark theme. The trip-created column and the unlock reveal celebrate with it. The AI drawer shows it thinking.
+- <img src="public/brand/mascot/chakra-hero.svg" alt="" width="96" align="right" /> **Chakra the koel meets you at the quiet moments.** The loading, failed, empty and not-found screens carry the mascot, which takes the night art in the dark theme. The trip-created column and the unlock reveal celebrate with it. The AI companion wears its face and shows it thinking. The Y logo stays the brand mark.
 - **The Board tab shows each stop's place, time and cost in full.** Each fact has one home, and the stop cards wrap instead of cutting their details.
 - **Explore and the published itinerary move in one calm sequence.** Explore has one search field and one shared publication card. The Look inside day cards and the road height charts match the reference design.
 - **Phone map fits keep the trip large and the pins apart.** Side insets use measured covers, and a user pan is never undone.

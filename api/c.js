@@ -3,10 +3,13 @@
 import { resolveOrigin } from './_origin.js'
 import { CREATOR_PAGE_CLASS, CREATOR_PAGE_STYLE, renderCreatorBody, creatorJsonLd } from './_creatorBody.js'
 import { escapeHtml } from './_escape.js'
+import { defaultCard, ogImageTags, twitterImageTags } from './_shareCard.js'
 
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const PUBLICATION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/
+// A post id, as `isPostId` in src/lib/creatorPosts.ts checks it.
+const POST_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // Must match src/lib/shareUrl.ts. The API cannot import client modules.
 const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community']
 const PAGE = 1000
@@ -25,7 +28,7 @@ const CREATOR_STYLE_TAG = `<style>${CREATOR_PAGE_STYLE}</style>`
  * crawler at its own address is the 404 hygiene #362 asks for), and a
  * <meta name="robots" content="noindex"> so a shared typo is never indexed.
  */
-function renderCreator(profile, id, publications, ref) {
+function renderCreator(profile, id, publications, ref, post = null) {
   const origin = resolveOrigin()
   const name = typeof profile?.name === 'string' && profile.name.trim() ? profile.name.trim() : null
   if (!name) {
@@ -54,7 +57,12 @@ ${CREATOR_STYLE_TAG}
   const description = [bio, published].filter(Boolean).join(' · ')
   const canonical = `${origin}/c/${id}`
   // #426 slice 3: the browser lands on the app page's real path directly.
-  const target = `/creator/${id}${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`
+  // A post-tagged link (G8) keeps its tag, so the app page counts the visit.
+  const params = new URLSearchParams()
+  if (ref) params.set('ref', ref)
+  if (post) { params.set('src', 'post'); params.set('p', post) }
+  const query = params.toString()
+  const target = `/creator/${id}${query ? `?${query}` : ''}`
   return `<!doctype html>
 <html lang="en-IN">
 <head>
@@ -67,17 +75,15 @@ ${CREATOR_STYLE_TAG}
 <meta property="og:title" content="${escapeHtml(title)}" />
 <meta property="og:description" content="${escapeHtml(description)}" />
 <meta property="og:url" content="${escapeHtml(canonical)}" />
-<meta property="og:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
-<meta property="og:image:width" content="1200" />
-<meta property="og:image:height" content="630" />
+${ogImageTags(defaultCard(origin))}
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${escapeHtml(title)}" />
 <meta name="twitter:description" content="${escapeHtml(description)}" />
-<meta name="twitter:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
+${twitterImageTags(defaultCard(origin))}
 <link rel="canonical" href="${escapeHtml(canonical)}" />
 ${CREATOR_STYLE_TAG}
 <script type="application/ld+json">${creatorJsonLd(profile, canonical)}</script>
-${ref ? `<script>location.replace(${JSON.stringify(target)})</script>` : ''}
+${ref || post ? `<script>location.replace(${JSON.stringify(target)})</script>` : ''}
 </head>
 <body>${renderCreatorBody(profile, publications, target)}</body>
 </html>`
@@ -127,6 +133,9 @@ export default async function handler(req, res) {
   }
   const rawRef = req.query?.ref
   const ref = typeof rawRef === 'string' && SHARE_SOURCES.includes(rawRef) ? rawRef : null
+  // A malformed post tag is dropped, like a malformed `ref`.
+  const rawPost = req.query?.p
+  const post = req.query?.src === 'post' && typeof rawPost === 'string' && POST_ID_RE.test(rawPost) ? rawPost : null
 
   const url = process.env.SUPABASE_URL
   const key = process.env.SUPABASE_ANON_KEY
@@ -185,5 +194,5 @@ export default async function handler(req, res) {
   const named = typeof profile?.name === 'string' && profile.name.trim() !== ''
   if (named && publications !== null) res.setHeader('cache-control', CARD_CACHE_CONTROL)
   res.status(200)
-  return req.method === 'HEAD' ? res.end() : res.send(renderCreator(profile, id, publications, ref))
+  return req.method === 'HEAD' ? res.end() : res.send(renderCreator(profile, id, publications, ref, post))
 }

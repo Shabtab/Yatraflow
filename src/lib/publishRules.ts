@@ -6,8 +6,9 @@
 // other than that one form — a future surface, a console, a test — could write a
 // row that is broken in a way no reader can see from inside the app:
 //
-//   * a coverless row, whose link silently previews as the brand card
-//     (`api/i.js` falls back to `og-default.png` when `cover_image_url` is null);
+//   * a coverless row, whose link previews with a picture the creator did not
+//     choose (`api/i.js` falls back to a generated scene, then to
+//     `og-default.png`, when `cover_image_url` is null);
 //   * a row priced above the gateway's ceiling, which 503s AT CHECKOUT with no
 //     visible cause (`purchase_orders.amount_inr` caps at 100000);
 //   * a priced row whose every day is free — a paid unlock that reveals content

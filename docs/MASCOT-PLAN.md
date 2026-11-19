@@ -1,8 +1,9 @@
 # Chakra mascot: where to use it
 
-Status: phases 1 and 2 shipped, phase 3 shipped. The state surfaces, the
+Status: phases 1, 2 and 3 shipped. The state surfaces, the
 moments and the inline warnings in §4 use the mascot through
-`src/components/mascot/Mascot.tsx`. Phase 4 (brand) is still a plan.
+`src/components/mascot/Mascot.tsx`. Phase 4 (brand) is done. The Y logo stays the app
+icon and favicon, by the user's decision.
 
 Every phase 1 placement is wired. The curious head ships as its own file,
 `chakra-head-curious.svg`, for the Explore no-results state, and it stays
@@ -116,9 +117,21 @@ These use a small head (24 to 32 px) next to the existing text, not a full scene
 
 ### Phase 4: brand
 
-- App icon and favicon: test `chakra-mark-tile.svg` against the current logo mark. The user decides.
-- Social share image (`public/og-default.png`): add the hero beside the wordmark.
-- README and store listing: use the hero and the expressions strip.
+1. **App icon and favicon: decided, no change.** The user keeps the Y logo as the app
+   icon, the favicon and the brand mark. Chakra does not replace the Y logo anywhere. The
+   mascot sits next to it, for example on the share image, but never in its place.
+2. **Social share image: done.** `public/og-default.png` is a new navy card. The source is
+   `scripts/og-default-card.html`. The Y mark and the wordmark sit at the top centre, above the
+   headline "India trips, planned together". Plan, Map, Budget and Share are the four stops
+   of one route. `chakra-night-hero.svg` stands at the end of the route, outside the centre
+   square, so a square crop keeps the Y mark and removes Chakra first. Chakra is a supporting
+   character and never reads as the logo.
+3. **README: done.** The hero sits at 96 px beside the Chakra highlight, not above the title. So it does not read as the logo. The expressions strip
+   is not in the README: `chakra-expressions.svg` still holds live `<text>` for its labels.
+   GitHub renders SVG through an `<img>`, so the labels would fall back to a system font.
+   Convert them to paths (section 5, item 1), then add the strip.
+4. **Store listing: nothing to change.** The repo holds no store listing metadata. `android/` is
+   the Capacitor shell with launcher and splash art only.
 
 ## 5. Before the first placement
 
