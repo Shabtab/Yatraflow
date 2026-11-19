@@ -13,22 +13,21 @@
 //
 // To add a card: append its class compound to CARD_CLASSES. It must have a `:hover` rule, and its
 // own base rule must not transition `box-shadow`. To add a cover overlay, append its class to
-// COVER_OVERLAYS. `.mt-card` (My trips) joins CARD_CLASSES once the My trips branch merges: on the
-// current `test` state its base rule still transitions `box-shadow` and `border-color`, and that file is not ours to edit.
+// COVER_OVERLAYS. The My trips card and postcard joined after #981 merged.
 import { describe, it, expect } from 'vitest'
 import { readCssSource } from '../scripts/css-source-graph.mjs'
 
 /** Large cards that lift or deepen on hover. The last compound of the selector must equal one of these. */
 export const CARD_CLASSES = [
   '.ex-card', '.ex-trend-card', '.mt-shelf-row', '.yf-surface.is-interactive',
-  '.itin-card', '.sf-day', '.board-stop',
+  '.itin-card', '.sf-day', '.board-stop', '.mt-card', '.mt-pc',
 ]
 /** Cards that may keep a `border-color` transition: it marks a selected or dragged state, not the hover. */
 export const BORDER_EXEMPT = ['.board-stop']
 /** Elements that play an entrance. The cards above count too. */
 export const ENTRANCE_ONLY = ['.trip-enter', '.ex-enter', '.yf-surface.is-entering']
 /** Labels and badges that sit over a cover image which zooms on hover. */
-export const COVER_OVERLAYS = ['.ex-style-tag', '.ex-price-tag', '.ex-trend-rank', '.ex-save', '.ex-save-dot']
+export const COVER_OVERLAYS = ['.ex-style-tag', '.ex-price-tag', '.ex-trend-rank', '.ex-save', '.ex-save-dot', '.mt-stamp', '.mt-status']
 
 interface Rule { selector: string; body: string }
 interface Parsed { rules: Rule[]; keyframes: Map<string, string> }
