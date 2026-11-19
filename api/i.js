@@ -73,20 +73,22 @@ function artworkCover(origin, publication) {
  *  has one carries `.../Chandratal_1.JPG?…thumbnail_unscaled`, 1.3 MB — because
  *  it was written before the picker started sizing, or by the destination-photo
  *  fallback. Two shapes reach this handler: that upload path, and the
- *  `Special:Redirect/file` URL the picker now stores. Both name one Commons file,
- *  and the name is percent-encoded as it was stored — a second round of encoding
- *  would miss the file. Non-Wikimedia URLs come back null, so nothing else is
- *  ever proxied. */
+ *  `Special:Redirect/file` URL the picker now stores. Both name one Commons file.
+ *  The name comes back DECODED (`Telkupi,_Purulia.jpg`): the URL holds it
+ *  percent-encoded, but the MediaWiki API refuses a title with a percent escape,
+ *  so `cardCover` encodes it once for the query string. Non-Wikimedia URLs come
+ *  back null, so nothing else is ever proxied. */
 function wikimediaFile(url) {
   let parsed
   try { parsed = new URL(url) } catch { return null }
   if (!WIKIMEDIA_HOST_RE.test(parsed.host)) return null
   const redirect = /^\/wiki\/Special:Redirect\/file\/([^/]+)$/.exec(parsed.pathname)
-  if (redirect) return redirect[1] || null
   const rest = parsed.pathname.replace(/^\/wikipedia\/[^/]+\//, '').replace(/^thumb\//, '')
   // A `thumb/` path ends with its own scaled size (`800px-Foo.png`); the file
   // name is the segment before it, so the tail is ignored.
-  return /^[0-9a-f]\/[0-9a-f]{2}\/([^/]+)/.exec(rest)?.[1] ?? null
+  const encoded = redirect?.[1] ?? /^[0-9a-f]\/[0-9a-f]{2}\/([^/]+)/.exec(rest)?.[1]
+  if (!encoded) return null
+  try { return decodeURIComponent(encoded) || null } catch { return null }
 }
 
 /** The card image for a stored cover.
@@ -220,7 +222,9 @@ function renderPublication(publication, id, buyer = null, ref = null, trip = nul
   // #691 — a shared link (it carries `ref` or `buyer`) opens the app as before.
   // A search visitor and a crawler have neither, and they read the page. With
   // no trip to print, the card keeps the old redirect for every visitor.
-  const redirects = !trip || shared
+  // A crawler sent here by the /pub rewrite is already at the target address, so
+  // a redirect would reload the same card for every crawler that runs script.
+  const redirects = (!trip || shared) && via !== 'pub'
   // The buyer's address is a variant of the same page with its own metadata, so
   // it advertises itself; the canonical link still points at the publication.
   // The /pub card has one address: the copied link, with no buyer suffix.

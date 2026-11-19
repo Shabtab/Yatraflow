@@ -3,16 +3,18 @@
 // Two crawlers disagree about Wikimedia, and both break the preview: Facebook's
 // crawler is answered 403 by upload.wikimedia.org, so a publication whose cover
 // is a raw Commons upload previews with no image at all, and every other crawler
-// gets the 587 KB original. `api/i.js` therefore points og:image at this function
+// gets the 587 KB original. `api/i.js` points og:image at this function
 // for every Wikimedia cover. It asks the MediaWiki API for the direct thumb at a
 // known width, fetches that thumb once, and answers the bytes with a long edge
 // cache so the fetch happens rarely.
 //
 // The `f` and `w` values arrive from a URL we minted, but a crawler may replay any
 // query it likes, so both are validated here and every failure answers the brand
-// card instead of an error. Only `upload.wikimedia.org` may be fetched: the API's
-// own answer is checked, because a hostile `thumburl` would otherwise turn this
-// function into a fetcher for any address.
+// card instead of an error. Only Wikimedia's two image hosts (`thumb.wikimedia.org`
+// and `upload.wikimedia.org`) may be fetched: the API's own answer is checked,
+// because a hostile `thumburl` would otherwise turn this function into a fetcher
+// for any address. A redirect is never followed, so an allowed host cannot send
+// the fetch to another one, and the body is capped while it streams.
 import { resolveOrigin } from './_origin.js'
 import { defaultCard } from './_shareCard.js'
 
@@ -27,29 +29,30 @@ const TIMEOUT_MS = 6000
 // hosts. The lookup is an exact host match against this set, never a suffix, so
 // `upload.wikimedia.org.evil.test` cannot pass.
 const THUMB_HOSTS = new Set(['thumb.wikimedia.org', 'upload.wikimedia.org'])
-// The width the share card asks for. Kept here so the two files cannot drift.
-export const CARD_COVER_WIDTH = 1200
 const OK_CACHE = 'public, max-age=86400, s-maxage=2592000, stale-while-revalidate=86400'
 const FALLBACK_CACHE = 'public, s-maxage=300'
 const QUERY = 'https://commons.wikimedia.org/w/api.php'
-// Control characters, the two path separators and any `..` segment. A file name
-// is a Commons title, never a path.
+// Control characters, the two path separators, the pipe (the API's title
+// separator) and any `..` segment. A file name is a Commons title, never a path.
 const CONTROL_RE = /[\u0000-\u001F\u007F]/
 const DIGITS_RE = /^[0-9]+$/
+// Only raster types leave this function. An SVG would run script when someone
+// opens the proxied address directly, and the thumb host never needs to send one.
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
 /**
  * The validated Wikimedia file name, or null.
  *
- * `%2C` and its kin survive: the MediaWiki API wants the file title encoded
- * exactly as it is stored, and a second round of encoding would miss the file.
- * The `..` test runs on the value the platform already decoded, so an encoded
- * traversal is refused too.
+ * The value is the plain Commons title, already decoded once by the platform
+ * (`Telkupi,_Purulia.jpg`, not `Telkupi%2C_Purulia.jpg`): the MediaWiki API
+ * rejects a title that still holds a percent escape. The `..` test runs on that
+ * decoded value, so an encoded traversal is refused too.
  */
 export function coverFile(value) {
   if (typeof value !== 'string') return null
   if (value.length < 1 || value.length > MAX_FILE_LENGTH) return null
   if (CONTROL_RE.test(value)) return null
-  if (value.includes('/') || value.includes('\\')) return null
+  if (value.includes('/') || value.includes('\\') || value.includes('|')) return null
   if (value.includes('..')) return null
   return value
 }
@@ -96,6 +99,7 @@ async function thumbUrl(file, width, origin) {
   try {
     const response = await fetch(url, {
       headers: { accept: 'application/json', 'user-agent': userAgent(origin) },
+      redirect: 'manual',
       signal: timer.signal,
     })
     if (!response.ok) return null
@@ -112,23 +116,43 @@ async function thumbUrl(file, width, origin) {
   }
 }
 
+/** The body, read chunk by chunk and abandoned the moment it passes the ceiling. */
+async function readCapped(response) {
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('thumb body')
+  const chunks = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > MAX_BYTES) {
+      await reader.cancel()
+      throw new Error('thumb size')
+    }
+    chunks.push(value)
+  }
+  if (total < 1) throw new Error('thumb empty')
+  return Buffer.concat(chunks, total)
+}
+
 /** The thumb's bytes and its own content type. Throws on anything unexpected. */
 async function thumbBytes(url, origin) {
   const timer = startTimeout()
   try {
     const response = await fetch(url, {
       headers: { accept: 'image/*', 'user-agent': userAgent(origin) },
+      // A 3xx is a failure here: the host was checked, its redirect target was not.
+      redirect: 'manual',
       signal: timer.signal,
     })
     if (!response.ok) throw new Error('thumb status')
     const type = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
-    if (!type.startsWith('image/')) throw new Error('thumb type')
-    // A sed card is small; anything over the ceiling is not the image we asked for.
+    if (!IMAGE_TYPES.has(type)) throw new Error('thumb type')
+    // A card image is small; anything over the ceiling is not the image we asked for.
     const declared = Number(response.headers.get('content-length'))
     if (Number.isFinite(declared) && declared > MAX_BYTES) throw new Error('thumb length')
-    const bytes = Buffer.from(await response.arrayBuffer())
-    if (bytes.byteLength < 1 || bytes.byteLength > MAX_BYTES) throw new Error('thumb size')
-    return { type, bytes }
+    return { type, bytes: await readCapped(response) }
   } finally {
     timer.stop()
   }
@@ -159,6 +183,7 @@ export default async function handler(req, res) {
     res.setHeader('content-type', type)
     res.setHeader('cache-control', OK_CACHE)
     res.setHeader('x-content-type-options', 'nosniff')
+    res.setHeader('content-security-policy', "default-src 'none'; sandbox")
     res.statusCode = 200
     return req.method === 'HEAD' ? res.end() : res.end(bytes)
   } catch {

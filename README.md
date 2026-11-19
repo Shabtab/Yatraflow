@@ -89,6 +89,10 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 </tr>
 </table>
 
+<p align="center"><img src="public/brand/mascot/chakra-expressions.svg" alt="Chakra the koel in twelve expressions" width="480" /></p>
+
+Chakra the koel is the mascot, shown here in twelve expressions. The Y logo stays the brand mark.
+
 ---
 
 _Recent release highlights, newest first. See [CHANGELOG.md](CHANGELOG.md) for the full release record._
@@ -133,10 +137,6 @@ The previous release. Its highlights stay here until the next release.
 - **The Board tab shows each stop's place, time and cost in full.** Each fact has one home, and the stop cards wrap instead of cutting their details.
 - **Explore and the published itinerary move in one calm sequence.** Explore has one search field and one shared publication card. The Look inside day cards and the road height charts match the reference design.
 - **Phone map fits keep the trip large and the pins apart.** Side insets use measured covers, and a user pan is never undone.
-
-![Chakra expressions](public/brand/mascot/chakra-expressions.svg)
-
-The strip shows twelve Chakra faces with names drawn as outlines, so every browser shows the same labels.
 
 ## 🚀 Getting started
 

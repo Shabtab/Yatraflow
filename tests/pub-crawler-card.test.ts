@@ -19,9 +19,13 @@ const config = JSON.parse(read('../vercel.json')) as { rewrites: Rewrite[] }
 
 // The crawler list is built from this string literal only. The handler never
 // builds a RegExp from a request value; neither does this test.
-const CRAWLER_NAMES = 'facebookexternalhit|facebookcatalog|meta-externalagent|whatsapp|twitterbot|linkedinbot|slackbot|slack-imgproxy|discordbot|telegrambot|skypeuripreview|applebot|googlebot|bingbot|pinterest|redditbot|embedly'
-const crawlerRe = new RegExp(CRAWLER_NAMES, 'i')
-const CRAWLER_HEADER = `(?i).*(${CRAWLER_NAMES}).*`
+// No inline `(?i)` flag: Vercel's matcher is not documented to accept one, so each
+// name carries the casing its crawler really sends. Search indexers (Googlebot,
+// Bingbot) are left out on purpose: they run script and read the app, and the
+// sitemap already lists the full-body `/i/<id>` card for them.
+const CRAWLER_NAMES = 'facebookexternalhit|facebookcatalog|meta-externalagent|meta-externalfetcher|WhatsApp|Twitterbot|LinkedInBot|Slackbot|Slack-ImgProxy|Discordbot|TelegramBot|SkypeUriPreview|Applebot|Pinterestbot|Pinterest/0\\.|redditbot|Embedly'
+const crawlerRe = new RegExp(CRAWLER_NAMES)
+const CRAWLER_HEADER = `.*(${CRAWLER_NAMES}).*`
 
 const PUB_ID = 'kerala-trip_1'
 const fetchMock = vi.fn<typeof fetch>()
@@ -81,10 +85,29 @@ describe('vercel.json — crawler card at /pub/<id>', () => {
   it('gates that rewrite on the crawler user-agent header', () => {
     const pub = config.rewrites.find((r) => r.source === '/pub/:slug')!
     expect(pub.has).toEqual([{ type: 'header', key: 'user-agent', value: CRAWLER_HEADER }])
-    for (const agent of ['facebookexternalhit/1.1', 'WhatsApp/2.23', 'Twitterbot/1.0']) {
+    for (const agent of [
+      'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+      'WhatsApp/2.23.20.0',
+      'Twitterbot/1.0',
+      'LinkedInBot/1.0 (compatible; Mozilla/5.0; Apache-HttpClient +http://www.linkedin.com)',
+      'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)',
+      'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)',
+      'TelegramBot (like TwitterBot)',
+      'Mozilla/5.0 (compatible; Applebot/0.1; +http://www.apple.com/go/applebot)',
+      'Pinterest/0.2 (+http://www.pinterest.com/bot.html)',
+    ]) {
       expect(crawlerRe.test(agent), agent).toBe(true)
     }
-    expect(crawlerRe.test('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')).toBe(false)
+    // A person is never sent the card: a browser, an in-app Pinterest browser, and
+    // the two search indexers, which read the app and the sitemap's /i/ cards.
+    for (const agent of [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 [Pinterest/iOS]',
+      'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+      'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)',
+    ]) {
+      expect(crawlerRe.test(agent), agent).toBe(false)
+    }
   })
 })
 
@@ -95,6 +118,14 @@ describe('api/i.js — /pub card address', () => {
     expect(res.body).toContain(`<meta property="og:url" content="https://www.yatraflow.in/pub/${PUB_ID}" />`)
     expect(res.body).toContain(`<link rel="canonical" href="https://www.yatraflow.in/pub/${PUB_ID}" />`)
     expect(res.headers['vary']).toBe('User-Agent')
+  })
+
+  it('never redirects a crawler to the address it is already on', async () => {
+    // A crawler that runs script would reload this card forever. A `ref` makes the
+    // link a shared link, which is the case that used to emit the redirect.
+    const shared = await runCard({ id: PUB_ID, via: 'pub', ref: 'wa' })
+    expect(shared.body).not.toContain('location.replace')
+    expect(shared.body).toContain(`<link rel="canonical" href="https://www.yatraflow.in/pub/${PUB_ID}" />`)
   })
 
   it('keeps the /i/<id> card and its headers for every other caller', async () => {

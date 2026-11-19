@@ -67,7 +67,7 @@
         {
           "type": "header",
           "key": "user-agent",
-          "value": "(?i).*(facebookexternalhit|facebookcatalog|meta-externalagent|whatsapp|twitterbot|linkedinbot|slackbot|slack-imgproxy|discordbot|telegrambot|skypeuripreview|applebot|googlebot|bingbot|pinterest|redditbot|embedly).*"
+          "value": ".*(facebookexternalhit|facebookcatalog|meta-externalagent|meta-externalfetcher|WhatsApp|Twitterbot|LinkedInBot|Slackbot|Slack-ImgProxy|Discordbot|TelegramBot|SkypeUriPreview|Applebot|Pinterestbot|Pinterest/0\\.|redditbot|Embedly).*"
         }
       ],
       "destination": "/api/i?id=:slug&via=pub"

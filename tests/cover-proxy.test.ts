@@ -43,14 +43,15 @@ async function runCover(query: Record<string, unknown> = {}, method = 'GET') {
 }
 
 describe('the file name the cover proxy accepts', () => {
-  it('keeps a Commons title exactly as the card encoded it', () => {
+  it('keeps a plain Commons title', () => {
     expect(coverFile('Chandratal_1.JPG')).toBe('Chandratal_1.JPG')
-    // Percent-encoded names are not decoded here: the API wants the stored form.
-    expect(coverFile('Telkupi%2C_Purulia.jpg')).toBe('Telkupi%2C_Purulia.jpg')
+    // The platform decodes `%2C` once; MediaWiki refuses a title with a percent
+    // escape (measured: "contains invalid characters"), so the plain title is the input.
+    expect(coverFile('Telkupi,_Purulia.jpg')).toBe('Telkupi,_Purulia.jpg')
   })
 
   it('refuses a path, a traversal, a control character and an out-of-range length', () => {
-    for (const value of ['', 'a/b.jpg', 'a\\b.jpg', '..', 'a..b.jpg', '..%2Fetc', 'bad\u0000name.jpg', 'x'.repeat(256)]) {
+    for (const value of ['', 'a/b.jpg', 'a\\b.jpg', '..', 'a..b.jpg', '..%2Fetc', 'a.jpg|File:b.jpg', 'bad\u0000name.jpg', 'x'.repeat(256)]) {
       expect(coverFile(value), JSON.stringify(value)).toBeNull()
     }
     for (const value of [null, undefined, 7, ['a.jpg'], { f: 'a.jpg' }]) {
@@ -119,6 +120,46 @@ describe('the cover handler answers the brand card on every failure', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('never follows a redirect from the thumb host', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a.png' }] } } } })))
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: 'http://169.254.169.254/' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await runCover({ f: 'Chandratal_1.JPG' })
+    expect(res.statusCode).toBe(302)
+    expect(res.headers['location']).toBe('https://www.yatraflow.in/og-default.png')
+    // Both fetches ask for a manual redirect, so a 3xx is an answer, not a hop.
+    for (const call of fetchMock.mock.calls) expect((call[1] as RequestInit).redirect).toBe('manual')
+  })
+
+  it('refuses an SVG, which would run script from our own domain', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a.svg' }] } } } })))
+      .mockResolvedValueOnce(new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', { status: 200, headers: { 'content-type': 'image/svg+xml' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await runCover({ f: 'Chandratal_1.JPG' })
+    expect(res.statusCode).toBe(302)
+  })
+
+  it('stops reading a body that grows past the ceiling, with no length header', async () => {
+    let pulled = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1
+        controller.enqueue(new Uint8Array(512 * 1024))
+        if (pulled > 50) controller.close()
+      },
+    })
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a.jpg' }] } } } })))
+      .mockResolvedValueOnce(new Response(body, { status: 200, headers: { 'content-type': 'image/jpeg' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await runCover({ f: 'Chandratal_1.JPG' })
+    expect(res.statusCode).toBe(302)
+    // 2 MiB is four 512 KiB chunks; the stream is cancelled right after the fifth.
+    expect(pulled).toBeLessThan(10)
+  })
+
   it('redirects a non-image answer from the thumb', async () => {
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a.png' }] } } } })))
@@ -140,6 +181,7 @@ describe('the cover handler answers the bytes', () => {
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toBe('image/jpeg')
     expect(res.headers['cache-control']).toBe('public, max-age=86400, s-maxage=2592000, stale-while-revalidate=86400')
+    expect(res.headers['content-security-policy']).toBe("default-src 'none'; sandbox")
     expect(new Uint8Array(res.body as Uint8Array).byteLength).toBe(bytes.byteLength)
     // The API call asked for our width and our own file title.
     const asked = new URL(String(fetchMock.mock.calls[0][0]))
@@ -180,6 +222,12 @@ describe('the publication card points a Wikimedia cover at our own domain', () =
       expect(body).not.toContain('og:image:width')
       expect(body).not.toContain('og:image:height')
     }
+  })
+
+  it('sends a decoded title, encoded once, for a name with an escape', async () => {
+    const body = await card('https://commons.wikimedia.org/wiki/Special:Redirect/file/Telkupi%2C_Purulia.jpg?width=1200')
+    expect(body).toContain('og:image" content="https://www.yatraflow.in/api/cover?f=Telkupi%2C_Purulia.jpg&amp;w=1200"')
+    expect(body).not.toContain('%252C')
   })
 
   it('leaves a Supabase cover on its own address', async () => {
