@@ -74,9 +74,13 @@ export function parseCss(input: string): Parsed {
   return out
 }
 
+/** The value of the first `prop:` declaration in a rule body. Plain string parsing, no RegExp from a variable. */
 function declValue(body: string, prop: string): string | null {
-  const m = body.match(new RegExp(`(?<![\\w-])${prop}\\s*:\\s*([^;]+)`))
-  return m ? m[1].trim() : null
+  for (const decl of body.split(';')) {
+    const colon = decl.indexOf(':')
+    if (colon !== -1 && decl.slice(0, colon).trim() === prop) return decl.slice(colon + 1).trim()
+  }
+  return null
 }
 
 /** Splits a selector list on top-level commas. */
@@ -115,10 +119,22 @@ function rulesFor(rules: Rule[], cls: string): Rule[] {
 
 const STALE = 'no rule uses this selector, so the list entry is stale'
 
+/** True when `part` has `cls` followed by optional attribute selectors and then `:hover`. */
+function hoversOn(part: string, cls: string): boolean {
+  for (let at = part.indexOf(cls); at !== -1; at = part.indexOf(cls, at + 1)) {
+    let i = at + cls.length
+    while (part[i] === '[') {
+      const close = part.indexOf(']', i)
+      if (close === -1) break
+      i = close + 1
+    }
+    if (part.startsWith(':hover', i)) return true
+  }
+  return false
+}
+
 function hasHoverRule(rules: Rule[], cls: string): boolean {
-  const esc = cls.replace(/\./g, '\\.')
-  const re = new RegExp(`${esc}(?:\\[[^\\]]*\\])*:hover`)
-  return rules.some(r => selectorParts(r.selector).some(p => re.test(p)))
+  return rules.some(r => selectorParts(r.selector).some(p => hoversOn(p, cls)))
 }
 
 /** Rule A: a card with a hover rule must not transition `box-shadow` or `border-color` in its own base rule. */
