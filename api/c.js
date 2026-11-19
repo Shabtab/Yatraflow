@@ -61,7 +61,8 @@ ${CREATOR_STYLE_TAG}
   const params = new URLSearchParams()
   if (ref) params.set('ref', ref)
   if (post) { params.set('src', 'post'); params.set('p', post) }
-  const target = `/creator/${id}${params.size ? `?${params}` : ''}`
+  const query = params.toString()
+  const target = `/creator/${id}${query ? `?${query}` : ''}`
   return `<!doctype html>
 <html lang="en-IN">
 <head>
