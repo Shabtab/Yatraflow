@@ -3,6 +3,7 @@
 import { resolveOrigin } from './_origin.js'
 import { CREATOR_PAGE_CLASS, CREATOR_PAGE_STYLE, renderCreatorBody, creatorJsonLd } from './_creatorBody.js'
 import { escapeHtml } from './_escape.js'
+import { defaultCard, ogImageTags, twitterImageTags } from './_shareCard.js'
 
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -67,13 +68,11 @@ ${CREATOR_STYLE_TAG}
 <meta property="og:title" content="${escapeHtml(title)}" />
 <meta property="og:description" content="${escapeHtml(description)}" />
 <meta property="og:url" content="${escapeHtml(canonical)}" />
-<meta property="og:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
-<meta property="og:image:width" content="1200" />
-<meta property="og:image:height" content="630" />
+${ogImageTags(defaultCard(origin))}
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${escapeHtml(title)}" />
 <meta name="twitter:description" content="${escapeHtml(description)}" />
-<meta name="twitter:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
+${twitterImageTags(defaultCard(origin))}
 <link rel="canonical" href="${escapeHtml(canonical)}" />
 ${CREATOR_STYLE_TAG}
 <script type="application/ld+json">${creatorJsonLd(profile, canonical)}</script>

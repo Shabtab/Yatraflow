@@ -4,6 +4,7 @@
 // bundler, and this compiles with the function.
 import { resolveOrigin } from './_origin.js'
 import { escapeHtml } from './_escape.js'
+import { defaultCard, ogImageTags, twitterImageTags } from './_shareCard.js'
 import { renderBodyHTML, touristTripJsonLd } from './_publicBody.js'
 import pilotCampaigns from '../src/data/growthCampaigns.json' with { type: 'json' }
 import artManifest from '../src/assets/art/manifest.json' with { type: 'json' }
@@ -141,13 +142,11 @@ function renderNotFound() {
 <meta property="og:site_name" content="YatraFlow" />
 <meta property="og:title" content="Itinerary not found — YatraFlow" />
 <meta property="og:description" content="This itinerary could not be found. Explore published itineraries on YatraFlow." />
-<meta property="og:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
-<meta property="og:image:width" content="1200" />
-<meta property="og:image:height" content="630" />
+${ogImageTags(defaultCard(origin))}
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Itinerary not found — YatraFlow" />
 <meta name="twitter:description" content="This itinerary could not be found. Explore published itineraries on YatraFlow." />
-<meta name="twitter:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
+${twitterImageTags(defaultCard(origin))}
 <script>location.replace(${JSON.stringify('/explore')})</script>
 </head>
 <body><p>Opening <a href="/explore">Explore</a>…</p></body>
@@ -180,16 +179,12 @@ function renderPublication(publication, id, buyer = null, ref = null, trip = nul
   // A publication with no stored cover shows generated artwork, never a photo
   // the app picked. The scene files live at stable public paths, so a deploy
   // cannot break a card that is already indexed. The brand card is the last
-  // resort, and only then are its dimensions known and worth declaring.
+  // resort. A stored cover's size is unknown here, so its tags declare none.
   const generatedCover = cover ? '' : artworkCover(origin, publication)
-  const image = cover || generatedCover || `${origin}/og-default.png`
-  const imageTags = [
-    `<meta property="og:image" content="${escapeHtml(image)}" />`,
-    ...(cover || generatedCover ? [] : [
-      '<meta property="og:image:width" content="1200" />',
-      '<meta property="og:image:height" content="630" />',
-    ]),
-  ].join('\n')
+  const coverAlt = publication?.title ? `Cover of ${publication.title}` : null
+  const image = cover || generatedCover
+    ? { url: cover || generatedCover, alt: coverAlt }
+    : defaultCard(origin)
   // #230 — the shared link's `ref` rides the QUERY and never the canonical
   // (the share card stays clean). The redirect forwards it so the app can read
   // `location.search` and attribute the visit. #426 slice 3: the target is the
@@ -221,11 +216,11 @@ function renderPublication(publication, id, buyer = null, ref = null, trip = nul
 <meta property="og:title" content="${escapeHtml(title)}" />
 <meta property="og:description" content="${escapeHtml(description)}" />
 <meta property="og:url" content="${escapeHtml(ogUrl)}" />
-${imageTags}
+${ogImageTags(image)}
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${escapeHtml(title)}" />
 <meta name="twitter:description" content="${escapeHtml(description)}" />
-<meta name="twitter:image" content="${escapeHtml(image)}" />
+${twitterImageTags(image)}
 <link rel="canonical" href="${escapeHtml(canonical)}" />
 ${trip ? `<script type="application/ld+json">${touristTripJsonLd(publication, trip, canonical)}</script>` : ''}
 ${redirects ? `<script>location.replace(${JSON.stringify(target)})</script>` : ''}

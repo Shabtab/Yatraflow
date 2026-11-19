@@ -918,3 +918,67 @@ describe('sending a publication on WhatsApp', () => {
     expect(source).toMatch(/currentPublicShareUrl\(pub\.id\)/)
   })
 })
+
+describe('the default share card agrees everywhere it is written', () => {
+  const tag = (page: string, attr: 'property' | 'name', key: string) =>
+    new RegExp(`<meta ${attr}="${key}" content="([^"]*)"\\s*/?>`).exec(page)?.[1]
+
+  it('declares the size and type the rendered PNG really has', async () => {
+    const card = await import('../api/_shareCard.js')
+    const png = readFileSync(new URL(`../public${card.DEFAULT_CARD_PATH}`, import.meta.url))
+    expect(png.subarray(1, 4).toString('latin1')).toBe('PNG')
+    expect(card.DEFAULT_CARD_TYPE).toBe('image/png')
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([card.DEFAULT_CARD_WIDTH, card.DEFAULT_CARD_HEIGHT])
+  })
+
+  it.each(['../index.html', '../public/ladakh-trip-cost-calculator/index.html'])(
+    '%s writes the same card, size, type and alt text as the handlers',
+    async path => {
+      const card = await import('../api/_shareCard.js')
+      const page = read(path)
+      const url = `https://www.yatraflow.in${card.DEFAULT_CARD_PATH}`
+      expect(tag(page, 'property', 'og:image')).toBe(url)
+      expect(tag(page, 'property', 'og:image:width')).toBe(String(card.DEFAULT_CARD_WIDTH))
+      expect(tag(page, 'property', 'og:image:height')).toBe(String(card.DEFAULT_CARD_HEIGHT))
+      expect(tag(page, 'property', 'og:image:type')).toBe(card.DEFAULT_CARD_TYPE)
+      expect(tag(page, 'property', 'og:image:alt')).toBe(card.DEFAULT_CARD_ALT)
+      expect(tag(page, 'name', 'twitter:card')).toBe('summary_large_image')
+      expect(tag(page, 'name', 'twitter:image')).toBe(url)
+      expect(tag(page, 'name', 'twitter:image:alt')).toBe(card.DEFAULT_CARD_ALT)
+    },
+  )
+
+  it('gives the not-found card the default card with its size, type and alt text', async () => {
+    const card = await import('../api/_shareCard.js')
+    respond([])
+    const res = await runHandler()
+    expect(tag(res.body, 'property', 'og:image')).toBe(`https://www.yatraflow.in${card.DEFAULT_CARD_PATH}`)
+    expect(tag(res.body, 'property', 'og:image:width')).toBe('1200')
+    expect(tag(res.body, 'property', 'og:image:type')).toBe('image/png')
+    expect(tag(res.body, 'property', 'og:image:alt')).toBe(card.DEFAULT_CARD_ALT)
+    expect(tag(res.body, 'name', 'twitter:image:alt')).toBe(card.DEFAULT_CARD_ALT)
+  })
+
+  it('names the itinerary in the alt text of a cover, escaped', async () => {
+    respond([{ ...publication, cover_image_url: 'https://images.example.test/cover.jpg' }])
+    const res = await runHandler()
+    expect(tag(res.body, 'property', 'og:image:alt')).toBe('Cover of Tom &amp; Jerry&#39;s &quot;Monsoon&quot; Escape')
+    expect(tag(res.body, 'name', 'twitter:image:alt')).toBe(tag(res.body, 'property', 'og:image:alt'))
+  })
+
+  it('gives the creator card the default card with its size, type and alt text', async () => {
+    const card = await import('../api/_shareCard.js')
+    fetchMock.mockImplementation(async input => String(input).includes('get_public_profile_cards')
+      ? new Response(JSON.stringify([{ name: 'Asha', creator_bio: 'Hill roads', creator_available: true }]))
+      : new Response(JSON.stringify([])))
+    const res = makeRes()
+    const { default: handler } = await import('../api/c.js')
+    await handler({ method: 'GET', query: { id: '1250e5c4-7d87-4813-8843-8ee16c45d757' } }, res)
+    expect(res.statusCode).toBe(200)
+    expect(tag(res.body, 'property', 'og:image')).toBe(`https://www.yatraflow.in${card.DEFAULT_CARD_PATH}`)
+    expect(tag(res.body, 'property', 'og:image:height')).toBe('630')
+    expect(tag(res.body, 'property', 'og:image:type')).toBe('image/png')
+    expect(tag(res.body, 'property', 'og:image:alt')).toBe(card.DEFAULT_CARD_ALT)
+    expect(tag(res.body, 'name', 'twitter:image')).toBe(tag(res.body, 'property', 'og:image'))
+  })
+})
