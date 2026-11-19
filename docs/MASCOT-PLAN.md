@@ -1,15 +1,22 @@
 # Chakra mascot: where to use it
 
-Status: phase 1 shipped. The state surfaces in §4 use the mascot through
-`src/components/mascot/Mascot.tsx`. Phases 2 to 4 are still plans.
+Status: phases 1 and 2 shipped, phase 3 shipped. The state surfaces, the
+moments and the inline warnings in §4 use the mascot through
+`src/components/mascot/Mascot.tsx`. Phase 4 (brand) is still a plan.
 
 Every phase 1 placement is wired. The curious head ships as its own file,
 `chakra-head-curious.svg`, for the Explore no-results state, and it stays
 legible at 24 to 32 px for the inline warnings in §4.
 
-Phase 2 is partly wired: the trip-created column and the unlock reveal open with
-`chakra-celebrate`, and the AI drawer shows `chakra-thinking` while it waits.
-The Plan Bench confetti still runs without the proud head.
+Phase 2 is fully wired: the trip-created column and the unlock reveal open with
+`chakra-celebrate`, the AI drawer shows `chakra-thinking` while it waits, and
+the Plan Bench confetti now carries the proud head.
+
+Phase 3 is wired. Five small heads ship beside the curious one —
+`chakra-head-proud.svg`, `chakra-head-sleepy.svg`, `chakra-head-worried.svg`,
+`chakra-head-lost.svg` and `chakra-head-chai.svg`. `warningHead()` in
+`src/lib/mascot.ts` is the one map from an engine warning code to its head; a
+code with no honest head returns null and the warning stays plain text.
 
 Chakra is an Asian koel. Its tail turns into a route line that ends in a marigold map dot.
 The art is in `public/brand/mascot/`. The concept sheet is [`MASCOT-SHEET.html`](MASCOT-SHEET.html).
@@ -27,6 +34,7 @@ The art is in `public/brand/mascot/`. The concept sheet is [`MASCOT-SHEET.html`]
 | `chakra-flock.svg` | Three koels on one route |
 | `chakra-expressions.svg` | Twelve labelled heads |
 | `chakra-mark-face.svg`, `chakra-mark-tile.svg` | Small marks, legible at 24 px |
+| `chakra-head-curious.svg`, `chakra-head-proud.svg`, `chakra-head-sleepy.svg`, `chakra-head-worried.svg`, `chakra-head-lost.svg`, `chakra-head-chai.svg` | Single heads, legible at 22 to 32 px beside inline warnings |
 | `animated/chakra-*.svg` | Eleven looping animations (see section 3) |
 
 The twelve expressions are Happy, Curious, Surprised, Sleepy, Love, Wink, Proud, Thinking, Worried, Sad, Determined and Lost.
@@ -92,7 +100,7 @@ Decide per state whether Chakra replaces a vignette or sits beside it. Do not ru
 | --- | --- | --- |
 | Trip created | `src/pages/TripCreated.tsx:542` | `chakra-celebrate` in the celebration column |
 | Plan unlocked | `src/components/UnlockReveal.tsx` | `chakra-celebrate`, once, at the top of the sheet |
-| Plan bench confetti | `src/components/PlanBench.tsx:548` | Proud head beside the existing confetti |
+| Plan bench confetti | `src/components/PlanBench.tsx` | Proud head beside the existing confetti |
 | AI drawer | `src/components/AiDrawer.tsx:35` | `chakra-thinking` while `thinking` is true |
 
 ### Phase 3: inline warnings
@@ -101,10 +109,10 @@ These use a small head (24 to 32 px) next to the existing text, not a full scene
 
 | Surface | File | Chakra |
 | --- | --- | --- |
-| Night halt chips | `src/pages/trip/timeline/TravelPanel.tsx:508` | Sleepy head |
-| Break warnings | Timeline warnings from `src/lib/engine.ts` | Kulhad head (new 24 px asset) |
-| Budget over its cap | `src/pages/trip/BudgetTab.tsx:581` | Worried head |
-| Offline banner | `src/components/OfflineBanner.tsx:210` | Lost head |
+| Night halt chips | `src/pages/trip/timeline/TravelPanel.tsx` | Sleepy head on the night-halt line |
+| Break warnings | Timeline warnings from `src/lib/engine.ts` (`meals`) | Kulhad head, via `warningHead()` |
+| Budget over its cap | `src/pages/trip/BudgetTab.tsx` | Worried head on the over-target estimate |
+| Offline banner | `src/components/OfflineBanner.tsx` | Lost head while offline |
 
 ### Phase 4: brand
 

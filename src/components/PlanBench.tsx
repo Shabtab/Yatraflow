@@ -32,6 +32,7 @@ import { shareBillImage } from '../lib/billCapture'
 import { CREATE_PATH } from '../lib/routes'
 import { toast, useMedia, usePageVisible, Odometer } from './ui'
 import { haptic, HAPTIC } from '../lib/haptics'
+import { Mascot } from './mascot/Mascot'
 
 // useMedia + Odometer live in ui.tsx now: the odometer is the app's money
 // figure, not the bench's private trick, so the tool surfaces can roll their
@@ -546,6 +547,7 @@ export function PlanBench() {
             </button>
             {(copied || imgState === 'done') && !reduced && !capturing && (
               <span className="bench-confetti" aria-hidden="true">
+                <span className="bench-confetti-head"><Mascot pose="head-proud" size={28} inline /></span>
                 {Array.from({ length: 10 }, (_, i) => (
                   <i key={i} className="cf-bit" style={{
                     '--dx': `${Math.round(Math.random() * 140 - 70)}px`,

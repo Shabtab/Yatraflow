@@ -423,6 +423,13 @@
   border-radius: var(--radius-sm); padding: 3px 9px;
   font-size: 12px; font-weight: 600;
 }
+/* The night halt line: the head is decoration, so it only sets the row's
+   rhythm. The words carry the meaning (mascot plan §2.3). */
+.travel-panel-night {
+  display: flex; align-items: center; gap: 7px;
+  margin: 10px 0 0; font-size: 12.5px; color: var(--text-2);
+}
+.travel-panel-night b { color: var(--text); font-weight: 700; }
 .travel-panel-add {
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
   margin-top: 12px; padding-top: 12px;
@@ -1847,9 +1854,11 @@ a.creator-line:focus-visible { outline: 2px solid var(--teal); outline-offset: 2
   bottom: calc(18px + var(--bottom-ui-offset));
   z-index: var(--z-ai-fab);
   width: 56px; height: 56px; border-radius: 50%; border: none;
-  background: linear-gradient(135deg, var(--yf-teal-600), var(--yf-navy));
-  color: #fff; font-size: 24px;
-  box-shadow: var(--shadow-glow-teal); display: flex; align-items: center; justify-content: center;
+  /* Chakra is the companion: the face is dark, so it sits on a light disc
+     with a teal ring rather than on the old navy gradient. The disc stays light
+     in the dark theme too, because the face has no night variant. */
+  background: rgb(255 255 255 / .96); box-shadow: inset 0 0 0 2px var(--yf-teal-600), var(--shadow-glow-teal);
+  display: flex; align-items: center; justify-content: center;
   transition: transform var(--motion-fast) var(--ease-out);
 }
 @media (hover: hover) {
@@ -1877,7 +1886,8 @@ a.creator-line:focus-visible { outline: 2px solid var(--teal); outline-offset: 2
 .ai-head-icon {
   width: 36px; height: 36px; border-radius: 12px; flex: 0 0 auto;
   display: inline-flex; align-items: center; justify-content: center;
-  background: rgba(255, 255, 255, .16);
+  /* A light tile, so Chakra's dark face reads on the navy band. */
+  background: rgba(255, 255, 255, .92);
 }
 .ai-head b { display: block; font-family: var(--font-display); font-size: 14.5px; letter-spacing: -0.01em; }
 .ai-head-sub { font-size: 12px; color: rgba(255, 255, 255, .78); }

@@ -1,7 +1,7 @@
 // ============ AI travel companion drawer ============
 import React, { useEffect, useRef, useState } from 'react'
 import { InlineIcon } from './icons'
-import { ClipboardList, Sparkles, X } from 'lucide-react'
+import { ClipboardList, X } from 'lucide-react'
 import type { Trip } from '../data/types'
 import type { LegEstimate } from '../lib/engine'
 import { quickPrompts } from '../lib/ai'
@@ -29,7 +29,7 @@ export function AiDrawer({ trip, open, onOpen, onClose, legCorrections }: {
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([{
     id: 1, role: 'bot',
-    text: `Hi! I’m your YatraFlow companion. I can see “${trip.name}”: ${trip.days.length} days, ${trip.destinations.join(' → ')}. Ask me to lighten a day, check timings against a fixed commitment, find savings or plan for rain.`,
+    text: `Hi! I’m Chakra, your YatraFlow companion. I can see “${trip.name}”: ${trip.days.length} days, ${trip.destinations.join(' → ')}. Ask me to lighten a day, check timings against a fixed commitment, find savings or plan for rain.`,
   }])
   const msgIdRef = useRef(1)
   const [input, setInput] = useState('')
@@ -120,13 +120,13 @@ export function AiDrawer({ trip, open, onOpen, onClose, legCorrections }: {
   return (
     <>
       {!open && !thinking && (
-        <button className="ai-fab" onClick={onOpen} aria-label="Open AI travel companion"><Sparkles size={20} aria-hidden /></button>
+        <button className="ai-fab" onClick={onOpen} aria-label="Open Chakra, the AI travel companion"><Mascot pose="mark-face" size={38} /></button>
       )}
-      <div ref={drawerRef} className={`ai-drawer ${open ? 'open' : ''}`} role="dialog" aria-modal="true" aria-label="AI travel companion">
+      <div ref={drawerRef} className={`ai-drawer ${open ? 'open' : ''}`} role="dialog" aria-modal="true" aria-label="Chakra, the AI travel companion">
         <div className="ai-head">
-          <span className="ai-head-icon"><Sparkles size={19} aria-hidden /></span>
+          <span className="ai-head-icon"><Mascot pose="mark-face" size={28} /></span>
           <div>
-            <b>YatraFlow Companion</b>
+            <b>Chakra · Trip companion</b>
             <div className="ai-head-sub">Grounded in this trip’s data · estimates only</div>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close assistant"><X size={16} aria-hidden /></button>

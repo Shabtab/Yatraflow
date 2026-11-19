@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 152 152" role="img" aria-hidden="true">
+<defs>
+<filter id="ch-sleepy-shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="1.8" stdDeviation="0.7" flood-color="#0B3F44" flood-opacity="0.22"/></filter>
+<clipPath id="ch-sleepy-body"><path d="M 2,-54 C 32,-54 54,-30 54,0 C 54,32 32,56 0,56 C -32,56 -54,34 -54,4 C -54,-30 -30,-54 2,-54 Z"/></clipPath>
+</defs>
+<g transform="translate(67.93 87.16) rotate(10) scale(0.95)">
+<g filter="url(#ch-sleepy-shadow)"><g transform="rotate(-30 0 -50)">
+<path d="M -10,-50 C -20,-66 -12,-80 0,-76 C -6,-70 -6,-62 0,-52 Z" fill="#0B3F44"/>
+<path d="M -2,-52 C 0,-72 16,-80 22,-70 C 12,-69 8,-62 6,-51 Z" fill="#2EB1A6"/></g></g>
+<g filter="url(#ch-sleepy-shadow)"><path d="M 2,-54 C 32,-54 54,-30 54,0 C 54,32 32,56 0,56 C -32,56 -54,34 -54,4 C -54,-30 -30,-54 2,-54 Z" fill="#0B3F44"/></g>
+<path d="M 2,-54 C 32,-54 54,-30 54,0 C 54,32 32,56 0,56 C -32,56 -54,34 -54,4 C -54,-30 -30,-54 2,-54 Z" fill="none" stroke="#2EB1A6" stroke-width="2" opacity="0.45"/>
+<g clip-path="url(#ch-sleepy-body)">
+<ellipse cx="12" cy="30" rx="36" ry="30" fill="#0B5F67"/>
+<ellipse cx="-14" cy="-34" rx="22" ry="12" fill="#fff" opacity="0.07" transform="rotate(-25 -14 -34)"/></g>
+<g filter="url(#ch-sleepy-shadow)"><path d="M 49,-13 C 60,-14 68,-10 71,-5 C 65,-1 57,0 50,-1 Z" fill="#DCE5C8"/><path d="M 52,-3 Q 61,-2 69,-5" fill="none" stroke="#9AA886" stroke-width="1.3" stroke-linecap="round"/></g>
+<ellipse cx="36" cy="8" rx="8" ry="4.6" fill="#FF8FA6" opacity="0.6"/>
+<g transform="translate(20,-14)"><path d="M -10,-1 Q 0,9 10,-1" fill="none" stroke="#FEFDFB" stroke-width="3.4" stroke-linecap="round"/></g>
+<g fill="none" stroke="#E8EFF5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M 38,-60 H 50 L 38,-48 H 50" stroke-width="2.6" opacity=".9"/>
+<path d="M 56,-76 H 64 L 56,-68 H 64" stroke-width="1.9" opacity=".6"/></g>
+</g>
+</svg>
