@@ -96,21 +96,31 @@ describe('the day strip', () => {
 })
 
 describe('the trip card and its cover', () => {
-  it('lifts 2px on hover and on keyboard focus, on the paper ease', () => {
+  it('lifts 2px on hover and on keyboard focus, on the slow clock and ease-out', () => {
     const card = bodyOf(MAIN, '.mt-card')
-    expect(card).toMatch(/transition:\s*transform var\(--motion-med\) var\(--ease-paper\), box-shadow var\(--motion-med\) var\(--ease-paper\)/)
+    expect(card).toMatch(/transition:\s*transform var\(--motion-slow\) var\(--ease-out\), border-color var\(--motion-slow\) var\(--ease-out\)/)
+    // The shadow never animates as box-shadow: it repaints every frame.
+    expect(card).not.toMatch(/transition:[^;]*box-shadow/)
     const lift = bodyOf(MAIN, '.mt-card:hover, .mt-card:has(.mt-card-link:focus-visible)')
     expect(lift).toMatch(/transform:\s*translateY\(-2px\)/)
-    expect(lift).toMatch(/box-shadow:\s*var\(--shadow-card-hover\)/)
   })
 
-  it('grows the cover art and the photo to 1.04 inside the clip', () => {
+  it('fades a ready-made hover shadow on opacity, and keeps the wide hero still', () => {
+    const layer = bodyOf(MAIN, '.mt-card::before')
+    expect(layer).toMatch(/box-shadow:\s*var\(--shadow-card-hover\)/)
+    expect(layer).toMatch(/opacity:\s*0/)
+    expect(layer).toMatch(/transition:\s*opacity var\(--motion-slow\) var\(--ease-out\)/)
+    expect(bodyOf(MAIN, '.mt-card:hover::before, .mt-card:has(.mt-card-link:focus-visible)::before')).toMatch(/opacity:\s*1/)
+    expect(bodyOf(MAIN, '.mt-feat:hover, .mt-feat:has(.mt-card-link:focus-visible)')).toMatch(/transform:\s*none/)
+  })
+
+  it('grows the cover art and the photo to 1.035 inside the clip, on the slower clock', () => {
     const grow = bodyOf(
       MAIN,
       '.mt-card:hover .mt-motif, .mt-card:hover .mt-cover-img, .mt-card:has(.mt-card-link:focus-visible) .mt-motif, .mt-card:has(.mt-card-link:focus-visible) .mt-cover-img',
     )
-    expect(grow).toMatch(/transform:\s*scale\(1\.04\)/)
-    expect(bodyOf(MAIN, '.mt-motif, .mt-cover .mt-cover-img')).toMatch(/transition:\s*transform var\(--motion-med\) var\(--ease-paper\)/)
+    expect(grow).toMatch(/transform:\s*scale\(1\.035\)/)
+    expect(bodyOf(MAIN, '.mt-motif, .mt-cover .mt-cover-img')).toMatch(/transition:\s*transform var\(--motion-slower\) var\(--ease-out\)/)
     expect(bodyOf(MAIN, '.mt-cover')).toMatch(/overflow:\s*hidden/)
   })
 
@@ -148,7 +158,7 @@ describe('the Memories postcards', () => {
   it('rise into their own tilt and lift on hover', () => {
     const body = bodyOf(MAIN, '.mt-pc')
     expect(body).toMatch(/animation:\s*mt-pc-in var\(--mt-dur\) var\(--ease-paper\) backwards/)
-    expect(body).toMatch(/transition:\s*transform var\(--motion-med\) var\(--ease-paper\), box-shadow var\(--motion-med\) var\(--ease-paper\)/)
+    expect(body).toMatch(/transition:\s*transform var\(--motion-slow\) var\(--ease-out\), box-shadow var\(--motion-slow\) var\(--ease-out\)/)
     // No end frame: the card lands on its resting tilt and does not snap.
     // The tilt stays on transform; the entrance moves translate and scale, so the two never blend as matrices.
     expect(MAIN).toMatch(/@keyframes mt-pc-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*translate:\s*0 14px;\s*scale:\s*\.98;\s*\}\s*\}/)

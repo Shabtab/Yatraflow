@@ -40,22 +40,34 @@
 
 /* ---------- Card ---------- */
 .mt-card {
-  position: relative; display: flex; flex-direction: column; padding: 6px;
+  /* isolation keeps the ::before hover shadow inside this card's own stacking context. */
+  position: relative; isolation: isolate; display: flex; flex-direction: column; padding: 6px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-card);
-  transition: transform var(--motion-med) var(--ease-paper), box-shadow var(--motion-med) var(--ease-paper), border-color var(--motion-med) var(--ease-paper);
+  /* The lift rides the slow clock on ease-out, as the Explore cards do. The shadow
+     does not animate (a box-shadow transition repaints every frame): the hover
+     shadow is a layer below (::before) that fades in on opacity. */
+  transition: transform var(--motion-slow) var(--ease-out), border-color var(--motion-slow) var(--ease-out);
   /* The entrance moves the separate translate and scale properties, so it never
      fights the hover lift, which owns transform. Both compose, nothing snaps. */
   animation: mt-card-in var(--mt-dur) var(--ease-out) backwards;
 }
 @keyframes mt-card-in { from { opacity: 0; translate: 0 14px; scale: .98; } }
+.mt-card::before {
+  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
+  box-shadow: var(--shadow-card-hover); opacity: 0; transition: opacity var(--motion-slow) var(--ease-out);
+}
+.mt-card:hover::before, .mt-card:has(.mt-card-link:focus-visible)::before { opacity: 1; }
 /* Hover and keyboard focus lift the card the same way. The cover art or photo
    grows inside its clip (.mt-cover), so the card keeps its outline. */
 .mt-card:hover,
-.mt-card:has(.mt-card-link:focus-visible) { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }
+.mt-card:has(.mt-card-link:focus-visible) { transform: translateY(-2px); border-color: var(--line-strong); }
+/* The Up next hero is a wide card: it does not lift. Its shadow and slow cover
+   zoom carry the hover, as the Explore feature cover does. */
+.mt-feat:hover, .mt-feat:has(.mt-card-link:focus-visible) { transform: none; }
 .mt-card:hover .mt-motif,
 .mt-card:hover .mt-cover-img,
 .mt-card:has(.mt-card-link:focus-visible) .mt-motif,
-.mt-card:has(.mt-card-link:focus-visible) .mt-cover-img { transform: scale(1.04); }
+.mt-card:has(.mt-card-link:focus-visible) .mt-cover-img { transform: scale(1.035); }
 
 /* ---------- Cover and region art ---------- */
 .mt-cover { position: relative; isolation: isolate; overflow: hidden; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); }
@@ -64,7 +76,7 @@
 .mt-art::after { content: ''; position: absolute; inset: 0; background: transparent; pointer-events: none; }
 [data-theme='dark'] .mt-art::after { background: rgba(6, 20, 24, .16); }
 .mt-motif { position: absolute; inset: 0; width: 100%; height: 100%; }
-.mt-motif, .mt-cover .mt-cover-img { transition: transform var(--motion-med) var(--ease-paper); }
+.mt-motif, .mt-cover .mt-cover-img { transition: transform var(--motion-slower) var(--ease-out); will-change: transform; backface-visibility: hidden; }
 .mt-art--coorg { --mt-sky1: #D3E6D4; --mt-sky2: #F2E8C4; color: #28543C; }
 .mt-art--kashmir { --mt-sky1: #C9DCEE; --mt-sky2: #F3E5D3; color: #2B4B62; }
 .mt-art--kerala { --mt-sky1: #D2E9E2; --mt-sky2: #F4E2BA; color: #10494A; }
@@ -312,7 +324,7 @@
   display: flex; flex-direction: column; min-width: 0; padding: 10px 10px 12px;
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-card);
   transform: rotate(var(--mt-tilt, 0deg));
-  transition: transform var(--motion-med) var(--ease-paper), box-shadow var(--motion-med) var(--ease-paper);
+  transition: transform var(--motion-slow) var(--ease-out), box-shadow var(--motion-slow) var(--ease-out);
   /* The postcard rises into its own tilt: the keyframe has no end frame, so the
      card lands on the rotate above. --mt-i is its place, capped by the page. */
   animation: mt-pc-in var(--mt-dur) var(--ease-paper) backwards;
@@ -413,6 +425,7 @@
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   .mt-card { animation: none; transition: none; }
+  .mt-card::before { transition: none; }
   .mt-card:hover, .mt-card:has(.mt-card-link:focus-visible) { transform: none; }
   .mt-card:hover .mt-motif,
   .mt-card:hover .mt-cover-img,
