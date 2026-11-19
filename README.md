@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="public/brand/mascot/chakra-hero.svg" alt="" width="140" />
+
 # YatraFlow 🇮🇳
 
 **Plan Indian trips together — not in a chaotic group chat.**

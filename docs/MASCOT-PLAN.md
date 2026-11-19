@@ -1,8 +1,9 @@
 # Chakra mascot: where to use it
 
-Status: phases 1 and 2 shipped, phase 3 shipped. The state surfaces, the
+Status: phases 1, 2 and 3 shipped. The state surfaces, the
 moments and the inline warnings in §4 use the mascot through
-`src/components/mascot/Mascot.tsx`. Phase 4 (brand) is still a plan.
+`src/components/mascot/Mascot.tsx`. Phase 4 (brand) is built except the app icon
+and favicon, which wait for the user's decision.
 
 Every phase 1 placement is wired. The curious head ships as its own file,
 `chakra-head-curious.svg`, for the Explore no-results state, and it stays
@@ -116,9 +117,20 @@ These use a small head (24 to 32 px) next to the existing text, not a full scene
 
 ### Phase 4: brand
 
-- App icon and favicon: test `chakra-mark-tile.svg` against the current logo mark. The user decides.
-- Social share image (`public/og-default.png`): add the hero beside the wordmark.
-- README and store listing: use the hero and the expressions strip.
+1. **App icon and favicon: waiting for the user.** Nothing changed. A comparison sheet
+   shows the current mark against `chakra-mark-tile.svg` and `chakra-mark-face.svg` at
+   16, 32, 48, 180 and 512 px, on light and dark, with a browser-tab row:
+   `E:/yatraflow-wt/scratch-832/mascot/icon-compare.png`. The current mark is
+   `public/favicon.svg` plus `public/icons/*`.
+2. **Social share image: done.** `public/og-default.png` now shows `chakra-hero.svg` below
+   the route, on the right of the card. The source is `scripts/og-default-card.html`. The
+   hero is on the route plane. It is not next to the 25 px wordmark, because it would be too small there.
+3. **README: done.** The hero sits above the title at 140 px. The expressions strip
+   is not in the README: `chakra-expressions.svg` still holds live `<text>` for its labels.
+   GitHub renders SVG through an `<img>`, so the labels would fall back to a system font.
+   Convert them to paths (section 5, item 1), then add the strip.
+4. **Store listing: nothing to change.** The repo holds no store listing metadata. `android/` is
+   the Capacitor shell with launcher and splash art only.
 
 ## 5. Before the first placement
 
