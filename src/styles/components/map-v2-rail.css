@@ -150,7 +150,7 @@
 .mv2-workspace .poi-col--see > .poi-col-head { display: none; }
 .mv2-workspace .poi-col--needs > .poi-col-head { padding: var(--mv2-panel-pad); row-gap: var(--space-4); background: transparent; color: var(--text); }
 .mv2-workspace .poi-plan-list { padding: var(--mv2-panel-pad); }
-.mv2-workspace .poi-col--needs > :not(.mv2-sheet-handle):not(.poi-col-head) { margin-inline: var(--mv2-panel-pad); }
+.mv2-workspace .poi-col--needs > :not(.mv2-sheet-handle, .poi-col-head) { margin-inline: var(--mv2-panel-pad); }
 .mv2-workspace .lrow-new { border-bottom: 1px solid var(--line); }
 .mv2-workspace .lrow-sum { display: grid; grid-template-columns: 12px 1fr 16px; padding: var(--mv2-panel-pad) 0; row-gap: var(--space-2); }
 .mv2-workspace .lr-name { font-size: 13px; font-weight: 700; }
