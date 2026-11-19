@@ -2251,11 +2251,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                         <div className="day-slot-top">
                           <span className="day-slot-st" aria-hidden>{slot.state === 'filled' ? '\u2713' : ''}</span>
                           <span className="day-slot-lab"><SlotGlyph kind={slot.kind} label={slot.label} />{slot.label}</span>
-                          <span className="day-slot-win">{slot.state === 'filled' ? (filledStopClock(journeyDay?.daySchedule ?? null, slot.filledStop?.id ?? '') ? formatHM(filledStopClock(journeyDay?.daySchedule ?? null, slot.filledStop?.id ?? '') ?? '', timeFormat) : 'Time unavailable') : slot.windowLabel ?? ''}</span>
+                          <span className="day-slot-win">{slot.state === 'filled' ? (filledStopClock(journeyDay?.daySchedule ?? null, slot.filledStop?.id ?? '') ? formatHM(filledStopClock(journeyDay?.daySchedule ?? null, slot.filledStop?.id ?? '') ?? '', timeFormat) : 'Time unavailable') : /* The engine labels auto slots 'auto' (daySlots.ts); this row capitalises it at the one display point. */ 'Auto'}</span>
                           <span className="day-slot-val">
                             {slot.state === 'filled'
-                              ? <b>{slot.filledStop?.title ?? slot.segment?.label ?? 'Planned'}</b>
-                              : <small>Added by the app</small>}
+                              ? slot.filledStop?.title ?? slot.segment?.label ?? 'Planned'
+                              : 'Added by the app'}
                           </span>
                         </div>
                       )}
