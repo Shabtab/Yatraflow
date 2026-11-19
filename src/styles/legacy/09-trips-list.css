@@ -43,10 +43,11 @@
   /* isolation keeps the ::before hover shadow inside this card's own stacking context. */
   position: relative; isolation: isolate; display: flex; flex-direction: column; padding: 6px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-card);
-  /* The lift rides the slow clock on ease-out, as the Explore cards do. The shadow
-     does not animate (a box-shadow transition repaints every frame): the hover
-     shadow is a layer below (::before) that fades in on opacity. */
-  transition: transform var(--motion-slow) var(--ease-out), border-color var(--motion-slow) var(--ease-out);
+  /* The lift rides the slow clock on ease-out, as the Explore cards do. Only
+     transform animates here: a box-shadow or border-color transition repaints the
+     page on every frame. The hover shadow and the stronger edge are one layer
+     (::before) that fades in on opacity. */
+  transition: transform var(--motion-slow) var(--ease-out);
   /* The entrance moves the separate translate and scale properties, so it never
      fights the hover lift, which owns transform. Both compose, nothing snaps. */
   animation: mt-card-in var(--mt-dur) var(--ease-out) backwards;
@@ -54,13 +55,14 @@
 @keyframes mt-card-in { from { opacity: 0; translate: 0 14px; scale: .98; } }
 .mt-card::before {
   content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
-  box-shadow: var(--shadow-card-hover); opacity: 0; transition: opacity var(--motion-slow) var(--ease-out);
+  /* The inset ring sits on the card's 1px border, so the edge darkens with the shadow. */
+  box-shadow: var(--shadow-card-hover), inset 0 0 0 1px var(--line-strong); opacity: 0; transition: opacity var(--motion-slow) var(--ease-out);
 }
 .mt-card:hover::before, .mt-card:has(.mt-card-link:focus-visible)::before { opacity: 1; }
 /* Hover and keyboard focus lift the card the same way. The cover art or photo
    grows inside its clip (.mt-cover), so the card keeps its outline. */
 .mt-card:hover,
-.mt-card:has(.mt-card-link:focus-visible) { transform: translateY(-2px); border-color: var(--line-strong); }
+.mt-card:has(.mt-card-link:focus-visible) { transform: translateY(-2px); }
 /* The Up next hero is a wide card: it does not lift. Its shadow and slow cover
    zoom carry the hover, as the Explore feature cover does. */
 .mt-feat:hover, .mt-feat:has(.mt-card-link:focus-visible) { transform: none; }

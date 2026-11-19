@@ -98,16 +98,17 @@ describe('the day strip', () => {
 describe('the trip card and its cover', () => {
   it('lifts 2px on hover and on keyboard focus, on the slow clock and ease-out', () => {
     const card = bodyOf(MAIN, '.mt-card')
-    expect(card).toMatch(/transition:\s*transform var\(--motion-slow\) var\(--ease-out\), border-color var\(--motion-slow\) var\(--ease-out\)/)
-    // The shadow never animates as box-shadow: it repaints every frame.
-    expect(card).not.toMatch(/transition:[^;]*box-shadow/)
+    expect(card).toMatch(/transition:\s*transform var\(--motion-slow\) var\(--ease-out\);/)
+    // Neither the shadow nor the edge animates on the card: both repaint the page every frame.
+    expect(card).not.toMatch(/transition:[^;]*(box-shadow|border-color)/)
     const lift = bodyOf(MAIN, '.mt-card:hover, .mt-card:has(.mt-card-link:focus-visible)')
     expect(lift).toMatch(/transform:\s*translateY\(-2px\)/)
+    expect(lift).not.toMatch(/border-color/)
   })
 
   it('fades a ready-made hover shadow on opacity, and keeps the wide hero still', () => {
     const layer = bodyOf(MAIN, '.mt-card::before')
-    expect(layer).toMatch(/box-shadow:\s*var\(--shadow-card-hover\)/)
+    expect(layer).toMatch(/box-shadow:\s*var\(--shadow-card-hover\), inset 0 0 0 1px var\(--line-strong\)/)
     expect(layer).toMatch(/opacity:\s*0/)
     expect(layer).toMatch(/transition:\s*opacity var\(--motion-slow\) var\(--ease-out\)/)
     expect(bodyOf(MAIN, '.mt-card:hover::before, .mt-card:has(.mt-card-link:focus-visible)::before')).toMatch(/opacity:\s*1/)
