@@ -167,7 +167,7 @@ ${twitterImageTags(defaultCard(origin))}
 </html>`
 }
 
-function renderPublication(publication, id, buyer = null, ref = null, trip = null, shared = false, campaign = null, via = null) {
+function renderPublication(publication, id, buyer = null, ref = null, trip = null, shared = false, campaign = null, pubCard = false) {
   // A row the database could not read is a 404-without-canonical card, never
   // the brand card under the id it failed to find (#362).
   if (!publication) return renderNotFound()
@@ -218,17 +218,17 @@ function renderPublication(publication, id, buyer = null, ref = null, trip = nul
   // A crawler sent to /pub/<id> copies that address, so the card advertises
   // the address in the visitor's address bar, not the /i/<id> card route.
   // Every other caller keeps the /i/<id> canonical unchanged.
-  const canonical = via === 'pub' ? `${origin}/pub/${id}` : `${origin}/i/${id}`
+  const canonical = pubCard ? `${origin}/pub/${id}` : `${origin}/i/${id}`
   // #691 — a shared link (it carries `ref` or `buyer`) opens the app as before.
   // A search visitor and a crawler have neither, and they read the page. With
   // no trip to print, the card keeps the old redirect for every visitor.
   // A crawler sent here by the /pub rewrite is already at the target address, so
   // a redirect would reload the same card for every crawler that runs script.
-  const redirects = (!trip || shared) && via !== 'pub'
+  const redirects = (!trip || shared) && !pubCard
   // The buyer's address is a variant of the same page with its own metadata, so
   // it advertises itself; the canonical link still points at the publication.
   // The /pub card has one address: the copied link, with no buyer suffix.
-  const ogUrl = via === 'pub' ? canonical : buyer ? `${canonical}?buyer=${encodeURIComponent(buyer)}` : canonical
+  const ogUrl = pubCard ? canonical : buyer ? `${canonical}?buyer=${encodeURIComponent(buyer)}` : canonical
   return `<!doctype html>
 <html lang="en-IN">
 <head>
@@ -266,8 +266,8 @@ export default async function handler(req, res) {
   // The /pub rewrite sends crawlers here with `via=pub`; a browser asking
   // /api/i directly has no such tag. The card differs by user agent, so the
   // edge must vary its cache on that header.
-  const via = req.query?.via === 'pub' ? 'pub' : null
-  if (via) res.setHeader('Vary', 'User-Agent')
+  const pubCard = req.query?.via === 'pub'
+  if (pubCard) res.setHeader('Vary', 'User-Agent')
   if (typeof id !== 'string' || !ID_RE.test(id)) {
     // Two different failures, two different answers (#362): a bare `/i/` —
     // the rewrite forwards it without a query — is a missing page, so 404
@@ -351,5 +351,5 @@ export default async function handler(req, res) {
   // A page whose trip read failed is not cached: crawlers would keep the empty card.
   if (publication && (trip || shared)) res.setHeader('cache-control', CARD_CACHE_CONTROL)
   res.status(status)
-  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer, ref, trip, shared, campaign, via))
+  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer, ref, trip, shared, campaign, pubCard))
 }

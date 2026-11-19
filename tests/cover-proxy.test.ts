@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import coverHandler, { coverFile, coverWidth, thumbAllowed } from '../api/cover.js'
+import coverHandler, { coverFile, coverWidth, safeThumbUrl, thumbAllowed } from '../api/cover.js'
 
 // A publication whose cover is a raw Commons upload — the live shape that made
 // this proxy necessary — and one already through our own bucket.
@@ -122,7 +122,7 @@ describe('the cover handler answers the brand card on every failure', () => {
 
   it('never follows a redirect from the thumb host', async () => {
     const fetchMock = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a.png' }] } } } })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/a.png' }] } } } })))
       .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: 'http://169.254.169.254/' } }))
     vi.stubGlobal('fetch', fetchMock)
     const res = await runCover({ f: 'Chandratal_1.JPG' })
@@ -134,7 +134,7 @@ describe('the cover handler answers the brand card on every failure', () => {
 
   it('refuses an SVG, which would run script from our own domain', async () => {
     const fetchMock = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a.svg' }] } } } })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/a.svg' }] } } } })))
       .mockResolvedValueOnce(new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', { status: 200, headers: { 'content-type': 'image/svg+xml' } }))
     vi.stubGlobal('fetch', fetchMock)
     const res = await runCover({ f: 'Chandratal_1.JPG' })
@@ -151,7 +151,7 @@ describe('the cover handler answers the brand card on every failure', () => {
       },
     })
     const fetchMock = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a.jpg' }] } } } })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/a.jpg' }] } } } })))
       .mockResolvedValueOnce(new Response(body, { status: 200, headers: { 'content-type': 'image/jpeg' } }))
     vi.stubGlobal('fetch', fetchMock)
     const res = await runCover({ f: 'Chandratal_1.JPG' })
@@ -162,7 +162,7 @@ describe('the cover handler answers the brand card on every failure', () => {
 
   it('redirects a non-image answer from the thumb', async () => {
     const fetchMock = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/a.png' }] } } } })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ query: { pages: { 1: { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/a.png' }] } } } })))
       .mockResolvedValueOnce(new Response('<html>no</html>', { status: 200, headers: { 'content-type': 'text/html' } }))
     vi.stubGlobal('fetch', fetchMock)
     const res = await runCover({ f: 'Chandratal_1.JPG' })
@@ -234,5 +234,34 @@ describe('the publication card points a Wikimedia cover at our own domain', () =
     const body = await card(UPLOADED)
     expect(body).toContain(`og:image" content="${UPLOADED}"`)
     expect(body).not.toContain('/api/cover')
+  })
+})
+
+describe('the thumb address is rebuilt from a fixed host', () => {
+  it('keeps the path of an allowed host and drops the query', () => {
+    // The API's answer carries `utm_*` parameters; the image does not need them.
+    expect(safeThumbUrl('https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3a/Chandratal_1.JPG/1280px-Chandratal_1.JPG?utm_source=en.wikipedia.org&utm_content=thumbnail'))
+      .toBe('https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3a/Chandratal_1.JPG/1280px-Chandratal_1.JPG')
+    expect(safeThumbUrl('https://upload.wikimedia.org/wikipedia/commons/3/3a/Chandratal_1.JPG?utm_source=en.wikipedia.org'))
+      .toBe('https://upload.wikimedia.org/wikipedia/commons/3/3a/Chandratal_1.JPG')
+  })
+
+  it('refuses a lookalike host, another scheme, a traversal and a foreign path', () => {
+    for (const value of [
+      // A suffix that ends the host early is not the host.
+      'https://upload.wikimedia.org.evil.test/wikipedia/commons/a.jpg',
+      'https://thumb.wikimedia.org.evil.test/wikipedia/commons/a.jpg',
+      // Plain http is not the https the card asks for.
+      'http://upload.wikimedia.org/wikipedia/commons/a.jpg',
+      // `new URL` resolves `..` away, so the refusal runs on the raw value too.
+      'https://upload.wikimedia.org/wikipedia/../../etc/passwd',
+      // A Wikimedia host that serves something other than a Commons file.
+      'https://upload.wikimedia.org/a.jpg',
+      'https://upload.wikimedia.org/wikimedia/a.jpg',
+      '',
+      undefined,
+    ]) {
+      expect(safeThumbUrl(value), String(value)).toBeNull()
+    }
   })
 })

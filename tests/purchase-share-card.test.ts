@@ -79,8 +79,8 @@ describe('I-21 — the claim is the server’s to make', () => {
     expect(handler).toMatch(/verifiedBuyer = buyer/)
     // #230 added the ref as a fourth argument — the gate's verdict still rides
     // the same call, and the pin follows the call site. The /pub crawler card
-    // may add a trailing `via` argument after the campaign.
-    expect(handler).toMatch(/renderPublication\(publication, id, verifiedBuyer, ref, trip, shared, campaign(?:, via)?\)/)
+    // may add a trailing `pubCard` argument after the campaign.
+    expect(handler).toMatch(/renderPublication\(publication, id, verifiedBuyer, ref, trip, shared, campaign(?:, pubCard)?\)/)
   })
 
   it('fails closed and silently when the gate cannot answer', () => {

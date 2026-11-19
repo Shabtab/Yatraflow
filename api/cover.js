@@ -75,6 +75,39 @@ export function thumbAllowed(value) {
   }
 }
 
+/**
+ * The Wikimedia thumb address, rebuilt from a fixed host, or null.
+ *
+ * The value arrives in the MediaWiki answer, so it is never fetched as given:
+ * the protocol and the host are checked exactly, then the host is replaced by a
+ * string literal and only the path is kept. The query is dropped — the `utm_*`
+ * parameters on the answer are not needed for the image.
+ */
+export function safeThumbUrl(value) {
+  if (typeof value !== 'string' || !value) return null
+  let parsed
+  try {
+    parsed = new URL(value)
+  } catch {
+    return null
+  }
+  // A `..` segment is refused on the raw value too: `new URL` resolves it away, so
+  // the parsed path would no longer show it.
+  if (value.includes('..')) return null
+  if (parsed.protocol !== 'https:') return null
+  // An explicit branch per allowed host: the string that is fetched is a
+  // literal, never a value that came in on the request.
+  const host = parsed.host
+  let base
+  if (host === 'thumb.wikimedia.org') base = 'https://thumb.wikimedia.org'
+  else if (host === 'upload.wikimedia.org') base = 'https://upload.wikimedia.org'
+  else return null
+  const pathname = parsed.pathname
+  if (!pathname.startsWith('/wikipedia/')) return null
+  if (pathname.includes('..')) return null
+  return `${base}${pathname}`
+}
+
 /** A fresh abort signal per fetch, cleared when the request settles. */
 function startTimeout() {
   const controller = new AbortController()
@@ -108,7 +141,7 @@ async function thumbUrl(file, width, origin) {
     if (!pages || typeof pages !== 'object') return null
     const info = Object.values(pages).map(page => page?.imageinfo).find(Array.isArray)
     const thumb = Array.isArray(info) && info[0]?.thumburl
-    return thumbAllowed(thumb) ? thumb : null
+    return safeThumbUrl(thumb)
   } catch {
     return null
   } finally {
@@ -138,9 +171,13 @@ async function readCapped(response) {
 
 /** The thumb's bytes and its own content type. Throws on anything unexpected. */
 async function thumbBytes(url, origin) {
+  // Only the address rebuilt here is fetched, never the string that arrived:
+  // `safeThumbUrl` fixes the host from a string literal.
+  const target = safeThumbUrl(url)
   const timer = startTimeout()
   try {
-    const response = await fetch(url, {
+    if (!target) throw new Error('thumb url')
+    const response = await fetch(target, {
       headers: { accept: 'image/*', 'user-agent': userAgent(origin) },
       // A 3xx is a failure here: the host was checked, its redirect target was not.
       redirect: 'manual',
