@@ -36,6 +36,9 @@ describe('My trips motion uses tokens only', () => {
     expect(offenders).toEqual([])
   })
 
+  it('sets the arrival pace in one place: a double stagger step and the slower clock', () => {
+    expect(MAIN).toContain(':where(.trips-page) { --mt-step: calc(var(--stagger-step) * 2); --mt-dur: var(--motion-slower); }')
+  })
   it('keeps the settle ease to the date stamp and the score number', () => {
     const users = [...MAIN.matchAll(/([^{}]+)\{[^}]*var\(--ease-settle\)/g)].map(m => m[1].replace(/\s+/g, ' ').trim())
     expect(users.sort()).toEqual(['.mt-ring text', '.mt-stamp'])
@@ -45,8 +48,8 @@ describe('My trips motion uses tokens only', () => {
 describe('the flip countdown', () => {
   it('flips each digit once, one stagger step apart', () => {
     const body = bodyOf(MAIN, '.mt-flip span')
-    expect(body).toMatch(/animation:\s*mt-flip-in var\(--motion-slow\) var\(--ease-paper\) backwards/)
-    expect(body).toMatch(/animation-delay:\s*calc\(var\(--stagger-step\) \* \(var\(--mt-i, 0\) \+ 1\)\)/)
+    expect(body).toMatch(/animation:\s*mt-flip-in var\(--mt-dur\) var\(--ease-paper\) backwards/)
+    expect(body).toMatch(/animation-delay:\s*calc\(var\(--mt-step\) \* \(var\(--mt-i, 0\) \+ 1\)\)/)
     expect(body).not.toMatch(/infinite/)
     expect(MAIN).toMatch(/@keyframes mt-flip-in\s*\{\s*from\s*\{[^}]*rotateX\(/)
     expect(bodyOf(MAIN, '.mt-flip')).toMatch(/perspective:/)
@@ -61,7 +64,7 @@ describe('the flip countdown', () => {
 describe('the health ring', () => {
   it('fades its dasharray arc, and does not draw it', () => {
     const arc = bodyOf(MAIN, '.mt-ring-arc')
-    expect(arc).toMatch(/animation:\s*mt-ring-fade var\(--motion-slower\) var\(--ease-paper\) backwards/)
+    expect(arc).toMatch(/animation:\s*mt-ring-fade calc\(var\(--motion-slower\) \* 2\) var\(--ease-paper\) backwards/)
     expect(MAIN).toMatch(/@keyframes mt-ring-fade\s*\{\s*from\s*\{\s*opacity:\s*0;\s*\}\s*\}/)
     expect(MAIN).not.toMatch(/mt-ring-draw/)
     const ring = read('src/components/trips/HealthRing.tsx')
@@ -71,7 +74,7 @@ describe('the health ring', () => {
 
   it('pops the score number in after the arc begins', () => {
     const body = bodyOf(MAIN, '.mt-ring text')
-    expect(body).toMatch(/animation:\s*mt-pop-in var\(--motion-fast\) var\(--ease-settle\) backwards/)
+    expect(body).toMatch(/animation:\s*mt-pop-in var\(--motion-slow\) var\(--ease-settle\) backwards/)
     expect(body).toMatch(/transform-box:\s*fill-box/)
   })
 })
@@ -79,10 +82,10 @@ describe('the health ring', () => {
 describe('the day strip', () => {
   it('rises each cell in turn and grows its tone bar from the left', () => {
     const cell = bodyOf(MAIN, '.mt-day')
-    expect(cell).toMatch(/animation:\s*pageRise var\(--motion-slow\) var\(--ease-paper\) backwards/)
-    expect(cell).toMatch(/animation-delay:\s*calc\(var\(--stagger-step\) \* var\(--mt-i, 0\)\)/)
+    expect(cell).toMatch(/animation:\s*pageRise var\(--mt-dur\) var\(--ease-paper\) backwards/)
+    expect(cell).toMatch(/animation-delay:\s*calc\(var\(--mt-step\) \* var\(--mt-i, 0\)\)/)
     const bar = bodyOf(MAIN, '.mt-day-bar')
-    expect(bar).toMatch(/animation:\s*mt-bar-grow var\(--motion-med\) var\(--ease-paper\) backwards/)
+    expect(bar).toMatch(/animation:\s*mt-bar-grow var\(--mt-dur\) var\(--ease-paper\) backwards/)
     expect(bar).toMatch(/transform-origin:\s*left center/)
   })
 
@@ -122,8 +125,8 @@ describe('the trip card and its cover', () => {
 describe('the date stamp', () => {
   it('pops in once, after its own card', () => {
     const body = bodyOf(MAIN, '.mt-stamp')
-    expect(body).toMatch(/animation:\s*mt-pop-in var\(--motion-med\) var\(--ease-settle\) backwards/)
-    expect(body).toMatch(/animation-delay:\s*calc\(var\(--stagger-step\) \* \(var\(--mt-enter, 0\) \+ 2\)\)/)
+    expect(body).toMatch(/animation:\s*mt-pop-in var\(--motion-slow\) var\(--ease-settle\) backwards/)
+    expect(body).toMatch(/animation-delay:\s*calc\(var\(--mt-step\) \* \(var\(--mt-enter, 0\) \+ 2\)\)/)
     expect(MAIN).toMatch(/@keyframes mt-pop-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*scale\(\.4\);\s*\}\s*\}/)
     expect(read('src/components/trips/TripCard.tsx')).toContain("'--mt-enter': staggerStep(enterIndex)")
   })
@@ -142,7 +145,7 @@ describe('the Coming up toolbar', () => {
 describe('the Memories postcards', () => {
   it('rise into their own tilt and lift on hover', () => {
     const body = bodyOf(MAIN, '.mt-pc')
-    expect(body).toMatch(/animation:\s*mt-pc-in var\(--motion-slow\) var\(--ease-paper\) backwards/)
+    expect(body).toMatch(/animation:\s*mt-pc-in var\(--mt-dur\) var\(--ease-paper\) backwards/)
     expect(body).toMatch(/transition:\s*transform var\(--motion-med\) var\(--ease-paper\), box-shadow var\(--motion-med\) var\(--ease-paper\)/)
     // No end frame: the card lands on its resting tilt and does not snap.
     expect(MAIN).toMatch(/@keyframes mt-pc-in\s*\{\s*from\s*\{[^}]*rotate\(var\(--mt-tilt, 0deg\)\)[^}]*\}\s*\}/)

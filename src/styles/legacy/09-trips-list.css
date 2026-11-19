@@ -6,6 +6,10 @@
    Motion comes from the motion tokens. Each animated rule has a reduced-motion
    opt-out at the end of this section. */
 
+/* The My trips arrival pace. One place to tune it: every entrance on this page
+   reads these two. Hover and press feedback stays on the shared fast clock. */
+:where(.trips-page) { --mt-step: calc(var(--stagger-step) * 2); --mt-dur: var(--motion-slower); }
+
 /* ---------- Sections ---------- */
 .mt-catalog { container: mt-catalog / inline-size; }
 .mt-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; margin: 24px 0 14px; }
@@ -93,8 +97,8 @@
   -webkit-backdrop-filter: blur(var(--yf-blur-chip)); backdrop-filter: blur(var(--yf-blur-chip));
   /* Small pop: the stamp lands after its card has begun to rise. The card sets
      --mt-enter to its grid step, so a later card's stamp lands later. */
-  animation: mt-pop-in var(--motion-med) var(--ease-settle) backwards;
-  animation-delay: calc(var(--stagger-step) * (var(--mt-enter, 0) + 2));
+  animation: mt-pop-in var(--motion-slow) var(--ease-settle) backwards;
+  animation-delay: calc(var(--mt-step) * (var(--mt-enter, 0) + 2));
 }
 @keyframes mt-pop-in { from { opacity: 0; transform: scale(.4); } }
 .mt-stamp span { color: var(--pw-marigold-ink); font-size: 11px; font-weight: 700; letter-spacing: .1em; }
@@ -172,8 +176,8 @@
   position: relative; display: flex; align-items: center; justify-content: center; width: 28px; height: 38px;
   border-radius: var(--radius-xs); background: var(--pw-ink); color: var(--card);
   font-family: var(--font-display); font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums;
-  animation: mt-flip-in var(--motion-slow) var(--ease-paper) backwards;
-  animation-delay: calc(var(--stagger-step) * (var(--mt-i, 0) + 1));
+  animation: mt-flip-in var(--mt-dur) var(--ease-paper) backwards;
+  animation-delay: calc(var(--mt-step) * (var(--mt-i, 0) + 1));
 }
 @keyframes mt-flip-in { from { opacity: 0; transform: rotateX(-90deg); } }
 .mt-flip span::after { content: ''; position: absolute; top: 50%; right: 0; left: 0; height: 1px; background: color-mix(in srgb, var(--card) 18%, transparent); }
@@ -184,14 +188,14 @@
 .mt-ring-track { fill: none; stroke: var(--teal-soft); stroke-width: 5; }
 /* The arc carries a dasharray, so it fades in and does not draw (docs/MOTION-TOKENS.md,
    Chart entrance). The score number pops in after the arc has begun. */
-.mt-ring-arc { fill: none; stroke: var(--pw-lagoon-400); stroke-width: 5; stroke-linecap: round; animation: mt-ring-fade var(--motion-slower) var(--ease-paper) backwards; animation-delay: var(--stagger-step); }
+.mt-ring-arc { fill: none; stroke: var(--pw-lagoon-400); stroke-width: 5; stroke-linecap: round; animation: mt-ring-fade calc(var(--motion-slower) * 2) var(--ease-paper) backwards; animation-delay: var(--mt-step); }
 .mt-ring--marigold .mt-ring-arc { stroke: var(--pw-marigold-500); }
 .mt-ring--bloom .mt-ring-arc { stroke: var(--pw-bloom-500); }
 .mt-ring text {
   fill: var(--text); font-family: var(--font-display); font-size: 13px; font-weight: 700;
   transform-box: fill-box; transform-origin: center;
-  animation: mt-pop-in var(--motion-fast) var(--ease-settle) backwards;
-  animation-delay: calc(var(--stagger-step) * 3);
+  animation: mt-pop-in var(--motion-slow) var(--ease-settle) backwards;
+  animation-delay: calc(var(--mt-step) * 3);
 }
 @keyframes mt-ring-fade { from { opacity: 0; } }
 
@@ -212,14 +216,14 @@
    page). Its tone bar grows from the left one step after the cell. */
 .mt-day {
   display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--teal-soft);
-  animation: pageRise var(--motion-slow) var(--ease-paper) backwards;
-  animation-delay: calc(var(--stagger-step) * var(--mt-i, 0));
+  animation: pageRise var(--mt-dur) var(--ease-paper) backwards;
+  animation-delay: calc(var(--mt-step) * var(--mt-i, 0));
 }
 .mt-day-n { color: var(--text); font-size: 11.5px; font-weight: 700; }
 .mt-day-bar {
   display: block; height: 4px; border-radius: 999px; background: var(--ok); transform-origin: left center;
-  animation: mt-bar-grow var(--motion-med) var(--ease-paper) backwards;
-  animation-delay: calc(var(--stagger-step) * (var(--mt-i, 0) + 1));
+  animation: mt-bar-grow var(--mt-dur) var(--ease-paper) backwards;
+  animation-delay: calc(var(--mt-step) * (var(--mt-i, 0) + 1));
 }
 @keyframes mt-bar-grow { from { transform: scaleX(0); } }
 .mt-day-label { font-size: 11px; font-weight: 700; line-height: 1.3; }
@@ -308,8 +312,8 @@
   transition: transform var(--motion-med) var(--ease-paper), box-shadow var(--motion-med) var(--ease-paper);
   /* The postcard rises into its own tilt: the keyframe has no end frame, so the
      card lands on the rotate above. --mt-i is its place, capped by the page. */
-  animation: mt-pc-in var(--motion-slow) var(--ease-paper) backwards;
-  animation-delay: calc(var(--stagger-step) * var(--mt-i, 0));
+  animation: mt-pc-in var(--mt-dur) var(--ease-paper) backwards;
+  animation-delay: calc(var(--mt-step) * var(--mt-i, 0));
 }
 @keyframes mt-pc-in { from { opacity: 0; transform: translateY(14px) rotate(var(--mt-tilt, 0deg)) scale(.98); } }
 .mt-pc:hover, .mt-pc:focus-within { transform: translateY(-3px) rotate(0deg); box-shadow: var(--shadow-card-hover); }
