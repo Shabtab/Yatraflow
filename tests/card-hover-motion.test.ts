@@ -102,11 +102,19 @@ function lastCompound(part: string): string | null {
   return m ? m[1] : null
 }
 
-function isClass(compound: string | null, cls: string): boolean {
+/** True when the compound carries every class of `cls` (`.a.b` needs both), whatever else it carries. */
+function compoundHasClass(compound: string | null, cls: string): boolean {
   if (!compound) return false
-  const esc = cls.replace(/\./g, '\\.')
-  return new RegExp(`^(?:[a-z]+)?${esc}(?:\\[[^\\]]*\\])*$`).test(compound)
+  const have = new Set(compound.replace(/\[[^\]]*\]/g, '').match(/\.[\w-]+/g) ?? [])
+  return (cls.match(/\.[\w-]+/g) ?? []).every(c => have.has(c))
 }
+
+/** The rules whose selector ends in a compound that carries the class. */
+function rulesFor(rules: Rule[], cls: string): Rule[] {
+  return rules.filter(r => selectorParts(r.selector).some(p => compoundHasClass(lastCompound(p), cls)))
+}
+
+const STALE = 'no rule uses this selector, so the list entry is stale'
 
 function hasHoverRule(rules: Rule[], cls: string): boolean {
   const esc = cls.replace(/\./g, '\\.')
@@ -123,8 +131,7 @@ export function shadowTransitionProblems(css: string, cards: string[], borderExe
       problems.push(`${card}: no :hover rule found, so the list entry is stale`)
       continue
     }
-    for (const r of rules) {
-      if (!selectorParts(r.selector).some(p => isClass(lastCompound(p), card))) continue
+    for (const r of rulesFor(rules, card)) {
       const tr = declValue(r.body, 'transition')
       const banned = borderExempt.includes(card) ? /\b(?:box-shadow|all)\b/ : /\b(?:box-shadow|border-color|all)\b/
       if (tr && banned.test(tr)) problems.push(`${r.selector}: transition animates box-shadow or border-color (${tr})`)
@@ -133,30 +140,47 @@ export function shadowTransitionProblems(css: string, cards: string[], borderExe
   return problems
 }
 
-/** Rule B: an entrance used by a card, or by an entrance element, must not animate `transform`. */
-export function entranceTransformProblems(css: string, elements: string[]): string[] {
+function animationNames(body: string): string[] {
+  return [declValue(body, 'animation'), declValue(body, 'animation-name')].filter(Boolean).join(' ').split(/[\s,]+/)
+}
+
+/**
+ * Rule B: an entrance used by a card, or by an entrance element, must not animate `transform`.
+ * Coverage: every element must match a rule, and every entrance user must play a known keyframe.
+ */
+export function entranceTransformProblems(css: string, elements: string[], entranceUsers: string[] = []): string[] {
   const { rules, keyframes } = parseCss(css)
   const problems: string[] = []
-  for (const r of rules) {
-    if (!selectorParts(r.selector).some(p => elements.some(el => isClass(lastCompound(p), el)))) continue
-    const value = [declValue(r.body, 'animation'), declValue(r.body, 'animation-name')].filter(Boolean).join(' ')
-    for (const name of value.split(/[\s,]+/)) {
-      const frames = keyframes.get(name)
-      if (frames && /(?<![\w-])transform\s*:/.test(frames)) problems.push(`${r.selector}: @keyframes ${name} animates transform`)
+  for (const el of elements) {
+    const own = rulesFor(rules, el)
+    if (own.length === 0) problems.push(`${el}: ${STALE}`)
+    for (const r of own) {
+      for (const name of animationNames(r.body)) {
+        const frames = keyframes.get(name)
+        if (frames && /(?<![\w-])transform\s*:/.test(frames)) problems.push(`${r.selector}: @keyframes ${name} animates transform`)
+      }
+    }
+  }
+  for (const el of entranceUsers) {
+    if (!rulesFor(rules, el).some(r => animationNames(r.body).some(n => keyframes.has(n)))) {
+      problems.push(`${el}: no rule plays a known entrance keyframe, so Rule B reads nothing for it`)
     }
   }
   return [...new Set(problems)]
 }
 
-/** Rule C: a cover overlay must not carry `backdrop-filter`. */
+/** Rule C: a cover overlay must not carry `backdrop-filter`. Every overlay must match a rule. */
 export function overlayBlurProblems(css: string, overlays: string[]): string[] {
   const { rules } = parseCss(css)
   const problems: string[] = []
-  for (const r of rules) {
-    if (!selectorParts(r.selector).some(p => overlays.some(o => isClass(lastCompound(p), o)))) continue
-    if (/(?<![\w-])(?:-webkit-)?backdrop-filter\s*:/.test(r.body)) problems.push(`${r.selector}: backdrop-filter over a zooming cover`)
+  for (const o of overlays) {
+    const own = rulesFor(rules, o)
+    if (own.length === 0) problems.push(`${o}: ${STALE}`)
+    for (const r of own) {
+      if (/(?<![\w-])(?:-webkit-)?backdrop-filter\s*:/.test(r.body)) problems.push(`${r.selector}: backdrop-filter over a zooming cover`)
+    }
   }
-  return problems
+  return [...new Set(problems)]
 }
 
 const BAD_SHADOW = '.ex-card { transition: transform .2s, box-shadow .2s; }\n.ex-card:hover { transform: translateY(-2px); }'
@@ -178,6 +202,10 @@ describe('card hover gate: every rule fires on a known-bad sample', () => {
     expect(shadowTransitionProblems('.ex-card { transition: all .2s; }\n.ex-card:hover { top: 0; }', ['.ex-card'])).toHaveLength(1)
     // A listed card with no hover rule is a stale entry.
     expect(shadowTransitionProblems(GOOD_SHADOW, ['.ex-gone'])).toHaveLength(1)
+    // A compound with extra classes is still the card's own rule. A longer class name is not.
+    expect(shadowTransitionProblems('.ex-card.featured { transition: box-shadow 1s; }\n.ex-card:hover { top: 0; }', ['.ex-card'])).toHaveLength(1)
+    expect(shadowTransitionProblems('.featured.ex-card[data-id] { transition: border-color 1s; }\n.ex-card:hover { top: 0; }', ['.ex-card'])).toHaveLength(1)
+    expect(shadowTransitionProblems('.ex-card-link { transition: box-shadow 1s; }\n.ex-card:hover { top: 0; }', ['.ex-card'])).toEqual([])
     // A rule inside @media still counts, and a themed base selector is still the card's own rule.
     expect(shadowTransitionProblems('@media (min-width: 1px) { :root:where([data-theme=\'dark\']) .ex-card { transition: box-shadow 1s; } }\n.ex-card:hover { top: 0; }', ['.ex-card'])).toHaveLength(1)
   })
@@ -187,12 +215,22 @@ describe('card hover gate: every rule fires on a known-bad sample', () => {
     expect(entranceTransformProblems(GOOD_ENTRANCE, ['.ex-enter'])).toEqual([])
     // `animation-name` on a longer selector counts when its last compound is a listed element.
     expect(entranceTransformProblems('@keyframes rise { from { transform: scale(.9); } }\n.page-enter > .sf-day { animation-name: rise; }', ['.sf-day'])).toHaveLength(1)
+    // A compound with extra classes still counts.
+    expect(entranceTransformProblems('@keyframes rise { from { transform: scale(.9); } }\n.ex-enter.late { animation: rise 1s; }', ['.ex-enter'])).toHaveLength(1)
+    // Coverage: a renamed element, or an entrance user with no known keyframe, fails instead of passing on nothing.
+    expect(entranceTransformProblems(GOOD_ENTRANCE, ['.ex-renamed'])).toEqual([`.ex-renamed: ${STALE}`])
+    expect(entranceTransformProblems(GOOD_ENTRANCE, ['.ex-enter'], ['.ex-renamed'])).toHaveLength(1)
+    expect(entranceTransformProblems('.ex-enter { animation: missing 1s; }', ['.ex-enter'], ['.ex-enter'])).toHaveLength(1)
+    expect(entranceTransformProblems(GOOD_ENTRANCE, ['.ex-enter'], ['.ex-enter'])).toEqual([])
   })
 
   it('rule C fails a cover overlay with backdrop-filter, and passes a solid one', () => {
     expect(overlayBlurProblems(BAD_BLUR, ['.ex-style-tag'])).toHaveLength(1)
     expect(overlayBlurProblems(GOOD_BLUR, ['.ex-style-tag'])).toEqual([])
     expect(overlayBlurProblems('.ex-card .ex-style-tag { backdrop-filter: blur(4px); }', ['.ex-style-tag'])).toHaveLength(1)
+    expect(overlayBlurProblems('.ex-style-tag.is-paid { backdrop-filter: blur(4px); }', ['.ex-style-tag'])).toHaveLength(1)
+    // Coverage: a renamed overlay fails instead of passing on nothing.
+    expect(overlayBlurProblems(GOOD_BLUR, ['.ex-style-renamed'])).toEqual([`.ex-style-renamed: ${STALE}`])
   })
 })
 
@@ -204,7 +242,7 @@ describe('card hover gate: the shipped CSS', () => {
   })
 
   it('B: no entrance used by a listed card or entrance element animates transform', () => {
-    expect(entranceTransformProblems(css, [...CARD_CLASSES, ...ENTRANCE_ONLY])).toEqual([])
+    expect(entranceTransformProblems(css, [...CARD_CLASSES, ...ENTRANCE_ONLY], ENTRANCE_ONLY)).toEqual([])
   })
 
   it('C: no cover overlay carries backdrop-filter', () => {
