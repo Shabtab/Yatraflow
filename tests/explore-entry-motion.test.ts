@@ -24,6 +24,21 @@ const delayStep = (body: string): number | null => {
   return m ? Number(m[1]) : body.includes('var(--stagger-step) backwards') ? 1 : /backwards/.test(body) ? 0 : null
 }
 
+describe('no later stylesheet resets the Explore entry delays', () => {
+  it('explore-redesign.css sets no animation-delay on the hero or the list blocks', () => {
+    const later = read('src/styles/pages/explore-redesign.css').replace(/\/\*[\s\S]*?\*\//g, '')
+    let checked = 0
+    for (const m of later.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (/\.ex-(hero-copy|hero-visual|stats|head|filterbar|enter|aside)\b/.test(m[1])) {
+        checked++
+        expect(m[2], m[1].trim()).not.toMatch(/animation(-delay)?\s*:/)
+      }
+    }
+    // The hero visual rule exists in that file, so the scan cannot pass empty.
+    expect(checked).toBeGreaterThan(0)
+  })
+})
+
 describe('the Explore entry order', () => {
   it('steps the page in reading order: copy 0, visual 1, stats 2, head and filters 3, aside 4 to 6', () => {
     expect(delayStep(bodyOf(MAIN, '.ex-page .ex-hero-copy'))).toBe(0)

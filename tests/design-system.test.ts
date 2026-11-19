@@ -1613,7 +1613,8 @@ describe('a surface that appears carries motion (AGENTS §2.10)', () => {
     const own = cssRules.filter(
       (r) => /(?:^|[\s,(>~+])\.(?:yf-header|yf-state|pur-page)(?![\w-])/.test(r.selector)
         && declMap(r.body).has('animation')
-        && !(/\[data-kind='loading'\]/.test(r.selector) && /^loaderIn\b/.test(declMap(r.body).get('animation') ?? '')),
+        && !(normalise(r.selector) === normalise(".route-fallback, :is(.ex-page, .trips-page) .yf-state[data-kind='loading']")
+          && /^loaderIn [^,]+$/.test(declMap(r.body).get('animation') ?? '')),
     )
     expect(
       own.map((r) => normalise(r.selector)),
