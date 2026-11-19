@@ -8,16 +8,18 @@ import { seedData } from '../src/data/seed'
 describe('owner-only trash controls on both trip cards', () => {
   vi.stubGlobal('location', { protocol: 'http:' })
   afterAll(() => vi.unstubAllGlobals())
-  for (const Card of [TripCard, UpNextCard]) {
-    for (const role of ['owner', 'editor', 'viewer', 'commenter'] as const) {
-      it(`${Card.name} checks trash access for ${role}`, () => {
-        const trip = { ...seedData.trips[0], members: [{ userId: 'caller', role, joinedAt: 1 }] }
-        const html = renderToStaticMarkup(createElement(Card, {
-          trip, today: new Date('2026-11-16'), budget: 'Budget', totalTravelMinutes: 0,
-          users: [], meId: 'caller', enterIndex: 0, onDelete: () => {},
-        }))
-        expect(html.includes('aria-label="Delete ')).toBe(role === 'owner')
-      })
-    }
+  for (const role of ['owner', 'editor', 'viewer', 'commenter'] as const) {
+    it(`both cards check trash access for ${role}`, () => {
+      const trip = { ...seedData.trips[0], members: [{ userId: 'caller', role, joinedAt: 1 }] }
+      const common = { trip, today: new Date('2026-11-16'), budget: 'Budget', users: [], meId: 'caller', onDelete: () => {} }
+      const cards = [
+        ['TripCard', createElement(TripCard, { ...common, readyToGo: true, toFix: 0, enterIndex: 0 })],
+        ['UpNextCard', createElement(UpNextCard, { ...common, distanceKm: 0, dayCells: [], health: { score: 90, band: 'Comfortable' } })],
+      ] as const
+      for (const [name, card] of cards) {
+        const html = renderToStaticMarkup(card)
+        expect(html.includes('aria-label="Delete '), `${name} trash control for ${role}`).toBe(role === 'owner')
+      }
+    })
   }
 })
