@@ -212,10 +212,11 @@ describe('reads and writes', () => {
 
 describe('tagged link and landing', () => {
   it('mints the creator page address with the post tag', () => {
+    // The creator card, so a crawler reads the creator's own card (api/c.js).
     expect(creatorPostShareUrl('creator-1', ID, 'https://app.example.test/', false))
-      .toBe(`https://app.example.test/creator/creator-1?src=post&p=${ID}`)
+      .toBe(`https://app.example.test/c/creator-1?src=post&p=${ID}`)
     expect(creatorPostShareUrl('creator-1', ID, 'http://localhost:5173', true))
-      .toBe(`https://www.yatraflow.in/creator/creator-1?src=post&p=${ID}`)
+      .toBe(`https://www.yatraflow.in/c/creator-1?src=post&p=${ID}`)
   })
   it('reads the post only from a post-tagged address', () => {
     expect(creatorPostRef(`?src=post&p=${ID}`)).toBe(ID)

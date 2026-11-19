@@ -1035,3 +1035,53 @@ describe('a scene card declares the size it really has', () => {
     expect(res.body).not.toContain('og:image:type')
   })
 })
+
+describe('a post-tagged creator link previews as the creator card (G8)', () => {
+  const CREATOR = '1250e5c4-7d87-4813-8843-8ee16c45d757'
+  const POST = '6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5'
+  async function runCreator(query: Record<string, unknown>) {
+    fetchMock.mockImplementation(async input => String(input).includes('get_public_profile_cards')
+      ? new Response(JSON.stringify([{ name: 'Asha', creator_bio: 'Hill roads', creator_available: true }]))
+      : new Response(JSON.stringify([])))
+    const res = makeRes()
+    const { default: handler } = await import('../api/c.js')
+    await handler({ method: 'GET', query: { id: CREATOR, ...query } }, res)
+    return res
+  }
+
+  it('mints the tagged link on the creator card path', async () => {
+    const { creatorPostShareUrl } = await import('../src/lib/shareUrl')
+    expect(new URL(creatorPostShareUrl(CREATOR, POST, 'https://www.yatraflow.in')).pathname).toBe(`/c/${CREATOR}`)
+  })
+
+  it('gives a crawler the creator card and sends a browser on with the tag', async () => {
+    const res = await runCreator({ src: 'post', p: POST })
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toContain('og:title" content="Asha on YatraFlow"')
+    expect(res.body).toContain(`location.replace("/creator/${CREATOR}?src=post&p=${POST}")`)
+    // The canonical stays the clean creator address.
+    expect(res.body).toContain(`<link rel="canonical" href="https://www.yatraflow.in/c/${CREATOR}" />`)
+  })
+
+  it('keeps both a share ref and a post tag', async () => {
+    const res = await runCreator({ ref: 'wa', src: 'post', p: POST })
+    expect(res.body).toContain(`location.replace("/creator/${CREATOR}?ref=wa&src=post&p=${POST}")`)
+  })
+
+  it.each([
+    { src: 'post', p: 'not-a-post' },
+    { src: 'other', p: POST },
+    { p: POST },
+  ])('drops a malformed tag %o and serves the readable page', async query => {
+    const res = await runCreator(query)
+    expect(res.statusCode).toBe(200)
+    expect(res.body).not.toContain('location.replace')
+  })
+
+  it('checks a post id with the same rule as the client', () => {
+    const client = /const UUID_RE = (\/.+\/i)/.exec(read('../src/lib/creatorPosts.ts'))?.[1]
+    const handler = /const POST_ID_RE = (\/.+\/i)/.exec(read('../api/c.js'))?.[1]
+    expect(client).toBeTruthy()
+    expect(handler).toBe(client)
+  })
+})
