@@ -30,7 +30,7 @@ describe('mascot pose files', () => {
   })
 
   it('ships no placement file with live text (an <img> cannot load the page font)', () => {
-    const used = new Set(poses.flatMap(poseFiles))
+    const used = new Set([...poses.flatMap(poseFiles), 'chakra-expressions.svg'])
     for (const file of used) expect(read(file), file).not.toContain('<text')
   })
 

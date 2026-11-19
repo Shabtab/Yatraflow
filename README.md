@@ -134,6 +134,10 @@ The previous release. Its highlights stay here until the next release.
 - **Explore and the published itinerary move in one calm sequence.** Explore has one search field and one shared publication card. The Look inside day cards and the road height charts match the reference design.
 - **Phone map fits keep the trip large and the pins apart.** Side insets use measured covers, and a user pan is never undone.
 
+![Chakra expressions](public/brand/mascot/chakra-expressions.svg)
+
+The strip shows twelve Chakra faces with names drawn as outlines, so every browser shows the same labels.
+
 ## 🚀 Getting started
 
 ```bash
