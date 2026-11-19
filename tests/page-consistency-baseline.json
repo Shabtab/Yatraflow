@@ -222,7 +222,7 @@
     "src/pages/TripsList.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 6,
+      "inlineStyle": 5,
       "rawH1": 0
     },
     "src/pages/TripWorkspace.tsx": {

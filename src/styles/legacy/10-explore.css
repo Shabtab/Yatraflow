@@ -440,6 +440,41 @@
 .ex-aside > :nth-child(1) { animation: cardIn var(--motion-slow) var(--ease-out) backwards; animation-delay: calc(var(--stagger-step) * 1); }
 .ex-aside > :nth-child(2) { animation: cardIn var(--motion-slow) var(--ease-out) backwards; animation-delay: calc(var(--stagger-step) * 2); }
 .ex-aside > :nth-child(3) { animation: cardIn var(--motion-slow) var(--ease-out) backwards; animation-delay: calc(var(--stagger-step) * 3); }
+/* ---------- Entry order (AGENTS §2.10) ----------
+   The page arrives as one sequence in reading order, one `--stagger-step`
+   apart, on `--motion-slow`:
+     0 hero copy · 1 hero visual · 2 stats · 3 Itineraries heading and filters
+     4 the list (featured card, shelf, cards) · 4 to 6 the aside, one step each.
+   Before this, the aside rose at steps 1 to 3 and the list had no step, so the
+   side panels landed before the list they sit beside. The hero and layout
+   wrappers do not animate: their children carry the entrance, or the wrapper
+   fade would sit under it. Every rule is scoped to `.ex-page`, because the hero
+   parts are shared with other pages. The entrance moves `translate` and `scale`
+   and never `transform`, so a card's hover lift keeps `transform` to itself. */
+@keyframes ex-in { from { opacity: 0; translate: 0 14px; scale: .98; } }
+.ex-page.page-enter > :is(.ex-hero, .ex-layout) { animation: none; }
+.ex-page .ex-hero-copy { animation: ex-in var(--motion-slow) var(--ease-out) backwards; }
+.ex-page .ex-hero-visual { animation: ex-in var(--motion-slow) var(--ease-out) var(--stagger-step) backwards; }
+.ex-page .ex-stats { animation: ex-in var(--motion-slow) var(--ease-out) calc(var(--stagger-step) * 2) backwards; }
+.ex-page :is(.ex-head, .ex-filterbar) { animation: ex-in var(--motion-slow) var(--ease-out) calc(var(--stagger-step) * 3) backwards; }
+.ex-page .ex-enter { animation: ex-in var(--motion-slow) var(--ease-out) backwards; }
+.ex-page .ex-feature.ex-enter { animation-delay: calc(var(--stagger-step) * var(--ex-list-at, 0)); }
+.ex-page .ex-aside > :nth-child(1) { animation: ex-in var(--motion-slow) var(--ease-out) calc(var(--stagger-step) * 4) backwards; }
+.ex-page .ex-aside > :nth-child(2) { animation: ex-in var(--motion-slow) var(--ease-out) calc(var(--stagger-step) * 5) backwards; }
+.ex-page .ex-aside > :nth-child(3) { animation: ex-in var(--motion-slow) var(--ease-out) calc(var(--stagger-step) * 6) backwards; }
+
+/* The list starts at step 4. `--ex-list-at` is that base, set only while the page
+   root carries `data-arriving`. `useArrival` removes the attribute once the arrival
+   is over (three `--motion-slower` steps), so cards that mount later, when the
+   catalog read ends, a sort remounts the grid or Load more adds rows, read 0 and
+   rise at once. */
+.ex-page[data-arriving] { --ex-list-at: 4; }
+
+/* While the catalog reads, the loading block holds about one row of cards, so the
+   list does not jump when the cards replace it. The block still shows the read's
+   own state: a failed read and an empty list use other blocks. */
+.ex-main > .yf-state[data-kind='loading'] { min-height: 24rem; align-content: center; }
+
 /* Mobile filters open with the popover entrance: fade and a 4px rise. */
 .ex-selects.is-open { animation: exDrop var(--motion-med) var(--ease-out); }
 @keyframes exDrop {
@@ -461,6 +496,8 @@
   .ex-enter, .ex-hero-copy, .ex-hero-visual, .ex-aside > :nth-child(n), .ex-selects.is-open,
   .ex-save[aria-pressed='true'] .ex-save-dot, .ex-chip-saved[aria-pressed='true'] svg,
   .ex-feature-actions .btn[aria-pressed='true'] svg { animation: none; }
+  .ex-page .ex-hero-copy, .ex-page .ex-hero-visual, .ex-page .ex-stats, .ex-page :is(.ex-head, .ex-filterbar),
+  .ex-page .ex-enter, .ex-page .ex-aside > :nth-child(n) { animation: none; }
   .ex-card, .ex-card:hover, .ex-feature, .ex-place, .ex-place:hover { transition: none; transform: none; }
   .ex-postcard { transition: none; }
   .ex-card:hover .ex-cover-img, .ex-card:hover .mt-motif, .ex-place:hover .mt-motif,

@@ -512,10 +512,10 @@ article.ex-card[data-id]:hover { transform: translateY(-3px); box-shadow: var(--
 /* ==== PR914 fix: Explore ==== */
 /* The hero visual follows the mockup: a 520 by 400 stage, three tilted
    postcards of 40, 38 and 42 percent of its width, the dotted route and the
-   fork note. The entrance has no delay, so the postcards are in place when the
-   page is captured as well as when it is read. */
+   fork note. The entrance timing stays with the page cascade in 10-explore.css
+   (the visual lands one step after the copy), so no delay is set here. */
 @media (min-width: 960px) {
-  .ex-page .ex-hero-visual { aspect-ratio: 520 / 400; animation-delay: 0s; }
+  .ex-page .ex-hero-visual { aspect-ratio: 520 / 400; }
   .ex-page .ex-pc-1 { left: 2%; top: 17.5%; width: 40.4%; z-index: 1; }
   .ex-page .ex-pc-2 { left: 36.5%; top: 2.5%; width: 38.5%; z-index: 2; }
   .ex-page .ex-pc-3 { left: 53.8%; top: 45%; width: 42.3%; z-index: 3; }

@@ -26,6 +26,13 @@ export function staggerDelay(index: number): string {
   return `calc(var(--stagger-step) * ${staggerStep(index)})`
 }
 
+/** A stagger delay that starts after a page's own block steps. `baseVar` names a custom
+ *  property that holds the number of steps to wait. It reads 0 when the property is unset,
+ *  so the same card on another page, or after the arrival, plays at once. */
+export function staggerDelayAfter(index: number, baseVar: string): string {
+  return `calc(var(--stagger-step) * (var(${baseVar}, 0) + ${staggerStep(index)}))`
+}
+
 /**
  * Timing for the few JS-driven animations (the Board's FLIP settle, the day
  * collapse's unmount), resolved from the CSS motion tokens so JS and CSS can't

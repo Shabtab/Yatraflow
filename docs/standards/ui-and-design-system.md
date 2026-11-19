@@ -199,6 +199,13 @@ Other legacy sections keep their order. Shared tokens and motion remain in legac
   exactly as `both` did, then releases the property. Debugging tell: compare the same component on a surface that
   animates it against one that doesn't.
 
+- **An entrance and a hover on the same element must not both own `transform`.** Even with `backwards`, the
+  entrance wins the property while it runs. A pointer already on the card gets no lift, and the card snaps to the lift
+  when the entrance ends. A slow pace makes the window long enough to see as a jerk (My trips, 2026-11-19). Give the
+  entrance the separate `translate` and `scale` properties and leave `transform` to the hover and any static tilt:
+  they compose and nothing snaps. The same rule stops a keyframe from blending different transform lists
+  (`translateY rotate scale` into `rotate`) as matrices, which wobbles a tilted card. Pinned by `tests/trips-motion.test.ts`.
+
 - **A grid or flex item's automatic minimum size is its MIN-CONTENT, so one unbreakable run sets the width of the
   whole document.** The published page's sticky sidebar held a nowrap share URL in a flex row: that gave the column
   a **451px floor inside a 362px column**, scrolling the document 75px sideways at a 390px viewport — and the

@@ -1,5 +1,6 @@
 // ============ Explore public itineraries — discover, trust and fork (CTI §6.10) ============
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useArrival } from '../lib/useArrival'
 import { currentQuery, onRouteChange, replaceRoute } from '../lib/router'
 import { Compass } from 'lucide-react'
 import { usePublished, useUsers, useTrips, useSessionUserId, useDb, rereadPublicSlices } from '../store/store'
@@ -60,6 +61,9 @@ function filtersFromRoute() {
 }
 
 export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void }) {
+  // The list waits for the hero and the filters while the page arrives (10-explore.css).
+  const rootRef = useRef<HTMLDivElement>(null)
+  useArrival(rootRef)
   // Slice subscriptions: Explore re-renders when the published catalog,
   // profiles, trips or the session change — not on every store commit.
   const published = usePublished()
@@ -289,7 +293,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   )
 
   return (
-    <div className="container ex-page page-enter">
+    <div className="container ex-page page-enter" ref={rootRef} data-arriving="">
       <TripArtSprite />
       <ExploreHero stats={heroStats} forks={forkCount} onSearch={jumpToResults}
         query={q} onQueryChange={value => { setQ(value); syncUrl({ q: value }) }} quickPicks={quickPicks} />

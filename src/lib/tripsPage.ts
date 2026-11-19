@@ -5,7 +5,7 @@
 // timestamps, so a time zone cannot move a trip to another day.
 import type { Trip, TripMember } from '../data/types'
 import { lastStop } from './tripsCard'
-import { nextTripStep, plannedDayRatio, type NextStep } from './tripNextStep'
+import { nextTripStep, plannedDayRatio, type NextStep, type NextStepKind } from './tripNextStep'
 
 export type WhenKey = 'all' | 'upcoming' | 'past' | 'draft'
 export type TripStatus = 'live' | 'upcoming' | 'past' | 'draft'
@@ -423,4 +423,203 @@ export function heroNote({ trips, today, ready }: {
   if (drafts.length === 0 || drafts.length !== trips.length) return null
   const { planned, total } = planning(drafts[0])
   return planned > 0 && total > 0 ? `${planned} of ${total} days planned` : null
+}
+
+// ============ The My trips greeting, soonest sort and Memories ============
+// The header greets the viewer and counts their trips. The grid sorts by start
+// day. Trips that ended move out of the grid into Memories. Each helper takes
+// `today`, so none of them reads the clock.
+
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const MONTH_LONG_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+/** The time-of-day word of the greeting: before noon, before 17:00, then evening. */
+export function greetingWord(now: Date): 'morning' | 'afternoon' | 'evening' {
+  const hour = now.getHours()
+  if (hour < 12) return 'morning'
+  return hour < 17 ? 'afternoon' : 'evening'
+}
+
+/** The date label above the greeting: "Wednesday, 28 October". */
+export function greetingDateLabel(now: Date): string {
+  return `${WEEKDAY_NAMES[now.getDay()]}, ${now.getDate()} ${MONTH_LONG_NAMES[now.getMonth()]}`
+}
+
+/** The first word of a profile name, or an empty string when there is none. */
+export function firstNameOf(name: string | null | undefined): string {
+  return (name ?? '').trim().split(/\s+/)[0] ?? ''
+}
+
+/** "Good morning, Asha", or "Good morning" alone when the viewer has no name. */
+export function greetingHeadline(name: string | null | undefined, now: Date): string {
+  const first = firstNameOf(name)
+  const lead = `Good ${greetingWord(now)}`
+  return first ? `${lead}, ${first}` : lead
+}
+
+export interface GreetingCounts {
+  comingUp: number
+  drafts: number
+  memories: number
+}
+
+/**
+ * The counts behind the greeting line, from the viewer's own trips.
+ *  - comingUp: trips that are live or upcoming (the "Upcoming & live" filter).
+ *  - drafts: trips with no usable dates, plus the unfinished trip in the
+ *    create form when `hasCreateDraft` is true.
+ *  - memories: trips that have ended.
+ */
+export function greetingCounts({ trips, today, hasCreateDraft }: {
+  trips: readonly TripDates[]
+  today: Date
+  hasCreateDraft: boolean
+}): GreetingCounts {
+  let comingUp = 0
+  let drafts = hasCreateDraft ? 1 : 0
+  let memories = 0
+  for (const t of trips) {
+    const status = statusOf(t, today)
+    if (status === 'past') memories += 1
+    else if (status === 'draft') drafts += 1
+    else comingUp += 1
+  }
+  return { comingUp, drafts, memories }
+}
+
+/**
+ * The line under the greeting: "3 trips coming up · 1 draft · 2 memories". A
+ * part with a zero count is left out. All zero gives an empty string.
+ */
+export function countsLine(counts: GreetingCounts): string {
+  const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
+  const parts: string[] = []
+  if (counts.comingUp > 0) parts.push(`${plural(counts.comingUp, 'trip', 'trips')} coming up`)
+  if (counts.drafts > 0) parts.push(plural(counts.drafts, 'draft', 'drafts'))
+  if (counts.memories > 0) parts.push(plural(counts.memories, 'memory', 'memories'))
+  return parts.join(' · ')
+}
+
+/**
+ * Split trips into those still ahead (live, upcoming, or without dates) and
+ * those that ended. Each group keeps the input order.
+ */
+export function splitByMemory<T extends TripDates>(trips: readonly T[], today: Date): { comingUp: T[]; past: T[] } {
+  const comingUp: T[] = []
+  const past: T[] = []
+  for (const t of trips) (statusOf(t, today) === 'past' ? past : comingUp).push(t)
+  return { comingUp, past }
+}
+
+/**
+ * "Soonest first" order: the earliest start day first. A trip without a usable
+ * start day goes last. Two trips on one day, or two without a day, put the
+ * trip edited most recently first.
+ */
+export function compareSoonest(a: Pick<Trip, 'startDate' | 'updatedAt'>, b: Pick<Trip, 'startDate' | 'updatedAt'>): number {
+  const first = parseYmd(a.startDate)
+  const second = parseYmd(b.startDate)
+  if (first && second) {
+    const order = compareDays(first, second)
+    if (order !== 0) return order
+  } else if (first) {
+    return -1
+  } else if (second) {
+    return 1
+  }
+  return (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
+}
+
+export interface DateStamp {
+  /** Upper-case weekday: "SAT". */
+  weekday: string
+  day: number
+  /** Short month: "Nov". */
+  month: string
+}
+
+/** The glass date stamp of a trip, from its start day. Null when there is no usable start day. */
+export function dateStamp(t: Pick<Trip, 'startDate'>): DateStamp | null {
+  const start = parseYmd(t.startDate)
+  if (!start) return null
+  const weekday = WEEKDAY_NAMES[new Date(Date.UTC(start.year, start.month - 1, start.day)).getUTCDay()]
+  return { weekday: weekday.slice(0, 3).toUpperCase(), day: start.day, month: MONTH_NAMES[start.month - 1] }
+}
+
+/**
+ * The status line on a trip card.
+ *  - No usable dates: "Idea · no dates yet".
+ *  - Live: "Live · Day 2 of 5".
+ *  - Upcoming and ready to go (see isReadyToGo): "Ready to go".
+ *  - Upcoming otherwise: "Planning · 5 of 7 days". When every day is planned
+ *    but checks are open: "Planning · 4 to fix", so the line agrees with the
+ *    Up next day strip.
+ *  - Past: "Past".
+ */
+export function cardStatusLine(t: TripPlan, today: Date, readyToGo: boolean, toFix = 0): string {
+  const status = statusOf(t, today)
+  if (status === 'draft') return 'Idea · no dates yet'
+  if (status === 'past') return 'Past'
+  if (status === 'live') {
+    const countdown = countdownText(t, today)
+    return countdown ? `Live · ${countdown}` : 'Live'
+  }
+  if (readyToGo) return 'Ready to go'
+  const { planned, total } = planning(t)
+  if (total > 0 && planned === total && toFix > 0) return `Planning · ${toFix} to fix`
+  return total > 0 ? `Planning · ${planned} of ${total} days` : 'Planning · no days yet'
+}
+
+/**
+ * The "Your travel so far" figures, over the trips passed in (the past trips).
+ * Both are plans, not tracked journeys, so the card labels them "planned".
+ *  - kmPlanned: the sum of each trip's planned road distance (`kmOf`).
+ *  - withFriends: trips where another person can edit the plan.
+ */
+export function travelSoFar({ trips, meId, kmOf }: {
+  trips: readonly Pick<Trip, 'members'>[]
+  meId: string | null
+  kmOf: (t: Pick<Trip, 'members'>) => number
+}): { kmPlanned: number; withFriends: number } {
+  let kmPlanned = 0
+  let withFriends = 0
+  for (const t of trips) {
+    const km = kmOf(t)
+    if (Number.isFinite(km)) kmPlanned += km
+    const hasFriend = (t.members ?? []).some(m => PLANNER_ROLES.includes(m.role) && m.userId !== meId)
+    if (hasFriend) withFriends += 1
+  }
+  return { kmPlanned, withFriends }
+}
+
+/** The button label for a next step: "Plan day", "Book", "Confirm", "Add dates" or "Add cover". Null when the trip needs nothing. */
+export function stepActionLabel(kind: NextStepKind): string | null {
+  switch (kind) {
+    case 'plan-day': return 'Plan day'
+    case 'book-stop': return 'Book'
+    case 'confirm-stop': return 'Confirm'
+    case 'add-dates': return 'Add dates'
+    case 'add-cover': return 'Add cover'
+    default: return null
+  }
+}
+
+/**
+ * The postmark stamped on a Memories postcard: the place the trip ended at and
+ * the month and year it ended, for example "LEH · SEP 26". The month part is
+ * left out when the end day is not usable.
+ */
+export function postmark(t: Pick<Trip, 'name' | 'startLocation' | 'destinations' | 'endDate'>): string {
+  const place = heroPlace(t).toUpperCase()
+  const end = parseYmd(t.endDate)
+  if (!end) return place
+  const when = `${MONTH_NAMES[end.month - 1].toUpperCase()} ${String(end.year).slice(-2)}`
+  return place ? `${place} · ${when}` : when
+}
+
+/** Whole calendar days from `today` to the start day of an upcoming trip. Null for a live, past or dateless trip. */
+export function daysUntilStart(t: TripDates, today: Date): number | null {
+  const start = parseYmd(t.startDate)
+  if (!start || statusOf(t, today) !== 'upcoming') return null
+  return diffDays(localDay(today), start)
 }
