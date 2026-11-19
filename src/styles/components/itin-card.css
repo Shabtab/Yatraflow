@@ -13,7 +13,9 @@
 
 .itin-card {
   overflow: hidden; padding: 0; display: flex; flex-direction: column;
-  transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out);
+  /* No box-shadow in the transition: it repaints every frame. overflow: hidden would clip
+     a shadow layer, so the hover shadow below changes without a fade. */
+  transition: transform var(--motion-slow) var(--ease-out);
 }
 /* Kept as its own rule. It arrived from a different file, so folding it into the
    recipe above would be a consolidation inside an extraction checkpoint. */

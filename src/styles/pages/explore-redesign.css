@@ -109,15 +109,14 @@
   border-radius: var(--radius);
 }
 
-/* Cover labels. The blur is functional: the label must hold on any cover, in
-   either theme. The text inset clears the save heart. */
+/* Cover labels. No backdrop blur: the cover zooms on hover, and a blur over a
+   moving image repaints every frame. A 95% card background holds on any cover,
+   in either theme. The text inset clears the save heart. */
 .ex-card .ex-style-tag {
   top: 12px; left: 12px; max-width: calc(100% - 72px);
   padding: 4px 10px; border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--card) 84%, transparent);
+  background: color-mix(in srgb, var(--card) 95%, transparent);
   border: 1px solid color-mix(in srgb, var(--card) 72%, transparent);
-  -webkit-backdrop-filter: blur(var(--yf-blur-chip));
-  backdrop-filter: blur(var(--yf-blur-chip));
   color: var(--text); font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
 }
 .ex-card .ex-price-tag {
@@ -324,9 +323,8 @@
 }
 .ex-feature .ex-style-tag {
   top: 12px; left: 12px; max-width: calc(100% - 24px);
-  background: color-mix(in srgb, var(--card) 84%, transparent);
+  background: color-mix(in srgb, var(--card) 95%, transparent);
   border: 1px solid color-mix(in srgb, var(--card) 72%, transparent);
-  -webkit-backdrop-filter: blur(var(--yf-blur-chip)); backdrop-filter: blur(var(--yf-blur-chip));
   color: var(--text); font-size: 11.5px; letter-spacing: .02em;
 }
 .ex-feature .ex-price-tag {
@@ -420,7 +418,9 @@
 .ex-page .ex-grid { gap: 16px; }
 .ex-card[data-id] .ex-cover-wrap { aspect-ratio: auto; height: 168px; }
 article.ex-card[data-id] { border-color: var(--line); box-shadow: var(--elev-1); }
-article.ex-card[data-id]:hover { transform: translateY(-3px); box-shadow: var(--shadow-card-hover); border-color: var(--line); }
+/* The hover shadow is the card's ::before layer (10-explore.css), which fades on opacity. */
+article.ex-card[data-id]::before { box-shadow: var(--shadow-card-hover); }
+article.ex-card[data-id]:hover { transform: translateY(-3px); border-color: var(--line); }
 /* Size only. The shared avatar sets its own 11px type. */
 .ex-card[data-id] .ex-byline .avatar { width: 26px; height: 26px; }
 .ex-card[data-id] .ex-byline svg,
