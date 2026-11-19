@@ -2678,7 +2678,7 @@ create trigger trips_access_owner after update of owner_id on public.trips
 
 revoke insert,update,delete,truncate,references,trigger on public.trip_members from public,anon,authenticated,service_role;
 commit;
-+
+
 begin;
 
 create or replace function public.guard_trip_settings()
