@@ -1,5 +1,6 @@
 // ============ My trips ============
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useArrival } from '../lib/useArrival'
 import { ChevronDown, Compass, Plus, Rocket, ShoppingBag, Trash2, X } from 'lucide-react'
 import { InlineIcon } from '../components/icons'
 import { useTrips, useTrashedTrips, useUsers, useSessionUserId, useSliceReads, useTrashLoaded, useTrashFailed, tripsForUser, trashTrip, restoreTrashedTrip, restoreTrashedTripById, permanentlyDeleteTrip, fetchTrashedTrips, rereadTrips, addDemoTrips, duplicateTripPersisted } from '../store/store'
@@ -71,6 +72,9 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const trashHeadingRef = useRef<HTMLHeadingElement>(null)
   const headerTrashToggleRef = useRef<HTMLButtonElement>(null)
   const heroTrashToggleRef = useRef<HTMLButtonElement>(null)
+  // The first grid waits for the toolbar while the page arrives (09-trips-list.css).
+  const rootRef = useRef<HTMLDivElement>(null)
+  useArrival(rootRef)
   const viewChangedByUser = useRef(false)
   // A restored or deleted trip leaves the Trash with a short exit. Focus that
   // sat on its button moves to the Trash heading, because the row goes inert.
@@ -293,7 +297,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   }
 
   return (
-    <div className="container trips-page page-enter">
+    <div className="container trips-page page-enter" ref={rootRef} data-arriving="">
       <TripArtSprite />
       <MyTripsGreeting
         dateLabel={greetingDateLabel(today)}
@@ -402,6 +406,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         <div className="mt-catalog">
           {tripsView === 'kept' && (
             // #704: the refresh failed. The rows below are the ones that loaded.
+            <div className="mt-block">
             <StateBlock
               size="compact"
               kind="kept"
@@ -409,9 +414,10 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
               title="Couldn’t refresh your trips. Showing the ones that loaded."
               actions={<button className="btn btn-secondary" onClick={retryTrips}>Try again</button>}
             />
+            </div>
           )}
           {upNext && upNextTotals && (
-            <section aria-labelledby={upNextTitleId}>
+            <section className="mt-block" aria-labelledby={upNextTitleId}>
               <SectionHead id={upNextTitleId}
                 title={<>Up next{upNextIsOutsideFilters && <span className="mt-kicker-note"> · outside your filters</span>}</>} />
               <UpNextCard
@@ -433,7 +439,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
           <section aria-labelledby={otherTitleId}>
             {/* One row, as in the mockup: the heading and its count, then search, pace
                 chips, the sort chip, the Grid | List switch, Clear and Trash. */}
-            <div className="mt-listhead">
+            <div className="mt-listhead mt-block">
               <div className="mt-listhead-title">
                 <h2 className="mt-section-title" id={otherTitleId}>Coming up</h2>
                 <span className="mt-count">{otherTrips.length} {otherTrips.length === 1 ? 'trip' : 'trips'}</span>

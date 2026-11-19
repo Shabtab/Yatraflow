@@ -10,6 +10,37 @@
    reads these two. Hover and press feedback stays on the shared fast clock. */
 :where(.trips-page) { --mt-step: calc(var(--stagger-step) * 2); --mt-dur: var(--motion-slower); }
 
+/* ---------- Entry order ----------
+   The blocks arrive in reading order, one `--mt-step` apart, on `--mt-dur`:
+   greeting (0), draft banner and Up next (1), Coming up toolbar (2), then the
+   cards from step 3, so the first card lands after the toolbar and not beside
+   the greeting. `--mt-at` is a block's step. The page root owns it for its
+   direct children, as the shared `.page-enter` rule does, so a block added
+   later arrives with the rest. The catalog wrapper does not animate: its
+   blocks carry the entrance, or its fade would sit under theirs.
+   The entrance moves `translate`, never `transform`, as the card entrance does. */
+:where(.trips-page.page-enter > *) { --mt-at: 1; }
+.trips-page.page-enter > .mt-greet { --mt-at: 0; }
+.trips-page.page-enter > :nth-child(n) {
+  animation-name: mt-block-in; animation-duration: var(--mt-dur); animation-timing-function: var(--ease-paper);
+  animation-delay: calc(var(--mt-step) * var(--mt-at));
+}
+.trips-page.page-enter > .mt-catalog { animation: none; }
+.mt-block {
+  animation: mt-block-in var(--mt-dur) var(--ease-paper) backwards;
+  animation-delay: calc(var(--mt-step) * var(--mt-at, 1));
+}
+@keyframes mt-block-in { from { opacity: 0; translate: 0 8px; } }
+
+/* The first grid waits for the toolbar: its cards start at step 3. `--mt-grid-at`
+   is that base, and it is set only while the page root carries `data-arriving`.
+   `useArrival` removes the attribute once the arrival is over (three
+   `--motion-slower` steps, longer than the last card needs), so a grid that mounts
+   later, from a Grid | List switch or a filter, reads 0 and plays at once. A CSS
+   animation cannot hold this base: an animation's own timing reads the style
+   before animated custom properties apply, so the delay would read 0. */
+.trips-page[data-arriving] { --mt-grid-at: 3; }
+
 /* ---------- Sections ---------- */
 .mt-catalog { container: mt-catalog / inline-size; }
 .mt-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; margin: 24px 0 14px; }
@@ -117,7 +148,7 @@
      --mt-enter to its grid step, so a later card's stamp lands later. The stamp
      is taller than 48px, so it lands on ease-out, not the settle overshoot. */
   animation: mt-pop-in var(--motion-slow) var(--ease-out) backwards;
-  animation-delay: calc(var(--mt-step) * (var(--mt-enter, 0) + 2));
+  animation-delay: calc(var(--mt-step) * (var(--mt-enter, 0) + var(--mt-grid-at, 0) + 2));
 }
 @keyframes mt-pop-in { from { opacity: 0; transform: scale(.4); } }
 .mt-stamp span { color: var(--pw-marigold-ink); font-size: 11px; font-weight: 700; letter-spacing: .1em; }
@@ -290,7 +321,7 @@
 .mt-count { margin-left: 6px; color: var(--text-2); font-size: 14px; font-weight: 600; letter-spacing: 0; font-variant-numeric: tabular-nums; vertical-align: middle; }
 
 /* One toolbar row: heading and count on the left, the tools on the right. */
-.mt-listhead { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin: 24px 0 14px; }
+.mt-listhead { --mt-at: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin: 24px 0 14px; }
 .mt-listhead-title { display: flex; align-items: baseline; gap: 12px; margin-right: auto; }
 .mt-listhead .mt-section-title { margin: 0; }
 .mt-listhead .mt-count { margin: 0; }
@@ -346,7 +377,11 @@
 }
 
 /* ---------- Memories ---------- */
-.mt-memories { margin-top: 8px; }
+.mt-memories {
+  --mt-at: 3; margin-top: 8px;
+  animation: mt-block-in var(--mt-dur) var(--ease-paper) backwards;
+  animation-delay: calc(var(--mt-step) * var(--mt-at));
+}
 .mt-pc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 0; padding: 4px 6px 10px; list-style: none; }
 @container mt-catalog (min-width: 640px) { .mt-pc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @container mt-catalog (min-width: 880px) { .mt-pc-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
@@ -462,6 +497,7 @@
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   .mt-card { animation: none; transition: none; }
+  .trips-page.page-enter > :nth-child(n), .mt-block, .mt-memories { animation: none; }
   .mt-card::before { transition: none; }
   .mt-card:hover, .mt-card:has(.mt-card-link:focus-visible) { transform: none; }
   .mt-card:hover .mt-motif,

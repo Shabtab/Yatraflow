@@ -154,7 +154,7 @@ describe('the date stamp', () => {
   it('pops in once, after its own card', () => {
     const body = bodyOf(MAIN, '.mt-stamp')
     expect(body).toMatch(/animation:\s*mt-pop-in var\(--motion-slow\) var\(--ease-out\) backwards/)
-    expect(body).toMatch(/animation-delay:\s*calc\(var\(--mt-step\) \* \(var\(--mt-enter, 0\) \+ 2\)\)/)
+    expect(body).toMatch(/animation-delay:\s*calc\(var\(--mt-step\) \* \(var\(--mt-enter, 0\) \+ var\(--mt-grid-at, 0\) \+ 2\)\)/)
     expect(MAIN).toMatch(/@keyframes mt-pop-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*scale\(\.4\);\s*\}\s*\}/)
     expect(read('src/components/trips/TripCard.tsx')).toContain("'--mt-enter': staggerStep(enterIndex)")
   })
@@ -204,6 +204,83 @@ describe('the page cascade reaches every My trips block', () => {
   })
 })
 
+describe('the My trips cascade runs in reading order', () => {
+  it('starts the greeting first and every other root block one step later', () => {
+    expect(MAIN).toContain(':where(.trips-page.page-enter > *) { --mt-at: 1; }')
+    expect(MAIN).toContain('.trips-page.page-enter > .mt-greet { --mt-at: 0; }')
+    const body = bodyOf(MAIN, '.trips-page.page-enter > :nth-child(n)')
+    expect(body).toMatch(/animation-name:\s*mt-block-in/)
+    expect(body).toMatch(/animation-duration:\s*var\(--mt-dur\)/)
+    expect(body).toMatch(/animation-delay:\s*calc\(var\(--mt-step\) \* var\(--mt-at\)\)/)
+  })
+
+  it('lets the blocks, not the catalog wrapper, carry the entrance', () => {
+    expect(bodyOf(MAIN, '.trips-page.page-enter > .mt-catalog')).toMatch(/animation:\s*none/)
+    const block = bodyOf(MAIN, '.mt-block')
+    expect(block).toMatch(/animation:\s*mt-block-in var\(--mt-dur\) var\(--ease-paper\) backwards/)
+    expect(block).toMatch(/animation-delay:\s*calc\(var\(--mt-step\) \* var\(--mt-at, 1\)\)/)
+    const page = read('src/pages/TripsList.tsx')
+    expect(page).toContain('<section className="mt-block" aria-labelledby={upNextTitleId}>')
+    expect(page).toContain('<div className="mt-listhead mt-block">')
+    // The refresh notice (a state block) rides a wrapper, so no `.yf-state` rule declares an animation.
+    expect(page).toMatch(/<div className="mt-block">\s*<StateBlock\s+size="compact"\s+kind="kept"/)
+  })
+
+  it('puts the toolbar after Up next, and Memories after the toolbar', () => {
+    expect(bodyOf(MAIN, '.mt-listhead')).toMatch(/--mt-at:\s*2/)
+    const memories = bodyOf(MAIN, '.mt-memories')
+    expect(memories).toMatch(/--mt-at:\s*3/)
+    expect(memories).toMatch(/animation:\s*mt-block-in var\(--mt-dur\) var\(--ease-paper\) backwards/)
+    expect(memories).toMatch(/animation-delay:\s*calc\(var\(--mt-step\) \* var\(--mt-at\)\)/)
+  })
+
+  it('moves translate only, so no entrance owns transform', () => {
+    expect(MAIN).toMatch(/@keyframes mt-block-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*translate:\s*0 8px;\s*\}\s*\}/)
+  })
+
+  it('starts the first grid at step 3, after the toolbar, from a base on the page root', () => {
+    expect(MAIN).toContain('.trips-page[data-arriving] { --mt-grid-at: 3; }')
+    const card = read('src/components/trips/TripCard.tsx')
+    expect(card).toContain('calc(var(--mt-step) * (var(--mt-grid-at, 0) + ${staggerStep(enterIndex)}))')
+  })
+
+  it('clears the base after the arrival, so a Grid | List switch plays at once', () => {
+    const page = read('src/pages/TripsList.tsx')
+    expect(page).toContain('className="container trips-page page-enter" ref={rootRef} data-arriving=""')
+    expect(page).toContain('useArrival(rootRef)')
+    const hook = read('src/lib/useArrival.ts')
+    expect(hook).toMatch(/removeAttribute\('data-arriving'\)/)
+    expect(hook).toMatch(/motionTiming\('--motion-slower'\)\.duration \* ARRIVAL_STEPS/)
+    // No registered property: an animation's own delay ignores a custom property that a keyframe animates.
+    expect(MAIN).not.toMatch(/@property --mt-grid-at/)
+  })
+})
+
+describe('the lazy-route loader waits before it shows', () => {
+  const shared = stripComments(read('src/styles/legacy/11-shared-page.css'))
+  const app = read('src/App.tsx')
+
+  it('gives the fallback root the grace class', () => {
+    expect(app).toContain('<div className="container page-enter route-fallback"><StateBlock kind="loading"')
+  })
+
+  it('fades in after the grace period, on tokens, with a backwards fill', () => {
+    const body = bodyOf(shared, ".route-fallback, :is(.ex-page, .trips-page) .yf-state[data-kind='loading']")
+    expect(body).toMatch(/animation:\s*loaderIn var\(--motion-med\) var\(--ease-out\) calc\(var\(--motion-slow\) \+ var\(--motion-fast\)\) backwards/)
+    expect(shared).toMatch(/@keyframes loaderIn\s*\{\s*from\s*\{\s*opacity:\s*0;\s*\}\s*\}/)
+  })
+
+  it('holds a page of height, so the footer stays below the fold', () => {
+    expect(bodyOf(shared, '.route-fallback')).toMatch(/min-height:\s*calc\(100dvh - var\(--nav-h\)\)/)
+  })
+
+  it('keeps the grace period under reduced motion and drops only the fade', () => {
+    const reduced = shared.slice(shared.indexOf('@keyframes loaderIn'))
+    expect(reduced).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.route-fallback,[\s\S]*?animation-duration:\s*0s/)
+    expect(reduced).not.toMatch(/\.route-fallback[^{]*\{[^}]*animation:\s*none/)
+  })
+})
+
 describe('reduced motion', () => {
   const stops = (selector: string, prop: 'animation' | 'transition') =>
     new RegExp(`(?:^|[}\\s])${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^{]*\\{[^}]*${prop}:\\s*none`).test(REDUCED)
@@ -213,6 +290,8 @@ describe('reduced motion', () => {
       expect(stops(selector, 'animation'), `${selector} keeps its animation under reduced motion`).toBe(true)
     }
     expect(REDUCED).toMatch(/\.mt-day,\s*\.mt-day-bar\s*\{\s*animation:\s*none/)
+    // The root blocks, the toolbar and Memories stop too.
+    expect(REDUCED).toMatch(/\.trips-page\.page-enter > :nth-child\(n\),\s*\.mt-block,\s*\.mt-memories\s*\{\s*animation:\s*none/)
   })
 
   it('stops the hover, focus and toolbar transitions and the lift', () => {

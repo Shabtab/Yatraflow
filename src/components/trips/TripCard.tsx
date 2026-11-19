@@ -44,7 +44,8 @@ export function TripCard({ trip, today, budget, readyToGo, toFix, users, meId, e
   const flags = plannedDayFlags(trip)
   const { planned, total } = planning(trip)
   // The stamp pops in after its own card, so it reads the same grid step.
-  const enterDelay = { animationDelay: `calc(var(--mt-step) * ${staggerStep(enterIndex)})`, '--mt-enter': staggerStep(enterIndex) } as CSSProperties
+  // `--mt-grid-at` holds the first grid back until the toolbar has arrived (09-trips-list.css).
+  const enterDelay = { animationDelay: `calc(var(--mt-step) * (var(--mt-grid-at, 0) + ${staggerStep(enterIndex)}))`, '--mt-enter': staggerStep(enterIndex) } as CSSProperties
   return (
     <article className="mt-card" data-status={status} style={enterDelay} {...presence}>
       <TripCover trip={trip} status={status} sizes={coverSizes} showTag={false}>

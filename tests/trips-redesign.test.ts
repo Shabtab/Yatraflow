@@ -284,7 +284,7 @@ describe('Coming up toolbar row', () => {
 
   it('keeps Trash and Clear filters in the one row', () => {
     const p = page()
-    const row = p.slice(p.indexOf('className="mt-listhead"'), p.indexOf('<p className="sr-only" role="status">'))
+    const row = p.slice(p.indexOf('className="mt-listhead mt-block"'), p.indexOf('<p className="sr-only" role="status">'))
     expect(row).toContain('Trash</button>')
     expect(row).toContain('Clear filters')
     expect(row).toContain('onClick={toggleTrash}')
