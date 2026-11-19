@@ -206,6 +206,14 @@ Other legacy sections keep their order. Shared tokens and motion remain in legac
   they compose and nothing snaps. The same rule stops a keyframe from blending different transform lists
   (`translateY rotate scale` into `rotate`) as matrices, which wobbles a tilted card. Pinned by `tests/trips-motion.test.ts`.
 
+- **A card's entrance, hover shadow and cover overlay each have a motion trap (2026-11-19).** The shared `cardIn` and
+  `sf-rise` keyframes animated `transform` on cards that also lift on hover with `transform`: the hover could not
+  apply while the entrance ran, and the card snapped when it ended. Entrances move `translate`, `scale` and `opacity`.
+  A `box-shadow` transition repaints every frame, so a large card shows its hover shadow as a `::before` layer
+  that fades on opacity (`inset: -1px; z-index: -1; isolation: isolate` on the card). A card with `overflow: hidden`
+  would clip that layer, so it keeps a plain shadow change with no fade. A `backdrop-filter` chip over a cover that
+  zooms on hover recomputes its blur every frame: use a 95% background instead. Pinned by `tests/card-hover-motion.test.ts`.
+
 - **A grid or flex item's automatic minimum size is its MIN-CONTENT, so one unbreakable run sets the width of the
   whole document.** The published page's sticky sidebar held a nowrap share URL in a flex row: that gave the column
   a **451px floor inside a 362px column**, scrolling the document 75px sideways at a 390px viewport — and the

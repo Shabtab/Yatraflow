@@ -321,12 +321,19 @@
 }
 .mt-shelf-item { min-width: 0; animation: cardIn var(--motion-slow) var(--ease-out) backwards; }
 .mt-shelf-row {
-  position: relative; display: flex; align-items: center; gap: 4px; min-width: 0;
+  position: relative; isolation: isolate; display: flex; align-items: center; gap: 4px; min-width: 0;
   padding: 4px 4px 4px 12px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-card);
-  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+  /* Only transform animates: a box-shadow or border-color transition repaints every frame.
+     The hover shadow and the stronger edge are the ::before layer. */
+  transition: transform var(--motion-slow) var(--ease-out);
 }
-.mt-shelf-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }
+.mt-shelf-row::before {
+  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
+  box-shadow: var(--shadow-card-hover), inset 0 0 0 1px var(--line-strong); opacity: 0; transition: opacity var(--motion-slow) var(--ease-out);
+}
+.mt-shelf-row:hover::before { opacity: 1; }
+.mt-shelf-row:hover { transform: translateY(-2px); }
 .mt-shelf-link {
   flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0;
   padding: 8px 4px; border-radius: var(--radius-sm); color: inherit; text-decoration: none;
@@ -355,6 +362,7 @@
 @media (prefers-reduced-motion: reduce) {
   .mt-shelf-item { animation: none; }
   .mt-shelf-row, .mt-shelf-row:hover { transition: none; transform: none; }
+  .mt-shelf-row::before { transition: none; }
 }
 
 /* ===== Explore trending shelf ===== */
@@ -383,11 +391,18 @@
 }
 
 .ex-trend-card {
-  position: relative; display: flex; flex-direction: column; min-width: 0; padding: 6px;
+  position: relative; isolation: isolate; display: flex; flex-direction: column; min-width: 0; padding: 6px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--ex-shadow-sm);
-  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+  /* Only transform animates: a box-shadow or border-color transition repaints every frame.
+     The hover shadow and the stronger edge are the ::before layer. */
+  transition: transform var(--motion-slow) var(--ease-out);
 }
-.ex-trend-card:hover { transform: translateY(-2px); box-shadow: var(--ex-shadow-md); border-color: var(--ex-line-strong); }
+.ex-trend-card::before {
+  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
+  box-shadow: var(--ex-shadow-md), inset 0 0 0 1px var(--ex-line-strong); opacity: 0; transition: opacity var(--motion-slow) var(--ease-out);
+}
+.ex-trend-card:hover::before { opacity: 1; }
+.ex-trend-card:hover { transform: translateY(-2px); }
 .ex-trend-card:hover .ex-cover-img, .ex-trend-card:hover .mt-motif { transform: scale(1.035); }
 .ex-trend-cover { position: relative; overflow: hidden; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); }
 .ex-trend-rank {
@@ -407,6 +422,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ex-trend-card, .ex-trend-card:hover { transition: none; transform: none; }
+  .ex-trend-card::before { transition: none; }
   .ex-trend-card:hover .ex-cover-img, .ex-trend-card:hover .mt-motif { transform: none; }
 }
 
@@ -591,14 +607,23 @@
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-card);
 }
 .yf-surface.is-interactive {
-  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+  isolation: isolate;
+  /* Only transform animates: a box-shadow or border-color transition repaints every frame.
+     The hover shadow and the stronger edge are the ::before layer. */
+  transition: transform var(--motion-slow) var(--ease-out);
 }
-.yf-surface.is-interactive:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }
+.yf-surface.is-interactive::before {
+  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
+  box-shadow: var(--shadow-card-hover), inset 0 0 0 1px var(--line-strong); opacity: 0; transition: opacity var(--motion-slow) var(--ease-out);
+}
+.yf-surface.is-interactive:hover::before { opacity: 1; }
+.yf-surface.is-interactive:hover { transform: translateY(-2px); }
 /* A list row keeps its own entrance. The page cascade reaches a page's direct
    children only, and a row sits one level down inside its list. */
 .yf-surface.is-entering { animation: cardIn var(--motion-slow) var(--ease-out) backwards; }
 @media (prefers-reduced-motion: reduce) {
   .yf-surface.is-interactive, .yf-surface.is-interactive:hover { transition: none; transform: none; }
+  .yf-surface.is-interactive::before { transition: none; }
   .yf-surface.is-entering { animation: none; }
 }
 

@@ -194,14 +194,24 @@
 
 /* ---------- Itinerary card ---------- */
 .ex-card {
-  position: relative; display: flex; flex-direction: column; min-width: 0; padding: 6px;
+  /* isolation keeps the ::before hover shadow inside this card's own stacking context. */
+  position: relative; isolation: isolate; display: flex; flex-direction: column; min-width: 0; padding: 6px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--ex-shadow-sm);
-  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+  /* The lift rides the slow clock. Only transform animates here: a box-shadow or
+     border-color transition repaints the page every frame. The hover shadow and the
+     stronger edge are one layer (::before) that fades in on opacity. */
+  transition: transform var(--motion-slow) var(--ease-out);
 }
-.ex-card:hover { transform: translateY(-2px); box-shadow: var(--ex-shadow-md); border-color: var(--ex-line-strong); }
+.ex-card::before {
+  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
+  /* The inset ring sits on the card's 1px border, so the edge darkens with the shadow. */
+  box-shadow: var(--ex-shadow-md), inset 0 0 0 1px var(--ex-line-strong); opacity: 0; transition: opacity var(--motion-slow) var(--ease-out);
+}
+.ex-card:hover::before { opacity: 1; }
+.ex-card:hover { transform: translateY(-2px); }
 .ex-card:hover .ex-cover-img, .ex-card:hover .mt-motif { transform: scale(1.035); }
 .ex-cover-wrap { position: relative; overflow: hidden; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); }
-.ex-cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform var(--motion-slow) var(--ease-out); }
+.ex-cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform var(--motion-slower) var(--ease-out); will-change: transform; backface-visibility: hidden; }
 .ex-save {
   position: absolute; top: 4px; right: 4px; z-index: var(--z-raised);
   width: 40px; height: 40px; display: grid; place-items: center; padding: 0;
@@ -499,6 +509,7 @@
   .ex-page .ex-hero-copy, .ex-page .ex-hero-visual, .ex-page .ex-stats, .ex-page :is(.ex-head, .ex-filterbar),
   .ex-page .ex-enter, .ex-page .ex-aside > :nth-child(n) { animation: none; }
   .ex-card, .ex-card:hover, .ex-feature, .ex-place, .ex-place:hover { transition: none; transform: none; }
+  .ex-card::before { transition: none; }
   .ex-postcard { transition: none; }
   .ex-card:hover .ex-cover-img, .ex-card:hover .mt-motif, .ex-place:hover .mt-motif,
   .ex-feature:hover .ex-feature-cover .ex-cover-img, .ex-feature:hover .mt-motif, .ex-hero:hover .ex-postcard .mt-motif { transform: none; }
