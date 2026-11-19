@@ -513,6 +513,31 @@
   .yf-state { padding: 32px 16px; }
 }
 
+/* ---------- Loader grace (AGENTS §2.10) ----------
+   A route chunk or a page read that settles in a few hundred ms used to flash
+   the loading block: the block showed at once, the footer jumped up under it,
+   and the page then pushed the footer down again (layout shift 0.55, sources
+   route-panel and footer).
+   Two rules fix it, and both are CSS only, so no timer can leak:
+   1. The block stays invisible for a grace period, then fades in. `backwards`
+      fill holds opacity 0 through the delay. The box keeps its place the whole
+      time, so nothing moves when it appears. A slow load still shows the
+      loading block, so a failed, a loading and an empty state stay separate.
+   2. The route fallback holds one page of height, so the footer sits below the
+      fold while the page loads and does not jump into view.
+   Reduced motion keeps the grace period and drops the fade: the block appears
+   at once when the period ends. */
+.route-fallback,
+:is(.ex-page, .trips-page) .yf-state[data-kind='loading'] {
+  animation: loaderIn var(--motion-med) var(--ease-out) calc(var(--motion-slow) + var(--motion-fast)) backwards;
+}
+.route-fallback { min-height: calc(100dvh - var(--nav-h)); }
+@keyframes loaderIn { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .route-fallback,
+  :is(.ex-page, .trips-page) .yf-state[data-kind='loading'] { animation-duration: 0s; }
+}
+
 /* ===== Page scope: yf-page ===== */
 /* A page with the yf-page class gets the catalog container width.
    The shared button recipe in button.css now provides the intended

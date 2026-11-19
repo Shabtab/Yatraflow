@@ -1607,9 +1607,13 @@ describe('a surface that appears carries motion (AGENTS §2.10)', () => {
     // shared entrance then stops applying to that block, with no failure to show
     // it. The gate names the shared page blocks: the header, the state block and
     // the My purchases page rules.
+    // One rule is exempt by name: the loader grace. A loading block that waits and
+    // then fades in is the point of that rule, so it must own its animation. It
+    // may only run `loaderIn`; any other animation on a state block still fails.
     const own = cssRules.filter(
       (r) => /(?:^|[\s,(>~+])\.(?:yf-header|yf-state|pur-page)(?![\w-])/.test(r.selector)
-        && declMap(r.body).has('animation'),
+        && declMap(r.body).has('animation')
+        && !(/\[data-kind='loading'\]/.test(r.selector) && /^loaderIn\b/.test(declMap(r.body).get('animation') ?? '')),
     )
     expect(
       own.map((r) => normalise(r.selector)),
