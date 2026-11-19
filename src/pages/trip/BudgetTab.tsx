@@ -36,6 +36,7 @@ import { Avatar, Chip, Field, toast, undoToast, useInView, usePageVisible } from
 import { StateBlock } from '../../components/page/StateBlock'
 import { Surface } from '../../components/page/Surface'
 import { refuseWhileStaged } from '../../lib/mutationLifecycle'
+import { Mascot } from '../../components/mascot/Mascot'
 
 // ================= Budget tab =================
 
@@ -555,6 +556,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, stagedRef, onOp
           <div className="bud-glance-figure">
             <span className="bud-glance-num">{formatInr(totals.totalCostInr)}</span>
             <span className="bud-glance-each">
+              {hasTarget && isOver && <Mascot pose="head-worried" size={26} inline />}
               {formatInr(totals.costPerPersonInr)} each · {trip.travellers} traveller{trip.travellers === 1 ? '' : 's'}
               {hasTarget
                 ? perPersonDeltaPct !== 0 && <> · <b className={perPersonDeltaPct > 0 ? 'bud-delta-bad' : 'bud-delta-ok'}>{perPersonDeltaPct > 0 ? '+' : '−'}{Math.abs(perPersonDeltaPct)}%</b></>

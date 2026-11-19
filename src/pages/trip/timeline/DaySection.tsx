@@ -46,6 +46,8 @@ import { coverPlanFor, type CoverPlan } from '../../../lib/regionArt'
 import { regionFor } from '../../../lib/tripsPage'
 import { sizedCoverUrl } from '../../../lib/tripThumb'
 import { currentUser } from '../../../store/store'
+import { Mascot } from '../../../components/mascot/Mascot'
+import { warningHead } from '../../../lib/mascot'
 
 /**
  * The day's cover plan: the traveller's own upload when there is one, else the
@@ -1487,12 +1489,15 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
         {warnings.length > 0 && (
           <div className="brief-card">
             <div className="brief-kicker">Needs attention <span className="brief-count">{warnings.length}</span></div>
-            {warnings.slice(0, 3).map((w, i) => (
-              <div key={`${w.code}-${i}`} className={`brief-warn sev-${w.severity}`}>
-                <b>{w.title.replace(/^Day \d+:\s*/, '')}</b>
-                {w.fix && <p>{w.fix}</p>}
-              </div>
-            ))}
+            {warnings.slice(0, 3).map((w, i) => {
+              const head = warningHead(w.code)
+              return (
+                <div key={`${w.code}-${i}`} className={`brief-warn sev-${w.severity}`}>
+                  <b>{head && <Mascot pose={head} size={22} inline />}{w.title.replace(/^Day \d+:\s*/, '')}</b>
+                  {w.fix && <p>{w.fix}</p>}
+                </div>
+              )
+            })}
           </div>
         )}
         <div className="brief-card">

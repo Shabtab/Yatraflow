@@ -27,7 +27,12 @@ export const MASCOT_FILES = {
   celebrate: { animated: 'animated/chakra-celebrate.svg' },
   chai: { still: 'chakra-chai.svg', animated: 'animated/chakra-chai.svg' },
   flock: { still: 'chakra-flock.svg' },
+  'head-chai': { still: 'chakra-head-chai.svg' },
   'head-curious': { still: 'chakra-head-curious.svg' },
+  'head-lost': { still: 'chakra-head-lost.svg' },
+  'head-proud': { still: 'chakra-head-proud.svg' },
+  'head-sleepy': { still: 'chakra-head-sleepy.svg' },
+  'head-worried': { still: 'chakra-head-worried.svg' },
   hero: { still: 'chakra-hero.svg', night: 'chakra-night-hero.svg' },
   idle: { animated: 'animated/chakra-idle.svg' },
   loading: { animated: 'animated/chakra-loading.svg' },
@@ -64,4 +69,32 @@ export function mascotFile(
       ? files.animated
       : files.still ?? files.animated ?? files.night
   return chosen ? `brand/mascot/${chosen}` : ''
+}
+
+/**
+ * The small head an inline warning wears, by engine warning code (plan §3).
+ *
+ * Only the codes whose meaning matches a shipped head appear here. A code with
+ * no honest head returns null and the warning keeps its plain text: a wrong
+ * face on a warning is worse than no face.
+ */
+export function warningHead(code: string): MascotPose | null {
+  switch (code) {
+    // A day with no meal or rest break is the kulhad warning.
+    case 'meals': return 'head-chai'
+    // The halt the engine never found: the ride has no bed in it.
+    case 'fatigue': return 'head-sleepy'
+    // Over-packed, late, or against the clock: the day is straining.
+    case 'density':
+    case 'late-arrival':
+    case 'travel':
+    case 'buffer':
+    case 'short-rest':
+      return 'head-worried'
+    // A fixed commitment the plan cannot meet.
+    case 'commitment':
+    case 'commitment-unlinked':
+      return 'head-lost'
+    default: return null
+  }
 }

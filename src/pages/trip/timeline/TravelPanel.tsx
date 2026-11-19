@@ -37,6 +37,7 @@ import { planInputsHash, isHaltCacheFresh } from '../../../hooks/useSuggestionCa
 import type { LucideIcon } from 'lucide-react'
 import { InlineIcon, MetaIcon } from '../../../components/icons'
 import { FlightsPanel } from './FlightsPanel'
+import { Mascot } from '../../../components/mascot/Mascot'
 import { cap } from '../shared'
 import type { TimeFormat } from '../../../lib/timefmt'
 import type { JourneyRow } from '../../../lib/journeyProjection'
@@ -236,6 +237,9 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
   const isReturn = journey.direction === 'return'
   const fuelPrice = A.fuelPricePerL ?? FUEL_PRICE_INR_PER_L
   const fuelCost = journey.fuelLitres != null ? journey.fuelLitres * fuelPrice : journey.transportCostInr
+  // The halt that ends the ride at a bed. The planner files an overnight halt as
+  // `hotel` (see addHaltsToDay), so the category is the honest test here.
+  const nightHalt = journey.halts.find(h => h.category === 'hotel') ?? null
 
   // Live schedule preview for the planned (not yet added) halts: each one adds
   // its duration plus the engine's per-stop buffer to the day's end clock.
@@ -542,6 +546,16 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
             <span key={h.id} className="tp-halt-chip">{h.title} · {minutesToHM(h.visitMinutes || 0)}</span>
           ))}
         </div>
+      )}
+
+      {/* The night halt is its own line: a ride that ends at a town to sleep is
+          the one halt the traveller must act on, so it earns the sleepy head
+          beside it (plan §3). The chips above stay a quiet count. */}
+      {nightHalt && (
+        <p className="travel-panel-night">
+          <Mascot pose="head-sleepy" size={26} inline />
+          <span><b>Night halt</b> · {nightHalt.title}{nightHalt.visitMinutes > 0 ? ` · ${minutesToHM(nightHalt.visitMinutes)}` : ''}</span>
+        </p>
       )}
 
       {/* Along the drive: the covered suggestions, from the shared projection.

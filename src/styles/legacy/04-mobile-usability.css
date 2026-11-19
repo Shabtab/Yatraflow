@@ -1172,6 +1172,9 @@ html.vt-active :where(*) {
 .bench-receipt-actions { position: relative; }
 .chip-copied { border-color: var(--yf-teal-600) !important; color: var(--yf-teal-700) !important; }
 .bench-confetti { position: absolute; left: 50%; top: 0; pointer-events: none; }
+/* Chakra's proud head rides the confetti: it is decoration on a moment, so it
+   takes no layout row and sits just above the chips it congratulates. */
+.bench-confetti-head { position: absolute; left: -14px; top: -30px; }
 .cf-bit { position: absolute; width: 7px; height: 7px; border-radius: 2px; background: var(--c); opacity: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .cf-bit { animation: cf-pop .7s ease-out forwards; }
