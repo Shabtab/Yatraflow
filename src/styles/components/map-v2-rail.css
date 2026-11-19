@@ -1578,7 +1578,7 @@
 /* The meta line sits under the label: the filled stop name, or "Added by the app",
    one line with an ellipsis when long. No wrapped right column. */
 .mv2-workspace .poi-col--needs .slots-list .day-slot-val {
-  grid-column: 2 / -1; grid-row: 2; min-width: 0;
+  grid-column: 2 / -1; grid-row: 2; min-width: 0; justify-self: stretch; text-align: left; margin-left: 0;
   font-size: 11.5px; line-height: 1.3; color: var(--pw-ink-2);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
