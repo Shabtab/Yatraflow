@@ -113,9 +113,10 @@
   box-shadow: var(--shadow-card);
   /* No backdrop blur: the cover under it zooms on hover, and a blur over a moving
      image is recomputed every frame, which makes the zoom stutter. */
-  /* Small pop: the stamp lands after its card has begun to rise. The card sets
-     --mt-enter to its grid step, so a later card's stamp lands later. */
-  animation: mt-pop-in var(--motion-slow) var(--ease-settle) backwards;
+  /* Pop: the stamp lands after its card has begun to rise. The card sets
+     --mt-enter to its grid step, so a later card's stamp lands later. The stamp
+     is taller than 48px, so it lands on ease-out, not the settle overshoot. */
+  animation: mt-pop-in var(--motion-slow) var(--ease-out) backwards;
   animation-delay: calc(var(--mt-step) * (var(--mt-enter, 0) + 2));
 }
 @keyframes mt-pop-in { from { opacity: 0; transform: scale(.4); } }
@@ -335,6 +336,10 @@
 .mt-listhead .mt-seg button { min-height: 34px; padding: 0 12px; }
 .mt-listhead .mt-seg button[aria-pressed='true'] { color: var(--text); }
 .mt-clear, .mt-trash { flex: none; white-space: nowrap; }
+/* Clear filters mounts when a filter is set: it fades in and slides 6px. The
+   slide uses translate, so it never fights a press transform on the button. */
+.mt-clear { animation: mt-clear-in var(--motion-med) var(--ease-out) backwards; }
+@keyframes mt-clear-in { from { opacity: 0; translate: -6px 0; } }
 /* Below a 1150px catalog the tools take their own line under the heading. */
 @container mt-catalog (max-width: 1150px) {
   .mt-listhead-tools { flex-wrap: wrap; flex-basis: 100%; justify-content: flex-start; }
@@ -346,17 +351,24 @@
 @container mt-catalog (min-width: 640px) { .mt-pc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @container mt-catalog (min-width: 880px) { .mt-pc-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .mt-pc {
+  position: relative; isolation: isolate;
   display: flex; flex-direction: column; min-width: 0; padding: 10px 10px 12px;
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-card);
   transform: rotate(var(--mt-tilt, 0deg));
-  transition: transform var(--motion-slow) var(--ease-out), box-shadow var(--motion-slow) var(--ease-out);
+  /* Only transform animates: the hover shadow is the ::before layer, as on .mt-card. */
+  transition: transform var(--motion-slow) var(--ease-out);
   /* The postcard rises into its own tilt: the keyframe has no end frame, so the
      card lands on the rotate above. --mt-i is its place, capped by the page. */
   animation: mt-pc-in var(--mt-dur) var(--ease-paper) backwards;
   animation-delay: calc(var(--mt-step) * var(--mt-i, 0));
 }
 @keyframes mt-pc-in { from { opacity: 0; translate: 0 14px; scale: .98; } }
-.mt-pc:hover, .mt-pc:focus-within { transform: translateY(-3px) rotate(0deg); box-shadow: var(--shadow-card-hover); }
+.mt-pc:hover, .mt-pc:focus-within { transform: translateY(-3px) rotate(0deg); }
+.mt-pc::before {
+  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
+  box-shadow: var(--shadow-card-hover); opacity: 0; transition: opacity var(--motion-slow) var(--ease-out);
+}
+.mt-pc:hover::before, .mt-pc:focus-within::before { opacity: 1; }
 .mt-pc .mt-cover { border-radius: var(--radius-xs); }
 .mt-pc-mark {
   position: absolute; top: 8px; right: 8px; z-index: var(--z-content); max-width: calc(100% - 16px); padding: 4px 8px; overflow: hidden;
@@ -466,6 +478,7 @@
   .mt-chips .ex-chip, .mt-sort select { transition: none; }
   /* The postcards stand straight, do not rise in and do not lift. */
   .mt-pc, .mt-pc:hover, .mt-pc:focus-within { transform: none; transition: none; animation: none; }
+  .mt-pc::before, .mt-clear { transition: none; animation: none; }
 }
 
 /* ---------- Empty-state icon weight ---------- */

@@ -39,9 +39,9 @@ describe('My trips motion uses tokens only', () => {
   it('sets the arrival pace in one place: a double stagger step and the slower clock', () => {
     expect(MAIN).toContain(':where(.trips-page) { --mt-step: calc(var(--stagger-step) * 2); --mt-dur: var(--motion-slower); }')
   })
-  it('keeps the settle ease to the date stamp and the score number', () => {
+  it('keeps the settle ease to the score number (48px or smaller)', () => {
     const users = [...MAIN.matchAll(/([^{}]+)\{[^}]*var\(--ease-settle\)/g)].map(m => m[1].replace(/\s+/g, ' ').trim())
-    expect(users.sort()).toEqual(['.mt-ring text', '.mt-stamp'])
+    expect(users.sort()).toEqual(['.mt-ring text'])
   })
 })
 
@@ -141,10 +141,19 @@ describe('the trip card and its cover', () => {
   })
 })
 
+describe('the Clear filters button', () => {
+  it('fades and slides in when it mounts, on translate, with a reduced-motion opt-out', () => {
+    expect(bodyOf(MAIN, '.mt-clear')).toMatch(/animation:\s*mt-clear-in var\(--motion-med\) var\(--ease-out\) backwards/)
+    expect(MAIN).toMatch(/@keyframes mt-clear-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*translate:\s*-6px 0;\s*\}\s*\}/)
+    expect(REDUCED).toMatch(/\.mt-pc::before, \.mt-clear \{ transition: none; animation: none; \}/)
+    expect(read('src/pages/TripsList.tsx')).toContain('className="btn btn-quiet mt-clear"')
+  })
+})
+
 describe('the date stamp', () => {
   it('pops in once, after its own card', () => {
     const body = bodyOf(MAIN, '.mt-stamp')
-    expect(body).toMatch(/animation:\s*mt-pop-in var\(--motion-slow\) var\(--ease-settle\) backwards/)
+    expect(body).toMatch(/animation:\s*mt-pop-in var\(--motion-slow\) var\(--ease-out\) backwards/)
     expect(body).toMatch(/animation-delay:\s*calc\(var\(--mt-step\) \* \(var\(--mt-enter, 0\) \+ 2\)\)/)
     expect(MAIN).toMatch(/@keyframes mt-pop-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*scale\(\.4\);\s*\}\s*\}/)
     expect(read('src/components/trips/TripCard.tsx')).toContain("'--mt-enter': staggerStep(enterIndex)")
@@ -165,7 +174,10 @@ describe('the Memories postcards', () => {
   it('rise into their own tilt and lift on hover', () => {
     const body = bodyOf(MAIN, '.mt-pc')
     expect(body).toMatch(/animation:\s*mt-pc-in var\(--mt-dur\) var\(--ease-paper\) backwards/)
-    expect(body).toMatch(/transition:\s*transform var\(--motion-slow\) var\(--ease-out\), box-shadow var\(--motion-slow\) var\(--ease-out\)/)
+    expect(body).toMatch(/transition:\s*transform var\(--motion-slow\) var\(--ease-out\);/)
+    expect(body).not.toMatch(/transition:[^;]*box-shadow/)
+    expect(bodyOf(MAIN, '.mt-pc::before')).toMatch(/opacity:\s*0;\s*transition:\s*opacity var\(--motion-slow\) var\(--ease-out\)/)
+    expect(bodyOf(MAIN, '.mt-pc:hover, .mt-pc:focus-within')).not.toMatch(/box-shadow/)
     // No end frame: the card lands on its resting tilt and does not snap.
     // The tilt stays on transform; the entrance moves translate and scale, so the two never blend as matrices.
     expect(MAIN).toMatch(/@keyframes mt-pc-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*translate:\s*0 14px;\s*scale:\s*\.98;\s*\}\s*\}/)
