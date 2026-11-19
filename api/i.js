@@ -4,7 +4,7 @@
 // bundler, and this compiles with the function.
 import { resolveOrigin } from './_origin.js'
 import { escapeHtml } from './_escape.js'
-import { defaultCard, ogImageTags, twitterImageTags } from './_shareCard.js'
+import { artCardImage, defaultCard, ogImageTags, twitterImageTags } from './_shareCard.js'
 import { renderBodyHTML, touristTripJsonLd } from './_publicBody.js'
 import pilotCampaigns from '../src/data/growthCampaigns.json' with { type: 'json' }
 import artManifest from '../src/assets/art/manifest.json' with { type: 'json' }
@@ -179,11 +179,14 @@ function renderPublication(publication, id, buyer = null, ref = null, trip = nul
   // A publication with no stored cover shows generated artwork, never a photo
   // the app picked. The scene files live at stable public paths, so a deploy
   // cannot break a card that is already indexed. The brand card is the last
-  // resort. A stored cover's size is unknown here, so its tags declare none.
+  // resort. A scene's size is known, so its tags declare it, and a crawler can
+  // lay out the first preview before it fetches the file. A photo's size is
+  // unknown here, so its tags declare none.
   const generatedCover = cover ? '' : artworkCover(origin, publication)
   const coverAlt = publication?.title ? `Cover of ${publication.title}` : null
-  const image = cover || generatedCover
-    ? { url: cover || generatedCover, alt: coverAlt }
+  const coverUrl = cover || generatedCover
+  const image = coverUrl
+    ? (artCardImage(coverUrl, origin, coverAlt) ?? { url: coverUrl, alt: coverAlt })
     : defaultCard(origin)
   // #230 — the shared link's `ref` rides the QUERY and never the canonical
   // (the share card stays clean). The redirect forwards it so the app can read

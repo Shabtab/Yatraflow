@@ -106,8 +106,10 @@ describe('share preview handler in node', () => {
     expect(res.body).toContain(`og:image" content="${artwork}"`)
     expect(res.body).toContain(`twitter:image" content="${artwork}"`)
     expect(res.body).not.toContain('og-default.png')
-    expect(res.body).not.toContain('og:image:width')
-    expect(res.body).not.toContain('og:image:height')
+    // The scene's own size, never the brand card's 1200 x 630.
+    expect(res.body).toContain('og:image:width" content="640"')
+    expect(res.body).toContain('og:image:height" content="427"')
+    expect(res.body).not.toContain('content="1200"')
     expect(res.body).toContain('twitter:card" content="summary_large_image"')
   })
 
@@ -980,5 +982,56 @@ describe('the default share card agrees everywhere it is written', () => {
     expect(tag(res.body, 'property', 'og:image:type')).toBe('image/png')
     expect(tag(res.body, 'property', 'og:image:alt')).toBe(card.DEFAULT_CARD_ALT)
     expect(tag(res.body, 'name', 'twitter:image')).toBe(tag(res.body, 'property', 'og:image'))
+  })
+})
+
+describe('a scene card declares the size it really has', () => {
+  const tag = (page: string, key: string) => new RegExp(`<meta property="${key}" content="([^"]*)" />`).exec(page)?.[1]
+  // A lossy WebP stores its frame size after the VP8 start code (RFC 9649, section 2.5).
+  const webpSize = (file: Buffer) => {
+    expect(file.subarray(12, 16).toString('ascii')).toBe('VP8 ')
+    expect([...file.subarray(23, 26)]).toEqual([0x9d, 0x01, 0x2a])
+    return [file.readUInt16LE(26) & 0x3fff, file.readUInt16LE(28) & 0x3fff]
+  }
+
+  it('matches every scene file under public/art except the vignettes', async () => {
+    const card = await import('../api/_shareCard.js')
+    const manifest = JSON.parse(read('../src/assets/art/manifest.json'))
+    const vignettes = new Set(Object.values(manifest.vignettes as Record<string, string>))
+    const { readdirSync } = await import('node:fs')
+    const files = readdirSync(new URL('../public/art/', import.meta.url)).filter(name => name.endsWith('.webp'))
+    expect(files.length).toBeGreaterThan(100)
+    for (const name of files) {
+      if (vignettes.has(name.replace(/\.webp$/, ''))) continue
+      const size = webpSize(readFileSync(new URL(`../public/art/${name}`, import.meta.url)))
+      expect(size, name).toEqual([card.ART_CARD_WIDTH, card.ART_CARD_HEIGHT])
+    }
+  })
+
+  it('declares 640 x 427 WebP for a generated scene', async () => {
+    respond([publication])
+    const res = await runHandler()
+    expect(tag(res.body, 'og:image')).toMatch(/^https:\/\/www\.yatraflow\.in\/art\/[a-z0-9-]+\.webp$/)
+    expect(tag(res.body, 'og:image:width')).toBe('640')
+    expect(tag(res.body, 'og:image:height')).toBe('427')
+    expect(tag(res.body, 'og:image:type')).toBe('image/webp')
+  })
+
+  it('declares 640 x 427 WebP for a scene the creator chose as the cover', async () => {
+    respond([{ ...publication, cover_image_url: 'https://www.yatraflow.in/art/goa-2.webp' }])
+    const res = await runHandler()
+    expect(tag(res.body, 'og:image:width')).toBe('640')
+    expect(tag(res.body, 'og:image:type')).toBe('image/webp')
+  })
+
+  it.each([
+    'https://www.yatraflow.in/art/es-offline.webp',
+    'https://elsewhere.example.test/art/goa-2.webp',
+    'https://www.yatraflow.in/art/goa-2.webp?width=1600',
+  ])('declares no size for %s', async url => {
+    respond([{ ...publication, cover_image_url: url }])
+    const res = await runHandler()
+    expect(res.body).not.toContain('og:image:width')
+    expect(res.body).not.toContain('og:image:type')
   })
 })

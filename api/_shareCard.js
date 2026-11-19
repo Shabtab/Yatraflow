@@ -3,6 +3,8 @@
 // tests/share-preview.test.ts pins them to this module and to the real PNG.
 // The source and its render command are in scripts/og-default-card.html.
 import { escapeHtml } from './_escape.js'
+import { DEFAULT_ORIGIN } from './_origin.js'
+import artManifest from '../src/assets/art/manifest.json' with { type: 'json' }
 
 export const DEFAULT_CARD_PATH = '/og-default.png'
 export const DEFAULT_CARD_WIDTH = 1200
@@ -10,8 +12,8 @@ export const DEFAULT_CARD_HEIGHT = 630
 export const DEFAULT_CARD_TYPE = 'image/png'
 export const DEFAULT_CARD_ALT = 'YatraFlow: India trips, planned together. Plan, Map, Budget and Share.'
 
-// Every generated scene under public/art/ is one size and one format.
-// The test reads each scene file to keep these numbers true.
+// Every scene under public/art/ is a 640 x 427 WebP, except the empty-state
+// vignettes. The test reads each scene file to keep these numbers true.
 export const ART_CARD_WIDTH = 640
 export const ART_CARD_HEIGHT = 427
 export const ART_CARD_TYPE = 'image/webp'
@@ -46,4 +48,21 @@ export function twitterImageTags(image) {
     `<meta name="twitter:image" content="${escapeHtml(image.url)}" />`,
     ...(image.alt ? [`<meta name="twitter:image:alt" content="${escapeHtml(image.alt)}" />`] : []),
   ].join('\n')
+}
+
+const VIGNETTE_IDS = new Set(Object.values(artManifest.vignettes ?? {}))
+const ART_PATH_RE = /^\/art\/([a-z0-9][a-z0-9-]*)\.webp$/
+
+/** A scene card with its real size, or null for every other URL.
+ *
+ *  Only a scene on this deployment's host or the production host qualifies.
+ *  A file on another host can have any size, so its tags declare none. */
+export function artCardImage(url, origin, alt) {
+  let parsed
+  try { parsed = new URL(url) } catch { return null }
+  const hosts = [origin, DEFAULT_ORIGIN].map(value => { try { return new URL(value).host } catch { return null } })
+  const id = ART_PATH_RE.exec(parsed.pathname)?.[1]
+  if (!id || parsed.search || parsed.protocol !== 'https:' || !hosts.includes(parsed.host)) return null
+  if (VIGNETTE_IDS.has(id)) return null
+  return { url, width: ART_CARD_WIDTH, height: ART_CARD_HEIGHT, type: ART_CARD_TYPE, alt }
 }
