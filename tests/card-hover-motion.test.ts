@@ -14,7 +14,7 @@
 // To add a card: append its class compound to CARD_CLASSES. It must have a `:hover` rule, and its
 // own base rule must not transition `box-shadow`. To add a cover overlay, append its class to
 // COVER_OVERLAYS. `.mt-card` (My trips) joins CARD_CLASSES once the My trips branch merges: on the
-// current `test` state its base rule still transitions `box-shadow`, and that file is not ours to edit.
+// current `test` state its base rule still transitions `box-shadow` and `border-color`, and that file is not ours to edit.
 import { describe, it, expect } from 'vitest'
 import { readCssSource } from '../scripts/css-source-graph.mjs'
 
@@ -23,6 +23,8 @@ export const CARD_CLASSES = [
   '.ex-card', '.ex-trend-card', '.mt-shelf-row', '.yf-surface.is-interactive',
   '.itin-card', '.sf-day', '.board-stop',
 ]
+/** Cards that may keep a `border-color` transition: it marks a selected or dragged state, not the hover. */
+export const BORDER_EXEMPT = ['.board-stop']
 /** Elements that play an entrance. The cards above count too. */
 export const ENTRANCE_ONLY = ['.trip-enter', '.ex-enter', '.yf-surface.is-entering']
 /** Labels and badges that sit over a cover image which zooms on hover. */
@@ -112,8 +114,8 @@ function hasHoverRule(rules: Rule[], cls: string): boolean {
   return rules.some(r => selectorParts(r.selector).some(p => re.test(p)))
 }
 
-/** Rule A: a card with a hover rule must not transition `box-shadow` in its own base rule. */
-export function shadowTransitionProblems(css: string, cards: string[]): string[] {
+/** Rule A: a card with a hover rule must not transition `box-shadow` or `border-color` in its own base rule. */
+export function shadowTransitionProblems(css: string, cards: string[], borderExempt: string[] = []): string[] {
   const { rules } = parseCss(css)
   const problems: string[] = []
   for (const card of cards) {
@@ -124,7 +126,8 @@ export function shadowTransitionProblems(css: string, cards: string[]): string[]
     for (const r of rules) {
       if (!selectorParts(r.selector).some(p => isClass(lastCompound(p), card))) continue
       const tr = declValue(r.body, 'transition')
-      if (tr && /\b(?:box-shadow|all)\b/.test(tr)) problems.push(`${r.selector}: transition animates box-shadow (${tr})`)
+      const banned = borderExempt.includes(card) ? /\b(?:box-shadow|all)\b/ : /\b(?:box-shadow|border-color|all)\b/
+      if (tr && banned.test(tr)) problems.push(`${r.selector}: transition animates box-shadow or border-color (${tr})`)
     }
   }
   return problems
@@ -157,7 +160,8 @@ export function overlayBlurProblems(css: string, overlays: string[]): string[] {
 }
 
 const BAD_SHADOW = '.ex-card { transition: transform .2s, box-shadow .2s; }\n.ex-card:hover { transform: translateY(-2px); }'
-const GOOD_SHADOW = '.ex-card { transition: transform .2s, border-color .2s; }\n.ex-card:hover { transform: translateY(-2px); }'
+const BAD_BORDER = '.ex-card { transition: transform .2s, border-color .2s; }\n.ex-card:hover { transform: translateY(-2px); }'
+const GOOD_SHADOW = '.ex-card { transition: transform .2s; }\n.ex-card:hover { transform: translateY(-2px); }'
 const BAD_ENTRANCE = '@keyframes rise { from { opacity: 0; transform: translateY(14px); } }\n.ex-enter { animation: rise 1s backwards; }'
 const GOOD_ENTRANCE = '@keyframes rise { from { opacity: 0; translate: 0 14px; scale: .98; } }\n.ex-enter { animation: rise 1s backwards; }'
 const BAD_BLUR = '.ex-style-tag { background: red; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }'
@@ -167,6 +171,9 @@ describe('card hover gate: every rule fires on a known-bad sample', () => {
   it('rule A fails a card whose base rule transitions box-shadow, and passes one that does not', () => {
     expect(shadowTransitionProblems(BAD_SHADOW, ['.ex-card'])).toHaveLength(1)
     expect(shadowTransitionProblems(GOOD_SHADOW, ['.ex-card'])).toEqual([])
+    // A border-color transition repaints the page every frame, so it fails too, unless the card is exempt.
+    expect(shadowTransitionProblems(BAD_BORDER, ['.ex-card'])).toHaveLength(1)
+    expect(shadowTransitionProblems(BAD_BORDER, ['.ex-card'], ['.ex-card'])).toEqual([])
     // `transition: all` also covers box-shadow.
     expect(shadowTransitionProblems('.ex-card { transition: all .2s; }\n.ex-card:hover { top: 0; }', ['.ex-card'])).toHaveLength(1)
     // A listed card with no hover rule is a stale entry.
@@ -193,7 +200,7 @@ describe('card hover gate: the shipped CSS', () => {
   const css = readCssSource('src/styles.css') as string
 
   it('A: no listed card transitions box-shadow in its own base rule', () => {
-    expect(shadowTransitionProblems(css, CARD_CLASSES)).toEqual([])
+    expect(shadowTransitionProblems(css, CARD_CLASSES, BORDER_EXEMPT)).toEqual([])
   })
 
   it('B: no entrance used by a listed card or entrance element animates transform', () => {

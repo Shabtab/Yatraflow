@@ -197,16 +197,18 @@
   /* isolation keeps the ::before hover shadow inside this card's own stacking context. */
   position: relative; isolation: isolate; display: flex; flex-direction: column; min-width: 0; padding: 6px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--ex-shadow-sm);
-  /* The lift rides the slow clock. The shadow does not animate (a box-shadow
-     transition repaints every frame): the hover shadow is the layer below. */
-  transition: transform var(--motion-slow) var(--ease-out), border-color var(--motion-slow) var(--ease-out);
+  /* The lift rides the slow clock. Only transform animates here: a box-shadow or
+     border-color transition repaints the page every frame. The hover shadow and the
+     stronger edge are one layer (::before) that fades in on opacity. */
+  transition: transform var(--motion-slow) var(--ease-out);
 }
 .ex-card::before {
   content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
-  box-shadow: var(--ex-shadow-md); opacity: 0; transition: opacity var(--motion-slow) var(--ease-out);
+  /* The inset ring sits on the card's 1px border, so the edge darkens with the shadow. */
+  box-shadow: var(--ex-shadow-md), inset 0 0 0 1px var(--ex-line-strong); opacity: 0; transition: opacity var(--motion-slow) var(--ease-out);
 }
 .ex-card:hover::before { opacity: 1; }
-.ex-card:hover { transform: translateY(-2px); border-color: var(--ex-line-strong); }
+.ex-card:hover { transform: translateY(-2px); }
 .ex-card:hover .ex-cover-img, .ex-card:hover .mt-motif { transform: scale(1.035); }
 .ex-cover-wrap { position: relative; overflow: hidden; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); }
 .ex-cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform var(--motion-slower) var(--ease-out); will-change: transform; backface-visibility: hidden; }

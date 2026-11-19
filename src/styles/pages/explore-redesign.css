@@ -418,9 +418,10 @@
 .ex-page .ex-grid { gap: 16px; }
 .ex-card[data-id] .ex-cover-wrap { aspect-ratio: auto; height: 168px; }
 article.ex-card[data-id] { border-color: var(--line); box-shadow: var(--elev-1); }
-/* The hover shadow is the card's ::before layer (10-explore.css), which fades on opacity. */
+/* The hover shadow is the card's ::before layer (10-explore.css), which fades on opacity.
+   Here the edge keeps its colour on hover, so this layer has no inset ring. */
 article.ex-card[data-id]::before { box-shadow: var(--shadow-card-hover); }
-article.ex-card[data-id]:hover { transform: translateY(-3px); border-color: var(--line); }
+article.ex-card[data-id]:hover { transform: translateY(-3px); }
 /* Size only. The shared avatar sets its own 11px type. */
 .ex-card[data-id] .ex-byline .avatar { width: 26px; height: 26px; }
 .ex-card[data-id] .ex-byline svg,
