@@ -540,10 +540,12 @@
   }
 }
 
+/* translate, not transform: `.sf-daygrid > .sf-day` lifts on hover with transform, and an
+   entrance on the same property would win while it runs and snap when it ends. */
 @keyframes sf-rise {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    translate: 0 10px;
   }
 }
 
