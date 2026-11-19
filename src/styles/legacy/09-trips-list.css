@@ -107,9 +107,10 @@
   position: absolute; top: 10px; left: 10px; z-index: var(--z-content);
   display: flex; flex-direction: column; align-items: center; min-width: 48px; padding: 6px 8px 7px;
   border: 1px solid color-mix(in srgb, var(--card) 80%, transparent); border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--card) 84%, transparent); color: var(--text); line-height: 1.1;
+  background: color-mix(in srgb, var(--card) 94%, transparent); color: var(--text); line-height: 1.1;
   box-shadow: var(--shadow-card);
-  -webkit-backdrop-filter: blur(var(--yf-blur-chip)); backdrop-filter: blur(var(--yf-blur-chip));
+  /* No backdrop blur: the cover under it zooms on hover, and a blur over a moving
+     image is recomputed every frame, which makes the zoom stutter. */
   /* Small pop: the stamp lands after its card has begun to rise. The card sets
      --mt-enter to its grid step, so a later card's stamp lands later. */
   animation: mt-pop-in var(--motion-slow) var(--ease-settle) backwards;
@@ -124,9 +125,9 @@
 .mt-status {
   position: absolute; top: 10px; right: 10px; z-index: var(--z-content); max-width: calc(100% - 92px);
   padding: 4px 10px; overflow: hidden; border-radius: 999px; white-space: nowrap; text-overflow: ellipsis;
-  background: color-mix(in srgb, var(--card) 90%, transparent); color: var(--ink-teal);
+  background: color-mix(in srgb, var(--card) 95%, transparent); color: var(--ink-teal);
   font-size: 11.5px; font-weight: 700; line-height: 1.4;
-  -webkit-backdrop-filter: blur(var(--yf-blur-chip)); backdrop-filter: blur(var(--yf-blur-chip));
+  /* No backdrop blur over the zooming cover (see .mt-stamp). */
 }
 .mt-status--ready { color: color-mix(in srgb, var(--ok) 70%, var(--text)); }
 .mt-status--draft { color: var(--pw-marigold-ink); }

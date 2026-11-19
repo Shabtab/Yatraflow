@@ -114,6 +114,12 @@ describe('the trip card and its cover', () => {
     expect(bodyOf(MAIN, '.mt-feat:hover, .mt-feat:has(.mt-card-link:focus-visible)')).toMatch(/transform:\s*none/)
   })
 
+  it('keeps the chips over the zooming cover free of backdrop blur', () => {
+    // A blur over a moving image is recomputed every frame, so the cover zoom stutters.
+    expect(bodyOf(MAIN, '.mt-stamp')).not.toMatch(/backdrop-filter/)
+    expect(bodyOf(MAIN, '.mt-status')).not.toMatch(/backdrop-filter/)
+  })
+
   it('grows the cover art and the photo to 1.035 inside the clip, on the slower clock', () => {
     const grow = bodyOf(
       MAIN,
