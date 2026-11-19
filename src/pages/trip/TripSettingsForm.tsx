@@ -984,10 +984,10 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
           <span className="tset-nav-lbl">The plan at a glance</span>
           {preview?.estimated && <p className="muted small">Route changes need fresh road measurements after saving.</p>}
           <div className="tset-glance-grid">
-            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.totalDistanceKm > 0 ? `${Math.round(tripTotals.totalDistanceKm)} km` : '–'}</span><span className="tset-stat-k">road measured</span></div>
-            <div className="tset-stat"><span className="tset-stat-v">{minutesToHM(tripTotals.totalTravelMinutes)}</span><span className="tset-stat-k">driving</span></div>
-            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.stopCount} stops</span><span className="tset-stat-k">on {daysWithStops} of {dayCount} days</span></div>
-            <div className="tset-stat"><span className="tset-stat-v">{formatInr(tripTotals.totalCostInr)}</span><span className="tset-stat-k">plan total, estimate</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.totalDistanceKm > 0 ? `${Math.round(tripTotals.totalDistanceKm)} km` : '–'}</span><span className="tset-stat-k">Road measured</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{minutesToHM(tripTotals.totalTravelMinutes)}</span><span className="tset-stat-k">Driving</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.stopCount} stops</span><span className="tset-stat-k">On {daysWithStops} of {dayCount} days</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{formatInr(tripTotals.totalCostInr)}</span><span className="tset-stat-k">Plan total, estimate</span></div>
           </div>
           <div className="tset-read">
             <span className="tset-diff-lbl">The engine&apos;s read</span>
@@ -1587,11 +1587,11 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
                 </Field>
               </div>
               <div className="form-row">
-                <Field label={f.fuelType === 'electric' ? 'Battery (kWh)' : 'Tank capacity (L)'} hint={f.fuelType === 'electric' ? 'e.g. 50' : 'e.g. 45'}>
+                <Field label={f.fuelType === 'electric' ? 'Battery (kWh)' : 'Tank capacity (L)'} hint={f.fuelType === 'electric' ? 'E.g. 50' : 'E.g. 45'}>
                   <input type="number" min={1} max={300} step={0.5} className="input" disabled={!editable} value={f.capacity}
                     onChange={e => setF(x => ({ ...x, capacity: e.target.value }))} placeholder={f.fuelType === 'electric' ? '50' : '45'} />
                 </Field>
-                <Field label={f.fuelType === 'electric' ? 'Efficiency (km / kWh)' : 'Economy (km / L)'} hint={f.fuelType === 'electric' ? 'e.g. 6' : 'e.g. 15'}>
+                <Field label={f.fuelType === 'electric' ? 'Efficiency (km / kWh)' : 'Economy (km / L)'} hint={f.fuelType === 'electric' ? 'E.g. 6' : 'E.g. 15'}>
                   <input type="number" min={1} max={200} step={0.1} className="input" disabled={!editable} value={f.vehicleEconomy}
                     onChange={e => setF(x => ({ ...x, vehicleEconomy: e.target.value }))} placeholder={f.fuelType === 'electric' ? '6' : '15'} />
                 </Field>

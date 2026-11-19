@@ -73,9 +73,9 @@ describe('paidDayXRuns', () => {
 
 describe('paidBandLabel', () => {
   it('says highest only when the peak is inside a paid run', () => {
-    expect(paidBandLabel([4, 5, 6], 5)).toBe('highest · paid days')
-    expect(paidBandLabel([4, 5, 6], 1)).toBe('paid days')
-    expect(paidBandLabel([4, 5, 6], null)).toBe('paid days')
+    expect(paidBandLabel([4, 5, 6], 5)).toBe('Highest · paid days')
+    expect(paidBandLabel([4, 5, 6], 1)).toBe('Paid days')
+    expect(paidBandLabel([4, 5, 6], null)).toBe('Paid days')
   })
 })
 

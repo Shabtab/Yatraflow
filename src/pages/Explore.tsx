@@ -182,10 +182,10 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   // the same figure rather than two sums that could drift apart.
   const forkCount = useMemo(() => livePubs(published).reduce((sum, p) => sum + p.copies, 0), [published])
   const heroStats = useMemo(() => [
-    { label: 'itineraries', value: liveCount },
-    { label: 'places', value: placeTiles(published, users, Infinity).length },
-    { label: 'creators', value: creatorList(published, users, Infinity).length },
-    { label: 'forks', value: forkCount },
+    { label: 'Itineraries', value: liveCount },
+    { label: 'Places', value: placeTiles(published, users, Infinity).length },
+    { label: 'Creators', value: creatorList(published, users, Infinity).length },
+    { label: 'Forks', value: forkCount },
   ], [published, users, liveCount, forkCount])
 
   /** The hero's Search: bring the catalog to the top and hand it focus. */

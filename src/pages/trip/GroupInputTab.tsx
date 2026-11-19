@@ -705,7 +705,7 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
             {!open && <Chip tone={sg.status === 'accepted' ? 'ok' : 'danger'}>{cap(sg.status)}</Chip>}
           </span>
           <span className="gin-row-meta small muted num">{ideaMeta(sg)}</span>
-          <span className="gin-row-by small muted"><Avatar user={author} /> suggested by {initialsOf(author?.profile.name)}</span>
+          <span className="gin-row-by small muted"><Avatar user={author} /> Suggested by {initialsOf(author?.profile.name)}</span>
         </span>
         <span className="gin-heart"><Heart size={14} aria-hidden /><b>{ups}</b></span>
       </button>
@@ -1066,7 +1066,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
                 {rec && (
                   <p className="small gin-guide-rec">
                     <InlineIcon icon={Sparkles} size={12} gap={4} />
-                    <b>{rec.label}</b>: {rec.reason} <Chip tone="info">offline</Chip>
+                    <b>{rec.label}</b>: {rec.reason} <Chip tone="info">Offline</Chip>
                   </p>
                 )}
               </div>

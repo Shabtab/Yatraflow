@@ -759,7 +759,7 @@ function AiProviderCard() {
         trip's data. Without one it uses the built-in deterministic assistant. The key is stored on this device only and
         is never sent to YatraFlow's servers.
       </p>
-      <Field label="Endpoint base URL" hint="e.g. https://api.openai.com/v1. Everything before /chat/completions">
+      <Field label="Endpoint base URL" hint="E.g. https://api.openai.com/v1. Everything before /chat/completions">
         <input
           className="input" type="url" inputMode="url" autoComplete="off" spellCheck={false}
           placeholder="https://api.openai.com/v1"
@@ -773,7 +773,7 @@ function AiProviderCard() {
           value={cfg.apiKey} disabled={testing} onChange={e => set({ apiKey: e.target.value })}
         />
       </Field>
-      <Field label="Model" hint="e.g. gpt-4o-mini">
+      <Field label="Model" hint="E.g. gpt-4o-mini">
         <input
           className="input" type="text" autoComplete="off" spellCheck={false}
           placeholder="gpt-4o-mini"
@@ -860,7 +860,7 @@ function JevCard() {
         instead of a full model generation. When configured it takes precedence over the LLM endpoint. The key is
         stored on this device only.
       </p>
-      <Field label="Endpoint base URL" hint="e.g. https://api.typesafe.ai/v1. Everything before /systemone">
+      <Field label="Endpoint base URL" hint="E.g. https://api.typesafe.ai/v1. Everything before /systemone">
         <input
           className="input" type="url" inputMode="url" autoComplete="off" spellCheck={false}
           placeholder="https://api.typesafe.ai/v1"

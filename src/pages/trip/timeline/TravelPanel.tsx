@@ -660,7 +660,7 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
           <div className="small muted halt-planner-help"><MetaIcon icon={ MapPin } tone="place" />Pick where along the ride and for how long. Tick a found spot to detour there.</div>
           <div className="halt-planner-inputs">
             <label className="hp-field">
-              <span className="tps-label">after</span>
+              <span className="tps-label">After</span>
               <input
                 type="number" min={1} step={10} value={draftKm} className="input input--compact"
                 onChange={e => setDraftKm(Math.max(1, Number(e.target.value) || 0))}
@@ -669,7 +669,7 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
               <span className="tps-label">km</span>
             </label>
             <label className="hp-field">
-              <span className="tps-label">for</span>
+              <span className="tps-label">For</span>
               <input
                 type="number" min={5} max={480} step={5} value={draftMin} className="input input--compact"
                 onChange={e => setDraftMin(Math.max(5, Math.min(480, Number(e.target.value) || 20)))}
@@ -782,7 +782,7 @@ function HaltPlanRow({ item, onRemove, onTogglePin }: {
           <b>{usingSpot ? h!.name : 'On the route'}</b>
         </div>
         <span className="muted small">
-          after ~{Math.round(item.km)} km · {item.minutes} min halt
+          After ~{Math.round(item.km)} km · {item.minutes} min halt
           {usingSpot && h!.offRouteKm != null ? ` · ~${Math.round(h!.offRouteKm)} km off route` : ''}
         </span>
         {usingSpot && h && reasonForHit(h) && (
@@ -791,7 +791,7 @@ function HaltPlanRow({ item, onRemove, onTogglePin }: {
         {h && (
           <label className="hp-pin muted small">
             <input type="checkbox" checked={item.pin} onChange={onTogglePin} aria-label={`Detour to ${h.name} instead of halting on the route`} />
-            <span>detour to {h.name}{h.nearestCity ? ` (near ${h.nearestCity})` : ''} instead of the route point</span>
+            <span>Detour to {h.name}{h.nearestCity ? ` (near ${h.nearestCity})` : ''} instead of the route point</span>
           </label>
         )}
       </div>

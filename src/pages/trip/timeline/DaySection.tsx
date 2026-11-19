@@ -1200,7 +1200,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                   <span>
                     {i === 0 ? `Start: ${cleanName}` : isFinal ? `Destination: ${cleanName}` : cleanName}
                   </span>
-                  {isFinal && <span className="small muted tl-arrive-gap">arrives ~{row?.arrive ? formatHM(row.arrive, timeFormat) : '--:--'}</span>}
+                  {isFinal && <span className="small muted tl-arrive-gap">Arrives ~{row?.arrive ? formatHM(row.arrive, timeFormat) : '--:--'}</span>}
                 </div>
               </div>
             )
@@ -1271,7 +1271,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                   <span className={`stop-kind-tag kind-${kind}`}>{label}</span>
                   {s.priority === 'must-do' && <Chip tone="danger">Must do</Chip>}
                   {s.priority === 'optional' && <Chip tone="saffron">Optional</Chip>}
-                  {s.weatherSensitive && <Chip tone="info"><InlineIcon icon={CloudRain} size={11} gap={3} vAlign="-1px" />weather-sensitive</Chip>}
+                  {s.weatherSensitive && <Chip tone="info"><InlineIcon icon={CloudRain} size={11} gap={3} vAlign="-1px" />Weather-sensitive</Chip>}
                 </div>
                 {/* One " · " line, the way Ride along reads: place, time here, fee.
                     Money fields stay finite-guarded (#343): an absent fee prints
@@ -1286,7 +1286,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                 </div>
                 {s.openTime && <div className="stop-meta">Open {formatHMRange(s.openTime, s.closeTime, timeFormat)}</div>}
                 {s.departTime && s.arrivalTime && (
-                  <div className="stop-meta">dep {formatHM(s.departTime, timeFormat)} · arr {formatHM(s.arrivalTime, timeFormat)}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</div>
+                  <div className="stop-meta">Dep {formatHM(s.departTime, timeFormat)} · arr {formatHM(s.arrivalTime, timeFormat)}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</div>
                 )}
                 {s.description && <ClampedText className="stop-desc">{s.description}</ClampedText>}
                 {s.notes && <ClampedText className="stop-desc muted"><InlineIcon icon={PenLine} size={12} gap={3} />{s.notes}</ClampedText>}
@@ -1394,7 +1394,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                 <div className="travel-endpoint">
                   <span className="travel-anchor-ico"><Flag size={13} aria-hidden /></span>
                   <span>{journey.direction === 'return' ? `Home: ${last.title}` : `Destination: ${last.title}`}</span>
-                  <span className="small muted tl-arrive-gap">arrives ~{last.arrive ? formatHM(last.arrive, timeFormat) : '--:--'}</span>
+                  <span className="small muted tl-arrive-gap">Arrives ~{last.arrive ? formatHM(last.arrive, timeFormat) : '--:--'}</span>
                 </div>
               </div>
             </>
@@ -1411,12 +1411,12 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
         <div className="brief-card">
           <div className="brief-kicker">Day brief</div>
           <div className="brief-grid">
-            <div><b>{minutesToHM(budgetDrive)}</b><span>driving</span></div>
-            <div><b>{minutesToHM(budgetDwell)}</b><span>at stops</span></div>
-            <div><b>{formatHM(sim.endsAt, timeFormat)}</b><span>back at {journey.endTitle}</span></div>
+            <div><b>{minutesToHM(budgetDrive)}</b><span>Driving</span></div>
+            <div><b>{minutesToHM(budgetDwell)}</b><span>At stops</span></div>
+            <div><b>{formatHM(sim.endsAt, timeFormat)}</b><span>Back at {journey.endTitle}</span></div>
             <div>
               <b>{dayTotal ? formatInr(dayTotal.totalInr) : 'Not available'}</b>
-              <span>est. for the group</span>
+              <span>Est. for the group</span>
             </div>
           </div>
           {dayTotal && (dayTotal.transportInr > 0 || dayTotal.expensesInr > 0) && (
