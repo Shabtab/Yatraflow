@@ -498,8 +498,8 @@ export function PlanBench() {
           </div>
           <div className="bench-split-legend">
             <span><span className="dot dot-transport" />{fuelMode ? 'Fuel' : 'Fares'} {pct(shown.transportCost)}%</span>
-            <span><span className="dot dot-stay" />stays {pct(shown.stayCost)}%</span>
-            <span><span className="dot dot-meal" />food {pct(shown.mealCost)}%</span>
+            <span><span className="dot dot-stay" />Stays {pct(shown.stayCost)}%</span>
+            <span><span className="dot dot-meal" />Food {pct(shown.mealCost)}%</span>
           </div>
           <div className="bench-receipt-lines" key={`lines-${lineKey}`}>
             <div className="bench-line">

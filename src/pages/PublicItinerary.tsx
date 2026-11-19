@@ -1451,7 +1451,7 @@ function DayStops({ stops, sim, assumptions, timeFormat, stayDay, mode }: {
                       <span><MetaIcon icon={ Clock } tone="time" />Depart {depHM} → arrive {arrHM}</span>
                       <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(inbound.durationMinutes)}</span>
                       <span><MetaIcon icon={ MapPin } tone="place" />{inbound.distanceKm.toFixed(0)} km</span>
-                      <span><MetaIcon icon={ Car } tone="money" />est {formatInr(cost)} ({assumptions.mode})</span>
+                      <span><MetaIcon icon={ Car } tone="money" />Est {formatInr(cost)} ({assumptions.mode})</span>
                     </>
                   ) : (
                     <span>Departure {depHM}</span>

@@ -1271,7 +1271,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                   <span className={`stop-kind-tag kind-${kind}`}>{label}</span>
                   {s.priority === 'must-do' && <Chip tone="danger">Must do</Chip>}
                   {s.priority === 'optional' && <Chip tone="saffron">Optional</Chip>}
-                  {s.weatherSensitive && <Chip tone="info"><InlineIcon icon={CloudRain} size={11} gap={3} vAlign="-1px" />weather-sensitive</Chip>}
+                  {s.weatherSensitive && <Chip tone="info"><InlineIcon icon={CloudRain} size={11} gap={3} vAlign="-1px" />Weather-sensitive</Chip>}
                 </div>
                 {/* One " · " line, the way Ride along reads: place, time here, fee.
                     Money fields stay finite-guarded (#343): an absent fee prints

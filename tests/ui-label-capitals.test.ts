@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isExampleValue, lowercaseUiLabels, sourceFiles } from './uiSourceScan'
+import { isExampleValue, lowercaseMapLabels, lowercaseUiLabels, sourceFiles } from './uiSourceScan'
 
 /**
  * The whole-app capital gate. A user-visible label in `src/` starts with a capital or a number.
@@ -16,6 +16,24 @@ export const ALLOWLIST: Allowed[] = [
   ...entry('src/components/creator/CrRankTile.tsx', ['of'], 'MID: "of {total} creators" follows the rank value'),
   ...entry('src/components/creator/OwnerLayer.tsx', ['page visits', 'route activity', 'unlocks', 'share sources'], 'MID: label prop joined into "Loading/Could not load {label}" sentences'),
   ...entry('src/components/PlanBench.tsx', ['actually'], 'MID: inside "What will your road trip actually cost?"'),
+  ...entry('src/components/explore/RouteTrail.tsx', ['stop', 'stops'], 'UNIT: follows "{n} more" in "3 more stops not shown"'),
+  ...entry('src/components/PlanBench.tsx', ['round trip', 'one way'], 'MID: inside the parentheses after "km on the road"'),
+  ...entry('src/components/PlanBench.tsx', ['fuel', 'fares'], 'MID: "{cost} in fuel" and "{cost} in fares"'),
+  ...entry('src/components/PrintExport.tsx', ['flight', 'ground travel'], 'UNIT: follows a number and unit, as "45 min flight"'),
+  ...entry('src/components/StopEditor.tsx', ['this stop'], 'MID: fallback after the arrow in the leg line'),
+  ...entry('src/components/storefront/ride/RideLockedPreview.tsx', ['opens with the full plan.', 'open together.'], 'MID: end of a sentence that starts with the day range'),
+  ...entry('src/components/TrendChart.tsx', ['reading…', 'not read'], 'MID: value after the "Unlocks" label on one line'),
+  ...entry('src/pages/CreateTrip.tsx', ['planner', 'rented car', 'below', 'above', 'within'], 'MID: word inside a hint sentence'),
+  ...entry('src/pages/CreatorHubPage.tsx', ['net', 'gross'], 'MID: basis word after "Lifetime"'),
+  ...entry('src/pages/Landing.tsx', ['flow together'], 'MID: end of the headline "Plan trips that actually flow together"'),
+  ...entry('src/pages/PublicItinerary.tsx', ['day', 'days'], 'MID: "Read the free {day or days} first"'),
+  ...entry('src/pages/Purchases.tsx', ['it', 'them'], 'MID: end of "updated since you bought it or them"'),
+  ...entry('src/pages/trip/BudgetTab.tsx', ['your local pump price', 'indicative petrol price. Actual consumption varies'], 'MID: inside a parenthetical in one sentence'),
+  ...entry('src/pages/trip/BudgetTab.tsx', ['stays, fuel, meals'], 'MID: descriptor after "Essential {amount}"'),
+  ...entry('src/pages/trip/BudgetTab.tsx', ['that line', 'those'], 'MID: "Without {that line or those N}:"'),
+  ...entry('src/pages/trip/BudgetTab.tsx', ['settled', 'open'], 'MID: "No {settled or open} lines."'),
+  ...entry('src/pages/trip/timeline/DaySection.tsx', ['car'], 'MID: mode word inside parentheses after the cost'),
+  ...entry('src/pages/trip/TripSettingsForm.tsx', ['the start'], 'MID: fallback inside "Drive back to {place} at the end"'),
   ...entry('src/components/creator/StoreWeekend.tsx', ['about'], 'MID: qualifier before a rupee value in a table cell'),
   ...entry('src/components/storefront/ride/RideTimeline.tsx', ['to'], 'MID: range prefix after the arrival time'),
   ...entry('src/components/trips/OverviewRouteCard.tsx', ['about'], 'MID: qualifier written before a number inside <b>'),
@@ -75,12 +93,50 @@ describe('UI label capitals', () => {
     ])
   })
 
-  it('allows a unit after a number and an example value, but not a new line of lowercase', () => {
-    const unit = 'const view = <p><b>{n}</b> {n === 1 ? \'place\' : \'places\'} <span>per person</span></p>'
-    expect(lowercaseUiLabels('example.tsx', unit)).toEqual([])
-    const newBlock = 'const view = <div><h3>Title</h3>\n<p>lowercase start</p></div>'
-    expect(lowercaseUiLabels('example.tsx', newBlock)).toEqual([expect.stringMatching(/^example\.tsx:2: lowercase start$/)])
-    expect(['https://example.com', 'www.site.in', 'you@example.com', 'gpt-4o-mini', 'sk-…', 'e.g. Kochi'].filter(value => !isExampleValue(value))).toEqual([])
-    expect(['co-planner', 'planner', 'app'].filter(isExampleValue)).toEqual([])
+  it('does not treat source whitespace as proof of a unit: a block that starts in lowercase fails', () => {
+    const sameLine = 'const view = <div><h3>Title</h3> <p>lowercase start</p></div>'
+    expect(lowercaseUiLabels('example.tsx', sameLine)).toEqual([expect.stringMatching(/^example\.tsx:1: lowercase start$/)])
+    const newLine = 'const view = <div><h3>Title</h3>\n<p>lowercase start</p></div>'
+    expect(lowercaseUiLabels('example.tsx', newLine)).toEqual([expect.stringMatching(/^example\.tsx:2: lowercase start$/)])
+  })
+
+  it('allows only a proven unit: text right after a count on the same text run', () => {
+    const units = [
+      'const view = <p><b>{n}</b> {n === 1 ? \'place\' : \'places\'}</p>',
+      'const view = <p>{trips.length} trips</p>',
+      'const view = <p>{row.forks} {row.forks === 1 ? \'fork\' : \'forks\'}</p>',
+      'const view = <p>₹{Math.round(x)} <span>per person</span></p>',
+      'const view = <p>12 <span>trips</span></p>',
+    ]
+    expect(units.flatMap(source => lowercaseUiLabels('example.tsx', source))).toEqual([])
+    const notUnits = ['const view = <p>{title} <span>trips</span></p>', 'const view = <p>{name} {ready ? \'saved\' : \'Draft\'}</p>']
+    expect(notUnits.flatMap(source => lowercaseUiLabels('example.tsx', source))).toHaveLength(2)
+  })
+
+  it('allows an example only in a verified example context', () => {
+    const examples = [
+      '<input placeholder="e.g. Kochi" />', '<button title="e.g. 45">Go</button>', '<input aria-label="e.g. 45" />',
+      '<input placeholder="gpt-4o-mini" />', '<input placeholder="sk-…" />', '<p>https://example.com</p>', '<p>you@example.com</p>', '<p><code>day-1</code></p>',
+    ].map(markup => 'const view = ' + markup)
+    expect(examples.flatMap(source => lowercaseUiLabels('example.tsx', source))).toEqual([])
+    expect(isExampleValue('gpt-4o-mini')).toBe(false)
+    expect(isExampleValue('day-1', 'placeholder')).toBe(true)
+    expect(isExampleValue('e.g. 45', 'hint')).toBe(false)
+  })
+
+  it('fails on an id-shaped label that is not in an example context, as a button named day-1', () => {
+    const badSamples = ['const view = <button>day-1</button>', 'const view = <p>e.g. 45</p>', 'const view = <Field hint="e.g. 50" />', 'const view = <button>gpt-4o-mini</button>']
+    expect(badSamples.flatMap(source => lowercaseUiLabels('example.tsx', source))).toEqual([
+      expect.stringMatching(/^example\.tsx:1: day-1$/), expect.stringMatching(/^example\.tsx:1: e\.g\. 45$/),
+      expect.stringMatching(/^example\.tsx:1: e\.g\. 50$/), expect.stringMatching(/^example\.tsx:1: gpt-4o-mini$/),
+    ])
+  })
+
+  it('checks text after a decorative element: a dot, an icon or an aria-hidden glyph', () => {
+    const legend = 'const view = <div><span><span className="dot" />stays 40%</span><span><Icon />food</span><span><i aria-hidden>*</i>fuel</span></div>'
+    expect(lowercaseUiLabels('example.tsx', legend)).toEqual([
+      expect.stringMatching(/^example\.tsx:1: stays 40%$/), expect.stringMatching(/^example\.tsx:1: food$/), expect.stringMatching(/^example\.tsx:1: fuel$/),
+    ])
+    expect(lowercaseMapLabels('example.tsx', legend)).toHaveLength(3)
   })
 })
