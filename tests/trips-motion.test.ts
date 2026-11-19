@@ -282,8 +282,17 @@ describe('the lazy-route loader waits before it shows', () => {
 })
 
 describe('reduced motion', () => {
+  // A rule in the reduced-motion block whose selector list starts with this
+  // selector and whose body sets `<prop>: none`. Plain string checks, no
+  // RegExp built from a variable.
   const stops = (selector: string, prop: 'animation' | 'transition') =>
-    new RegExp(`(?:^|[}\\s])${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^{]*\\{[^}]*${prop}:\\s*none`).test(REDUCED)
+    [...REDUCED.matchAll(/([^{}]+)\{([^{}]*)\}/g)].some(([, selectors, body]) =>
+      selectors.split(',').some(s => {
+        const t = s.trim()
+        // The selector must end at a boundary, so `.mt-stampX` does not count as `.mt-stamp`.
+        return t === selector || (t.startsWith(selector) && /[\s:.[>+~]/.test(t.charAt(selector.length)))
+      })
+      && body.replace(/\s+/g, ' ').includes(`${prop}: none`))
 
   it('stops every My trips entrance', () => {
     for (const selector of ['.mt-flip span', '.mt-ring text', '.mt-ring-arc', '.mt-stamp', '.mt-card', '.mt-pc']) {

@@ -47,7 +47,7 @@ export function MemoriesSection({ titleId, memories, today, travel, copyingId, o
               <p className="mt-pc-facts">{daysText(trip.days.length)} · {stopCountText(activityStopCount(trip))} · {kmText(distanceKm)}</p>
               <div className="mt-pc-actions">
                 <a className="mt-pc-link" {...appLink(`/trip/${trip.id}`)}>Open</a>
-                <button type="button" className="mt-pc-link" disabled={copyingId !== null} onClick={() => onPlanAgain(trip)}>
+                <button type="button" className="mt-pc-link" disabled={copyingId !== null} onClick={() => { onPlanAgain(trip) }}>
                   <RotateCcw size={14} aria-hidden />{copyingId === trip.id ? 'Copying' : 'Plan it again'}
                 </button>
               </div>
