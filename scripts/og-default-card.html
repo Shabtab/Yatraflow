@@ -81,6 +81,12 @@
 
   /* Artifact plane: the route — a stop sequence, the thing the product plans. */
   .route { position: absolute; top: 0; right: 0; width: 580px; height: 630px; }
+
+  /* Chakra the koel perches below the road. Its tail already ends in a marigold
+     map dot, so the bird reads as part of the route. It is a picture asset
+     loaded by relative path: the render resolves it from scripts/ to
+     public/brand/mascot/. */
+  .chakra { position: absolute; left: 944px; top: 360px; width: 252px; height: 252px; }
 </style>
 </head>
 <body>
@@ -133,6 +139,8 @@
   </svg>
 
   <div class="fade"></div>
+
+  <img class="chakra" src="../public/brand/mascot/chakra-hero.svg" alt="" />
 
   <div class="col">
     <div class="brand">
