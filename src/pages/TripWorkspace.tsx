@@ -924,10 +924,8 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
         carriedTitles = carryStopLinkedRecords(draft, moving.id, dayIndex + 1)
       }
     }, 'move-day', dayIndex)
-    if (carriedTitles.length > 0) {
-      toast(`${carriedTitles.join(', ')} moved to Day ${dayIndex + 2} with the stop — review and keep`)
-    }
-    toast(`Moved “${last.title}” to Day ${dayIndex + 2}. Review and keep`)
+    const carried = carriedTitles.length > 0 ? ` with ${carriedTitles.join(', ')}` : ''
+    toast(`Moved “${last.title}”${carried} to Day ${dayIndex + 2}. Review and keep`)
   }
 
   // The header's cover is the same plan every card draws: the traveller's

@@ -421,7 +421,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       }
     }, 'move-day', toDayIndex)
     if (carriedTitles.length > 0) {
-      toast(`${carriedTitles.join(', ')} moved to Day ${toDayIndex + 1} with the stop — review and keep`)
+      toast(`${carriedTitles.join(', ')} moved to Day ${toDayIndex + 1} with the stop. Review and keep`)
     }
   }, [])
 
@@ -1043,7 +1043,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
             }
           }, 'move-day', toDay)
           if (carriedTitles.length > 0) {
-            toast(`${carriedTitles.join(', ')} moved to Day ${toDay + 1} with the stop — review and keep`)
+            toast(`${carriedTitles.join(', ')} moved to Day ${toDay + 1} with the stop. Review and keep`)
           }
           setMoveModalStop(null)
         }}
