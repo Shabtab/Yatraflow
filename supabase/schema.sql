@@ -445,35 +445,6 @@ as $$
   )
 $$;
 
--- Helper: may the current user comment on and vote in a trip (#935)?
--- True for the trip owner, an enabled admin, or a member with role
--- owner, editor or commenter. A viewer gets false. Used by
--- submit_collab_command for the four comment and ballot kinds only.
-create or replace function public.can_comment(trip uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select (
-    exists (
-      select 1 from public.trips t
-      where t.id = trip and t.owner_id = auth.uid()
-    )
-    or exists (
-      select 1 from public.trip_members m
-      where m.trip_id = trip and m.user_id = auth.uid()
-        and m.role in ('owner', 'editor', 'commenter')
-    )
-    or public.is_admin()
-  ) and not public.is_disabled()
-$$;
-
--- anon must be named: revoke from public alone does not revoke from anon on Supabase.
-revoke all on function public.can_comment(uuid) from public, anon;
-grant execute on function public.can_comment(uuid) to authenticated;
-
 -- ============================================================
 -- New-user trigger: every auth signup gets a profiles row.
 -- ============================================================
@@ -535,6 +506,35 @@ as $$
     select 1 from public.profiles p where p.id = auth.uid() and p.is_disabled
   );
 $$;
+
+-- Helper: may the current user comment on and vote in a trip (#935)?
+-- True for the trip owner, an enabled admin, or a member with role
+-- owner, editor or commenter. A viewer gets false. Used by
+-- submit_collab_command for the four comment and ballot kinds only.
+create or replace function public.can_comment(trip uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select (
+    exists (
+      select 1 from public.trips t
+      where t.id = trip and t.owner_id = auth.uid()
+    )
+    or exists (
+      select 1 from public.trip_members m
+      where m.trip_id = trip and m.user_id = auth.uid()
+        and m.role in ('owner', 'editor', 'commenter')
+    )
+    or public.is_admin()
+  ) and not public.is_disabled()
+$$;
+
+-- anon must be named: revoke from public alone does not revoke from anon on Supabase.
+revoke all on function public.can_comment(uuid) from public, anon;
+grant execute on function public.can_comment(uuid) to authenticated;
 
 -- ============================================================
 -- Row Level Security — the real authorization boundary.

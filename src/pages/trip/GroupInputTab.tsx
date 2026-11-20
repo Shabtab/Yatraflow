@@ -368,6 +368,9 @@ export function GroupInputTab({ trip, editable, canComment, me, previewOpen, slo
           ref={attachDecisionList}
           style={beatOf(2)} className={colClass('decisions')}>
           <h3 id="gi-heading-decisions" className="sr-only">Decisions</h3>
+          {!canComment && (
+            <p className="small muted gin-help">You can read the decisions. Voting and comments need the commenter role or higher.</p>
+          )}
           {items.length > 0 && decisionsRead === 'ready' && sortedDecisions.length === 0 && (
             <StateBlock kind="empty" size="compact" title={EMPTY_COPY.decisions.title} body={EMPTY_COPY.decisions.body}
               icon={<Scale size={38} aria-hidden />} />
@@ -1136,7 +1139,7 @@ function DecisionCard({ d, me, editable, canComment, needsMe, memberCount, now, 
           </div>
         </>
       )}
-      {pickerOptionId && pickerOption?.place && (
+      {editable && pickerOptionId && pickerOption?.place && (
         <div className="gin-item-actions gin-followup" role="group" aria-label="Choose a day for the winning stop">
           <p className="small muted">{needsPlacement
             ? `${pickerOption.place.title} won the vote. Choose a current day to place it.`

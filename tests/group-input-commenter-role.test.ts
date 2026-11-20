@@ -64,7 +64,7 @@ async function freshStore(): Promise<Store> {
   return import('../src/store/store')
 }
 
-/** The command types the store sent through the collab-command RPC, in order. */
+/** The command types the store sent through the collab-command RPC, one by one. */
 function sentTypes(): string[] {
   return calls
     .filter(c => c.table === 'submit_collab_command' && c.method === 'rpc')
@@ -248,6 +248,11 @@ describe('the Group input tab gates its controls on canComment', () => {
     expect(tab).toMatch(/\{editable && \(\s*<div id="gi-idea-composer"/)
     expect(tab).toMatch(/\{editable && \(\s*<Surface className="card gin-panel">\s*<DecisionComposerForm/)
     expect(tab).toMatch(/\{editable && open && \(\s*<div className="gin-item-actions">/)
+  })
+
+  it('keeps the decision placement picker behind editable', () => {
+    // A viewer or commenter must not see the day picker or the place button.
+    expect(tab).toMatch(/\{editable && pickerOptionId && pickerOption\?\.place && \(/)
   })
 
   it('gets canComment from the same role source as editable', () => {

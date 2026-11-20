@@ -2,7 +2,7 @@
 -- Apply after 20261119_creator_route_states.sql.
 --
 -- Before this file, submit_collab_command returned 'forbidden' for every
--- caller who was not an editor. A commenter therefore could not comment on a
+-- caller who was not an editor. A commenter could not comment on a
 -- suggestion or decision, or cast a ballot. The Share tab offers the commenter
 -- role, so the role must do what it says.
 --

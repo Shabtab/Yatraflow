@@ -1634,6 +1634,9 @@ begin
   if has_function_privilege('anon', 'public.can_comment(uuid)', 'execute') then
     raise exception 'can_comment must not be executable by anon -- revoke it from anon by name';
   end if;
+  if not has_function_privilege('authenticated', 'public.can_comment(uuid)', 'execute') then
+    raise exception 'can_comment must be executable by authenticated -- the commenter gate calls it as the caller';
+  end if;
   if exists (
     select 1 from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace

@@ -7122,6 +7122,8 @@ export function voteSuggestion(tripId: ID, suggestionId: ID, value: 1 | -1): Pro
   if (!canCommentAdmin(roleIn(tripId, scope.userId))) return Promise.resolve(COMMENT_ROLE_REFUSAL)
   const sgIdx = cache.suggestions.findIndex(x => x.id === suggestionId)
   if (sgIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
+  // A suggestion from another trip is not this trip's row. Refuse before any optimistic change.
+  if (cache.suggestions[sgIdx].tripId !== tripId) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
   if (cache.suggestions[sgIdx].status && cache.suggestions[sgIdx].status !== 'open') {
     // F13: a closed suggestion takes no more ballots — the accept/decline
     // record IS the decision, and the vote buttons go quiet with it.
@@ -7190,6 +7192,8 @@ export function addCommentToSuggestion(tripId: ID, suggestionId: ID, text: strin
   if (!trimmed) return Promise.resolve({ status: 'invalid', reason: 'empty comment' })
   const sgIdx = cache.suggestions.findIndex(x => x.id === suggestionId)
   if (sgIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
+  // A suggestion from another trip is not this trip's row. Refuse before any optimistic change.
+  if (cache.suggestions[sgIdx].tripId !== tripId) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
   const rowBefore = cache.suggestions[sgIdx]
   const sg = structuredClone(rowBefore)
   // The envelope (F2) owns the stable comment id and the whole command: a
@@ -7241,6 +7245,8 @@ export function addCommentToDecision(tripId: ID, decisionId: ID, text: string): 
   if (!trimmed) return Promise.resolve({ status: 'invalid', reason: 'empty comment' })
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
   if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
+  // A decision from another trip is not this trip's row. Refuse before any optimistic change.
+  if (cache.decisions[dIdx].tripId !== tripId) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
   const d = structuredClone(cache.decisions[dIdx])
   // The envelope (F2) owns the stable comment id and the whole command, same
   // as the suggestion comment path.
