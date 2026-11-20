@@ -7,7 +7,7 @@ import type { ItineraryStop, Trip } from '../../../../data/types'
 import { fixedRowsFor } from '../../../../lib/fixedTimes'
 import { hmToMinutes, originOf, simulateDay } from '../../../../lib/engine'
 import { computeImpact, type ImpactResult, type LegCorrections } from '../../../../lib/impact'
-import { dayHoldingStop, moveStopToDay, renumberDay, stopById, stopsInOrder } from '../../../../lib/stopOrder'
+import { carryStopLinkedRecords, dayHoldingStop, moveStopToDay, renumberDay, stopById, stopsInOrder } from '../../../../lib/stopOrder'
 import { validHM } from '../../../../lib/timefmt'
 import type { PreviewClock, PreviewWarning } from './addPreview'
 
@@ -82,7 +82,13 @@ export function moveToDayRequest(
     kind: 'ok',
     request: {
       kind: 'move-day', dayIndex: toDayIndex, dayIndexes: [from.index, toDayIndex], label: `Move to day ${toDayIndex + 1}`,
-      mutate: draft => { moveStopToDay(draft.days, stopId, toDayIndex, null, kmOf) },
+      // Linked commitments and expenses move with the stop (#989). The
+      // preview's impact rows show the change, so no extra toast is needed.
+      mutate: draft => {
+        if (moveStopToDay(draft.days, stopId, toDayIndex, null, kmOf)) {
+          carryStopLinkedRecords(draft, stopId, toDayIndex)
+        }
+      },
     },
   }
 }

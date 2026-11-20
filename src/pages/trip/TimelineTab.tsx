@@ -70,7 +70,7 @@ import { useTimelineProjectedWriter } from './timeline/useTimelineProjectedWrite
 import type { TimelineProjectedWriterHop } from './timeline/timelineProjectedWriter'
 import type { TimelineAddAvailability } from './timeline/timelineAddAvailability'
 import { kmFromStartForHit } from '../../lib/providers/hits'
-import { insertStopAt, moveStopToDay, moveStopWithinDay, nextOrderInDay, pendingStopId, stopsInOrder } from '../../lib/stopOrder'
+import { carryStopLinkedRecords, insertStopAt, moveStopToDay, moveStopWithinDay, nextOrderInDay, pendingStopId, stopsInOrder } from '../../lib/stopOrder'
 import { useTimelineMode, type TimelineMode } from './timeline/useTimelineMode'
 import { ToolbarMenu } from './timeline/ToolbarMenu'
 import { downloadTripIcs } from '../../lib/ics'
@@ -414,9 +414,15 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       toast(`Day ${toDayIndex + 1} is no longer on this trip. The stop stayed on its day.`, 'err')
       return
     }
+    let carriedTitles: string[] = []
     applyChange(draft => {
-      moveStopToDay(draft.days, stopId, toDayIndex, position)
+      if (moveStopToDay(draft.days, stopId, toDayIndex, position)) {
+        carriedTitles = carryStopLinkedRecords(draft, stopId, toDayIndex)
+      }
     }, 'move-day', toDayIndex)
+    if (carriedTitles.length > 0) {
+      toast(`${carriedTitles.join(', ')} moved to Day ${toDayIndex + 1} with the stop. Review and keep`)
+    }
   }, [])
 
   // Warnings grouped by the day they belong to — powers the per-day
@@ -1020,6 +1026,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
             setMoveModalStop(null)
             return
           }
+          let carriedTitles: string[] = []
           applyChange(draft => {
             const target = draft.days.find(d => d.index === toDay)
             if (!target) return
@@ -1031,8 +1038,13 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
             const journey = buildJourney(draft, target, legCorrections)
             const road = dayRoadPolyline(journey.points, legCorrections) ?? journey.points
             const kmOf = (s: ItineraryStop) => kmFromStartForHit({ latitude: s.lat, longitude: s.lng }, road)
-            moveStopToDay(draft.days, stopId, toDay, null, kmOf)
+            if (moveStopToDay(draft.days, stopId, toDay, null, kmOf)) {
+              carriedTitles = carryStopLinkedRecords(draft, stopId, toDay)
+            }
           }, 'move-day', toDay)
+          if (carriedTitles.length > 0) {
+            toast(`${carriedTitles.join(', ')} moved to Day ${toDay + 1} with the stop. Review and keep`)
+          }
           setMoveModalStop(null)
         }}
       />
