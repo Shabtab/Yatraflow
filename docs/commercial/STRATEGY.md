@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-12 · **Baseline:** `origin/test` = `23e7c8f` (v0.74.0 plus 71 unreleased commits) · **Revenue:** ₹699, one buyer account
 
-> **2026-11-20:** The ₹699 was the founder's own test purchase. There is no real revenue yet. This page owns the product and money strategy: position, fees, pricing and the order of revenue. Marketing execution (outreach, content, channels and public claims) lives in the founder's marketing workspace outside this repo. Where the two disagree on a money fact, this page wins.
+> **2026-11-20:** The ₹699 was the founder's own test purchase. There is no real revenue yet. This page owns the product and money strategy: position, fees, pricing and the order of revenue. The founder's marketing workspace outside this repo owns outreach, content, channels and public claims. Where the two disagree on a money fact, this page wins.
 
 This is the **one product and money strategy page**. It replaces the position, sequencing and targets in the
 older commercial docs. Where an older doc disagrees with this page, this page wins. The older
@@ -49,7 +49,7 @@ users.
 | Trips | 114. The top five owners hold 72 | live database |
 | Group trips | 3 of 114 trips have more than one member | live database |
 | Marketplace | 3 published plans, 2 creators, 12 views in 30 days | live database |
-| Revenue | ₹699 from one buyer account (founder test purchase, 2026-09-18; no real revenue) | live database |
+| Revenue | ₹699 (₹500 + ₹199) from one buyer account. The founder made the test purchase on 2026-09-18. No real revenue. | live database |
 
 The older plan set this order: fix the share, measure the funnel, prove demand, then build the
 payment rail. The rail shipped first. No weekly funnel reading exists. The first distribution
@@ -95,8 +95,9 @@ comment-to-DM tools claim it. The ten creator interviews in §4 measure it.
 
 > **Plan Indian trips together — not in a chaotic group chat.**
 > Every stop, hour and rupee in one plan your group can actually follow.
+> Turn the trips you post into plans your followers can actually follow.
 
-The founder locked these lines on 2026-11-20. The old road-trip line was too narrow, because the engine also plans train, flight and bus trips.
+The founder locked these lines on 2026-11-20. The old road-trip line was too narrow. The engine also plans train, flight and bus trips.
 
 YatraFlow is a logistics and coordination product. It is not an AI product. The rivals are a
 WhatsApp thread full of links and a chatbot plan that ignores the road.
