@@ -85,9 +85,9 @@ export function TripCard({ trip, today, budget, readyToGo, toFix, users, meId, e
               <Flag size={15} aria-hidden /><span className="mt-task-label">{step.label}</span><ChevronRight size={15} aria-hidden className="mt-task-chev" />
             </a>
           ))}
-          <button type="button" className="icon-btn mt-del" aria-label={`Delete ${trip.name}`} onClick={() => onDelete(trip)}>
+          {trip.members?.some(m => m.userId === meId && m.role === 'owner') && <button type="button" className="icon-btn mt-del" aria-label={`Delete ${trip.name}`} onClick={() => onDelete(trip)}>
             <Trash2 size={16} aria-hidden />
-          </button>
+          </button>}
         </div>
       </div>
     </article>

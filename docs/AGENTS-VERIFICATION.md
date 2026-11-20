@@ -114,6 +114,7 @@ Hard rules (each learned the hard way — do not relearn them):
 - **You must check the Node version that runs npm with `npm config list`.**
   A PowerShell npm shim can select another installed Node version. You must run
   npm's CLI through your intended Node executable when the versions differ.
+- **You must not set a local `core.autocrlf` in a Windows clone.** Many working-copy files have CRLF line endings. A local `false` makes `git diff` report whole files as changed. Then `lint:ste` flags lines that the branch did not change. Run `git config --unset core.autocrlf` to restore the global value.
 - **You must set `TEMP` and `TMP` inside your worktree when Vite cannot rename
   SSR temp files on Windows.** You must rerun `npm run verify`.
 - **PowerShell: a bare `echo;` (no argument) prompts for `InputObject` and hangs

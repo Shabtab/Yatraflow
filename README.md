@@ -89,6 +89,10 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 </tr>
 </table>
 
+<p align="center"><img src="public/brand/mascot/chakra-expressions.svg" alt="Chakra the koel in twelve expressions" width="480" /></p>
+
+Chakra the koel is the mascot, shown here in twelve expressions. The Y logo stays the brand mark.
+
 ---
 
 _Recent release highlights, newest first. See [CHANGELOG.md](CHANGELOG.md) for the full release record._

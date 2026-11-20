@@ -1645,11 +1645,10 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
                 <div className="tset-danger-cell tset-danger-cell--trash">
                   <b>Move to trash</b>
                   <span>Restorable for 30 days, then gone.</span>
-                  <button type="button" className="tset-danger-btn tset-danger-btn--trash" onClick={() => {
-                    trashTrip(trip)
+                  <button type="button" className="tset-danger-btn tset-danger-btn--trash" onClick={async () => {
+                    if (!await trashTrip(trip)) return
                     undoToast(`Moved “${trip.name}” to trash`, () => {
-                      restoreTrashedTrip(trip)
-                      toast(`Restored “${trip.name}”`)
+                      void restoreTrashedTrip(trip).then(ok => { if (ok) toast(`Restored “${trip.name}”`) })
                     })
                   }}>Move to trash</button>
                 </div>

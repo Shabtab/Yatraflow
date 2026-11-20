@@ -7,6 +7,9 @@ Trip kit views must check the wire lock before simulation. Locked cards must sho
 Member removal must not erase access history. Keep the last role and removal state outside the membership row.
 Send membership changes through the checked server command. Ordinary plan updates must omit invite credentials. (#931)
 
+Trip plan updates must omit owner-only settings. Keep explicit settings writes separate.
+A missing authenticated user ID does not prove service authority. Check the database role at the write boundary. (#932)
+
 Conventions and hard-won pitfalls. Read during **review**, and reach for a
 single rule while implementing when a change touches that area.
 

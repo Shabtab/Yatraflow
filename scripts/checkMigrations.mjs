@@ -148,6 +148,9 @@ export function deriveProbes(sql) {
  *  errors at call time) or covered by another live suite. A silent failure to
  *  apply is the one thing this check refuses to wave through. */
 export const NO_PROBE_SURFACE = {
+  '20261116_trip_settings_boundary.sql': {
+    reason: 'Trigger and policies only. Actual SQL is tested in tests/trip-settings-boundary.test.ts; check the RLS contract too.',
+  },
   '20260906_bump_published_stats_text.sql': {
     reason: 'function only — a missing RPC fails at call time with PGRST202, not silently',
   },
