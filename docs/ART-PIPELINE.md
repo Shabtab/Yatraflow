@@ -1,7 +1,7 @@
 # Illustration pipeline
 
 How the papercut illustrations are stored, built, checked and replaced.
-The style brief is in [`design/art/STYLE.md`](../design/art/STYLE.md).
+The style brief is in [`design/art/STYLE.md`](../design/art/STYLE.md). The exact prompts and reference images are in [`design/art/PROMPT.md`](../design/art/PROMPT.md).
 
 ## What is in the repo
 
