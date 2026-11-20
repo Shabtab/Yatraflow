@@ -341,35 +341,17 @@ if (cols?.drivesPart) row.drives_part = typeof trip.drivesPart === 'boolean' ? t
   return row
 }
 
-/**
- * The row for a whole-row UPDATE: `tripToRow` with `owner_id` removed.
- *
- * Why this exists (#799). Ownership is immutable at the database boundary now,
- * and an UPDATE that carries an `owner_id` is compared against the stored one.
- * The caller cannot know the stored one: the owner member can be absent from
- * the hydrated trip (a partial hydrate, an invite preview, a removed member, or
- * a replayed queue entry), and `owner?.userId ?? id` then falls back to the
- * trip id or to the signed-in editor's own id. That used to hand ownership to
- * the editor silently. It now raises 42501, which surfaces as a misleading
- * "will retry when you reconnect" and drops the edit on replay.
- *
- * So an UPDATE never sends the column at all. PostgREST leaves an absent column
- * untouched, which is what an ordinary content save means.
- *
- * INSERT keeps the column: `tripToRow` is unchanged, and both insert callers
- * still pass it. This is a separate function rather than a flag, so the insert
- * path cannot lose `owner_id` by accident.
- */
+/** Plan updates leave identity and owner-only settings unchanged. */
 export function tripUpdateRow(
   trip: Trip,
   ownerId: string,
   cols?: OptionalColumnsProbe,
-): Omit<TripRow, 'created_at' | 'updated_at' | 'owner_id'> {
-  // Build the row, then delete the column rather than destructuring it into an
-  // unused binding (the lint ratchet counts an unused destructured name).
-  const row: Omit<TripRow, 'created_at' | 'updated_at' | 'owner_id'> = tripToRow(trip, ownerId, cols)
-  delete (row as Partial<TripRow>).owner_id
+): Omit<TripRow, 'created_at' | 'updated_at' | 'owner_id' | 'visibility' | 'deleted_at' | 'invite_code'> {
+  const row: Omit<TripRow, 'created_at' | 'updated_at' | 'owner_id' | 'visibility'> & { owner_id?: string; visibility?: TripRow['visibility'] } = tripToRow(trip, ownerId, cols)
+  delete row.owner_id
   delete row.invite_code
+  delete row.visibility
+  delete row.deleted_at
   return row
 }
 

@@ -1603,3 +1603,20 @@ begin
 end $$;
 
 select 'rls contract: all crew-facing policies verified' as result;
+
+do $$
+declare t text; v_expression text;
+begin
+  if not exists(select 1 from pg_trigger where tgrelid='public.trips'::regclass
+    and tgname='trips_settings_boundary' and not tgisinternal and tgenabled='O') then
+    raise exception 'trip settings need their enabled boundary trigger';
+  end if;
+  foreach t in array array['suggestions','decisions','activity'] loop
+    select qual into v_expression from pg_policies where schemaname='public'
+      and tablename=t and policyname=t||' read' and roles=array['authenticated']::name[];
+    if v_expression is null or position('is_member(trip_id)' in v_expression)=0
+      or position('visibility' in v_expression)>0 then
+      raise exception '% needs a member-only contribution read policy',t;
+    end if;
+  end loop;
+end $$;

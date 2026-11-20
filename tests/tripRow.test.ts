@@ -480,6 +480,8 @@ describe('#799 — tripUpdateRow omits owner_id, tripToRow keeps it', () => {
     const expected: Record<string, unknown> = { ...insert }
     delete expected.owner_id
       delete expected.invite_code
+      delete expected.visibility
+      delete expected.deleted_at
     expect(update).toEqual(expected)
     expect(update.expenses).toEqual(t.expenses)
     expect(update.name).toBe(insert.name)

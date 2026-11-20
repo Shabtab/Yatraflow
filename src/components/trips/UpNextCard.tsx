@@ -106,9 +106,9 @@ export function UpNextCard({ trip, today, budget, distanceKm, dayCells, health, 
           <p className="mt-feat-cost">{budget} · {kmText(distanceKm)}</p>
         </div>
         <div className="mt-feat-actions">
-          <button type="button" className="icon-btn mt-del" aria-label={`Delete ${trip.name}`} onClick={() => onDelete(trip)}>
+          {trip.members?.some(m => m.userId === meId && m.role === 'owner') && <button type="button" className="icon-btn mt-del" aria-label={`Delete ${trip.name}`} onClick={() => onDelete(trip)}>
             <Trash2 size={16} aria-hidden />
-          </button>
+          </button>}
           <a className="btn btn-secondary" {...appLink(shareRoute)}>Share</a>
           <a className="btn btn-primary" {...appLink(detailRoute)}>Open trip<ArrowRight size={16} aria-hidden /></a>
         </div>

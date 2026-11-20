@@ -218,6 +218,28 @@ beforeEach(() => {
 })
 
 describe('undo after trip delete (#43)', () => {
+  it('does not acknowledge a trash write that returns no matching row', async () => {
+    const store = await freshStoreWith()
+    const trip = store.getSnapshot().trips[0]
+    expect(await store.trashTrip(trip)).toBe(false)
+    expect(store.getSnapshot().trips.some(t => t.id === trip.id)).toBe(true)
+  })
+
+  it('refuses an editor before removing the trip or sending a trash write', async () => {
+    const store = await freshStoreWith()
+    const trip = store.getSnapshot().trips[0]
+    trip.members = [{ userId: 'amelia', role: 'editor', joinedAt: 0 }]
+    expect(await store.trashTrip(trip)).toBe(false)
+    expect(store.getSnapshot().trips.some(t => t.id === trip.id)).toBe(true)
+    expect(writesTo('trips')).toHaveLength(0)
+  })
+
+  it('does not acknowledge a refused Undo or insert a restored trip into the cache', async () => {
+    const store = await freshStoreWith(false)
+    state.fail.add('trips')
+    expect(await store.restoreTrashedTrip(mkTrip())).toBe(false)
+    expect(store.getSnapshot().trips).toHaveLength(0)
+  })
   it('re-inserts the trip under its real owner, not members[0]', async () => {
     const store = await freshStoreWith()
     const trip = store.getSnapshot().trips[0]
