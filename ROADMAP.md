@@ -1241,7 +1241,7 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | I-117 | Drive deck "Breaks" tab | map | 2–3 h | **Stale (2026-11-20):** The Along the drive Breaks tab is built (`src/pages/trip/map/driveLens.ts:61`). Close this row. It lists stretch breaks and kilometres. |
 | I-118 | "Leave HH:MM" start pin tag | map | 1 h | Show the start time a stop needs on its pin, for example "Leave 07:45". |
 | I-119 | Stay map pin cluster bubble | map | 2 h | Group nearby stay pins into one bubble with a count. A tap opens the group. |
-| I-148 | Net partial refunds out of the creator's earnings ledger | Product | 2–3 h | The refund record exists, but the ledger does not subtract partial refunds. Add that subtraction. Source: 2026-11-20 ideas audit (A#27). |
+| I-148 | Net partial refunds out of the creator's earnings ledger | product | 2–3 h | The refund record exists, but the ledger does not subtract partial refunds. Add that subtraction. Source: 2026-11-20 ideas audit (A#27). |
 
 ### Tier 2 — blocked on a named dependency
 
