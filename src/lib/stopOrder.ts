@@ -10,7 +10,7 @@
 // Every writer shares this module now, and it is pure — no store, no DOM — so
 // the node-env suite can pin the rule the surfaces call.
 
-import type { ItineraryDay, ItineraryStop, Trip } from '../data/types'
+import type { ItineraryDay, ItineraryStop, Trip, FixedCommitment, Expense } from '../data/types'
 
 /** A locally minted id for a stop that is still being staged (the store hands
  *  it a real one when the change is kept). Platform CSPRNG, never
@@ -251,4 +251,33 @@ export function moveStopToDay(
   // too, so neither side keeps a hole its next add would collide with.
   if (source && source !== target) renumberDay(source)
   return true
+}
+
+/**
+ * Keep day-scoped records with the stop they are linked to (#989).
+ *
+ * A fixed commitment or an expense with `stopId` belongs to that stop. When the
+ * stop moves to another day, the record moves too. If it stayed, the engine
+ * could not find the stop on the old day, and the deadline check would quietly
+ * say it has no location. Records with no `stopId`, or a different one, stay.
+ * Returns the titles of the commitments it moved, so the caller can say so.
+ */
+export function carryStopLinkedRecords(
+  trip: { fixedCommitments: FixedCommitment[]; expenses: Expense[] },
+  stopId: string,
+  toDayIndex: number,
+): string[] {
+  const moved: string[] = []
+  for (const fc of trip.fixedCommitments) {
+    if (fc.stopId != null && String(fc.stopId) === String(stopId) && fc.dayIndex !== toDayIndex) {
+      fc.dayIndex = toDayIndex
+      moved.push(fc.title)
+    }
+  }
+  for (const ex of trip.expenses) {
+    if (ex.stopId != null && String(ex.stopId) === String(stopId) && ex.dayIndex != null) {
+      ex.dayIndex = toDayIndex
+    }
+  }
+  return moved
 }

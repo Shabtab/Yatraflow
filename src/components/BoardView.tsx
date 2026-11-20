@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { prefersReducedMotion } from '../lib/motion'
 import {
-  activeStopsInOrder, moveActiveStopWithinDay, moveStopToDay, nextOrderInDay,
+  activeStopsInOrder, carryStopLinkedRecords, moveActiveStopWithinDay, moveStopToDay, nextOrderInDay,
   pendingStopId,
 } from '../lib/stopOrder'
 import { InlineIcon, KindIcon, modeIcon } from './icons'
@@ -180,6 +180,7 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
       toast(`Day ${toDayIndex + 1} is no longer on this trip. The stop stayed on its day.`, 'err')
       return
     }
+    let carriedTitles: string[] = []
     applyChange(draft => {
       let kmOf: ((s: ItineraryStop) => number | null) | undefined
       if (position == null) {
@@ -189,8 +190,13 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
         const road = dayRoadPolyline(journey.points, legCorrections) ?? journey.points
         kmOf = (s) => kmFromStartForHit({ latitude: s.lat, longitude: s.lng }, road)
       }
-      moveStopToDay(draft.days, stopId, toDayIndex, position, kmOf)
+      if (moveStopToDay(draft.days, stopId, toDayIndex, position, kmOf)) {
+        carriedTitles = carryStopLinkedRecords(draft, stopId, toDayIndex)
+      }
     }, 'move-day', toDayIndex)
+    if (carriedTitles.length > 0) {
+      toast(`${carriedTitles.join(', ')} moved to Day ${toDayIndex + 1} with the stop — review and keep`)
+    }
   }, [applyChange, trip.days, legCorrections])
 
   /** The same destructive-stop path as the Timeline's handleDelete (#424):

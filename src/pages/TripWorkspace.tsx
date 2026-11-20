@@ -10,6 +10,7 @@ import { SegmentedTabs } from '../components/page/SegmentedTabs'
 import { StateBlock } from '../components/page/StateBlock'
 import { authNext } from '../lib/authNext'
 import { computeHealth, computeTotals, getAssumptions, isRoadMeasuredMode } from '../lib/engine'
+import { carryStopLinkedRecords, moveStopToDay } from '../lib/stopOrder'
 import type { LegEstimate } from '../lib/engine'
 import { buildRoadChain, measureRoadChain, correctionsFromLegs, mapRoadViewFromLegs, type RoadStatus, type TripRoadView } from '../lib/tripRoad'
 import { computeImpact, type ImpactResult } from '../lib/impact'
@@ -911,6 +912,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       toast('No later day available to move this stop to.', 'err')
       return
     }
+    let carriedTitles: string[] = []
     applyChange(draft => {
       const from = draft.days.find(d => d.index === dayIndex)
       const to = draft.days.find(d => d.index === dayIndex + 1)
@@ -918,10 +920,13 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       const ordered = [...from.stops].sort((a, b) => a.orderInDay - b.orderInDay)
       const moving = ordered[ordered.length - 1]
       if (!moving) return
-      from.stops = from.stops.filter(s => s.id !== moving.id)
-      moving.orderInDay = to.stops.length + 1
-      to.stops.push(moving)
+      if (moveStopToDay(draft.days, moving.id, dayIndex + 1, null)) {
+        carriedTitles = carryStopLinkedRecords(draft, moving.id, dayIndex + 1)
+      }
     }, 'move-day', dayIndex)
+    if (carriedTitles.length > 0) {
+      toast(`${carriedTitles.join(', ')} moved to Day ${dayIndex + 2} with the stop — review and keep`)
+    }
     toast(`Moved “${last.title}” to Day ${dayIndex + 2}. Review and keep`)
   }
 
