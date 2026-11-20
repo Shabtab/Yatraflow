@@ -95,7 +95,8 @@ comment-to-DM tools claim it. The ten creator interviews in §4 measure it.
 
 > **Plan Indian trips together — not in a chaotic group chat.**
 > Every stop, hour and rupee in one plan your group can actually follow.
-> Turn the trips you post into plans your followers can actually follow.
+
+Creator outreach only: "Turn the trips you post into plans your followers can actually follow."
 
 The founder locked these lines on 2026-11-20. The old road-trip line was too narrow. The engine also plans train, flight and bus trips.
 
