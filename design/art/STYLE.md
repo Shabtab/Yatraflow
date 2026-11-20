@@ -4,12 +4,14 @@ Short style brief for the papercut scenes. The build and the file rules are in
 [`docs/ART-PIPELINE.md`](../../docs/ART-PIPELINE.md). The design rule is in
 [`DESIGN.md`](../../DESIGN.md#illustration).
 
+The exact prompts, the reference images and the acceptance checks are in [`PROMPT.md`](PROMPT.md).
+
 ## Look
 
 - Layered cut paper. Five to seven flat layers, from the far sky to the near foreground.
 - Soft drop shadows on each layer, lit from the upper left. No outlines.
 - Flat colour inside each layer, with a fine paper grain.
-- Gentle morning or golden-hour light. No midday glare.
+- Gentle morning or golden-hour light. No midday glare. The light comes from outside the frame: no visible sun, orb, halo or lens flare.
 - Frontal, raised eye level. No fish-eye view.
 
 ## Palette

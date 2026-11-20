@@ -1128,6 +1128,50 @@ This covers Board, Map, Group input, Share, My trips, Purchases, Profile and Cre
 It also covers auth, landing, native and admin pages. PW-16 checks shared-token regressions.
 Route heights from public terrain ship in PW-14.
 
+### Redesign mockup gaps (2026-11-20 audit)
+
+The full gap list for each page lives in `E:\YatraFlow\Redesign\REDESIGN-CHECKLIST.md` under "Pending (not started)".
+None of these gaps has been started.
+Each row covers one mockup page. The bundles record gaps without a promise to build them.
+
+| # | Page (checklist row) | Verdict | Pending gaps | Top gaps |
+|---|---|---|---|---|
+| I-187 | 1 · My trips | PARTLY | 4 (T1 2, T2 2) | Book button on Up next; per-day clash state; memories recap |
+| I-188 | 2 · Group input | PARTLY (recorded Done; reopen) | 3 (T2 3) | Engine fit line on a stop idea; idea actions in the footer |
+| I-189 | 3 · P12 Overview | PARTLY | 2 (T2 2) | True terrain heights and insight line; daylight check tile |
+| I-190 | 4 · Desktop, one day, Day 2 open | REDESIGNED | 1 (T1 1) | Suggested-by attribution on a stop card |
+| I-191 | 5 · Desktop, drive day with fixed times | REDESIGNED | 3 (T1 2, T2 1) | Fixed-time quick actions; halt drawn as a row |
+| I-192 | 6 · Timeline Redesign.pdf | NOT AUDITED | 1 (T1 1) | Side-by-side review of the PDF |
+| I-193 | 7 · Budget tab | PARTLY | 7 (T1 4, T2 3) | Chart playback; per-person toggle; remove from plan (see I-94) |
+| I-194 | 8 · Map tab | PARTLY | 30 (T1 15, T2 14, T3 1) | Single-day strip; per-slot inline filler; peek snap at 148 px |
+| I-195 | 9 · Board view | PARTLY | 5 (T1 4, T3 1) | Day load word in the column head; drag lift and tilt |
+| I-196 | 10 · Explore | REDESIGNED | 1 (T2 1) | Trip-type quick picks: merged into I-121 |
+| I-197 | 11 · Public itinerary, Look inside | REDESIGNED | 3 (T1 2, T2 1) | Read-day link; fixed day time axis; photo credits |
+| I-198 | 12 · Public itinerary, Ride along | REDESIGNED | 1 (T1 1) | Opening hours on each stop |
+| I-199 | 13 · Route card | PARTLY | 4 (T1 1, T2 3) | Landscape bands; door-to-door legs; stay neighbourhoods |
+| I-200 | 14 · Creator page | PARTLY | 10 (T1 5, T2 5) | Route atlas; story snapshot; identity chips |
+| I-201 | 15 · Creator page v2 | PARTLY (approved slice only) | 2 (T1 2) | Cover tab strip; itinerary stats; G-blocks not approved |
+| I-202 | 16 · Creator hub | PARTLY (approved slice only) | 5 (T1 4, T2 1) | Threads account row; chart annotations; G-blocks not approved |
+| I-203 | 17 · Creator rankings | PARTLY (ranks by forks) | 1 (T2 1) | Route-kind chips; G-blocks not approved |
+| I-204 | 18 · Plan a trip | PARTLY | 8 (T1 7, T2 1) | Last-trip start prefill; drag reorder for stops; activities bill line |
+| I-205 | 19 · Plan bench, resolve, cover, dates, print | PARTLY | 9 (T1 8, T2 1) | Resolve dialog candidates; cover picker; print formats |
+| I-206 | 20 · Profile and settings | PARTLY | 10 (T1 5, T2 5) | Payout summary; profile completeness; G-blocks not approved |
+| I-207 | 21 · Share | PARTLY | 9 (T1 7, T2 2) | Three ordered jobs; invite role chooser; snapshot image |
+| I-208 | 22 · Stop editor | PARTLY | 7 (T1 5, T2 2) | Photos with attribution; kind-of-place chips; provenance on numbers |
+| I-209 | 23 · Change preview | PARTLY | 3 (T1 3) | Before and after values; change title; one-tap fix buttons |
+| I-210 | 24 · AI companion | PARTLY | 9 (T1 6, T2 3) | "It can see" panel; three-change answer card; duplicate-stop suggestion |
+| I-211 | 25 · Log in and sign up | PARTLY | 6 (T1 5, T2 1) | Two-column auth; password meter; invite arrival card |
+| I-212 | 26 · Notifications, banners, states | PARTLY | 13 (T1 10, T2 3) | Filter tabs; live-collaboration banner; private-trip state |
+| I-213 | 27 · Phone home and bottom nav | PARTLY | 6 (T1 3, T2 3) | Bottom tab bar; live-trip card; join code on home |
+| I-214 | 28 · Phone, Day 2 open | PARTLY | 2 (T1 2) | 390 px timeline check; suggested-by attribution; fix button |
+| I-215 | 29 · Phone, stop actions sheet | NOT | 3 (T1 2, T2 1) | Stop-actions sheet; shared status chips |
+| I-216 | 30 · Phone, trip at a glance | PARTLY | 2 (T1 1, T2 1) | Day status pill; phone Overview scope |
+| I-217 | 31 · Dark theme | Night sky adopted | 1 (T3 1) | Lantern night palette as an unadopted alternative |
+| I-218 | 33 · Papercut warmth, component kit | PARTLY | 2 (T1 2) | Shared tooltip; one documented component set |
+| I-219 | No row · Trip created, success screen | PARTLY | 6 (T1 4, T2 2) | READY stamp; summary strip; watch-for items |
+| I-220 | No row · Unlock moment | PARTLY | 6 (T1 4, T2 2) | UNLOCKED stamp; creator rating; payment line detail |
+| I-221 | PW-16 · Purchases and landing | PARTLY | 2 (T2 2) | Landing page redesign; Papercut art for purchase thumbs |
+
 ### Transport-aware options (2026-10-19)
 
 Status: implemented by OpenCode on branch `feat/transport-aware-options` (2026-10-19).
@@ -1223,9 +1267,10 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | I-93 | Admin delete must not erase a published trip | security | 2–3 h | `admin_delete_trip` still removes a trip that backs a publication, and the orders and entitlements go with it. #807 closed the direct table DELETE only. Apply the same guard the owner delete now uses. Keep the refusal sentence honest. Pin it beside the owner delete tests. Deferred from #799 and #807. |
 | I-94 | Remove from plan with confirm and Undo | budget | 2–3 h | The optional list is read-only today. Add a reversible removal on an optional line. Keep the staged-change refusal. |
 | I-116 | Phone pick card head | map | 1–2 h | Add the icon tile, kicker and rating row to the phone pick card, as the phone board draws them. |
-| I-117 | Drive deck "Breaks" tab | map | 2–3 h | Add a Breaks tab to the Along the drive deck, with each stretch break and its kilometre. |
+| I-117 | Drive deck "Breaks" tab | map | 2–3 h | **Stale (2026-11-20):** The Along the drive Breaks tab is built (`src/pages/trip/map/driveLens.ts:61`). Close this row. It lists stretch breaks and kilometres. |
 | I-118 | "Leave HH:MM" start pin tag | map | 1 h | Show the start time a stop needs on its pin, for example "Leave 07:45". |
 | I-119 | Stay map pin cluster bubble | map | 2 h | Group nearby stay pins into one bubble with a count. A tap opens the group. |
+| I-148 | Net partial refunds out of the creator's earnings ledger | product | 2–3 h | The refund record exists, but the ledger does not subtract partial refunds. Add that subtraction. Source: 2026-11-20 ideas audit (A#27). |
 
 ### Tier 2 — blocked on a named dependency
 
@@ -1318,8 +1363,69 @@ Both page-view function signatures run. Failed post reads keep the owner's retry
 | I-121 | Trip-type picks on Explore | Explore | 2–3 h | The Road trips, Hills and Coast quick picks from `Explore.dc.html` need a stored trip tag first. The Free plans pick shipped in #914 as an in-page toggle. A query key for it, so a link keeps the filter, is still open. |
 | I-115 | Water and views place families | Confirmed visit timing for water and views | Ticket 09 scans nature, faith and culture only. Water and views join the family scan once their visit timing is confirmed. Source: Map V2 ticket 09, decided 2026-11-09. |
 | I-120 | Stay deck photo header | Photo decision for Map V2 | Add a photo header to the Stay deck, as the board draws it. The photo source stays open. |
+| I-139 | "Beds in this town tonight" booking link at the stay moment, with a commission split | Partner terms (I-62 is generic only) | Area: Monetisation. Source: 2026-11-20 ideas audit (A#6). |
+| I-140 | Fees vary by acquisition source: about 10% on the creator's own link and 15–20% from Explore | Ratifying D1; tags must not change fees | Area: Price. Source: 2026-11-20 ideas audit (A#7). |
+| I-142 | Claim and ownership transfer of a founder-built page into a creator's account | An ownership model and an RLS write path | Area: Product. Source: 2026-11-20 ideas audit (A#10). |
+| I-143 | Let the public page carry the creator's own affiliate links | A link policy and click tracking | Area: Product. Source: 2026-11-20 ideas audit (A#11). |
+| I-145 | Partner guest-guide distribution: a travel business sends a plan to its own customers | Partner agreements and ratified pilot gates | Area: Partnership. Source: 2026-11-20 ideas audit (A#22). |
+| I-147 | Provenance check at publish, to block re-publication of derived content | A provenance record at publish time | Area: Product. Source: 2026-11-20 ideas audit (A#26). |
+| I-152 | Hidden-gem collections sold as premium curated place lists | A price and proof of willingness to pay | Area: Monetisation. Source: 2026-11-20 ideas audit (A2a#4). |
+| I-153 | "Ask a Local": paid short answers or consultations | A paid Q&A flow and payment path (I-72 is free) | Area: Monetisation. Source: 2026-11-20 ideas audit (A2a#5). |
+| I-155 | Photography routes: sell photo-location guides | Location data and image rights | Area: Monetisation. Source: 2026-11-20 ideas audit (A2a#8). |
+| I-156 | Traveller tips: optional appreciation payments | A payment path and tip policy (I-20 shows a count only) | Area: Monetisation. Source: 2026-11-20 ideas audit (A2a#9). |
+| I-162 | Two onboarding journeys under one profile: content import for Travel Creators, expertise proof for Local Experts | A capability-flag schema and qualification rules | Area: Product. Source: 2026-11-20 ideas audit (A2a#16). |
+| I-163 | Controlled exposure for qualified newcomers instead of ranking by followers or past sales | A quality-ranking rule | Area: Product. Source: 2026-11-20 ideas audit (A2a#17). |
+| I-165 | Destination Guide Builder: structured editor for recommendations, routes, seasons and budgets | An editor scope decision | Area: Product. Source: 2026-11-20 ideas audit (A2a#19). |
+| I-166 | Service Builder: standardised paid offers with scope, delivery time, price and policies | An offer schema | Area: Product. Source: 2026-11-20 ideas audit (A2a#20). |
+| I-167 | Traveller Request Inbox: a queue for qualified enquiries with status and response windows | A queue and status model (I-72 is one thread) | Area: Product. Source: 2026-11-20 ideas audit (A2a#21). |
+| I-169 | Local Expert earnings dashboard: order history, fees, payout status, revenue attribution | Order-level records for services (I-9 is the payout card) | Area: Product. Source: 2026-11-20 ideas audit (A2a#23). |
+| I-170 | Creator spotlight: "Get your travels featured" | Per-feature consent and a feature format | Area: Partnership. Source: 2026-11-20 ideas audit (A2a#30). |
+| I-171 | Campaign-level `ref=` attribution on creator links: source → visit → fork | App instrumentation and PR #794 | Area: Product. Source: 2026-11-20 ideas audit (A2a#37). |
+| I-172 | Referral reward mechanic that can be offered to a creator | A reward rule and budget (M9 referral is user invites) | Area: Monetisation. Source: 2026-11-20 ideas audit (A2a#38). |
+| I-173 | Show real food prices and cost data in plans | A food-price data source (I-83 is an input) | Area: Product. Source: 2026-11-20 ideas audit (A2a#40). |
+| I-174 | Travel-clock settings: user-editable meal windows and a user-set night-end cap | A settings-group design; `src/lib/ridePlan.ts:60,1269` holds constants | Area: Product. Source: 2026-11-20 ideas audit (A2b#1). |
+| I-175 | Full destination day-out arc: open-after reasoning and lunch-near-the-sight bundles | The hours-joined destination scan | Area: Product. Source: 2026-11-20 ideas audit (A2b#2). |
+| I-176 | Zoom-tier thinning and bearing-relative offsets on the living road labels | The "Option B" density design pass | Area: Product. Source: 2026-11-20 ideas audit (A2b#3). |
+| I-177 | Snap-to-stop meal merging on the clock overlay | The "Option B" density design pass | Area: Product. Source: 2026-11-20 ideas audit (A2b#4). |
+| I-178 | Meal-label removal (Option A) if the clock overlay still reads busy | Proof from Phase 1 that the map is still too busy | Area: Product. Source: 2026-11-20 ideas audit (A2b#5). |
+| I-179 | ₹49 unlock price fallback if copy→pay stays under 2% at ₹199 | A measured copy→pay baseline after Stage 2 | Area: Price. Source: 2026-11-20 ideas audit (A2b#7). |
+| I-180 | A/B test ₹149 and ₹199 unlock prices after a baseline exists | A baseline, traffic and a split-test seam (none in `src/`) | Area: Price. Source: 2026-11-20 ideas audit (A2b#10). |
 
 **Parked, not planned (2026-10-14).** Native satellite diagnostics need a custom plugin and add little. A convoy proximity radar needs consent, extra hardware and safety promises. Shared hazard reports need moderation and carry liability. Reopen one only with a named owner and a pilot. Voice notes need storage and licensing. Live traveller check-ins need consent and an expiry. Certification and rank badges need a real review process. Do not reuse this Stitch copy: "No account needed", "Free forever", or "reserved" for a stay. Do not reuse a hard-coded health score. Do not reuse a time zone other than IST.
+
+### Tier 3 ideas — big or vague (2026-11-20 audit)
+
+These rows are too big or too vague to start.
+Each one needs a decision first.
+Source: the 2026-11-20 ideas audit.
+
+| # | Idea | Area | Blocked on | Note |
+|---|---|---|---|---|
+| I-134 | Creator Pro subscription at about ₹299–499 per month: demand insights, brand styling on exports, animated clips, bulk trip import | Monetisation | Week-6 gate and a price assumption | Pause belongs here because no subscription ships yet. It is not standalone. Source: 2026-11-20 ideas audit (A#1, A2b#6). |
+| I-135 | Marketplace: onboard 5–10 drivers or homestays by hand, then verification, payouts, disputes and insurance | Monetisation | Field operations and repeat bookings | Source: 2026-11-20 ideas audit (A#2). |
+| I-136 | B2B white-label itinerary building for travel agents | Monetisation | A stable 1.0, an API and support capacity | Source: 2026-11-20 ideas audit (A#3). |
+| I-137 | Paid Local Expert personalisation, fulfilled by hand, measured to the first ₹1,000 | Monetisation | Offer, refunds, payment handling and payout evidence | Source: 2026-11-20 ideas audit (A#4). |
+| I-138 | Brand and partner deals: states, stays and self-drive firms pay for a creator's route audience | Partnership | The gate numbers in hand | Source: 2026-11-20 ideas audit (A#5). |
+| I-141 | Tripwire price model: one low-price first offer plus one upsell | Price | Unnamed pattern, no price, no decision | Source: 2026-11-20 ideas audit (A#8). |
+| I-144 | Hosted trips with escrow and an organiser fee for a paid "Plan with" service | Monetisation | No-bookings rule, #234 merchant-of-record, hosted-trip decision, payments review | Source: 2026-11-20 ideas audit (A#13, A2a#7, B#10, R3 07.15). |
+| I-146 | One Creator Network: Travel Creators and Local Experts share one identity | Product | Segmentation only; no schema or page | Source: 2026-11-20 ideas audit (A#23). |
+| I-149 | Bookable local experiences: food walks, heritage tours, photo walks, hikes, workshops, village stays | Monetisation | Safety, liability, local compliance and partners | Source: 2026-11-20 ideas audit (A2a#1). |
+| I-150 | Creator services storefront for non-planning work: photography, content, translation, coordination, research | Monetisation | Identity, qualification and service-standard checks | Source: 2026-11-20 ideas audit (A2a#2). |
+| I-151 | Restaurant discovery with reservation or referral commissions | Monetisation | Partner rules and attribution | Source: 2026-11-20 ideas audit (A2a#3). |
+| I-154 | Driver referrals with fees on completed, eligible trips | Monetisation | Driver verification and partner terms | Source: 2026-11-20 ideas audit (A2a#6). |
+| I-157 | Seasonal intelligence sold as paid updates or memberships | Monetisation | Recurring value; I-52 is a free shelf | Source: 2026-11-20 ideas audit (A2a#10). |
+| I-158 | B2B research: sell original destination insight to businesses | Monetisation | A sales process and a format | Source: 2026-11-20 ideas audit (A2a#11). |
+| I-159 | Creator collaborations: shared products with split earnings | Partnership | A revenue-split agreement and a fulfilment owner | Source: 2026-11-20 ideas audit (A2a#12). |
+| I-160 | Category-specific fees: take rate, service transaction fee, affiliate share, not one commission | Price | A fee ruling; the source says not to assume one structure | Source: 2026-11-20 ideas audit (A2a#13). |
+| I-161 | Distributed travel economy: YatraFlow as the enabling layer for creator-led commerce | Monetisation | A three-stage vision, not a scoped offer | Source: 2026-11-20 ideas audit (A2a#14). |
+| I-164 | Five-family Creator Studio architecture: Identity, Creation, Distribution, Business, Intelligence | Product | A proposed architecture, not shipped features | Source: 2026-11-20 ideas audit (A2a#18). |
+| I-168 | Fulfilment Workspace: intake, deliverables, revisions, completion evidence, disputes | Product | Operations and dispute policy | Source: 2026-11-20 ideas audit (A2a#22). |
+| I-181 | Full campaign management service | Product | Deferred; five fixed campaign slots are the current scope | Source: 2026-11-20 ideas audit (A2b#13). |
+| I-182 | General visitor identity for analytics | Product | A consent and privacy ruling; `src/lib/growthAttribution.ts:62` stores none | Source: 2026-11-20 ideas audit (A2b#14). |
+| I-183 | A new analytics dashboard | Product | Deferred; no scope, owner or metric set | Source: 2026-11-20 ideas audit (A2b#15). |
+| I-184 | Complete edit history for trips | Product | An event and history model plus retention rules | Source: 2026-11-20 ideas audit (A2b#16). |
+| I-185 | Historical attribution reconstruction | Product | Historical events that were never recorded | Source: 2026-11-20 ideas audit (A2b#17). |
+| I-186 | Universal trip card (parked) | Product | Phase 0 is parked; the consistency question is still open | Source: 2026-11-20 ideas audit (B#31). |
 
 ### Tier 3 — milestone-shaped, tracked as tracks (not ideas)
 
