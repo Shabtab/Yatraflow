@@ -1142,10 +1142,10 @@ Each row covers one mockup page. The bundles record gaps without a promise to bu
 | I-190 | 4 · Desktop, one day, Day 2 open | REDESIGNED | 1 (T1 1) | Suggested-by attribution on a stop card |
 | I-191 | 5 · Desktop, drive day with fixed times | REDESIGNED | 3 (T1 2, T2 1) | Fixed-time quick actions; halt drawn as a row |
 | I-192 | 6 · Timeline Redesign.pdf | NOT AUDITED | 1 (T1 1) | Side-by-side review of the PDF |
-| I-193 | 7 · Budget tab | PARTLY | 7 (T1 4, T2 3) | Chart playback; per-person toggle; remove from plan |
+| I-193 | 7 · Budget tab | PARTLY | 7 (T1 4, T2 3) | Chart playback; per-person toggle; remove from plan (see I-94) |
 | I-194 | 8 · Map tab | PARTLY | 30 (T1 15, T2 14, T3 1) | Single-day strip; per-slot inline filler; peek snap at 148 px |
 | I-195 | 9 · Board view | PARTLY | 5 (T1 4, T3 1) | Day load word in the column head; drag lift and tilt |
-| I-196 | 10 · Explore | REDESIGNED | 1 (T2 1) | Trip-type quick picks |
+| I-196 | 10 · Explore | REDESIGNED | 1 (T2 1) | Trip-type quick picks: merged into I-121 |
 | I-197 | 11 · Public itinerary, Look inside | REDESIGNED | 3 (T1 2, T2 1) | Read-day link; fixed day time axis; photo credits |
 | I-198 | 12 · Public itinerary, Ride along | REDESIGNED | 1 (T1 1) | Opening hours on each stop |
 | I-199 | 13 · Route card | PARTLY | 4 (T1 1, T2 3) | Landscape bands; door-to-door legs; stay neighbourhoods |
