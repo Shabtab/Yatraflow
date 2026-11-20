@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { moveStopToDay, carryStopLinkedRecords } from '../src/lib/stopOrder'
 import { commitmentStopIndex } from '../src/lib/engine'
+import { moveToDayRequest } from '../src/pages/trip/map/editing/stopEdit'
+import { readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import type { Trip } from '../src/data/types'
 import { seedData } from '../src/data/seed'
 import type { ItineraryDay, FixedCommitment, Expense } from '../src/data/types'
 
@@ -115,17 +119,43 @@ describe('carryStopLinkedRecords', () => {
   })
 })
 
-describe('move paths keep their caller', () => {
-  it('each move path calls the helper', () => {
-    const files = [
-      'src/lib/stopOrder.ts',
-      'src/components/BoardView.tsx',
-      'src/pages/trip/TimelineTab.tsx',
-      'src/pages/TripWorkspace.tsx',
-    ]
+describe('the Map edit card move carries linked records', () => {
+  it('moveToDayRequest mutate moves the commitment and the expense with the stop', () => {
+    const commitment = fc('Ferry', 0, 'S')
+    const expense = ex('Ticket', 0, 'S')
+    const trip = { days: [day(0, ['S', 'T']), day(1, ['U'])], fixedCommitments: [commitment], expenses: [expense] } as unknown as Trip
+    const res = moveToDayRequest(trip, 'S', 1)
+    expect(res.kind).toBe('ok')
+    if (res.kind !== 'ok') return
+    res.request.mutate(trip)
+    expect(trip.days[1].stops.map(s => s.id)).toContain('S')
+    expect(commitment.dayIndex).toBe(1)
+    expect(expense.dayIndex).toBe(1)
+    expect(commitmentStopIndex(trip.days[1].stops, commitment)).not.toBeNull()
+  })
+})
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap(name => {
+    const full = join(dir, name)
+    if (statSync(full).isDirectory()) return sourceFiles(full)
+    return /\.(ts|tsx)$/.test(name) ? [full] : []
+  })
+}
+
+describe('every cross-day move carries linked records', () => {
+  it('each moveStopToDay call in src is guarded and followed by carryStopLinkedRecords', () => {
+    const files = sourceFiles(resolve(process.cwd(), 'src'))
+    let calls = 0
     for (const file of files) {
-      const text = readFileSync(resolve(process.cwd(), file), 'utf8').replace(/\r\n/g, '\n')
-      expect(text, file).toContain('carryStopLinkedRecords(')
+      if (file.replace(/\\/g, '/').endsWith('src/lib/stopOrder.ts')) continue
+      const text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
+      const all = text.match(/moveStopToDay\(draft\./g) ?? []
+      const carried = text.match(/if \(moveStopToDay\(draft\.[^\n]*\)\) \{\n\s*(?:\w+ = )?carryStopLinkedRecords\(draft, /g) ?? []
+      expect(carried.length, file).toBe(all.length)
+      calls += all.length
     }
+    // Board, Timeline drag, Timeline modal, workspace next-day, Map edit card.
+    expect(calls).toBeGreaterThanOrEqual(5)
   })
 })
