@@ -1,7 +1,7 @@
 // Package C, item 4 (#904): photos on the place card. Without a Google key the
 // card keeps its category tile. With photos, each one shows its own attribution.
 import { readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cardPhotoRefs, placePhotoUrl } from '../src/lib/providers/google'
 import type { PlacePhotoRef } from '../src/lib/providers/hits'
 import { photoStep, attributionOf, ageText, coverageText } from '../src/components/map/placeCardFacts'
@@ -11,6 +11,9 @@ const ref = (over: Partial<PlacePhotoRef['attribution']> = {}): PlacePhotoRef =>
 })
 
 describe('photos without a key', () => {
+  // A developer .env.local can hold a real key, so clear it for this case.
+  beforeEach(() => vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', ''))
+  afterEach(() => vi.unstubAllEnvs())
   it('give the card nothing to show', () => {
     expect(cardPhotoRefs({ photos: [ref()] })).toEqual([])
     expect(placePhotoUrl(ref(), 640)).toBeNull()

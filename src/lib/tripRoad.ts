@@ -113,12 +113,14 @@ export function buildRoadChain(trip: Pick<Trip, 'startLocationCoords' | 'days' |
  *  change. Without this, `mutateTrip`'s identity-clone on every save re-measures
  *  the whole OSRM chain on a fuel-price keystroke (#188/#202/#213).
  *
- *  Mirrors `buildRoadChain` exactly — same sort order, same rejected-filter,
- *  same round-trip-return-to-start leg, same last-destination tail. If this
- *  function ever drifts from buildRoadChain, re-measure fires on cosmetic
- *  changes (cache miss) or fails to fire on real ones (stale chain). The
- *  `tripRoad.test.ts` "matches what buildRoadChain actually consumes" case
- *  pins the equality. */
+ *  Reads the same inputs as `buildRoadChain` — same sort order, same
+ *  rejected-filter, the return-to-start point on a round trip, and the last
+ *  destination. It does NOT copy the chain's point order or its duplicate test
+ *  (a round trip puts the destination before the return; the signature lists it
+ *  after). It only has to change whenever the chain changes. If it ever misses
+ *  an input of buildRoadChain, a real change leaves a stale chain; if it adds a
+ *  cosmetic input, re-measure fires on every edit. The `tripRoad.test.ts`
+ *  "matches what buildRoadChain actually consumes" case pins this. */
 export function roadChainSig(
   trip: Pick<Trip, 'startLocationCoords' | 'days' | 'destinationCoords' | 'roundTrip' | 'transportMode'>,
 ): string {

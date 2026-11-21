@@ -48,8 +48,10 @@ export const FIT_ROAD_SAMPLES = 24
 export interface AllViewFitInput {
   /** The pins the view draws. */
   stops: readonly LatLng[]
-  /** `buildRoadChain(trip).points` — start, ordered stops, the drive home, and
-   *  the trailing destination. Its ENDPOINTS are what stop bounds miss. */
+  /** `buildRoadChain(trip).points` — start, ordered stops, the destination when
+   *  it is not already the last stop, then (round trip) the drive home. A one-way
+   *  trip puts the destination last, as a tail. Its ENDPOINTS are what stop
+   *  bounds miss. */
   chainPoints?: readonly LatLng[] | null
   /** The drawn road in GeoJSON `[lng, lat]` order (null while unmeasured). */
   roadGeometry?: readonly (readonly [number, number])[] | null
