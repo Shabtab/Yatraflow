@@ -1371,8 +1371,12 @@
 
 /* ---- Days on the map: one coloured pill per day, one sideways-scrolling row ----
    The strip publishes `data-overflow` (src/lib/railOverflow.ts). A mask fades
-   only the side that still holds chips, so both fades sit at zero at an end. */
+   only the side that still holds chips, so both fades sit at zero at an end.
+   The two fade lengths are registered so the mask eases in and out. */
+@property --mv2-day-fade-start { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --mv2-day-fade-end { syntax: '<length>'; inherits: false; initial-value: 0px; }
 .mv2-workspace .mv2-day-strip {
+  transition: --mv2-day-fade-start var(--motion-fast) var(--ease-paper), --mv2-day-fade-end var(--motion-fast) var(--ease-paper);
   --mv2-day-fade-w: var(--space-8);
   --mv2-day-fade-start: 0px;
   --mv2-day-fade-end: 0px;
