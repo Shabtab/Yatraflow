@@ -5763,8 +5763,21 @@ export function roleOf(trip: Trip, userId: ID | null): TripMember['role'] | null
   return trip.members?.find(m => m.userId === userId)?.role ?? null
 }
 
+/** The caller's role on a trip id. A trip that is not in the cache has no role. */
+function roleIn(tripId: ID, userId: ID | null): TripMember['role'] | null {
+  const trip = tripById(tripId)
+  return trip ? roleOf(trip, userId) : null
+}
+
 export function canEdit(role: TripMember['role'] | null): boolean {
   return role === 'owner' || role === 'editor'
+}
+
+/** The comment and ballot right: owner, editor and commenter. A viewer reads
+ *  the trip and sends nothing. Only the four comment and ballot commands
+ *  (suggestion and decision) use this gate; every other command keeps canEdit. */
+export function canComment(role: TripMember['role'] | null): boolean {
+  return role === 'owner' || role === 'editor' || role === 'commenter'
 }
 
 /** Masteradmins can open any workspace (the RLS bypass) — but the per-trip
@@ -5773,6 +5786,17 @@ export function canEdit(role: TripMember['role'] | null): boolean {
 export function canEditAdmin(role: TripMember['role'] | null): boolean {
   return canEdit(role) || isAdminCached()
 }
+
+/** The comment-and-ballot twin of canEditAdmin: an enabled admin passes, as the
+ *  server lets an admin through the same four commands. */
+export function canCommentAdmin(role: TripMember['role'] | null): boolean {
+  return canComment(role) || isAdminCached()
+}
+
+/** The refusal a viewer gets for a vote or comment. It is `invalid`, not
+ *  `forbidden`, so the shared feedback reads "That change was not accepted:
+ *  your role cannot vote or comment." and does not claim editor access is missing. */
+const COMMENT_ROLE_REFUSAL: CollabOutcome = { status: 'invalid', reason: 'your role cannot vote or comment' }
 
 export async function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']): Promise<boolean> {
   if (role === 'owner') return false
@@ -7038,6 +7062,9 @@ export function addSuggestion(
   // actor, so there is nothing to submit. The caller's proposedBy parameter
   // is GONE — the actor never travels in the payload (#801).
   if (!scope) return Promise.resolve({ status: 'forbidden' })
+  // Only an editor can create a suggestion. A commenter or viewer is refused
+  // before any optimistic row exists.
+  if (!canEditAdmin(roleIn(tripId, scope.userId))) return Promise.resolve({ status: 'forbidden' })
   if (!s.title.trim()) return Promise.resolve({ status: 'invalid', reason: 'empty title' })
   // The envelope (F2) owns the entity id: a retry of an uncertain create
   // reuses the FIRST try's id, so the server row id is stable. The
@@ -7092,8 +7119,11 @@ export function addSuggestion(
 export function voteSuggestion(tripId: ID, suggestionId: ID, value: 1 | -1): Promise<CollabOutcome> {
   const scope = identityScope()
   if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!canCommentAdmin(roleIn(tripId, scope.userId))) return Promise.resolve(COMMENT_ROLE_REFUSAL)
   const sgIdx = cache.suggestions.findIndex(x => x.id === suggestionId)
   if (sgIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
+  // A suggestion from another trip is not this trip's row. Refuse before any optimistic change.
+  if (cache.suggestions[sgIdx].tripId !== tripId) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
   if (cache.suggestions[sgIdx].status && cache.suggestions[sgIdx].status !== 'open') {
     // F13: a closed suggestion takes no more ballots — the accept/decline
     // record IS the decision, and the vote buttons go quiet with it.
@@ -7157,10 +7187,13 @@ export function voteSuggestion(tripId: ID, suggestionId: ID, value: 1 | -1): Pro
 export function addCommentToSuggestion(tripId: ID, suggestionId: ID, text: string): Promise<CollabOutcome> {
   const scope = identityScope()
   if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!canCommentAdmin(roleIn(tripId, scope.userId))) return Promise.resolve(COMMENT_ROLE_REFUSAL)
   const trimmed = text.trim()
   if (!trimmed) return Promise.resolve({ status: 'invalid', reason: 'empty comment' })
   const sgIdx = cache.suggestions.findIndex(x => x.id === suggestionId)
   if (sgIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
+  // A suggestion from another trip is not this trip's row. Refuse before any optimistic change.
+  if (cache.suggestions[sgIdx].tripId !== tripId) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
   const rowBefore = cache.suggestions[sgIdx]
   const sg = structuredClone(rowBefore)
   // The envelope (F2) owns the stable comment id and the whole command: a
@@ -7207,10 +7240,13 @@ export function addCommentToSuggestion(tripId: ID, suggestionId: ID, text: strin
 export function addCommentToDecision(tripId: ID, decisionId: ID, text: string): Promise<CollabOutcome> {
   const scope = identityScope()
   if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!canCommentAdmin(roleIn(tripId, scope.userId))) return Promise.resolve(COMMENT_ROLE_REFUSAL)
   const trimmed = text.trim()
   if (!trimmed) return Promise.resolve({ status: 'invalid', reason: 'empty comment' })
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
   if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
+  // A decision from another trip is not this trip's row. Refuse before any optimistic change.
+  if (cache.decisions[dIdx].tripId !== tripId) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
   const d = structuredClone(cache.decisions[dIdx])
   // The envelope (F2) owns the stable comment id and the whole command, same
   // as the suggestion comment path.
@@ -7263,6 +7299,8 @@ export function acceptSuggestionIntoTimeline(
   const sg = cache.suggestions.find(x => x.id === suggestionId)
   const trip = tripById(tripId)
   if (!scope) return Promise.resolve({ status: 'forbidden' })
+  // Only an editor can add an idea to the timeline. The refusal comes before any write.
+  if (!canEditAdmin(roleIn(tripId, scope.userId))) return Promise.resolve({ status: 'forbidden' })
   if (!sg || !trip || sg.tripId !== tripId) return Promise.resolve({ status: 'unavailable' })
   if (!validWriteVersion(trip.writeVersion)) return Promise.resolve({ status: 'unavailable' })
   const rowBefore = sg
@@ -7295,6 +7333,7 @@ export function acceptSuggestionIntoTimeline(
 export function declineSuggestion(tripId: ID, suggestionId: ID): Promise<CollabOutcome> {
   const scope = identityScope()
   if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!canEditAdmin(roleIn(tripId, scope.userId))) return Promise.resolve({ status: 'forbidden' })
   const sg = cache.suggestions.find(x => x.id === suggestionId)
   if (!sg) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
   const rowBefore = sg
@@ -7329,6 +7368,7 @@ export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'cont
 }): Promise<CollabOutcome> {
   const scope = identityScope()
   if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!canEditAdmin(roleIn(tripId, scope.userId))) return Promise.resolve({ status: 'forbidden' })
   if (!d.question.trim()) return Promise.resolve({ status: 'invalid', reason: 'empty question' })
   // The server refuses a closing time that is not in the future, and so does
   // this check, so the form gets the reason without a round trip.
@@ -7425,6 +7465,7 @@ export function voteOnDecision(decisionId: ID, optionId: ID): Promise<CollabOutc
   if (!scope) return Promise.resolve({ status: 'forbidden' })
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
   if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
+  if (!canCommentAdmin(roleIn(cache.decisions[dIdx].tripId, scope.userId))) return Promise.resolve(COMMENT_ROLE_REFUSAL)
   if (cache.decisions[dIdx].status !== 'open') return Promise.resolve({ status: 'invalid', reason: 'decision is not open' })
   // The closing time is NOT checked here. The server is the authority and
   // refuses a late ballot; a device clock that runs fast would block a valid
@@ -7493,6 +7534,7 @@ export function addDecisionOption(
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
   if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
   const rowBefore = cache.decisions[dIdx]
+  if (!canEditAdmin(roleIn(rowBefore.tripId, scope.userId))) return Promise.resolve({ status: 'forbidden' })
   if (rowBefore.status !== 'open') return Promise.resolve({ status: 'invalid', reason: 'decision is not open' })
   // The closing time is advisory on the client: the server refuses a late
   // option, so a skewed device clock cannot block a valid add.
@@ -7719,6 +7761,8 @@ export function resolveDecision(decisionId: ID, optionId: ID,
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
   if (dIdx < 0) return Promise.resolve({ status: 'unavailable' })
   const rowBefore = cache.decisions[dIdx]
+  // Only an editor can resolve a decision. The refusal comes before any write.
+  if (!canEditAdmin(roleIn(rowBefore.tripId, scope.userId))) return Promise.resolve({ status: 'forbidden' })
   const trip = tripById(rowBefore.tripId)
   if (!trip || !validWriteVersion(trip.writeVersion)) return Promise.resolve({ status: 'unavailable' })
   const captured = target.orderedPlacement ? captureOrderedResolution(target) : null

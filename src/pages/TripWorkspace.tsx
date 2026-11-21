@@ -5,7 +5,7 @@
 // Suggestions and Decisions tabs merged into `group` (old slugs redirect).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Trip } from '../data/types'
-import { useDb, tripById, currentUser, roleOf, canEdit, trackTripPreview, tripPreviewPending, observeTripPreview, userById, readSharedTrip, useIdentityGeneration, admitTripPreview } from '../store/store'
+import { useDb, tripById, currentUser, roleOf, canEdit, canComment, trackTripPreview, tripPreviewPending, observeTripPreview, userById, readSharedTrip, useIdentityGeneration, admitTripPreview } from '../store/store'
 import { SegmentedTabs } from '../components/page/SegmentedTabs'
 import { StateBlock } from '../components/page/StateBlock'
 import { authNext } from '../lib/authNext'
@@ -521,6 +521,8 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
 
   const role = me && trip ? roleOf(trip, me.id) : null
   const editable = canEdit(role)
+  // The same role source as `editable`: owner, editor and commenter vote and comment.
+  const commentable = canComment(role)
 
   // M6 B1 — who else is viewing this trip right now. Joins the presence
   // room only when a signed-in user has the trip open; anon/public views
@@ -1074,7 +1076,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
             onDayFocusChange={(day) => { setFocus(focusForDay(trip!.id, day === 'all' ? null : day)); if (day !== 'all') setTimelineFocusDay(day) }} />
         </React.Suspense>
       )}
-      {tab === 'group' && <GroupInputTab trip={effective} editable={editable} me={me} previewOpen={!!pending} slotResolution={groupInputResolution} />}
+      {tab === 'group' && <GroupInputTab trip={effective} editable={editable} canComment={commentable} me={me} previewOpen={!!pending} slotResolution={groupInputResolution} />}
       {tab === 'budget' && <BudgetTab key={editable ? 'budget-edit' : 'budget-view'} trip={effective} totals={totals} editable={editable} previewOpen={!!pending} stagedRef={pendingRef} onOpenSettings={() => setTab('settings')} />}
       {tab === 'share' && <ShareTab trip={trip} me={me} editable={editable} onNavigate={onNavigate} legCorrections={legCorrections} />}
       {/* key=trip.id: TripSettingsForm holds local draft state in useState
