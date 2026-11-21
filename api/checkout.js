@@ -366,7 +366,7 @@ export default async function handler(req, res) {
     if (stale.length > 0) {
       console.error(`[yatraflow] checkout: price changed with an open order for user ${userId} pub ${pubId}: ${stale.map(p => `${p.order.razorpay_order_id} at ${p.order.amount_inr}`).join(', ')}`)
       return json(res, 409, {
-        error: 'the price of this plan changed while an earlier payment was still open. Nothing was charged. Contact support to close the earlier payment, then buy again.',
+        error: 'the price of this plan changed while an earlier payment was still open. No payment on it is complete yet. Contact support before you buy again, so you are not charged twice.',
       })
     }
     const receipt = `r${stable(pubId, 8)}${stable(userId, 4)}`
