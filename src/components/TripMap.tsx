@@ -2195,7 +2195,11 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
               const rough = routeDrawGrade(geom.all) === 'rough'
               // A selected day stands out only on a measured road. A chord
               // fallback keeps the single rough line, so nothing is invented.
-              const focused = selectedDay != null && !rough ? dayRoadSlices(geom.all, dayRoutePoints, selectedDay) : []
+              // A flight trip's line is a great-circle arc, whose long segments are
+              // honest; a road line never holds one (#1006), so it keeps the limit.
+              const focused = selectedDay != null && !rough
+                ? dayRoadSlices(geom.all, dayRoutePoints, selectedDay, isAirMode(trip.transportMode) ? Infinity : undefined)
+                : []
               return (
                 <>
                   {focused.length > 0 ? <>
