@@ -213,7 +213,7 @@ export function MapItinerary({ trip, journey, corrections, activeDay, budgetMin,
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(publishDayOverflow)
     if (observer != null) {
       observer.observe(strip)
-      Array.from(strip.children).forEach(child => observer.observe(child))
+      for (const child of Array.from(strip.children)) observer.observe(child)
     }
     return () => {
       strip.removeEventListener('scroll', publishDayOverflow)
