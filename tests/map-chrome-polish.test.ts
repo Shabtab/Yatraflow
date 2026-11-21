@@ -17,8 +17,14 @@ describe('Days on the map', () => {
     expect(chrome).not.toMatch(/<span aria-hidden="true" style=\{\{ '--mv2-day-tone'/)
     expect(css).toMatch(/\.mv2-day-strip > \.mv2-day-pill\[aria-pressed='true'\] \{[^}]*background: var\(--mv2-day-tone\)/)
   })
-  it('wraps the pills and never scrolls the strip', () => {
-    expect(css).toContain('.mv2-workspace .mv2-day-strip { flex-wrap: wrap; overflow: visible; }')
+  it('keeps the pills on one sideways-scrolling row, with edge fades', () => {
+    // #1007: wrapping left an empty block on a long trip. The row scrolls now,
+    // and the mask fades only the side that still holds chips.
+    expect(css).toMatch(/\.mv2-workspace \.mv2-day-strip \{[^}]*flex-wrap:\s*nowrap;/)
+    expect(css).toMatch(/\.mv2-workspace \.mv2-day-strip \{[^}]*overflow-x:\s*auto;/)
+    expect(css).toContain(".mv2-workspace .mv2-day-strip[data-overflow='start']")
+    expect(css).toContain(".mv2-workspace .mv2-day-strip[data-overflow='end']")
+    expect(chrome).toContain('data-overflow={dayOverflow}')
   })
 })
 

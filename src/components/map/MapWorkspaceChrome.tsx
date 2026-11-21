@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, ChevronLeft, ChevronRight, Clock, House, LocateFixed, Lock, MoreHorizontal, PanelLeftClose } from 'lucide-react'
 import type { Trip } from '../../data/types'
 import type { Journey, JourneyPoint, LegEstimate } from '../../lib/engine'
@@ -11,6 +11,7 @@ import { budgetBlockView, budgetValueParts, fixProblemReason, fixReasonLine, win
 import { dayColor } from '../../lib/mapStyles/dayColors'
 import { fixProblemSubLine, lastNightStaySub, railClockOrder, railDepartureFirst, standsOnLastNightStay, railDepartClock, railLegVisible, railMarkerKind, railStopNumber, railStopPaid } from './railModel'
 import { ribbonAxis, ribbonLabelLayout, ribbonPercent, ribbonTickText, ribbonStops, ribbonRange, ribbonSignature, ribbonResetMinute, ribbonKeyMinute, ribbonScrub, ribbonClockMinutes, retimedStops, type RibbonPosition, type RibbonPreview } from '../../lib/mapJourneyRibbon'
+import { railOverflow, type RailOverflow } from '../../lib/railOverflow'
 
 export type { SheetSnap, SheetSnapSource } from '../../lib/mapSheetGesture'
 export type { RibbonPreview }
@@ -192,6 +193,37 @@ export function MapItinerary({ trip, journey, corrections, activeDay, budgetMin,
     if (fixStopId == null || row == null) return
     row.scrollIntoView({ block: 'nearest' })
   }, [fixStopId])
+  // The day chips keep one row on a long trip and scroll sideways. CSS cannot
+  // read a scroll position, so publish the same overflow state PillNav uses;
+  // the edge fades read it and hide on the side that has reached its end.
+  const dayStripRef = useRef<HTMLDivElement | null>(null)
+  const [dayOverflow, setDayOverflow] = useState<RailOverflow>('none')
+  const publishDayOverflow = useCallback(() => {
+    const strip = dayStripRef.current
+    if (strip == null) return
+    const next = railOverflow(strip.scrollLeft, strip.scrollWidth, strip.clientWidth)
+    setDayOverflow(current => current === next ? current : next)
+  }, [])
+  useEffect(() => {
+    const strip = dayStripRef.current
+    if (strip == null) return
+    publishDayOverflow()
+    strip.addEventListener('scroll', publishDayOverflow, { passive: true })
+    // A font swap or a theme change can resize a chip without a scroll event.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(publishDayOverflow)
+    if (observer != null) {
+      observer.observe(strip)
+      Array.from(strip.children).forEach(child => observer.observe(child))
+    }
+    return () => {
+      strip.removeEventListener('scroll', publishDayOverflow)
+      observer?.disconnect()
+    }
+  }, [days.length, publishDayOverflow])
+  useEffect(() => {
+    const selected = dayStripRef.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
+    selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activeDay, allDays, days.length])
   const estimated = points.some((point, index) => {
     if (!point.legIn) return false
     const previous = points[index - 1]
@@ -343,7 +375,7 @@ export function MapItinerary({ trip, journey, corrections, activeDay, budgetMin,
     </ol>
     {railExtras}
     <footer className="mv2-day-footer">
-      <div className="mv2-day-strip" role="group" aria-label="Choose map day"><button type="button" aria-label="Show all map days" aria-pressed={allDays} onClick={onShowAll}>All</button>{days.map(item => <button key={item.index} type="button" className="mv2-day-pill" style={{ '--mv2-day-tone': dayColor(item.index) } as CSSProperties} aria-label={`Day ${item.index + 1}`} aria-pressed={!allDays && item.index === activeDay} onClick={() => { onDayChange(item.index) }}>{item.index + 1}</button>)}</div>
+      <div className="mv2-day-strip" ref={dayStripRef} data-overflow={dayOverflow} role="group" aria-label="Choose map day"><button type="button" aria-label="Show all map days" aria-pressed={allDays} onClick={onShowAll}>All</button>{days.map(item => <button key={item.index} type="button" className="mv2-day-pill" style={{ '--mv2-day-tone': dayColor(item.index) } as CSSProperties} aria-label={`Day ${item.index + 1}`} aria-pressed={!allDays && item.index === activeDay} onClick={() => { onDayChange(item.index) }}>{item.index + 1}</button>)}</div>
       {onOpenDay && <button type="button" className="mv2-timeline-link" aria-label="Open day in Timeline" title="Open day in Timeline" onClick={() => { onOpenDay(activeDay) }}><CalendarDays size={16} aria-hidden /></button>}
       {daysCaption && <span className="sr-only" role="status">{daysCaption}</span>}
     </footer>

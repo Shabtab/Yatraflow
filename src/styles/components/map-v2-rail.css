@@ -1369,8 +1369,27 @@
 .mv2-layers-dot { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--pw-marigold-500); box-shadow: 0 0 0 2px var(--pw-card); animation: mv2-dot-in var(--motion-med) var(--ease-paper) backwards; }
 .mv2-tool-menu[open] > summary { background: var(--pw-lagoon-100); color: var(--pw-sea-700); }
 
-/* ---- Days on the map: one coloured pill per day, no scroll ---- */
-.mv2-workspace .mv2-day-strip { flex-wrap: wrap; overflow: visible; }
+/* ---- Days on the map: one coloured pill per day, one sideways-scrolling row ----
+   The strip publishes `data-overflow` (src/lib/railOverflow.ts). A mask fades
+   only the side that still holds chips, so both fades sit at zero at an end. */
+.mv2-workspace .mv2-day-strip {
+  --mv2-day-fade-w: var(--space-8);
+  --mv2-day-fade-start: 0px;
+  --mv2-day-fade-end: 0px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  scroll-padding-inline: var(--mv2-day-fade-w);
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--mv2-day-fade-start), #000 calc(100% - var(--mv2-day-fade-end)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--mv2-day-fade-start), #000 calc(100% - var(--mv2-day-fade-end)), transparent 100%);
+}
+.mv2-workspace .mv2-day-strip::-webkit-scrollbar { display: none; }
+.mv2-workspace .mv2-day-strip[data-overflow='start'] { --mv2-day-fade-start: 0px; --mv2-day-fade-end: var(--mv2-day-fade-w); }
+.mv2-workspace .mv2-day-strip[data-overflow='middle'] { --mv2-day-fade-start: var(--mv2-day-fade-w); --mv2-day-fade-end: var(--mv2-day-fade-w); }
+.mv2-workspace .mv2-day-strip[data-overflow='end'] { --mv2-day-fade-start: var(--mv2-day-fade-w); --mv2-day-fade-end: 0px; }
 .mv2-day-strip > .mv2-day-pill { min-width: 36px; background: color-mix(in srgb, var(--mv2-day-tone) 14%, var(--pw-card)); color: color-mix(in srgb, var(--mv2-day-tone) 70%, var(--pw-ink)); transition: background var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper), box-shadow var(--motion-fast) var(--ease-paper); }
 .mv2-day-strip > .mv2-day-pill:hover { background: color-mix(in srgb, var(--mv2-day-tone) 24%, var(--pw-card)); }
 .mv2-day-strip > .mv2-day-pill[aria-pressed='true'] { border-color: transparent; background: var(--mv2-day-tone); color: #fff; box-shadow: 0 1px 4px color-mix(in srgb, var(--mv2-day-tone) 45%, transparent); }
