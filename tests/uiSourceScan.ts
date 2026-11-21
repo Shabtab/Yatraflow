@@ -10,9 +10,9 @@ export function sourceFiles(root: string): string[] {
 }
 
 /** Parsing excludes comments without changing source offsets used by diagnostics. */
-export function sourceTree(file: string, input = readFileSync(file, 'utf8')) {
+export function sourceTree(file: string, input = readFileSync(file, 'utf8'), setParents = true) {
   const source = input.replace(/\r\n/g, '\n')
-  return { source, tree: ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true) }
+  return { source, tree: ts.createSourceFile(file, source, ts.ScriptTarget.Latest, setParents) }
 }
 
 // The dash character, its HTML entity, and the escape text a source file can carry.
@@ -21,7 +21,8 @@ const BANNED_DASH = /—|&mdash;|&#8212;|&#x2014;|\\u2014|\\u\{2014\}/i
 export function emDashLabels(file: string, input?: string): string[] {
   const normalized = (input ?? readFileSync(file, 'utf8')).replace(/\r\n/g, '\n')
   if (!BANNED_DASH.test(normalized)) return []
-  const { source, tree } = sourceTree(file, normalized)
+  // The scan reads no parent links, so it skips building them.
+  const { source, tree } = sourceTree(file, normalized, false)
   const failures: string[] = []
   function visit(node: ts.Node) {
     if (ts.isStringLiteralLike(node) || ts.isJsxText(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {

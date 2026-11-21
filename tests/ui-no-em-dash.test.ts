@@ -25,4 +25,5 @@ it('rejects em dashes and their HTML entity in source literals and JSX with file
 
 it('keeps every UI source literal and JSX text free of em dashes', () => {
   expect(sourceFiles('src').flatMap(file => emDashLabels(file))).toEqual([])
-})
+  // It parses every src file. 5 s is too short under full-suite load (#1002).
+}, 30000)
