@@ -7,6 +7,9 @@ Trip kit views must check the wire lock before simulation. Locked cards must sho
 Member removal must not erase access history. Keep the last role and removal state outside the membership row.
 Send membership changes through the checked server command. Ordinary plan updates must omit invite credentials. (#931)
 
+Trip plan updates must omit owner-only settings. Keep explicit settings writes separate.
+A missing authenticated user ID does not prove service authority. Check the database role at the write boundary. (#932)
+
 Conventions and hard-won pitfalls. Read during **review**, and reach for a
 single rule while implementing when a change touches that area.
 
@@ -1510,4 +1513,5 @@ The editor primitives are the default; a script is the exception.
 **Proposal previews.** A preview must derive from the proposed trip. An Apply action that adds empty days must not show the current journey as a preview.
 
 - Map UI labels start with a capital and use short label and value pairs. Use middle dots between facts. Keep full sentences in tooltips, accessible names, and suggestion help only.
+- Every visible label in `src/` starts with a capital or a number, not only on the Map. `tests/ui-label-capitals.test.ts` scans all of `src/`. Fix the string. Allowlist only a piece that follows other words, a unit after a number, or text that never shows. Give each entry a reason.
 - UI strings in `src/` must not contain an em dash or its HTML entity. Preserve en dashes in time ranges. The source scan reports the file and line.

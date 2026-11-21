@@ -1,5 +1,6 @@
 // ============ Explore public itineraries — discover, trust and fork (CTI §6.10) ============
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useArrival } from '../lib/useArrival'
 import { currentQuery, onRouteChange, replaceRoute } from '../lib/router'
 import { Compass } from 'lucide-react'
 import { usePublished, useUsers, useTrips, useSessionUserId, useDb, rereadPublicSlices } from '../store/store'
@@ -60,6 +61,9 @@ function filtersFromRoute() {
 }
 
 export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void }) {
+  // The list waits for the hero and the filters while the page arrives (10-explore.css).
+  const rootRef = useRef<HTMLDivElement>(null)
+  useArrival(rootRef)
   // Slice subscriptions: Explore re-renders when the published catalog,
   // profiles, trips or the session change — not on every store commit.
   const published = usePublished()
@@ -178,10 +182,10 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   // the same figure rather than two sums that could drift apart.
   const forkCount = useMemo(() => livePubs(published).reduce((sum, p) => sum + p.copies, 0), [published])
   const heroStats = useMemo(() => [
-    { label: 'itineraries', value: liveCount },
-    { label: 'places', value: placeTiles(published, users, Infinity).length },
-    { label: 'creators', value: creatorList(published, users, Infinity).length },
-    { label: 'forks', value: forkCount },
+    { label: 'Itineraries', value: liveCount },
+    { label: 'Places', value: placeTiles(published, users, Infinity).length },
+    { label: 'Creators', value: creatorList(published, users, Infinity).length },
+    { label: 'Forks', value: forkCount },
   ], [published, users, liveCount, forkCount])
 
   /** The hero's Search: bring the catalog to the top and hand it focus. */
@@ -289,7 +293,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   )
 
   return (
-    <div className="container ex-page page-enter">
+    <div className="container ex-page page-enter" ref={rootRef} data-arriving="">
       <TripArtSprite />
       <ExploreHero stats={heroStats} forks={forkCount} onSearch={jumpToResults}
         query={q} onQueryChange={value => { setQ(value); syncUrl({ q: value }) }} quickPicks={quickPicks} />

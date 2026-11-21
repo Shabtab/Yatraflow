@@ -5,6 +5,7 @@ import { formatHM, useTimeFormat } from '../lib/timefmt'
 import { pendingWrites, subscribePendingWrites, type QueuedWrite } from '../lib/writeQueue'
 import { downloadTripJson } from '../lib/snapshot'
 import type { Trip } from '../data/types'
+import { Mascot } from './mascot/Mascot'
 
 type RecoveryChoice = 'retry' | 'replace' | 'discard'
 type Identity = { userId: string | null }
@@ -210,6 +211,9 @@ export function OfflineBanner() {
     <section className="offline-banner" aria-label="Saved edits and connection" aria-busy={busy}>
       <div className="offline-banner-summary">
         <p ref={summaryRef} tabIndex={-1} role="status">
+          {/* The lost head is the banner's own: no connection is the one state
+              where the app cannot say where it is (plan §3). */}
+          {!online && <Mascot pose="head-lost" size={26} inline />}
           <strong>{connection}</strong>{' '}
           {waiting > 0 && `${waiting} trip edit${waiting === 1 ? '' : 's'} waiting to sync.`}{' '}
           {held > 0 && `${held} trip edit${held === 1 ? '' : 's'} kept on this device.`}{' '}

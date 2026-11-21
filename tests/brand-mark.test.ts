@@ -60,7 +60,24 @@ describe('the Ribbon Y', () => {
   })
 
   it('draws the share card mark at the spec size', () => {
-    expect(read('scripts/og-default-card.html')).toContain('<svg width="31" height="34" viewBox="7.5 5.5 49 56.5"')
+    // 60 px tall on the 1200 px card, so the mark is 30 px at the 600 px thumbnail.
+    expect(read('scripts/og-default-card.html')).toContain('<svg width="52" height="60" viewBox="7.5 5.5 49 56.5"')
+  })
+
+  it('keeps the Y mark as the share card brand, with Chakra outside the brand block', () => {
+    const card = read('scripts/og-default-card.html')
+    const brand = card.slice(card.indexOf('<div class="brand">'), card.indexOf('</div>', card.indexOf('<div class="brand">')))
+    expect(brand).toContain(FOLD)
+    expect(brand).not.toContain('mascot')
+    // Chakra stands right of the centre square (x 285 to 915) that WhatsApp crops to.
+    expect(card).toMatch(/\.chakra \{[^}]*left: (9[2-9]\d|1\d{3})px/)
+  })
+
+  it('ships the rendered share card at 1200x630 and under 300 KB', () => {
+    const png = readFileSync(new URL('../public/og-default.png', import.meta.url))
+    expect(png.subarray(1, 4).toString('latin1')).toBe('PNG')
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630])
+    expect(png.length).toBeLessThan(300 * 1024)
   })
 
   it('gives the Android adaptive icon the Planning Teal ground', () => {

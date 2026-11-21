@@ -89,21 +89,37 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 </tr>
 </table>
 
+<p align="center"><img src="public/brand/mascot/chakra-expressions.svg" alt="Chakra the koel in twelve expressions" width="480" /></p>
+
+Chakra the koel is the mascot, shown here in twelve expressions. The Y logo stays the brand mark.
+
 ---
 
 _Recent release highlights, newest first. See [CHANGELOG.md](CHANGELOG.md) for the full release record._
 
 Pending notes live in [change fragments](changelog.d/README.md). The release owner assembles them into the public record.
 
+## The v0.89.0 release
+
+The repository is at v0.89.0. See the [release record](CHANGELOG.md) for its full scope.
+
+- **Chakra now marks the Plan Bench win, the night halt, the day's warnings, the budget cap and the offline banner.** The companion button and its drawer also show Chakra. Five new heads join the curious one.
+- **My trips has a new look.** A greeting counts trips, drafts and memories. The Up next card counts down with flip tiles and shows a trip health ring. Ended trips become Memories postcards with a "Plan it again" action.
+- **The default share image is a new navy card that names the whole product.** It shows the Y mark, the headline and the Plan, Map, Budget and Share route stops. A square crop stays readable at thumbnail size.
+- **The app runs on React 19.** The upgrade changes types only, so the app behaves the same.
+- **A changed price no longer hides an earlier payment.** Checkout checks every open order, so you are not charged twice (#996).
+- **A downloaded trip file no longer holds the join code or the crew list.** The share link already left them out (#784).
+- **Commenters can comment and vote.** Viewers can read Group input (#935).
+
 ## The v0.88.1 release
 
-The repository is at v0.88.1. See the [release record](CHANGELOG.md) for its full scope.
+The previous release. Its highlights stay here until the next release.
 
 - **Removed trip members stay out.** A removed member cannot rejoin with a new invite link. A member who leaves keeps their assigned role when they rejoin. Existing invite links expire once.
 
 ## The v0.88.0 release
 
-The previous release. Its highlights stay here until the next release.
+Its highlights stay here until the next release.
 
 - **Group input is one Decide together page.** Decisions, stop ideas and activity share one layout. A decision can close at a set time, and each member can answer a short interest quiz.
 - **Creators can copy a route as a weekend trip.** Pick a start date and a party size, and the copy keeps both. Storefronts also show the Indian states their routes cover.
@@ -129,7 +145,7 @@ The previous release. Its highlights stay here until the next release.
 
 The previous release. Its highlights stay here until the next release.
 
-- **Chakra the koel meets you at the quiet moments.** The loading, failed, empty and not-found screens carry the mascot, which takes the night art in the dark theme. The trip-created column and the unlock reveal celebrate with it. The AI drawer shows it thinking.
+- <img src="public/brand/mascot/chakra-hero.svg" alt="" width="96" align="right" /> **Chakra the koel meets you at the quiet moments.** The loading, failed, empty and not-found screens carry the mascot, which takes the night art in the dark theme. The trip-created column and the unlock reveal celebrate with it. The AI companion wears its face and shows it thinking. The Y logo stays the brand mark.
 - **The Board tab shows each stop's place, time and cost in full.** Each fact has one home, and the stop cards wrap instead of cutting their details.
 - **Explore and the published itinerary move in one calm sequence.** Explore has one search field and one shared publication card. The Look inside day cards and the road height charts match the reference design.
 - **Phone map fits keep the trip large and the pins apart.** Side insets use measured covers, and a user pan is never undone.

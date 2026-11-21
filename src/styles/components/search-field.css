@@ -37,3 +37,13 @@
   min-height: 46px; padding: 0 3rem 0 2.75rem; border: 0; border-radius: var(--radius-pill);
   background: transparent; box-shadow: none; font-size: 16px;
 }
+
+/* The pill variant: a 250px white pill, 40px high, for a one-row toolbar. */
+.ex-search--pill { --search-field-flex: 0 1 250px; }
+.ex-search--pill .ex-search-input { min-height: 40px; border-width: 1.5px; border-radius: 999px; background: var(--card); font-size: 13.5px; font-weight: 500; }
+@media (max-width: 720px), (pointer: coarse) {
+  .ex-search--pill .ex-search-input { min-height: 44px; }
+}
+@media (max-width: 640px) {
+  .ex-search--pill { --search-field-flex: 1 1 100%; }
+}

@@ -79,6 +79,7 @@ import { mapWriterOperationGate } from './map/writerOperationGate'
 import { createSlotSearchGuard, searchContextForSlot } from './map/manualSlotContexts'
 import { isRoadRetryUnderway, nextRoadLatch, type RoadLatch } from './map/roadRetryLatch'
 import { isSlotSearchCurrent, slotSearchResetKey, visibleSlotSearch } from './map/slotSearchView'
+import { cardCloseFromEvent } from './map/editing/cardClose'
 import {
   measuredRoadFacts, openSlotAnnouncement, runSlotSearchFlow, SLOT_SEARCH_FAILED_COPY, slotRowsOf, slotSearchScopeKey, slotVoteReady, stableDayIdFor,
 } from './map/mapTabPipeline'
@@ -1677,6 +1678,24 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   const [selectedStop, setSelectedStop] = useState<string | null>(null)
   const detailOpener = useRef<HTMLElement | null>(null)
   const detailOpenerSnap = useRef<SheetSnap>('peek')
+  // The control that opened the stop card. A close puts focus back on it.
+  const stopOpener = useRef<HTMLElement | null>(null)
+  /** One close for the stop card's three exits: its own button, Escape, and a
+   *  click on bare map. The selected stop is the only state, so the close is
+   *  that one setter. A pointer close keeps the map's own focus. */
+  const closeSelectedStop = useCallback((restoreFocus = true) => {
+    setSelectedStop(null)
+    if (!restoreFocus) return
+    // The card unmounts under the control that closed it, so focus returns to
+    // the stop row that opened it, never to the page top.
+    requestAnimationFrame(() => {
+      const opener = stopOpener.current
+      const target = opener?.isConnected && opener.getClientRects().length
+        ? opener
+        : listRef.current?.querySelector<HTMLElement>('.maplibregl-canvas') ?? null
+      target?.focus({ preventScroll: true })
+    })
+  }, [])
   const journey = useMemo(() => {
     const day = trip.days.find(item => item.index === activeDayIndex)
     return day ? buildJourney(trip, day, legCorrections) : null
@@ -1750,6 +1769,16 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     }
   }, [])
   const selectedHit = mapPois.find(hit => hit.id === detailId) ?? null
+  // The stop card is on screen only while the deck is open and no place card
+  // took its place. The Escape handler follows that same condition, so it never
+  // closes a card the user cannot see.
+  const stopCardOpen = deckOpen && !selectedHit && editable && selectedStop != null
+  useEffect(() => {
+    if (!stopCardOpen) return
+    const onKey = (event: KeyboardEvent) => { if (cardCloseFromEvent(event)) closeSelectedStop() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [stopCardOpen, closeSelectedStop])
   const selectedDriveRow = selectedHit ? driveRowForHit(driveRows, selectedHit) : undefined
   // The card's day wins over a km guess, so the detail shows the same day.
   const detailDay = selectedHit ? selectedDriveRow?.dayIndex ?? dayForKm(selectedHit.cumKm) : null
@@ -1846,6 +1875,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     })
   }
   function selectPoint(point: JourneyPoint) {
+    stopOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setSelectedStop(point.stop.id)
     setLocalTarget({ kind: 'coordinate', coordinate: { lat: point.lat, lng: point.lng } })
   }
@@ -2060,10 +2090,10 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                 {/* The one home of the day's count. The rail and the Gap deck do not repeat it. */}
                 <span className="small muted">{activeDaySlots.length === 0 ? 'Drive plan · In progress' : `${activeReadinessLabel(activeDayReadiness)}`}{dayRainPct?.[activeDayIndex] != null && dayRainPct[activeDayIndex]! >= 40 ? ` · Rain ${Math.round(dayRainPct[activeDayIndex]!)}%` : ''}</span>
               </div>
-              <button type="button" className="chip chip-sm" onClick={() => openGapDeck()} title="Back to the open parts and their picks">Gaps</button>
+              <button type="button" className="chip chip-sm mv2-plan-chip" onClick={() => openGapDeck()} title="Back to the open parts and their picks">Gaps</button>
               <button
                 type="button"
-                className="chip chip-sm"
+                className="chip chip-sm mv2-plan-chip"
                 aria-pressed={shapeView}
                 title={shapeView ? 'Back to the list' : 'See the day as a shape: drives and parts on one clock'}
                 onClick={() => setShapeView(v => !v)}
@@ -2221,11 +2251,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                         <div className="day-slot-top">
                           <span className="day-slot-st" aria-hidden>{slot.state === 'filled' ? '\u2713' : ''}</span>
                           <span className="day-slot-lab"><SlotGlyph kind={slot.kind} label={slot.label} />{slot.label}</span>
-                          <span className="day-slot-win">{slot.state === 'filled' ? (filledStopClock(journeyDay?.daySchedule ?? null, slot.filledStop?.id ?? '') ? formatHM(filledStopClock(journeyDay?.daySchedule ?? null, slot.filledStop?.id ?? '') ?? '', timeFormat) : 'Time unavailable') : slot.windowLabel ?? ''}</span>
+                          <span className="day-slot-win">{slot.state === 'filled' ? (filledStopClock(journeyDay?.daySchedule ?? null, slot.filledStop?.id ?? '') ? formatHM(filledStopClock(journeyDay?.daySchedule ?? null, slot.filledStop?.id ?? '') ?? '', timeFormat) : 'Time unavailable') : /* The engine labels auto slots 'auto' (daySlots.ts); this row capitalises it at the one display point. */ 'Auto'}</span>
                           <span className="day-slot-val">
                             {slot.state === 'filled'
-                              ? <b>{slot.filledStop?.title ?? slot.segment?.label ?? 'Planned'}</b>
-                              : <small>Added by the app</small>}
+                              ? slot.filledStop?.title ?? slot.segment?.label ?? 'Planned'
+                              : 'Added by the app'}
                           </span>
                         </div>
                       )}
@@ -2366,7 +2396,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
             <TripMap
               trip={trip}
               dedicated
-              onBlankMapClick={() => { if (detailId != null) setDetailId(null) }}
+              onBlankMapClick={() => { if (detailId != null) setDetailId(null); if (selectedStop != null) closeSelectedStop(false) }}
               nearbyPois={mapPoisForMap}
               onAddNearby={editable ? (hit) => openAddModal(hit) : undefined}
               activeHitId={activeHitId}
@@ -2596,7 +2626,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
               onAdd={() => { if (editable && detailDay != null && !isAlreadyAdded(selectedHit, identity)) edit.addNow(selectedHit, detailDay); else openAddModal(selectedHit) }} onShortlist={() => toggleShortlist(selectedHit)} onClose={closeDetails} onDirections={() => openExternal(googleMapsUrl(selectedHit))} />
             <MapEditAddPanel edit={edit} onChooseDay={() => openAddModal(selectedHit)} />
           </div>}
-          {deckOpen && !selectedHit && editable && selectedStop != null && <div className="mv2-detail"><MapEditStopPanel edit={edit} trip={trip} stopId={selectedStop} editable={editable} /></div>}
+          {stopCardOpen && <div className="mv2-detail"><MapEditStopPanel edit={edit} trip={trip} stopId={selectedStop} editable={editable} onClose={() => closeSelectedStop()} /></div>}
           <MapEditLive edit={edit} />
           {phoneRibbon}
           {/* The time range sits in the day header. The chip shows only while the day panel is folded. */}

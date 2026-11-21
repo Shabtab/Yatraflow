@@ -492,13 +492,18 @@ export interface TripExport {
 
 /** Build the file `Download JSON` writes: a versioned envelope carrying the trip
  *  (and the publication row, when the trip has one, so a round trip through the
- *  file does not lose the shelf metadata). */
+ *  file does not lose the shelf metadata). It drops the join code and the crew list (#784). */
 export function buildTripExport(trip: Trip, publication?: Record<string, unknown>, appVersion = '0.0.0'): TripExport {
+  // #784 — the file is a bearer artifact: anyone who has it can read it. Drop the join
+  // code and the crew list, as the snapshot link does. Import ignores both fields anyway.
+  const { inviteCode, members, ...shareable } = trip
+  void inviteCode
+  void members
   const out: TripExport = {
     formatVersion: ITINERARY_FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
     app: `yatraflow/${appVersion}`,
-    trip,
+    trip: shareable as Trip,
   }
   if (publication) out.publication = publication
   return out

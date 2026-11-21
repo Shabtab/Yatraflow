@@ -54,9 +54,9 @@ export function clockTicks(anchors: readonly TickAnchor[], options: ClockTickOpt
   return ticks
 }
 
-/** "11:05" with "km 21" on its own side: the board's clock tick, in the reader's clock. */
+/** "11:05" with "Km 21" on its own side: the board's clock tick, in the reader's clock. */
 export function tickText(tick: ClockTick, format: TimeFormat): { clock: string; km: string } {
-  return { clock: formatHM(clockHM(tick.min), format), km: `km ${tick.km}` }
+  return { clock: formatHM(clockHM(tick.min), format), km: `Km ${tick.km}` }
 }
 
 /** "Lunch · 11:30 AM–2:30 PM": the window's own name and hours. */
@@ -88,6 +88,6 @@ export interface RouteMark {
   lng: number
   /** A tick's clock, or a window's name and hours. */
   label: string
-  /** A tick's "km 21". Absent on a window. */
+  /** A tick's "Km 21". Absent on a window. */
   sub?: string
 }

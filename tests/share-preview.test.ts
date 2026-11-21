@@ -106,8 +106,10 @@ describe('share preview handler in node', () => {
     expect(res.body).toContain(`og:image" content="${artwork}"`)
     expect(res.body).toContain(`twitter:image" content="${artwork}"`)
     expect(res.body).not.toContain('og-default.png')
-    expect(res.body).not.toContain('og:image:width')
-    expect(res.body).not.toContain('og:image:height')
+    // The scene's own size, never the brand card's 1200 x 630.
+    expect(res.body).toContain('og:image:width" content="640"')
+    expect(res.body).toContain('og:image:height" content="427"')
+    expect(res.body).not.toContain('content="1200"')
     expect(res.body).toContain('twitter:card" content="summary_large_image"')
   })
 
@@ -135,21 +137,24 @@ describe('share preview handler in node', () => {
     expect(res.body).not.toContain('og:image:height')
   })
 
-  it('sizes a Wikimedia cover through the redirect instead of shipping the raw upload', async () => {
+  it('serves a Wikimedia cover through our own proxy instead of shipping the raw upload', async () => {
     // The one live publication with a cover carried the unscaled upload
-    // (`...?utm_content=thumbnail_unscaled`, 1.3 MB) because the picker only
-    // started sizing later. The client sizes the same URL on the display path
-    // and the handler cannot import it, so the rule is duplicated — this pins
-    // the duplication, including the `thumb/` and subdomain handling.
+    // (`...?utm_content=thumbnail_unscaled`, 587 KB) because the picker only
+    // started sizing later. Wikimedia answers Facebook's crawler 403, so the card
+    // advertises our own /api/cover: it asks for one known width and caches the
+    // bytes. The height follows the file, so no size is declared.
     respond([{
       ...publication,
       cover_image_url: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/Chandratal_1.JPG?utm_source=en.wikipedia.org&utm_content=thumbnail_unscaled',
     }])
     const res = await runHandler()
-    expect(res.body).toContain('og:image" content="https://commons.wikimedia.org/wiki/Special:Redirect/file/Chandratal_1.JPG?width=1200"')
+    const proxied = 'https://www.yatraflow.in/api/cover?f=Chandratal_1.JPG&amp;w=1200'
+    expect(res.body).toContain(`og:image" content="${proxied}"`)
     expect(res.body).not.toContain('upload.wikimedia.org')
-    // twitter:image carries the same sized URL, not the raw one.
-    expect(res.body).toContain('twitter:image" content="https://commons.wikimedia.org/wiki/Special:Redirect/file/Chandratal_1.JPG?width=1200"')
+    // twitter:image carries the same proxied URL, not the raw one.
+    expect(res.body).toContain(`twitter:image" content="${proxied}"`)
+    expect(res.body).not.toContain('og:image:width')
+    expect(res.body).not.toContain('og:image:height')
   })
 
   it('serves an uploaded cover exactly as stored, adding nothing to it', async () => {
@@ -168,6 +173,7 @@ describe('share preview handler in node', () => {
     expect(res.body).toContain(`twitter:image" content="${uploaded}"`)
     // No Wikimedia hop is invented for it, and our bucket host is not rewritten.
     expect(res.body).not.toContain('Special:Redirect')
+    expect(res.body).not.toContain('/api/cover')
     expect(res.body).not.toContain('upload.wikimedia.org')
   })
 
@@ -182,13 +188,13 @@ describe('share preview handler in node', () => {
     expect(res.body).not.toContain('og-default.png')
   })
 
-  it('leaves an already-sized Wikimedia redirect and other hosts alone', async () => {
+  it('proxies an already-sized Wikimedia redirect and keeps the file name from other hosts', async () => {
     respond([{ ...publication, cover_image_url: 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Chandratal_1.JPG?width=1200' }])
-    expect((await runHandler()).body).toContain('og:image" content="https://commons.wikimedia.org/wiki/Special:Redirect/file/Chandratal_1.JPG?width=1200"')
-    // An already-thumbed path keeps the file but re-asks at our width, and a
-    // non-commons project redirects through its own host.
+    expect((await runHandler()).body).toContain('og:image" content="https://www.yatraflow.in/api/cover?f=Chandratal_1.JPG&amp;w=1200"')
+    // An already-thumbed path keeps the file but asks at our width, and a
+    // non-commons project resolves to the same one proxied file name.
     respond([{ ...publication, cover_image_url: 'https://upload.wikimedia.org/wikipedia/en/thumb/1/23/Foo.png/800px-Foo.png?x=1' }])
-    expect((await runHandler()).body).toContain('https://en.wikipedia.org/wiki/Special:Redirect/file/Foo.png?width=1200')
+    expect((await runHandler()).body).toContain('https://www.yatraflow.in/api/cover?f=Foo.png&amp;w=1200')
   })
 
   it.each([undefined, null, '', 'http://images.example.test/cover.jpg'])(
@@ -916,5 +922,179 @@ describe('sending a publication on WhatsApp', () => {
     expect(source).toMatch(/disabled=\{sendingWhatsApp\}/)
     // The address comes from the shared resolver, never a second origin rule.
     expect(source).toMatch(/currentPublicShareUrl\(pub\.id\)/)
+  })
+})
+
+// Reads one meta tag's content with plain string search, so no pattern is built from input.
+const metaContent = (page: string, attr: 'property' | 'name', key: string): string | undefined => {
+  const open = `<meta ${attr}="${key}" content="`
+  const start = page.indexOf(open)
+  if (start < 0) return undefined
+  const from = start + open.length
+  const end = page.indexOf('"', from)
+  return end < 0 ? undefined : page.slice(from, end)
+}
+
+describe('the default share card agrees everywhere it is written', () => {
+  const tag = (page: string, attr: 'property' | 'name', key: string) => metaContent(page, attr, key)
+
+  it('declares the size and type the rendered PNG really has', async () => {
+    const card = await import('../api/_shareCard.js')
+    const png = readFileSync(new URL(`../public${card.DEFAULT_CARD_PATH}`, import.meta.url))
+    expect(png.subarray(1, 4).toString('latin1')).toBe('PNG')
+    expect(card.DEFAULT_CARD_TYPE).toBe('image/png')
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([card.DEFAULT_CARD_WIDTH, card.DEFAULT_CARD_HEIGHT])
+  })
+
+  it.each(['../index.html', '../public/ladakh-trip-cost-calculator/index.html'])(
+    '%s writes the same card, size, type and alt text as the handlers',
+    async path => {
+      const card = await import('../api/_shareCard.js')
+      const page = read(path)
+      const url = `https://www.yatraflow.in${card.DEFAULT_CARD_PATH}`
+      expect(tag(page, 'property', 'og:image')).toBe(url)
+      expect(tag(page, 'property', 'og:image:width')).toBe(String(card.DEFAULT_CARD_WIDTH))
+      expect(tag(page, 'property', 'og:image:height')).toBe(String(card.DEFAULT_CARD_HEIGHT))
+      expect(tag(page, 'property', 'og:image:type')).toBe(card.DEFAULT_CARD_TYPE)
+      expect(tag(page, 'property', 'og:image:alt')).toBe(card.DEFAULT_CARD_ALT)
+      expect(tag(page, 'name', 'twitter:card')).toBe('summary_large_image')
+      expect(tag(page, 'name', 'twitter:image')).toBe(url)
+      expect(tag(page, 'name', 'twitter:image:alt')).toBe(card.DEFAULT_CARD_ALT)
+    },
+  )
+
+  it('gives the not-found card the default card with its size, type and alt text', async () => {
+    const card = await import('../api/_shareCard.js')
+    respond([])
+    const res = await runHandler()
+    expect(tag(res.body, 'property', 'og:image')).toBe(`https://www.yatraflow.in${card.DEFAULT_CARD_PATH}`)
+    expect(tag(res.body, 'property', 'og:image:width')).toBe('1200')
+    expect(tag(res.body, 'property', 'og:image:type')).toBe('image/png')
+    expect(tag(res.body, 'property', 'og:image:alt')).toBe(card.DEFAULT_CARD_ALT)
+    expect(tag(res.body, 'name', 'twitter:image:alt')).toBe(card.DEFAULT_CARD_ALT)
+  })
+
+  it('names the itinerary in the alt text of a cover, escaped', async () => {
+    respond([{ ...publication, cover_image_url: 'https://images.example.test/cover.jpg' }])
+    const res = await runHandler()
+    expect(tag(res.body, 'property', 'og:image:alt')).toBe('Cover of Tom &amp; Jerry&#39;s &quot;Monsoon&quot; Escape')
+    expect(tag(res.body, 'name', 'twitter:image:alt')).toBe(tag(res.body, 'property', 'og:image:alt'))
+  })
+
+  it('gives the creator card the default card with its size, type and alt text', async () => {
+    const card = await import('../api/_shareCard.js')
+    fetchMock.mockImplementation(async input => String(input).includes('get_public_profile_cards')
+      ? new Response(JSON.stringify([{ name: 'Asha', creator_bio: 'Hill roads', creator_available: true }]))
+      : new Response(JSON.stringify([])))
+    const res = makeRes()
+    const { default: handler } = await import('../api/c.js')
+    await handler({ method: 'GET', query: { id: '1250e5c4-7d87-4813-8843-8ee16c45d757' } }, res)
+    expect(res.statusCode).toBe(200)
+    expect(tag(res.body, 'property', 'og:image')).toBe(`https://www.yatraflow.in${card.DEFAULT_CARD_PATH}`)
+    expect(tag(res.body, 'property', 'og:image:height')).toBe('630')
+    expect(tag(res.body, 'property', 'og:image:type')).toBe('image/png')
+    expect(tag(res.body, 'property', 'og:image:alt')).toBe(card.DEFAULT_CARD_ALT)
+    expect(tag(res.body, 'name', 'twitter:image')).toBe(tag(res.body, 'property', 'og:image'))
+  })
+})
+
+describe('a scene card declares the size it really has', () => {
+  const tag = (page: string, key: string) => metaContent(page, 'property', key)
+  // A lossy WebP stores its frame size after the VP8 start code (RFC 9649, section 2.5).
+  const webpSize = (file: Buffer) => {
+    expect(file.subarray(12, 16).toString('ascii')).toBe('VP8 ')
+    expect([...file.subarray(23, 26)]).toEqual([0x9d, 0x01, 0x2a])
+    return [file.readUInt16LE(26) & 0x3fff, file.readUInt16LE(28) & 0x3fff]
+  }
+
+  it('matches every scene file under public/art except the vignettes', async () => {
+    const card = await import('../api/_shareCard.js')
+    const manifest = JSON.parse(read('../src/assets/art/manifest.json'))
+    const vignettes = new Set(Object.values(manifest.vignettes as Record<string, string>))
+    const { readdirSync } = await import('node:fs')
+    const files = readdirSync(new URL('../public/art/', import.meta.url)).filter(name => name.endsWith('.webp'))
+    expect(files.length).toBeGreaterThan(100)
+    for (const name of files) {
+      if (vignettes.has(name.replace(/\.webp$/, ''))) continue
+      const size = webpSize(readFileSync(new URL(`../public/art/${name}`, import.meta.url)))
+      expect(size, name).toEqual([card.ART_CARD_WIDTH, card.ART_CARD_HEIGHT])
+    }
+  })
+
+  it('declares 640 x 427 WebP for a generated scene', async () => {
+    respond([publication])
+    const res = await runHandler()
+    expect(tag(res.body, 'og:image')).toMatch(/^https:\/\/www\.yatraflow\.in\/art\/[a-z0-9-]+\.webp$/)
+    expect(tag(res.body, 'og:image:width')).toBe('640')
+    expect(tag(res.body, 'og:image:height')).toBe('427')
+    expect(tag(res.body, 'og:image:type')).toBe('image/webp')
+  })
+
+  it('declares 640 x 427 WebP for a scene the creator chose as the cover', async () => {
+    respond([{ ...publication, cover_image_url: 'https://www.yatraflow.in/art/goa-2.webp' }])
+    const res = await runHandler()
+    expect(tag(res.body, 'og:image:width')).toBe('640')
+    expect(tag(res.body, 'og:image:type')).toBe('image/webp')
+  })
+
+  it.each([
+    'https://www.yatraflow.in/art/es-offline.webp',
+    'https://elsewhere.example.test/art/goa-2.webp',
+    'https://www.yatraflow.in/art/goa-2.webp?width=1600',
+  ])('declares no size for %s', async url => {
+    respond([{ ...publication, cover_image_url: url }])
+    const res = await runHandler()
+    expect(res.body).not.toContain('og:image:width')
+    expect(res.body).not.toContain('og:image:type')
+  })
+})
+
+describe('a post-tagged creator link previews as the creator card (G8)', () => {
+  const CREATOR = '1250e5c4-7d87-4813-8843-8ee16c45d757'
+  const POST = '6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5'
+  async function runCreator(query: Record<string, unknown>) {
+    fetchMock.mockImplementation(async input => String(input).includes('get_public_profile_cards')
+      ? new Response(JSON.stringify([{ name: 'Asha', creator_bio: 'Hill roads', creator_available: true }]))
+      : new Response(JSON.stringify([])))
+    const res = makeRes()
+    const { default: handler } = await import('../api/c.js')
+    await handler({ method: 'GET', query: { id: CREATOR, ...query } }, res)
+    return res
+  }
+
+  it('mints the tagged link on the creator card path', async () => {
+    const { creatorPostShareUrl } = await import('../src/lib/shareUrl')
+    expect(new URL(creatorPostShareUrl(CREATOR, POST, 'https://www.yatraflow.in')).pathname).toBe(`/c/${CREATOR}`)
+  })
+
+  it('gives a crawler the creator card and sends a browser on with the tag', async () => {
+    const res = await runCreator({ src: 'post', p: POST })
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toContain('og:title" content="Asha on YatraFlow"')
+    expect(res.body).toContain(`location.replace("/creator/${CREATOR}?src=post&p=${POST}")`)
+    // The canonical stays the clean creator address.
+    expect(res.body).toContain(`<link rel="canonical" href="https://www.yatraflow.in/c/${CREATOR}" />`)
+  })
+
+  it('keeps both a share ref and a post tag', async () => {
+    const res = await runCreator({ ref: 'wa', src: 'post', p: POST })
+    expect(res.body).toContain(`location.replace("/creator/${CREATOR}?ref=wa&src=post&p=${POST}")`)
+  })
+
+  it.each([
+    { src: 'post', p: 'not-a-post' },
+    { src: 'other', p: POST },
+    { p: POST },
+  ])('drops a malformed tag %o and serves the readable page', async query => {
+    const res = await runCreator(query)
+    expect(res.statusCode).toBe(200)
+    expect(res.body).not.toContain('location.replace')
+  })
+
+  it('checks a post id with the same rule as the client', () => {
+    const client = /const UUID_RE = (\/.+\/i)/.exec(read('../src/lib/creatorPosts.ts'))?.[1]
+    const handler = /const POST_ID_RE = (\/.+\/i)/.exec(read('../api/c.js'))?.[1]
+    expect(client).toBeTruthy()
+    expect(handler).toBe(client)
   })
 })

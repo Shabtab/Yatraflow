@@ -298,7 +298,7 @@ export function TrendChart({ points, label, unlockRead = 'ready' }: { points: Fu
       <div className="hub-chart-axis">
         <span>{first ? axisDay(first) : ''}</span>
         <span className="hub-chart-peak">
-          {quiet ? 'Nothing recorded in this window' : `peak ${peak.toLocaleString('en-IN')} ${peakPoint.series} on ${axisDay(peakPoint.day)}`}
+          {quiet ? 'Nothing recorded in this window' : `Peak ${peak.toLocaleString('en-IN')} ${peakPoint.series} on ${axisDay(peakPoint.day)}`}
         </span>
         <span>{last ? axisDay(last) : ''}</span>
       </div>

@@ -290,7 +290,7 @@ describe('Group input decision card keeps its state through a resolve', () => {
     }
     // The comment field and the day picker sit outside the open branch, so they persist.
     expect(card.indexOf('<SmoothCollapse open={commenting}')).toBeGreaterThan(card.indexOf('<div className="gin-decided">'))
-    expect(card.indexOf('{pickerOptionId && pickerOption?.place && (')).toBeGreaterThan(card.indexOf('<div className="gin-decided">'))
+    expect(card.indexOf('{editable && pickerOptionId && pickerOption?.place && (')).toBeGreaterThan(card.indexOf('<div className="gin-decided">'))
   })
 
   it('marks a card that changed phase on screen, and rises only its decided body', () => {

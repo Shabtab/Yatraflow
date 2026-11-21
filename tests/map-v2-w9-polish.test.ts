@@ -93,6 +93,7 @@ function editor(over: Record<string, unknown> = {}): string {
     onMoveToDay: noop,
     onSwap: noop,
     onRemove: noop,
+    onClose: noop,
     ...over,
   }))
 }

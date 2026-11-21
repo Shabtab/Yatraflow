@@ -507,6 +507,35 @@ as $$
   );
 $$;
 
+-- Helper: may the current user comment on and vote in a trip (#935)?
+-- True for the trip owner, an enabled admin, or a member with role
+-- owner, editor or commenter. A viewer gets false. Used by
+-- submit_collab_command for the four comment and ballot kinds only.
+create or replace function public.can_comment(trip uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select (
+    exists (
+      select 1 from public.trips t
+      where t.id = trip and t.owner_id = auth.uid()
+    )
+    or exists (
+      select 1 from public.trip_members m
+      where m.trip_id = trip and m.user_id = auth.uid()
+        and m.role in ('owner', 'editor', 'commenter')
+    )
+    or public.is_admin()
+  ) and not public.is_disabled()
+$$;
+
+-- anon must be named: revoke from public alone does not revoke from anon on Supabase.
+revoke all on function public.can_comment(uuid) from public, anon;
+grant execute on function public.can_comment(uuid) to authenticated;
+
 -- ============================================================
 -- Row Level Security — the real authorization boundary.
 -- ============================================================
@@ -1394,10 +1423,10 @@ begin
   if v_command_id is null or v_trip_id is null or jsonb_typeof(p_command) is distinct from 'object' then
     return jsonb_build_object('status','invalid','tripRevision',null);
   end if;
-  if not public.is_editor(v_trip_id) then
+  v_kind:=p_command->>'type';
+  if not (public.is_editor(v_trip_id) or (v_kind in ('suggestion.comment','suggestion.ballot','decision.comment','decision.ballot') and public.can_comment(v_trip_id))) then
     return jsonb_build_object('status','forbidden','tripRevision',null);
   end if;
-  v_kind:=p_command->>'type';
   if v_kind in ('suggestion.accept','suggestion.decline','decision.resolve') then
     select t.* into v_trip_row from public.trips t where t.id=v_trip_id and t.deleted_at is null for update;
     v_revision:=v_trip_row.write_version;
@@ -2924,4 +2953,46 @@ create trigger trips_access_owner after update of owner_id on public.trips
   for each row when (old.owner_id is distinct from new.owner_id) execute function public.move_trip_access_owner();
 
 revoke insert,update,delete,truncate,references,trigger on public.trip_members from public,anon,authenticated,service_role;
+commit;
+
+begin;
+
+create or replace function public.guard_trip_settings()
+returns trigger language plpgsql security invoker set search_path='' as $$
+begin
+  if new.visibility is not distinct from old.visibility
+    and new.deleted_at is not distinct from old.deleted_at then
+    return new;
+  end if;
+  if current_user='service_role' then
+    return new;
+  end if;
+  if auth.uid() is not null and public.is_disabled() then
+    raise exception 'This account cannot change trip settings.' using errcode='42501';
+  end if;
+  if current_user='postgres' then
+    return new;
+  end if;
+  if auth.uid() is not null and not public.is_disabled()
+    and (old.owner_id=auth.uid() or public.is_admin()) then
+    return new;
+  end if;
+  raise exception 'Only the trip owner can change these settings.' using errcode='42501';
+end;
+$$;
+revoke all on function public.guard_trip_settings() from public,anon,authenticated,service_role;
+drop trigger if exists trips_settings_boundary on public.trips;
+create trigger trips_settings_boundary before update of visibility,deleted_at on public.trips
+  for each row execute function public.guard_trip_settings();
+
+drop policy if exists "suggestions read" on public.suggestions;
+create policy "suggestions read" on public.suggestions
+  for select to authenticated using(public.is_member(trip_id) or public.is_admin());
+drop policy if exists "decisions read" on public.decisions;
+create policy "decisions read" on public.decisions
+  for select to authenticated using(public.is_member(trip_id) or public.is_admin());
+drop policy if exists "activity read" on public.activity;
+create policy "activity read" on public.activity
+  for select to authenticated using(public.is_member(trip_id) or public.is_admin());
+
 commit;

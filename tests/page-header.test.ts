@@ -114,7 +114,9 @@ describe('Surface component contract', () => {
     expect(start).toBeGreaterThan(-1)
     const block = css.slice(start, css.indexOf('/* ===== My purchases (page rules) ===== */'))
     expect(block).toContain('box-shadow: var(--shadow-card)')
-    expect(block).toContain('.yf-surface.is-interactive:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }')
+    // The hover shadow and edge are the ::before layer (it fades on opacity), so the hover rule only lifts.
+    expect(block).toContain('.yf-surface.is-interactive:hover { transform: translateY(-2px); }')
+    expect(block).toContain('.yf-surface.is-interactive:hover::before { opacity: 1; }')
     expect(block).not.toMatch(/\n\.yf-surface:hover/)
     expect(block).toMatch(/prefers-reduced-motion: reduce\) \{[\s\S]*transform: none/)
     expect(block).not.toMatch(/\d+ms/)

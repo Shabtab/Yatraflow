@@ -1,4 +1,5 @@
 // P7 storefront: a kind chip. Icon plus words, never colour alone.
+import type { JSX } from 'react'
 import type { StorefrontKind } from '../../lib/publicStorefront'
 import { KIND_LABEL } from '../../lib/publicStorefront'
 import { CatIcon } from '../icons'

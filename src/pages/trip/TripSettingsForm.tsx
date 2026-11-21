@@ -113,6 +113,28 @@ export function formFromTrip(trip: Trip): SettingsFormState {
   }
 }
 
+/** #414 follow-up: the fields this form owns, as one comparable string. The
+ *  remote-edit banner compares this, not the clock, so the server echo of our
+ *  own save and writes to other parts of the trip cannot raise it. */
+export function settingsSnapshot(t: Trip): string {
+  return JSON.stringify([formFromTrip(t), t.destinations, t.destinationCoords ?? null, t.startLocationCoords ?? null])
+}
+
+/** #414 follow-up: true when another owner or editor can change trip settings.
+ *  When it is false, the change came from your own other tab or device, and the
+ *  banner names that source instead of "a crew member". An unknown session
+ *  (null id) answers false, so a loading session never blames a crew member. */
+export function hasOtherEditor(members: readonly { userId: string; role: string }[], meId: string | null | undefined): boolean {
+  if (!meId) return false
+  return members.some(m => m.userId !== meId && (m.role === 'owner' || m.role === 'editor'))
+}
+
+/** The banner's actor: blank means "A crew member"; a solo editor's change can
+ *  only come from their own other tab or device. */
+export function remoteEditorLabel(members: readonly { userId: string; role: string }[], meId: string | null | undefined): string {
+  return hasOtherEditor(members, meId) ? '' : 'Your other tab or device'
+}
+
 export type SettingsDryRun =
   | { ok: true; patch: Partial<Trip>; startCoordsDropped: boolean }
   | { ok: false; reason: string; blocked?: number[] }
@@ -553,11 +575,24 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
    *  `openedAtRef` is the updatedAt the draft was born against; our OWN save
    *  rebases it through `ownSaveRef` so it never fires on ourselves. */
   const openedAtRef = useRef(trip.updatedAt)
+  const openedSnapRef = useRef(settingsSnapshot(trip))
   const ownSaveRef = useRef(false)
   const [remoteAt, setRemoteAt] = useState<number | null>(null)
   useEffect(() => {
-    if (ownSaveRef.current) { ownSaveRef.current = false; openedAtRef.current = trip.updatedAt; return }
-    if (trip.updatedAt > openedAtRef.current) setRemoteAt(trip.updatedAt)
+    const snap = settingsSnapshot(trip)
+    if (ownSaveRef.current) { ownSaveRef.current = false; openedAtRef.current = trip.updatedAt; openedSnapRef.current = snap; return }
+    if (trip.updatedAt <= openedAtRef.current) return
+    // A newer row that changes none of this form's fields (the echo of our own
+    // save, a stop edit, a background write) is not a conflict: rebase quietly.
+    // A changed field always warns, even on a solo trip: your other tab or
+    // device can change it, and a Save from this draft would overwrite it.
+    if (snap === openedSnapRef.current) {
+      openedAtRef.current = trip.updatedAt; openedSnapRef.current = snap
+      return
+    }
+    setRemoteAt(trip.updatedAt)
+    // Deps stay on the clock alone: field changes are compared inside.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip.updatedAt])
   // The day grid follows the date range — show what the picker will do to it.
   const dayDelta = (() => {
@@ -679,6 +714,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
     setStartPin(t.startLocationCoords ? { coords: t.startLocationCoords, label: t.startLocation } : null)
     setStartNotice(''); setDestInput(''); setRenamingDest(null); setRenameDraft('')
     openedAtRef.current = t.updatedAt
+    openedSnapRef.current = settingsSnapshot(t)
     setRemoteAt(null)
   }
 
@@ -948,10 +984,10 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
           <span className="tset-nav-lbl">The plan at a glance</span>
           {preview?.estimated && <p className="muted small">Route changes need fresh road measurements after saving.</p>}
           <div className="tset-glance-grid">
-            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.totalDistanceKm > 0 ? `${Math.round(tripTotals.totalDistanceKm)} km` : '–'}</span><span className="tset-stat-k">road measured</span></div>
-            <div className="tset-stat"><span className="tset-stat-v">{minutesToHM(tripTotals.totalTravelMinutes)}</span><span className="tset-stat-k">driving</span></div>
-            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.stopCount} stops</span><span className="tset-stat-k">on {daysWithStops} of {dayCount} days</span></div>
-            <div className="tset-stat"><span className="tset-stat-v">{formatInr(tripTotals.totalCostInr)}</span><span className="tset-stat-k">plan total, estimate</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.totalDistanceKm > 0 ? `${Math.round(tripTotals.totalDistanceKm)} km` : '–'}</span><span className="tset-stat-k">Road measured</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{minutesToHM(tripTotals.totalTravelMinutes)}</span><span className="tset-stat-k">Driving</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{tripTotals.stopCount} stops</span><span className="tset-stat-k">On {daysWithStops} of {dayCount} days</span></div>
+            <div className="tset-stat"><span className="tset-stat-v">{formatInr(tripTotals.totalCostInr)}</span><span className="tset-stat-k">Plan total, estimate</span></div>
           </div>
           <div className="tset-read">
             <span className="tset-diff-lbl">The engine&apos;s read</span>
@@ -975,8 +1011,8 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
       {remoteAt !== null && (
         <RemoteEditBanner
           noun="trip settings"
-          byName=""
-          onKeepMine={() => { openedAtRef.current = trip.updatedAt; setRemoteAt(null) }}
+          byName={remoteEditorLabel(members, meId)}
+          onKeepMine={() => { openedAtRef.current = trip.updatedAt; openedSnapRef.current = settingsSnapshot(trip); setRemoteAt(null) }}
           onTakeTheirs={() => reseedFrom(trip)}
         />
       )}
@@ -1551,11 +1587,11 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
                 </Field>
               </div>
               <div className="form-row">
-                <Field label={f.fuelType === 'electric' ? 'Battery (kWh)' : 'Tank capacity (L)'} hint={f.fuelType === 'electric' ? 'e.g. 50' : 'e.g. 45'}>
+                <Field label={f.fuelType === 'electric' ? 'Battery (kWh)' : 'Tank capacity (L)'} hint={f.fuelType === 'electric' ? 'E.g. 50' : 'E.g. 45'}>
                   <input type="number" min={1} max={300} step={0.5} className="input" disabled={!editable} value={f.capacity}
                     onChange={e => setF(x => ({ ...x, capacity: e.target.value }))} placeholder={f.fuelType === 'electric' ? '50' : '45'} />
                 </Field>
-                <Field label={f.fuelType === 'electric' ? 'Efficiency (km / kWh)' : 'Economy (km / L)'} hint={f.fuelType === 'electric' ? 'e.g. 6' : 'e.g. 15'}>
+                <Field label={f.fuelType === 'electric' ? 'Efficiency (km / kWh)' : 'Economy (km / L)'} hint={f.fuelType === 'electric' ? 'E.g. 6' : 'E.g. 15'}>
                   <input type="number" min={1} max={200} step={0.1} className="input" disabled={!editable} value={f.vehicleEconomy}
                     onChange={e => setF(x => ({ ...x, vehicleEconomy: e.target.value }))} placeholder={f.fuelType === 'electric' ? '6' : '15'} />
                 </Field>
@@ -1609,11 +1645,10 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections, on
                 <div className="tset-danger-cell tset-danger-cell--trash">
                   <b>Move to trash</b>
                   <span>Restorable for 30 days, then gone.</span>
-                  <button type="button" className="tset-danger-btn tset-danger-btn--trash" onClick={() => {
-                    trashTrip(trip)
+                  <button type="button" className="tset-danger-btn tset-danger-btn--trash" onClick={async () => {
+                    if (!await trashTrip(trip)) return
                     undoToast(`Moved “${trip.name}” to trash`, () => {
-                      restoreTrashedTrip(trip)
-                      toast(`Restored “${trip.name}”`)
+                      void restoreTrashedTrip(trip).then(ok => { if (ok) toast(`Restored “${trip.name}”`) })
                     })
                   }}>Move to trash</button>
                 </div>

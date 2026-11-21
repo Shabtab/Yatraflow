@@ -367,58 +367,42 @@ describe('POST /api/checkout', () => {
     expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/rest/v1/purchase_orders') && (c[1] as RequestInit | undefined)?.method === 'POST')).toHaveLength(0)
   })
 
-  it('mints a fresh order when the pending one snapshots a different price', async () => {
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+  const liveRow = (id: string, status: string, amount = 500) => ({
+    razorpay_order_id: id, amount_inr: amount, status,
+  })
+  function stubLiveOrders(rows: unknown[], gateway: Record<string, string>, payments: Record<string, unknown> = {}, failing: string[] = []) {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const url = String(input)
+      const method = (init.method ?? 'GET') as string
       if (url.includes('/auth/v1/user')) return jsonResponse({ id: 'buyer-1' })
       if (url.includes('/rest/v1/published_itineraries')) return jsonResponse([pubRow])
       if (url.includes('/rest/v1/entitlements')) return jsonResponse([])
-      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) {
-        return jsonResponse([{ razorpay_order_id: 'order_OLDPRICE', amount_inr: 300 }])
+      // The recovery tail: mark the captured row paid, then grant through the
+      // buyer-scoped RPC. Both are what a real recovery calls, so the stub
+      // carries them rather than the test asserting on a 503 short-circuit.
+      if (url.includes('/rpc/claim_paid_order')) return jsonResponse('ent-uuid')
+      if (url.includes('/rest/v1/purchase_orders') && method === 'PATCH') return jsonResponse([{ id: 'o', razorpay_order_id: 'x', status: 'paid' }])
+      if (url.includes('/rest/v1/purchase_orders') && method === 'POST') return jsonResponse(null, 201)
+      if (url.includes('/rest/v1/purchase_orders') && method === 'GET') return jsonResponse(rows)
+      // #595 — the payments-list probe the recovery makes before marking:
+      // keyed by order id, answered with the gateway's own items shape.
+      if (url.includes('/v1/orders/') && url.endsWith('/payments')) {
+        const id = decodeURIComponent(url.split('/v1/orders/')[1]!.replace(/\/payments$/, ''))
+        return jsonResponse({ count: 1, items: payments[id] ?? [] })
       }
-      if (url === 'https://api.razorpay.com/v1/orders') return jsonResponse({ id: 'order_NEW' })
-      if (url.includes('/rest/v1/purchase_orders')) return jsonResponse(null, 201)
+      // Gateway order STATUS probes come before the create call: the create URL
+      // is an exact match, so the prefix branch must not be shadowed by it.
+      if (url.includes('api.razorpay.com/v1/orders/')) {
+        const id = decodeURIComponent(url.split('/v1/orders/')[1]!)
+        if (failing.includes(id)) return jsonResponse({}, 500)
+        return jsonResponse({ id, status: gateway[id] ?? 'created' })
+      }
+      if (url === 'https://api.razorpay.com/v1/orders') return jsonResponse({ id: 'order_NEW', amount: 50000, currency: 'INR' })
       throw new Error(`unexpected fetch ${url}`)
     })
-    const res = await run({ pubId: 'kerala-trip_1' })
-    expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).orderId).toBe('order_NEW')
-  })
+  }
 
   describe('#594 — every live order is read, oldest capture first', () => {
-    const liveRow = (id: string, status: string, amount = 500) => ({
-      razorpay_order_id: id, amount_inr: amount, status,
-    })
-    function stubLiveOrders(rows: unknown[], gateway: Record<string, string>, payments: Record<string, unknown> = {}) {
-      fetchMock.mockImplementation(async (input: RequestInfo | URL, init: RequestInit = {}) => {
-        const url = String(input)
-        const method = (init.method ?? 'GET') as string
-        if (url.includes('/auth/v1/user')) return jsonResponse({ id: 'buyer-1' })
-        if (url.includes('/rest/v1/published_itineraries')) return jsonResponse([pubRow])
-        if (url.includes('/rest/v1/entitlements')) return jsonResponse([])
-        // The recovery tail: mark the captured row paid, then grant through the
-        // buyer-scoped RPC. Both are what a real recovery calls, so the stub
-        // carries them rather than the test asserting on a 503 short-circuit.
-        if (url.includes('/rpc/claim_paid_order')) return jsonResponse('ent-uuid')
-        if (url.includes('/rest/v1/purchase_orders') && method === 'PATCH') return jsonResponse([{ id: 'o', razorpay_order_id: 'x', status: 'paid' }])
-        if (url.includes('/rest/v1/purchase_orders') && method === 'POST') return jsonResponse(null, 201)
-        if (url.includes('/rest/v1/purchase_orders') && method === 'GET') return jsonResponse(rows)
-        // #595 — the payments-list probe the recovery makes before marking:
-        // keyed by order id, answered with the gateway's own items shape.
-        if (url.includes('/v1/orders/') && url.endsWith('/payments')) {
-          const id = decodeURIComponent(url.split('/v1/orders/')[1]!.replace(/\/payments$/, ''))
-          return jsonResponse({ count: 1, items: payments[id] ?? [] })
-        }
-        // Gateway order STATUS probes come before the create call: the create URL
-        // is an exact match, so the prefix branch must not be shadowed by it.
-        if (url.includes('api.razorpay.com/v1/orders/')) {
-          const id = decodeURIComponent(url.split('/v1/orders/')[1]!)
-          return jsonResponse({ id, status: gateway[id] ?? 'created' })
-        }
-        if (url === 'https://api.razorpay.com/v1/orders') return jsonResponse({ id: 'order_NEW', amount: 50000, currency: 'INR' })
-        throw new Error(`unexpected fetch ${url}`)
-      })
-    }
     it('reads every live row, not just the newest', async () => {
       stubLiveOrders([liveRow('order_OLD', 'pending'), liveRow('order_NEW1', 'pending')], { order_OLD: 'created', order_NEW1: 'created' })
       await run({ pubId: 'kerala-trip_1' })
@@ -528,6 +512,71 @@ describe('POST /api/checkout', () => {
       const scanUrl = fetchMock.mock.calls.find(c => String(c[0]).includes('status=in.(pending,paid)'))![0] as string
       expect(scanUrl).toContain('status=in.(pending,paid)')
       expect(scanUrl).not.toContain('status=neq.failed')
+    })
+  })
+
+  describe('#996 — a price change never hides a payment', () => {
+    it('recovers a captured old-price order instead of minting a new one', async () => {
+      stubLiveOrders([liveRow('order_OLD', 'pending', 300)], { order_OLD: 'paid' }, {
+        order_OLD: [{ id: 'pay_OLD', status: 'captured' }],
+      })
+      const res = await run({ pubId: 'kerala-trip_1' })
+      expect(res.statusCode).toBe(409)
+      expect(JSON.parse(res.body).error).toMatch(/earlier payment was confirmed/)
+      expect(fetchMock.mock.calls.some(c => String(c[0]) === 'https://api.razorpay.com/v1/orders')).toBe(false)
+      const patch = fetchMock.mock.calls.find(c => String(c[0]).includes('/rest/v1/purchase_orders') && (c[1] as RequestInit | undefined)?.method === 'PATCH')
+      expect(patch).toBeTruthy()
+      expect(JSON.parse(String((patch![1] as RequestInit).body)).razorpay_payment_id).toBe('pay_OLD')
+      expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/rpc/claim_paid_order'))).toBe(true)
+    })
+
+    it('recovers a paid old-price row without probing the gateway for it', async () => {
+      stubLiveOrders([liveRow('order_OLDPAID', 'paid', 300)], {}, {})
+      const res = await run({ pubId: 'kerala-trip_1' })
+      expect(fetchMock.mock.calls.some(c => String(c[0]).includes('api.razorpay.com/v1/orders/order_OLDPAID'))).toBe(false)
+      expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/rpc/claim_paid_order'))).toBe(true)
+      expect(res.statusCode).toBe(409)
+      expect(fetchMock.mock.calls.some(c => String(c[0]) === 'https://api.razorpay.com/v1/orders')).toBe(false)
+    })
+
+    it('refuses to mint when an old-price order is still payable', async () => {
+      stubLiveOrders([liveRow('order_OLD', 'pending', 300)], { order_OLD: 'created' })
+      const res = await run({ pubId: 'kerala-trip_1' })
+      expect(res.statusCode).toBe(409)
+      expect(JSON.parse(res.body).error).toMatch(/price of this plan changed/)
+      expect(fetchMock.mock.calls.some(c => String(c[0]) === 'https://api.razorpay.com/v1/orders')).toBe(false)
+      expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/rest/v1/purchase_orders') && (c[1] as RequestInit | undefined)?.method === 'POST')).toBe(false)
+    })
+
+    it('recovers an older capture before probing the newer current-price order', async () => {
+      stubLiveOrders([liveRow('order_NEW1', 'pending'), liveRow('order_OLD', 'pending', 300)], {
+        order_OLD: 'paid', order_NEW1: 'created',
+      }, {
+        order_OLD: [{ id: 'pay_OLD', status: 'captured' }],
+      })
+      const res = await run({ pubId: 'kerala-trip_1' })
+      expect(res.statusCode).toBe(409)
+      expect(JSON.parse(res.body).error).toMatch(/earlier payment was confirmed/)
+      const probes = fetchMock.mock.calls.map(c => String(c[0])).filter(u => u.includes('api.razorpay.com/v1/orders/'))
+      expect(probes.some(u => u.includes('order_OLD'))).toBe(true)
+      expect(probes.some(u => u.includes('order_NEW1'))).toBe(false)
+    })
+
+    it('stops with a 503 when an old-price probe fails', async () => {
+      stubLiveOrders([liveRow('order_OLD', 'pending', 300)], { order_OLD: 'created' }, {}, ['order_OLD'])
+      const res = await run({ pubId: 'kerala-trip_1' })
+      expect(res.statusCode).toBe(503)
+      expect(JSON.parse(res.body).error).toMatch(/could not verify your earlier attempt/)
+      expect(fetchMock.mock.calls.some(c => String(c[0]) === 'https://api.razorpay.com/v1/orders')).toBe(false)
+    })
+
+    it('re-serves the current-price order when every old-price order is payable', async () => {
+      stubLiveOrders([liveRow('order_NEW1', 'pending'), liveRow('order_OLD', 'pending', 300)], {
+        order_NEW1: 'created', order_OLD: 'created',
+      })
+      const res = await run({ pubId: 'kerala-trip_1' })
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.body).orderId).toBe('order_NEW1')
     })
   })
 })

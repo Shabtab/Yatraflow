@@ -53,7 +53,7 @@ describe('Group input review fixes', () => {
   it('keeps one primary in the decision footer, and states the helper line without a fit claim', () => {
     // The Resolve buttons are secondary while Vote shows. Only a locked decision with a winner promotes one.
     expect(tab).toContain("className={`btn btn-sm ${locked && outcome.kind === 'winner' && outcome.option.id === o.id ? 'btn-primary' : 'btn-outline'}`} disabled={busy}")
-    expect(tab).toContain('Anyone can suggest. Editors add the ones the group likes to the timeline.')
+    expect(tab).toContain('Suggest a stop for the group. Editors add the ones the group likes to the timeline.')
     expect(tab).not.toMatch(/the engine says where/)
   })
 

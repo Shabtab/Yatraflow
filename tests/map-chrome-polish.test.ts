@@ -139,7 +139,8 @@ describe('Map interaction round two', () => {
     expect(tripMap).toContain(".some(f => f.layer.id.startsWith('clusters-') || f.layer.id.startsWith('cluster-count-'))")
     expect(tripMap).toContain('onBlankMapClickRef.current?.()')
     expect(tripMap).toContain("document.addEventListener('pointerdown', onPointerDown, true)")
-    expect(tab).toContain('onBlankMapClick={() => { if (detailId != null) setDetailId(null) }}')
+    // The stop edit card closes on the same bare-map click, with no focus grab.
+    expect(tab).toContain('onBlankMapClick={() => { if (detailId != null) setDetailId(null); if (selectedStop != null) closeSelectedStop(false) }}')
   })
   it('glides the camera on one eased curve, with no zero-time settle jump', () => {
     expect(tripMap).toContain('duration, easing: easeInOutCubic')
@@ -184,7 +185,8 @@ describe('Map surfaces round three', () => {
     expect(css).toMatch(/\.mv2-workspace \.mv2-map-key, \.mv2-workspace \.map-filters-pop \{\n\s*background: var\(--pw-glass\); -webkit-backdrop-filter: blur\(var\(--yf-blur-panel\)\) saturate\(1\.25\); backdrop-filter: blur\(var\(--yf-blur-panel\)\) saturate\(1\.25\);/)
   })
   it('gives the deck an even 16 px side inset, with no scrollbar eating the right side', () => {
-    expect(css).toContain('.mv2-lens { display: flex; flex-direction: column; gap: var(--space-5); padding: 0 var(--space-7) var(--space-7);')
+    expect(css).toContain('.mv2-lens { display: flex; flex-direction: column; gap: var(--space-5); padding: 0 var(--mv2-panel-pad) var(--mv2-panel-pad);')
+    expect(css).toContain('.mv2-workspace { --mv2-day-width: 380px; --mv2-deck-width: 372px; --mv2-inset: var(--space-5); --mv2-panel-pad: var(--space-7);')
     expect(css).toMatch(/\.mv2-workspace \.map-ideas-grid > \.poi-col, \.mv2-detail \{[^}]*scrollbar-width: none;/)
   })
   it('draws a pick on the map as a solid family tile', () => {

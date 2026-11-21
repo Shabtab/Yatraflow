@@ -403,6 +403,35 @@ function routeHeightAt(points: ReadonlyArray<{ x: number; y: number }>, x: numbe
   return last.y
 }
 
+/** A box over the plot, in plot units. */
+export interface PlotBox {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+/**
+ * True when no stroke in `runs` passes through `box`. The stroke is read every
+ * 4 plot units along the box's x range, from the same anchors the label
+ * placement uses. A stroke above the box counts as a hit too: the box then sits
+ * in the land fill.
+ */
+export function strokeClearOfBox(
+  runs: ReadonlyArray<{ points: ReadonlyArray<{ x: number; y: number }> }>,
+  box: PlotBox,
+): boolean {
+  for (const run of runs) {
+    const points = [...run.points].sort((a, b) => a.x - b.x)
+    if (points.length === 0) continue
+    if (points[points.length - 1].x < box.left || points[0].x > box.right) continue
+    for (let x = box.left; x < box.right + 4; x += 4) {
+      if (routeHeightAt(points, Math.min(x, box.right)) <= box.bottom) return false
+    }
+  }
+  return true
+}
+
 /** Two labels closer than this, in plot units, read as one. */
 const DAY_LABEL_GAP = 28
 
@@ -432,7 +461,7 @@ export function heightDayLabels(
 /** The band's own words. It says "highest" only when the peak is inside it. */
 export function paidBandLabel(paidIndexes: readonly number[], peakDayIndex: number | null): string {
   const inPaid = peakDayIndex != null && paidIndexes.includes(peakDayIndex)
-  return inPaid ? 'highest · paid days' : 'paid days'
+  return inPaid ? 'Highest · paid days' : 'Paid days'
 }
 
 /** Every height the card prints is rounded to 50 m, so nothing reads false. */

@@ -504,13 +504,13 @@ function FunnelLine({ f, funnelRead, unlockRead = 'ready', windowLabel }: { f: P
         <span className="hub-lead-window">in {windowLabel}</span>
         <span className="hub-lead-step hub-lead-visits"><b className="hub-lead-n">{f.views}</b> {unit(f.views, 'visit')}</span>
         {/* Equal counting units do not prove linked visitor cohorts. */}
-        <span className="hub-lead-step hub-lead-forks"><b className="hub-lead-n">{f.forks}</b> {unit(f.forks, 'fork')} <span className="hub-lead-rate">{f.views ? `${formatPct(f.forkRatePct)} fork/view ratio` : 'no views to compare'}</span></span>
+        <span className="hub-lead-step hub-lead-forks"><b className="hub-lead-n">{f.forks}</b> {unit(f.forks, 'fork')} <span className="hub-lead-rate">{f.views ? `${formatPct(f.forkRatePct)} fork/view ratio` : 'No views to compare'}</span></span>
         {/* Unlocks come from the sales ledger, so an unread ledger leaves this
             stage UNKNOWN. Printing 0 here would say "nobody bought" — the same
             conflation the branches above avoid for the log as a whole. */}
         {unlockRead === 'ready'
-          ? <span className="hub-lead-step hub-lead-unlocks"><b className="hub-lead-n">{f.unlocks}</b> {unit(f.unlocks, 'unlock')} <span className="hub-lead-rate">{f.forks ? `${formatPct(f.unlockRatePct)} unlock/fork ratio` : 'no forks to compare'}</span></span>
-          : <span className="hub-lead-step muted">{unlockRead === 'reading' ? 'unlocks still being read' : 'unlocks could not be read'}</span>}
+          ? <span className="hub-lead-step hub-lead-unlocks"><b className="hub-lead-n">{f.unlocks}</b> {unit(f.unlocks, 'unlock')} <span className="hub-lead-rate">{f.forks ? `${formatPct(f.unlockRatePct)} unlock/fork ratio` : 'No forks to compare'}</span></span>
+          : <span className="hub-lead-step muted">{unlockRead === 'reading' ? 'Unlocks still being read' : 'Unlocks could not be read'}</span>}
         {f.forksExceedViews && (
           <span className="muted">· more forks than visits. Explore&apos;s card forks a plan without opening it</span>
         )}
@@ -1092,14 +1092,14 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
             {ledgerRead !== 'ready' ? (
               <>
                 <span className="stat-value hub-cell-value hub-cell-unread">{unreadLabel}</span>
-                <span className="hub-cell-hint muted">balance unknown</span>
+                <span className="hub-cell-hint muted">Balance unknown</span>
               </>
             ) : (
               <>
                 <span className="stat-value hub-cell-value">{payout.clearsInr > 0 ? shortDate(payout.dueAt) : 'Not available'}</span>
                 {payout.clearsInr === 0 && (
                   <span className="hub-cell-hint muted">
-                    {payout.belowMinimum ? `under ${formatInr(payout.minimumInr)}: rolls over` : 'nothing to pay out yet'}
+                    {payout.belowMinimum ? `Under ${formatInr(payout.minimumInr)}: rolls over` : 'Nothing to pay out yet'}
                   </span>
                 )}
               </>

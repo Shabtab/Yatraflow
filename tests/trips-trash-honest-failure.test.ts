@@ -200,18 +200,23 @@ describe('#566 — the client keeps the gate vocabulary', () => {
     // Withdraw FIRST: if the plan cannot stop selling, the trip stays put
     // rather than half-moving.
     expect(body.indexOf('publishedHaveUnpublishedAt()')).toBeLessThan(body.indexOf('update({ deleted_at'))
-    // The marker is optimistic and rolls back together with the trip.
-    expect(body).toContain('cache.published = prevPubs')
+    // The marker lands only after the server acknowledges the withdraw, so a
+    // failed write has nothing to roll back.
+    const stamped = body.indexOf('cache.published = cache.published.map')
+    expect(stamped).toBeGreaterThan(-1)
+    expect(body.indexOf('if (error) return refuse()')).toBeLessThan(stamped)
   })
 
   it('refuses to trash a still-selling trip the caller cannot withdraw', () => {
     // `published write` RLS is creator-only while `trips update` is is_editor,
-    // so an editor cannot stamp the marker — refused outright rather than
-    // half-served (and deliberately no trigger: withdrawing the sale is the
-    // creator's action, not a side effect of a tombstone).
+    // so a non-owner is refused by the owner gate and a non-creator publication
+    // is refused outright rather than half-served (and deliberately no trigger:
+    // withdrawing the sale is the creator's action, not a side effect of a
+    // tombstone).
     const body = bodyOf('trashTrip')
-    expect(body).toContain('onSale.some(p => p.creatorId !== me)')
-    expect(store).toContain('Only the trip owner can trash a published trip')
+    expect(body).toContain('onSale.some(p => p.creatorId !== scope.userId)')
+    expect(store).toContain('Only the trip owner can move this trip to trash')
+    expect(store).toContain('Only the creator can withdraw a published trip')
   })
 
   it('deleteTrip refuses a published trip outright', () => {

@@ -603,9 +603,13 @@ html.vt-active :where(*) {
    twitch and no movement, while the same component on a creator page (no
    `enterIndex`, no entrance) lifted properly. */
 .trip-enter { animation: cardIn var(--t-slow) var(--ease-out) backwards; }
+/* The entrance moves the separate translate and scale properties, never
+   transform. Many cards that use it also lift on hover with transform, so the
+   two compose: the hover applies while the entrance runs and nothing snaps when
+   it ends. There is no `to` frame: the card lands on its own resting state.
+   Pinned by tests/card-hover-motion.test.ts. */
 @keyframes cardIn {
-  from { opacity: 0; transform: translateY(14px) scale(.98); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; translate: 0 14px; scale: .98; }
 }
 @media (prefers-reduced-motion: reduce) {
   .trip-enter { animation: none; }
@@ -1168,6 +1172,9 @@ html.vt-active :where(*) {
 .bench-receipt-actions { position: relative; }
 .chip-copied { border-color: var(--yf-teal-600) !important; color: var(--yf-teal-700) !important; }
 .bench-confetti { position: absolute; left: 50%; top: 0; pointer-events: none; }
+/* Chakra's proud head rides the confetti: it is decoration on a moment, so it
+   takes no layout row and sits just above the chips it congratulates. */
+.bench-confetti-head { position: absolute; left: -14px; top: -30px; }
 .cf-bit { position: absolute; width: 7px; height: 7px; border-radius: 2px; background: var(--c); opacity: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .cf-bit { animation: cf-pop .7s ease-out forwards; }

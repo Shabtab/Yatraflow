@@ -1208,7 +1208,7 @@ describe("a popup's host claims the rung, never the popup", () => {
   // card's own node — not by reading z-indexes.
   const rule = (selector: string) => cssRules.find((r) => normalise(r.selector) === selector)
 
-  it('gives the filter bar of Explore and My trips a rung above the cards its menu opens over', () => {
+  it('gives the filter bar of Explore a rung above the cards its menu opens over', () => {
     const bar = rule('.filterbar-host')
     expect(bar, '.filterbar-host is missing from styles.css').toBeTruthy()
     expect(bar!.body).toMatch(/position:\s*relative/)
@@ -1216,7 +1216,8 @@ describe("a popup's host claims the rung, never the popup", () => {
     // The rule changes nothing unless the page carries the class on the bar
     // that actually holds the selects.
     expect(source('src/components/page/FilterBar.tsx')).toContain('ex-filterbar filterbar-host')
-    expect(source('src/pages/TripsList.tsx')).toContain('ex-filterbar filterbar-host')
+    // My trips has no popup menu in its toolbar now: its sort is a native select.
+    expect(source('src/pages/TripsList.tsx')).not.toContain('ex-filterbar')
   })
 
   it('keeps the card footer row clear of the corner it sits in', () => {
@@ -1606,9 +1607,14 @@ describe('a surface that appears carries motion (AGENTS §2.10)', () => {
     // shared entrance then stops applying to that block, with no failure to show
     // it. The gate names the shared page blocks: the header, the state block and
     // the My purchases page rules.
+    // One rule is exempt by name: the loader grace. A loading block that waits and
+    // then fades in is the point of that rule, so it must own its animation. It
+    // may only run `loaderIn`; any other animation on a state block still fails.
     const own = cssRules.filter(
       (r) => /(?:^|[\s,(>~+])\.(?:yf-header|yf-state|pur-page)(?![\w-])/.test(r.selector)
-        && declMap(r.body).has('animation'),
+        && declMap(r.body).has('animation')
+        && !(normalise(r.selector) === normalise(".route-fallback, :is(.ex-page, .trips-page) .yf-state[data-kind='loading']")
+          && /^loaderIn [^,]+$/.test(declMap(r.body).get('animation') ?? '')),
     )
     expect(
       own.map((r) => normalise(r.selector)),

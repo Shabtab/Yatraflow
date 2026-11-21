@@ -70,7 +70,7 @@ export function UnlockReveal({ open, pub, trip, creator, amountPaidInr, entitlem
         <p className="unlock-reveal-kicker">Unlocked</p>
         <h3 className="unlock-reveal-title">{pub.title}</h3>
         <p className="unlock-reveal-by">
-          {creator?.profile?.name ? <>by <b>{creator.profile.name}</b></> : <>an independent creator</>}
+          {creator?.profile?.name ? <>By <b>{creator.profile.name}</b></> : <>An independent creator</>}
           {trip.startLocation ? <> · {trip.startLocation}</> : null}
         </p>
 

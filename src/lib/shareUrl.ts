@@ -44,11 +44,13 @@ export function currentCreatorShareUrl(creatorId: string): string {
   return creatorShareUrl(creatorId, location.origin, Capacitor.isNativePlatform())
 }
 
-/** The tagged address a creator puts under one post (G8): the app's own creator
- *  page, stamped `src=post` plus the post id as `p`. The page counts the visit
- *  against that post. It names the post, never the visitor. */
+/** The tagged address a creator puts under one post (G8): the creator card
+ *  `/c/<id>`, stamped `src=post` plus the post id as `p`. A crawler reads the
+ *  creator's own card there, not the generic app shell. `api/c.js` sends a
+ *  browser on to `/creator/<id>` with the same tag, and that page counts the
+ *  visit against the post. The tag names the post, never the visitor. */
 export function creatorPostShareUrl(creatorId: string, postId: string, origin: string, native = false): string {
-  return `${native ? PUBLIC_ORIGIN : origin.replace(/\/+$/, '')}/creator/${encodeURIComponent(creatorId)}?src=post&p=${encodeURIComponent(postId)}`
+  return `${creatorShareUrl(creatorId, origin, native)}?src=post&p=${encodeURIComponent(postId)}`
 }
 
 export function currentCreatorPostShareUrl(creatorId: string, postId: string): string {

@@ -42,8 +42,8 @@ describe('the closing-time lock line', () => {
 describe('the closing-time lock UI', () => {
   it('locks the radios and drops the Vote button once the closing time has passed', () => {
     expect(tab).toContain('const locked = open && isVoteClosed(d, now)')
-    expect(tab).toMatch(/disabled=\{locked\} onChange=\{\(\) => setPick\(o\.id\)\}/)
-    expect(tab).toMatch(/\{!locked && \(\s*<button type="button" className="btn btn-primary btn-sm" disabled=\{!pick \|\| pick === myOptionId\}/)
+    expect(tab).toMatch(/disabled=\{locked \|\| !canComment\} onChange=\{\(\) => setPick\(o\.id\)\}/)
+    expect(tab).toMatch(/\{!locked && canComment && \(\s*<button type="button" className="btn btn-primary btn-sm" disabled=\{!pick \|\| pick === myOptionId\}/)
   })
   it('says who picks a tie, and keeps the resolve controls for editors', () => {
     expect(tab).toContain("outcome.kind === 'tie' ? '. An editor picks the winner.' : ''")

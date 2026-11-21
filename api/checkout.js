@@ -257,10 +257,9 @@ export default async function handler(req, res) {
     if (await fetchEntitlements(supabaseUrl, serviceKey, userId, pubId, signal)) {
       return json(res, 409, { error: 'already unlocked' })
     }
-    // Every LIVE order for this buyer+publication decides the branch — not just
-    // the newest one (#594). A price change after an order was opened
-    // invalidates THAT order — the stored snapshot must equal the row price or a
-    // new order is created at the current price.
+    // Every LIVE order for this buyer+publication decides the branch, whatever
+    // its price (#996). A price change does not undo a payment that already
+    // moved, so filtering out old-price rows could mint a second charge.
     //
     // The gateway is the truth on whether an order is still payable: a local row
     // can stay 'pending' when verify failed after a CAPTURED payment, and
@@ -277,16 +276,12 @@ export default async function handler(req, res) {
     // re-served. Recovering the newest and ignoring an older captured row would
     // open a payable modal for money that already moved.
     const liveOrders = await fetchLiveOrders(supabaseUrl, serviceKey, userId, pubId, signal)
-    const scan = liveOrders.filter(o => o.amount_inr === price).slice().reverse()
-    // #594 — several orders at the CURRENT price, all still payable, means the
-    // structural guard has not landed yet (or predates these rows). Re-serving
-    // either one risks a second capture on a plan whose money may already have
-    // moved, and minting adds a third. Probe them all first — a captured one
-    // still gets recovered — then refuse if more than one remains payable, with
-    // the ids for the operator. This is the overpayment case the issue asks to
-    // be surfaced rather than silently resolved.
-    const pendingAtPrice = scan.filter(o => o.status === 'pending')
-    const ambiguous = pendingAtPrice.length > 1
+    // #996 — probe EVERY live order, whatever its price. A price change does not
+    // undo a payment that already moved. Oldest first, as #594 asks: the oldest
+    // order is the most likely capture.
+    const scan = liveOrders.slice().reverse()
+    const payable = [] // orders the gateway says are still payable: { order, gatewayStatus }
+    let unsure = null // the first order whose probe gave 'unknown' or a status we do not know
     for (const order of scan) {
       const gatewayStatus = order.status === 'paid'
         ? 'paid' // the row already knows — no gateway probe needed
@@ -325,52 +320,53 @@ export default async function handler(req, res) {
         return json(res, 409, { error: 'already unlocked — your earlier payment was confirmed just now; reload to see the full plan' })
       }
       if (gatewayStatus === 'created' || gatewayStatus === 'attempted') {
-        // RE-SERVE this same order. `created` is still payable; `attempted` means
-        // an attempt started and did not complete, and Razorpay keeps such an
-        // order payable — which is exactly why 'attempted' is not a terminal
-        // status. Re-serving therefore cannot double-charge (one order, one
-        // payment, however many attempts), whereas minting a second order creates
-        // a second thing to be paid, and a buyer who completes both has paid
-        // twice for one unlock the claim grants once (#355).
-        //
-        // It also stops the orphan pile: every abandoned attempt used to leave a
-        // permanent pending row behind, because the retry minted a fresh order
-        // instead of reusing the one already sitting there.
-        //
-        // #594 — but only when this is the ONE payable order. With several, the
-        // ambiguity check below speaks instead: the oldest-first scan is what
-        // guarantees no captured payment is stranded behind a newer payable row,
-        // and re-serving blindly would hand back the second of two.
-        if (ambiguous) break
-        return json(res, 200, { orderId: order.razorpay_order_id, keyId, amountPaise: price * 100, currency: 'INR' })
+        payable.push({ order, gatewayStatus })
+        continue
       }
-      if (gatewayStatus === 'unknown') {
-        // The probe itself failed (gateway 5xx/auth/network) — we do NOT know
-        // whether this pending order was paid. Minting a fresh order here is
-        // the double-charge window: if money had moved on the old one, the
-        // buyer would pay twice. Refuse instead; Razorpay being down also
-        // means order CREATION would fail right after, so nothing is lost.
-        recovering = true
+      if (!unsure) unsure = { order, gatewayStatus }
+    }
+    // #996 — an unknown probe means money may have moved, so re-serving or
+    // minting could charge twice. A capture found later in the scan already won.
+    if (unsure) {
+      recovering = true
+      if (unsure.gatewayStatus === 'unknown') {
         return json(res, 503, {
           error: 'could not verify your earlier attempt — to make sure you are never charged twice, we stopped here; try again in a moment',
         })
       }
-      // A status the gateway named but this flow does not know (its set is not
-      // ours to assume). Re-serving it could hand the buyer an order the modal
-      // will not accept, and minting could double-charge, so the same rule as
-      // 'unknown' applies: stop, say why, and never guess (#355).
-      recovering = true
       return json(res, 503, {
         error: 'your earlier attempt is in a state we do not recognise — to make sure you are never charged twice, we stopped here; try again in a moment',
       })
     }
-    // #594 — more than one live pending order at this price, none of them
-    // captured: refuse rather than mint or re-serve. The buyer is told plainly
-    // and the operator gets the order ids to reconcile.
-    if (ambiguous) {
-      console.error(`[yatraflow] checkout: ${pendingAtPrice.length} live pending orders for user ${userId} pub ${pubId}: ${pendingAtPrice.map(o => o.razorpay_order_id).join(', ')}`)
+    const atPrice = payable.filter(p => p.order.amount_inr === price)
+    // #594 — several orders at the CURRENT price, all still payable, means the
+    // structural guard has not landed yet (or predates these rows). Re-serving
+    // either one risks a second capture on a plan whose money may already have
+    // moved, and minting adds a third. Refuse if more than one remains payable,
+    // with the ids for the operator. This is the overpayment case the issue asks
+    // to be surfaced rather than silently resolved.
+    if (atPrice.length > 1) {
+      console.error(`[yatraflow] checkout: ${atPrice.length} live pending orders for user ${userId} pub ${pubId}: ${atPrice.map(p => p.order.razorpay_order_id).join(', ')}`)
       return json(res, 409, {
         error: 'more than one unfinished payment exists for this plan — nothing further will be charged. If you were charged twice, contact support and quote your receipts.',
+      })
+    }
+    if (atPrice.length === 1) {
+      const order = atPrice[0].order
+      // RE-SERVE this same order. `created` is still payable. `attempted` means
+      // a try did not finish, and Razorpay keeps such an order payable. That is
+      // why the gateway does not treat that status as final. Re-serving cannot
+      // charge twice: one order has one payment, no matter how many tries the
+      // buyer made. A second order creates a second thing to pay (#355). This
+      // also stops the orphan pile: an abandoned try left a pending row behind
+      // because the retry minted a fresh order (#595).
+      return json(res, 200, { orderId: order.razorpay_order_id, keyId, amountPaise: price * 100, currency: 'INR' })
+    }
+    const stale = payable.filter(p => p.order.amount_inr !== price)
+    if (stale.length > 0) {
+      console.error(`[yatraflow] checkout: price changed with an open order for user ${userId} pub ${pubId}: ${stale.map(p => `${p.order.razorpay_order_id} at ${p.order.amount_inr}`).join(', ')}`)
+      return json(res, 409, {
+        error: 'the price of this plan changed while an earlier payment was still open. No payment on it is complete yet. Contact support before you buy again, so you are not charged twice.',
       })
     }
     const receipt = `r${stable(pubId, 8)}${stable(userId, 4)}`

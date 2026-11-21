@@ -152,9 +152,12 @@ function useNow(): number {
   return now
 }
 
-export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution }: {
+export function GroupInputTab({ trip, editable, canComment, me, previewOpen, slotResolution }: {
   trip: Trip
+  /** Owner or editor: may add, accept, decline, resolve and open an option. */
   editable: boolean
+  /** Owner, editor or commenter: may vote and comment. A viewer reads only. */
+  canComment: boolean
   me: NonNullable<ReturnType<typeof currentUser>>
   /** true while the workspace holds a staged change — the crew-signal buttons
    *  below write the committed row, so they must not race a preview (#334). */
@@ -218,10 +221,11 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
   // Retry re-issues the read through the same re-hydrate that app resume runs.
   const retryGroupInput = () => { void resumeSync() }
 
-  // "Needs you" spans both kinds: an open item I haven't voted on.
-  const suggestionNeedsMe = (sg: StopSuggestion) => sg.status === 'open' && !sg.votes.some(v => v.userId === me.id)
+  // "Needs you" spans both kinds: an open item I haven't voted on. A viewer
+  // cannot vote, so nothing needs a viewer's vote.
+  const suggestionNeedsMe = (sg: StopSuggestion) => canComment && sg.status === 'open' && !sg.votes.some(v => v.userId === me.id)
   // A decision past its closing time takes no ballot, so it no longer needs my vote.
-  const decisionNeedsMe = (d: TripDecision) => d.status === 'open' && !isVoteClosed(d, now) && !d.votesByUserId[me.id]
+  const decisionNeedsMe = (d: TripDecision) => canComment && d.status === 'open' && !isVoteClosed(d, now) && !d.votesByUserId[me.id]
   const itemNeedsMe = (i: GroupItem) => i.kind === 'idea' ? suggestionNeedsMe(i.sg) : decisionNeedsMe(i.d)
 
   // Unified list: needs-you first, then newest first. Both columns keep this order.
@@ -289,7 +293,7 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
 
   /** One idea row. `exiting` is set only by the open list, which plays an exit. */
   const renderIdea = (sg: StopSuggestion, exiting?: boolean) => (
-    <IdeaRow key={sg.id} sg={sg} trip={trip} me={me} editable={editable} memberCount={memberCount}
+    <IdeaRow key={sg.id} sg={sg} trip={trip} me={me} editable={editable} canComment={canComment} memberCount={memberCount}
       needsMe={suggestionNeedsMe(sg)} previewOpen={previewOpen} exiting={exiting}
       selected={selectedIdeaId === sg.id} onSelect={toggleIdea} />
   )
@@ -364,12 +368,15 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
           ref={attachDecisionList}
           style={beatOf(2)} className={colClass('decisions')}>
           <h3 id="gi-heading-decisions" className="sr-only">Decisions</h3>
+          {!canComment && (
+            <p className="small muted gin-help">You can read the decisions. Voting and comments need the commenter role or higher.</p>
+          )}
           {items.length > 0 && decisionsRead === 'ready' && sortedDecisions.length === 0 && (
             <StateBlock kind="empty" size="compact" title={EMPTY_COPY.decisions.title} body={EMPTY_COPY.decisions.body}
               icon={<Scale size={38} aria-hidden />} />
           )}
           {decisionEntries.map(({ item: d, key, exiting }) => (
-            <DecisionCard key={key} d={d} me={me} editable={editable} memberCount={memberCount}
+            <DecisionCard key={key} d={d} me={me} editable={editable} canComment={canComment} memberCount={memberCount}
               needsMe={decisionNeedsMe(d)} now={now} trip={trip} previewOpen={previewOpen} slotResolution={slotResolution}
               exiting={exiting} stamped={stampedIds.has(d.id)} onStamp={markStamped} />
           ))}
@@ -382,15 +389,23 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
               <div>
                 <h3 id="gi-heading-ideas" className="gin-card-title">Stop ideas</h3>
               </div>
-              <button type="button" className="btn btn-outline btn-sm" aria-expanded={ideaComposerOpen}
-                aria-controls="gi-idea-composer" onClick={() => setIdeaComposerOpen(open => !open)}>
-                <Plus size={14} aria-hidden /> Add an idea
-              </button>
+              {editable && (
+                <button type="button" className="btn btn-outline btn-sm" aria-expanded={ideaComposerOpen}
+                  aria-controls="gi-idea-composer" onClick={() => setIdeaComposerOpen(open => !open)}>
+                  <Plus size={14} aria-hidden /> Add an idea
+                </button>
+              )}
             </div>
-            <p className="small muted gin-help">Anyone can suggest. Editors add the ones the group likes to the timeline.</p>
-            <div id="gi-idea-composer" ref={ideaComposerRef} className="gin-composer" hidden={!ideaComposerOpen}>
-              <SuggestionComposerForm trip={trip} />
-            </div>
+            <p className="small muted gin-help">{editable
+              ? 'Suggest a stop for the group. Editors add the ones the group likes to the timeline.'
+              : canComment
+                ? 'You can vote and comment. Editors suggest stops and add the ones the group likes.'
+                : 'You can read the group input. Editors suggest stops and add the ones the group likes.'}</p>
+            {editable && (
+              <div id="gi-idea-composer" ref={ideaComposerRef} className="gin-composer" hidden={!ideaComposerOpen}>
+                <SuggestionComposerForm trip={trip} />
+              </div>
+            )}
             {items.length > 0 && suggestionsRead === 'ready' && sortedIdeas.length === 0 && (
               <StateBlock kind="empty" size="compact" title={EMPTY_COPY.ideas.title} body={EMPTY_COPY.ideas.body}
                 icon={<Lightbulb size={38} aria-hidden />} />
@@ -411,9 +426,11 @@ export function GroupInputTab({ trip, editable, me, previewOpen, slotResolution 
               </div>
             )}
           </Surface>
-          <Surface className="card gin-panel">
-            <DecisionComposerForm trip={trip} />
-          </Surface>
+          {editable && (
+            <Surface className="card gin-panel">
+              <DecisionComposerForm trip={trip} />
+            </Surface>
+          )}
         </div>
 
         <div id="gi-section-activity" tabIndex={-1} role="region" aria-labelledby="gi-heading-activity"
@@ -640,11 +657,12 @@ function ShareBar({ percent, lead }: { percent: number; lead?: boolean }) {
 
 // ================= Stop idea row =================
 
-function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, selected, onSelect, exiting }: {
+function IdeaRow({ sg, trip, me, editable, canComment, memberCount, needsMe, previewOpen, selected, onSelect, exiting }: {
   sg: StopSuggestion
   trip: Trip
   me: NonNullable<ReturnType<typeof currentUser>>
   editable: boolean
+  canComment: boolean
   memberCount: number
   needsMe: boolean
   previewOpen?: boolean
@@ -705,7 +723,7 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
             {!open && <Chip tone={sg.status === 'accepted' ? 'ok' : 'danger'}>{cap(sg.status)}</Chip>}
           </span>
           <span className="gin-row-meta small muted num">{ideaMeta(sg)}</span>
-          <span className="gin-row-by small muted"><Avatar user={author} /> suggested by {initialsOf(author?.profile.name)}</span>
+          <span className="gin-row-by small muted"><Avatar user={author} /> Suggested by {initialsOf(author?.profile.name)}</span>
         </span>
         <span className="gin-heart"><Heart size={14} aria-hidden /><b>{ups}</b></span>
       </button>
@@ -721,13 +739,18 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
           </div>
           {sg.description && <p className="small muted">{sg.description}</p>}
           <div className="gin-vote-row">
-            <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} disabled={!open}
-              onClick={() => void voteSuggestion(trip.id, sg.id, 1).then(o => reportCollabOutcome(o))}
-              aria-label="Upvote" aria-pressed={myVote === 1}><ChevronUp size={13} aria-hidden /></button>
+            {/* A viewer sees the tally without the vote buttons. */}
+            {canComment && (
+              <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} disabled={!open}
+                onClick={() => void voteSuggestion(trip.id, sg.id, 1).then(o => reportCollabOutcome(o))}
+                aria-label="Upvote" aria-pressed={myVote === 1}><ChevronUp size={13} aria-hidden /></button>
+            )}
             <span className="vote-count">{ups - downs}</span>
-            <button className={`vote-btn ${myVote === -1 ? 'on' : ''}`} disabled={!open}
-              onClick={() => void voteSuggestion(trip.id, sg.id, -1).then(o => reportCollabOutcome(o))}
-              aria-label="Downvote" aria-pressed={myVote === -1}><ChevronDown size={13} aria-hidden /></button>
+            {canComment && (
+              <button className={`vote-btn ${myVote === -1 ? 'on' : ''}`} disabled={!open}
+                onClick={() => void voteSuggestion(trip.id, sg.id, -1).then(o => reportCollabOutcome(o))}
+                aria-label="Downvote" aria-pressed={myVote === -1}><ChevronDown size={13} aria-hidden /></button>
+            )}
             <span className="small muted num">{ups} of {memberCount} upvoted</span>
           </div>
 
@@ -784,7 +807,9 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
               ))}
             </div>
           )}
-          <CommentForm onSubmit={text => addCommentToSuggestion(trip.id, sg.id, text).then(o => { reportCollabOutcome(o); return o })} />
+          {canComment && (
+            <CommentForm onSubmit={text => addCommentToSuggestion(trip.id, sg.id, text).then(o => { reportCollabOutcome(o); return o })} />
+          )}
         </div>
       </SmoothCollapse>
     </div>
@@ -793,10 +818,11 @@ function IdeaRow({ sg, trip, me, editable, memberCount, needsMe, previewOpen, se
 
 // ================= Decision card =================
 
-function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previewOpen, slotResolution, exiting, stamped, onStamp }: {
+function DecisionCard({ d, me, editable, canComment, needsMe, memberCount, now, trip, previewOpen, slotResolution, exiting, stamped, onStamp }: {
   d: TripDecision
   me: { id: string }
   editable: boolean
+  canComment: boolean
   needsMe: boolean
   memberCount: number
   /** The clock, for the closing label and the lock. The server decides a late ballot. */
@@ -977,7 +1003,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
                     <input type="radio" className="gin-radio" name={`vote-${d.id}`} value={o.id}
                       aria-labelledby={`gi-opt-${d.id}-${o.id}-label`}
                       aria-describedby={[detail ? `gi-opt-${d.id}-${o.id}-detail` : '', `gi-opt-${d.id}-${o.id}-pct`].filter(Boolean).join(' ')}
-                      checked={(pick ?? myOptionId) === o.id} disabled={locked} onChange={() => setPick(o.id)} />
+                      checked={(pick ?? myOptionId) === o.id} disabled={locked || !canComment} onChange={() => setPick(o.id)} />
                     <span id={exiting ? undefined : `gi-opt-${d.id}-${o.id}-label`} className="gin-option-label">{o.label}</span>
                     {rec?.optionId === o.id && <span className="gin-pop"><Chip tone="teal">Best fit · engine</Chip></span>}
                     <span className="gin-option-end">
@@ -1013,7 +1039,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
             </p>
           )}
           <div className="gin-foot">
-            {!locked && (
+            {!locked && canComment && (
               <button type="button" className="btn btn-primary btn-sm" disabled={!pick || pick === myOptionId}
                 onClick={castVote}><Check size={15} aria-hidden /> Vote</button>
             )}
@@ -1029,9 +1055,13 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
             <button ref={detailsToggleRef} type="button" className="gin-disclosure" aria-expanded={detailsOpen}
               aria-controls={detailsOpen ? `gi-details-${d.id}` : undefined}
               onClick={() => setDetailsOpen(v => !v)}>{detailsOpen ? 'Hide details' : 'Details'}</button>
-            <button ref={commentToggleRef} type="button" className="gin-text-btn" aria-expanded={commenting}
-              aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
-              onClick={() => setCommenting(c => !c)}><MessageSquare size={15} aria-hidden /> Comment · {d.comments.length}</button>
+            {canComment ? (
+              <button ref={commentToggleRef} type="button" className="gin-text-btn" aria-expanded={commenting}
+                aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
+                onClick={() => setCommenting(c => !c)}><MessageSquare size={15} aria-hidden /> Comment · {d.comments.length}</button>
+            ) : (
+              <span className="small muted"><MessageSquare size={15} aria-hidden /> Comments · {d.comments.length}</span>
+            )}
           </div>
           {/* The add-option field opens and closes with the day collapse. */}
           <SmoothCollapse open={addingOption && editable && canAddOption(d, now)} fallbackFocus={addTriggerRef} onExpanded={focusOptionField}>
@@ -1066,7 +1096,7 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
                 {rec && (
                   <p className="small gin-guide-rec">
                     <InlineIcon icon={Sparkles} size={12} gap={4} />
-                    <b>{rec.label}</b>: {rec.reason} <Chip tone="info">offline</Chip>
+                    <b>{rec.label}</b>: {rec.reason} <Chip tone="info">Offline</Chip>
                   </p>
                 )}
               </div>
@@ -1099,13 +1129,17 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
             <span className={`chip chip-ok${stamped ? ' gin-stamp' : ''}`}>Chosen</span>
           </div>
           <div className="gin-foot">
-            <button ref={commentToggleRef} type="button" className="gin-text-btn" aria-expanded={commenting}
-              aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
-              onClick={() => setCommenting(c => !c)}><MessageSquare size={15} aria-hidden /> Comment · {d.comments.length}</button>
+            {canComment ? (
+              <button ref={commentToggleRef} type="button" className="gin-text-btn" aria-expanded={commenting}
+                aria-controls={commenting ? `gi-comment-${d.id}` : undefined}
+                onClick={() => setCommenting(c => !c)}><MessageSquare size={15} aria-hidden /> Comment · {d.comments.length}</button>
+            ) : (
+              <span className="small muted"><MessageSquare size={15} aria-hidden /> Comments · {d.comments.length}</span>
+            )}
           </div>
         </>
       )}
-      {pickerOptionId && pickerOption?.place && (
+      {editable && pickerOptionId && pickerOption?.place && (
         <div className="gin-item-actions gin-followup" role="group" aria-label="Choose a day for the winning stop">
           <p className="small muted">{needsPlacement
             ? `${pickerOption.place.title} won the vote. Choose a current day to place it.`
@@ -1155,9 +1189,11 @@ function DecisionCard({ d, me, editable, needsMe, memberCount, now, trip, previe
         </div>
       )}
       {/* The comment field opens and closes with the day collapse. */}
-      <SmoothCollapse open={commenting} fallbackFocus={commentToggleRef} onExpanded={focusCommentField}>
-        <CommentForm id={exiting ? undefined : `gi-comment-${d.id}`} onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
-      </SmoothCollapse>
+      {canComment && (
+        <SmoothCollapse open={commenting} fallbackFocus={commentToggleRef} onExpanded={focusCommentField}>
+          <CommentForm id={exiting ? undefined : `gi-comment-${d.id}`} onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
+        </SmoothCollapse>
+      )}
     </Surface>
   )
 }

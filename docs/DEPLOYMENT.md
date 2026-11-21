@@ -145,4 +145,4 @@ The Google key is **optional** and the app fully works without it (free stack on
    The patch also removes `changelog.d/transition.json`. The direct-entry exception for PRs #911 and #914 ends with this release.
    Run `npm run verify` again after all release edits. The user reviews the `CHANGELOG.md` diff before any push to `main`.
 6. Commit, merge to `main` (user-gated), push, watch the Vercel deployment finish
-7. Verify the live URL serves the new build. Hard-refresh and check that the bundle hash changed. Then tag the promotion merge (`vX.Y.Z`, annotated). The tag push builds the Android APK and attaches it to the release. The APK reads its `versionCode`/`versionName` from `package.json`, so the tag and the installed build agree.
+7. Verify the live URL serves the new build. Hard-refresh and check that the bundle hash changed. The push to `main` already creates the `vX.Y.Z` release from the `CHANGELOG.md` section and attaches the Android APK. Check that the release page lists the APK. A tag is optional. The APK reads its `versionCode`/`versionName` from `package.json`, so the tag and the installed build agree.

@@ -81,9 +81,14 @@ check.
 
 Steps, once the two variables are set:
 
-1. Cut the release as usual: bump `package.json`, promote, tag `vX.Y.Z`.
-2. The tag run builds the APK and attaches it to the release. That is the whole
-   publish step: the route picks the newest release with an APK asset.
+1. Cut the release as usual: bump `package.json` and add the `## [X.Y.Z]`
+   section to `CHANGELOG.md`. Then promote to `main`.
+2. The push to `main` builds the APK. When no release exists for `vX.Y.Z`, the
+   run creates it from the `CHANGELOG.md` section and attaches the APK. You do
+   not need to tag or create the release by hand. That is the whole publish
+   step: the route picks the newest release with an APK asset.
+   If you push a tag first, the tag run waits 60 s for a release you write.
+   Then it creates the release itself. Hand-written notes win.
 3. Check the feed: `curl -s https://www.yatraflow.in/android/manifest.json`.
    Expect the six fields, and a `versionCode` equal to the tag's.
 4. Install the new APK, open Profile, and read "App updates". A build equal to

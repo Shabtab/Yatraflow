@@ -5,11 +5,12 @@
 // Suggestions and Decisions tabs merged into `group` (old slugs redirect).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Trip } from '../data/types'
-import { useDb, tripById, currentUser, roleOf, canEdit, trackTripPreview, tripPreviewPending, observeTripPreview, userById, readSharedTrip, useIdentityGeneration, admitTripPreview } from '../store/store'
+import { useDb, tripById, currentUser, roleOf, canEdit, canComment, trackTripPreview, tripPreviewPending, observeTripPreview, userById, readSharedTrip, useIdentityGeneration, admitTripPreview } from '../store/store'
 import { SegmentedTabs } from '../components/page/SegmentedTabs'
 import { StateBlock } from '../components/page/StateBlock'
 import { authNext } from '../lib/authNext'
 import { computeHealth, computeTotals, getAssumptions, isRoadMeasuredMode } from '../lib/engine'
+import { carryStopLinkedRecords, moveStopToDay } from '../lib/stopOrder'
 import type { LegEstimate } from '../lib/engine'
 import { buildRoadChain, measureRoadChain, correctionsFromLegs, mapRoadViewFromLegs, type RoadStatus, type TripRoadView } from '../lib/tripRoad'
 import { computeImpact, type ImpactResult } from '../lib/impact'
@@ -520,6 +521,8 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
 
   const role = me && trip ? roleOf(trip, me.id) : null
   const editable = canEdit(role)
+  // The same role source as `editable`: owner, editor and commenter vote and comment.
+  const commentable = canComment(role)
 
   // M6 B1 — who else is viewing this trip right now. Joins the presence
   // room only when a signed-in user has the trip open; anon/public views
@@ -911,6 +914,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       toast('No later day available to move this stop to.', 'err')
       return
     }
+    let carriedTitles: string[] = []
     applyChange(draft => {
       const from = draft.days.find(d => d.index === dayIndex)
       const to = draft.days.find(d => d.index === dayIndex + 1)
@@ -918,11 +922,12 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       const ordered = [...from.stops].sort((a, b) => a.orderInDay - b.orderInDay)
       const moving = ordered[ordered.length - 1]
       if (!moving) return
-      from.stops = from.stops.filter(s => s.id !== moving.id)
-      moving.orderInDay = to.stops.length + 1
-      to.stops.push(moving)
+      if (moveStopToDay(draft.days, moving.id, dayIndex + 1, null)) {
+        carriedTitles = carryStopLinkedRecords(draft, moving.id, dayIndex + 1)
+      }
     }, 'move-day', dayIndex)
-    toast(`Moved “${last.title}” to Day ${dayIndex + 2}. Review and keep`)
+    const carried = carriedTitles.length > 0 ? ` with ${carriedTitles.join(', ')}` : ''
+    toast(`Moved “${last.title}”${carried} to Day ${dayIndex + 2}. Review and keep`)
   }
 
   // The header's cover is the same plan every card draws: the traveller's
@@ -1071,7 +1076,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
             onDayFocusChange={(day) => { setFocus(focusForDay(trip!.id, day === 'all' ? null : day)); if (day !== 'all') setTimelineFocusDay(day) }} />
         </React.Suspense>
       )}
-      {tab === 'group' && <GroupInputTab trip={effective} editable={editable} me={me} previewOpen={!!pending} slotResolution={groupInputResolution} />}
+      {tab === 'group' && <GroupInputTab trip={effective} editable={editable} canComment={commentable} me={me} previewOpen={!!pending} slotResolution={groupInputResolution} />}
       {tab === 'budget' && <BudgetTab key={editable ? 'budget-edit' : 'budget-view'} trip={effective} totals={totals} editable={editable} previewOpen={!!pending} stagedRef={pendingRef} onOpenSettings={() => setTab('settings')} />}
       {tab === 'share' && <ShareTab trip={trip} me={me} editable={editable} onNavigate={onNavigate} legCorrections={legCorrections} />}
       {/* key=trip.id: TripSettingsForm holds local draft state in useState

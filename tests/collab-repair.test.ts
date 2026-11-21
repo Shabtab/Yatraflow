@@ -240,7 +240,7 @@ async function freshStore() {
     id: fake.trip, name: 'Synthetic trip', startLocation: 'Synthetic', destinations: ['Synthetic'],
     startDate: '2026-10-23', endDate: '2026-10-23', travellers: 2, transportMode: 'car',
     budgetPerPersonInr: 10000, travelStyle: 'balanced', fixedCommitments: [], writeVersion: 0,
-    members: [{ userId: fake.actor, role: 'owner', joinedAt: 1 }],
+    members: [{ userId: fake.actor, role: 'owner', joinedAt: 1 }, { userId: '10000000-0000-4000-8000-000000000009', role: 'commenter', joinedAt: 2 }],
     days: [{ id: 'day-0', index: 0, title: 'Day 1', stops: [] }], expenses: [],
     coverEmoji: '🧭', visibility: 'private', createdAt: 1, updatedAt: 1,
   })

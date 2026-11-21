@@ -211,7 +211,7 @@ describe('the page wires the kept card and keeps the plain one for the other row
 
   it('keeps the plain provenance line for every other row', async () => {
     const source = await read('src/pages/Purchases.tsx')
-    expect(source).toContain('creator no longer listed')
+    expect(source).toContain('Creator no longer listed')
     expect(source).toContain('bought {boughtOn(row.grantedAt, row.dateReadable)}')
   })
 

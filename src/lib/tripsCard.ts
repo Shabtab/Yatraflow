@@ -59,3 +59,19 @@ export const TRIPS_LAYOUT_PREF = 'trips_layout'
 export function layoutFromPref(raw: string | null | undefined): TripsLayout {
   return raw === 'list' ? 'list' : 'grid'
 }
+
+/** Whole kilometres with Indian digit grouping: 2511.4 gives "2,511 km". */
+export function kmText(km: number): string {
+  const safeKm = Number.isFinite(km) ? Math.max(0, Math.round(km)) : 0
+  return `${safeKm.toLocaleString('en-IN')} km`
+}
+
+/** "9 stops", "1 stop". */
+export function stopCountText(count: number): string {
+  return `${count} ${count === 1 ? 'stop' : 'stops'}`
+}
+
+/** "3 days", "1 day". The route line uses the same wording. */
+export function daysText(count: number): string {
+  return dayCount(count)
+}

@@ -536,9 +536,9 @@ function ScenarioStats({ scen }: { scen: (typeof ROUTE_SCENARIOS)[number] }) {
   return (
     <>
       <div className="ha-stats">
-        <div className="rs-stat"><b>₹{rupees.toLocaleString('en-IN')}</b><span>est. per person</span></div>
-        <div className="rs-stat rs-stat-d1"><b>{h}h {String(m).padStart(2, '0')}m</b><span>driving time</span></div>
-        <div className="rs-stat rs-stat-d2"><b style={{ color: 'var(--yf-saffron)' }}>{health}</b><span>trip health</span></div>
+        <div className="rs-stat"><b>₹{rupees.toLocaleString('en-IN')}</b><span>Est. per person</span></div>
+        <div className="rs-stat rs-stat-d1"><b>{h}h {String(m).padStart(2, '0')}m</b><span>Driving time</span></div>
+        <div className="rs-stat rs-stat-d2"><b style={{ color: 'var(--yf-saffron)' }}>{health}</b><span>Trip health</span></div>
       </div>
       <div className="ha-row">
         <div className="ha-warn"><InlineIcon icon={TriangleAlert} size={13} gap={3} />{scen.warn[0]}<span>{scen.warn[1]}</span></div>
@@ -794,7 +794,7 @@ export function usePageVisible(): boolean {
 }
 
 /** Continuous intersection tracking, like the bench's bill dock. */
-export function useInView(ref: React.RefObject<HTMLElement>): boolean {
+export function useInView(ref: React.RefObject<HTMLElement | null>): boolean {
   const [inView, setInView] = useState(false)
   useEffect(() => {
     const el = ref.current

@@ -3,7 +3,7 @@
 // session (see editSession.ts) and passes the facts and the handlers in.
 // Class names start with `map-edit-` so package B can style them in one block.
 import React from 'react'
-import { ArrowLeftRight, ChevronDown, GripVertical, LockKeyhole, Minus, Plus } from 'lucide-react'
+import { ArrowLeftRight, ChevronDown, GripVertical, LockKeyhole, Minus, Plus, X } from 'lucide-react'
 import { MapEditDayDot } from '../../../../components/map/MapEditDayDot'
 import { VISIT_STEP_MIN, type FixedGuard } from './stopEdit'
 import type { AddPreview, PreviewLeg, PreviewUnknownReason, UnknownFact } from './addPreview'
@@ -281,7 +281,7 @@ export function ChoiceMenu({ label, text = label, icon, choices, value = null, o
 }
 
 /** The stop editor. It shows only the facts it knows, and it calls the page's handlers. */
-export function StopEditorCard({ title, clockLabel, placeLabel = null, order = null, dayIndex = null, visitMinutes, days, swapOptions = [], fixed, busy = false, onStep, onMoveToDay, onSwap, onRemove, onReorderKey }: {
+export function StopEditorCard({ title, clockLabel, placeLabel = null, order = null, dayIndex = null, visitMinutes, days, swapOptions = [], fixed, busy = false, onStep, onMoveToDay, onSwap, onRemove, onClose, onReorderKey }: {
   title: string
   /** The stop's own clock line, such as "12:05–12:50". Null when it is not known. */
   clockLabel: string | null
@@ -300,6 +300,8 @@ export function StopEditorCard({ title, clockLabel, placeLabel = null, order = n
   onMoveToDay: (dayIndex: number) => void
   onSwap: (targetId: string) => void
   onRemove: () => void
+  /** The card's own close button. The page clears its selected stop. */
+  onClose: () => void
   /** The existing Alt+arrow reorder, bound to the grip. */
   onReorderKey?: React.KeyboardEventHandler<HTMLButtonElement>
 }): React.ReactElement {
@@ -324,6 +326,9 @@ export function StopEditorCard({ title, clockLabel, placeLabel = null, order = n
           onKeyDown={onReorderKey}
         >
           <GripVertical size={15} aria-hidden />
+        </button>
+        <button type="button" className="map-edit-close" aria-label="Close" onClick={onClose}>
+          <X size={16} aria-hidden />
         </button>
       </div>
       <div className="map-edit-stay-row">

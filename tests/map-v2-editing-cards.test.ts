@@ -68,7 +68,7 @@ describe('StopEditorCard and FixedTimeConfirm', () => {
     title: 'Lunch', clockLabel: '12:05–12:50', placeLabel: 'Kattappana', order: 2, dayIndex: 2,
     visitMinutes: 45, days: [{ index: 1, label: 'Day 2' }],
     swapOptions: [{ id: 's2', label: '1 · Attukad waterfalls' }], fixed: false,
-    onStep: noop, onMoveToDay: noop, onSwap: noop, onRemove: noop, ...over,
+    onStep: noop, onMoveToDay: noop, onSwap: noop, onRemove: noop, onClose: noop, ...over,
   }))
   it('renders the numbered day dot, the known sub line and the labelled grip', () => {
     const html = editor()
@@ -98,6 +98,13 @@ describe('StopEditorCard and FixedTimeConfirm', () => {
     expect(html).toContain('Move to day')
     expect(html).toContain('Swap')
     expect(html).toContain('Remove')
+  })
+  it('carries its own close control', () => {
+    const html = editor()
+    expect(html).toContain('class="map-edit-close"')
+    expect(html).toContain('aria-label="Close"')
+    // The X is the card's last control in the head, so it reads top right.
+    expect(html.indexOf('map-edit-close')).toBeGreaterThan(html.indexOf('map-edit-grip'))
   })
   it('keeps an unknown stay length unknown and disables the stepper', () => {
     const html = editor({ visitMinutes: null, clockLabel: null })
