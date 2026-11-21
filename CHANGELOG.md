@@ -16,6 +16,92 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.89.0] - 2026-11-21
+
+### Added
+
+- **Chakra now marks the Plan Bench win, the night halt, the day's warnings, the budget cap and the offline banner.** Five new 24 px heads join the curious one: proud, sleepy, worried, lost and kulhad. Each warning now carries a face that matches its meaning. A warning code with no honest head stays plain text. The mascot remains decoration. Every head is `alt=""` and the words carry the message.
+
+- **Chakra is now the face of the AI companion.** The companion button and the drawer header show Chakra in place of the sparkle icon. The drawer calls itself Chakra in its title, greeting and labels. The face sits on a light disc in both themes, so it stays legible.
+
+- **Memories.** Trips that have ended leave the grid and show as postcards, with the days, stops and planned distance. "Plan it again" copies a trip and opens its Settings to set new dates. A "Your travel so far" tile shows the planned distance and the trips with friends.
+
+### Changed
+
+- **Two slow tests no longer fail the gate on a busy machine.** The em-dash scan now skips parent links when it parses, so it runs about five times faster. The changelog test cases get a 60-second limit, because each one starts about 20 processes (#1002).
+
+- **The approved illustration prompt is now stored in the repo.** `design/art/PROMPT.md` holds the exact "balanced" style prompt, a prompt for new scenes, the reference images and the acceptance checks. The style brief now says no visible sun.
+
+- **The commercial strategy page now covers product and money only.** The founder locked the position line: "Plan Indian trips together — not in a chaotic group chat."
+
+- **The Day plan panel now uses the Map V2 design.** Its head, slot rows and Find and Fill actions match the suggestions deck. Behaviour stays the same.
+
+- **My trips has a new look.** A greeting header names the day and you, and counts your trips, drafts and memories. The Up next card shows a date stamp, the next step with a button, and a check for each day. Trip cards show a status line, a date stamp and a bar with one segment for each day. A card says "Ready to go" only when no day has a check to fix. The draft row has a dismiss button that you can undo. The grid heading is now "Coming up", and a new "Soonest first" sort puts trips with no dates last.
+
+- **The Up next card counts down with flip tiles.** One tile shows each digit of the days to go. A line under them names the first timed stop of day 1. With no timed stop, it shows the start date. A ring shows the estimated trip health, in teal, marigold or bloom for its band. The arc fades in once, and it stays still when you prefer reduced motion.
+
+- **My trips moves like the other redesigned pages.** The countdown digits flip in one by one. The health score pops in after its ring fades in. The day cells rise in turn. Date stamps pop in, and postcards rise into their tilt. A trip card lifts when you hover it or focus it with the keyboard. Its cover grows inside the card. The chips and the sort control change colour smoothly. Every one of these stops when you prefer reduced motion.
+
+- **Coming up has one row of tools.** The heading, trip count, search, pace chips, sort, view switch and Trash sit on one line. The filter box is gone. Trips sort by Soonest first as the default. The When filter is gone, because past trips are in Memories. Clear filters shows only while a filter is set.
+
+- **Every share page names the default card the same way, with its real size, type and alt text.** The home, calculator, creator and not-found itinerary pages all describe the new 1200 x 630 PNG. One module, `api/_shareCard.js`, holds the values, and a test pins each page to it and to the real file. A cover photo gets the itinerary title as its alt text.
+
+- **Cards across the app lift and settle smoothly on hover.** The entrance and the hover lift no longer fight over one property. A card never snaps when its entrance ends. The hover shadow fades on a separate layer, so the card is not repainted each frame. The Explore cover labels lose their blur, so the cover zoom runs without stutter. A new test, `tests/card-hover-motion.test.ts`, keeps these three causes from coming back.
+
+- **Every visible label starts with a capital letter.** More than 90 labels, chips, badges and captions across the app now start with a capital. This includes the My trips hero counts. Units after numbers and example values stay as they are.
+
+- **A new test stops lowercase labels from coming back.** `tests/ui-label-capitals.test.ts` scans all of `src/`. It fails on a new lowercase label and keeps a short, reasoned list of exceptions.
+
+- **My trips and Explore arrive in reading order.** On My trips, the greeting comes first. Then come Up next, the Coming up toolbar and the trip cards. On Explore, the hero copy and the postcards come first. Then come the stats, the Itineraries heading and filters, the list and the side panels. When Explore finishes reading the catalog, the cards rise in one after another. Both pages stop all of this when you prefer reduced motion.
+
+- **The default share image is a new navy card that names the whole product.** The Y mark and the headline "India trips, planned together" sit at the top centre. Plan, Map, Budget and Share are the stops of one route. Chakra the koel stands at the end of the route as a supporting character. A square crop keeps the Y mark, the headline and all four stops. Every label stays readable at the 600 px thumbnail.
+
+- **The README shows the Chakra hero beside its Chakra highlight.** The image is 96 px wide and has no alt text, because it is decoration. The Y logo stays the brand mark, the app icon and the favicon.
+
+- **The Chakra expression strip now draws every label as an outline.** The SVG converts all text labels into paths, so the words keep their place and size without a font. The strip stays correct when a page shows it inside an image tag. The root SVG keeps an aria-label with the twelve expression names.
+
+- **The Idea bank records every unplanned idea and redesign gap found on 2026-11-20.** Tier 1 gains I-148. Tier 2 gains 27 blocked rows. A new Tier 3 table holds 25 big or vague ideas. A new redesign table lists each mockup page and its pending gap counts. I-117 is stale because the Breaks tab is built.
+
+- **The app runs on React 19.** The upgrade changes types only: components import the JSX type from react, and ref callbacks return nothing. The app behaves the same.
+
+- **The map deck panels share one 16 px inset.** The suggestion deck reads a shared panel pad. Its header, notes and rows now match the Day plan panel.
+
+- **The true-shape route inset now sits inside the height chart.** It moved from the card header into the chart's top-left corner, 60 px square. It shows on desktop and phone when the chart has room. The sun steps right of it. It hides when the curve or a label would sit under it.
+
+### Fixed
+
+- **Commenters can comment and vote, and viewers can read Group Input.** Vote, comment and decision ballot controls now follow the trip role. Commenters can use them. Viewers see the ideas and decisions read-only. Adding, accepting, declining and resolving stay with editors. (#935)
+
+- **A changed price no longer hides an earlier payment.** Checkout now checks every open order with the payment gateway, whatever its price. A payment you already made unlocks the plan, and you are not charged again. If an older unpaid order is still open, checkout stops and says so (#996).
+
+- **Trip cards on My trips no longer jerk when they load or when you hover them.** The card entrance and the hover lift no longer fight. The hover shadow and the edge fade in on their own layer. The page no longer repaints on every frame. The date stamp and the status pill over the cover are no longer blurred, so the cover zoom stays smooth.
+
+- **The Coming up search stays in place with many pace chips.** The chips now scroll sideways in their own strip. A soft fade shows on a side with hidden chips. Before, a long chip list pushed the search off the row. Clear filters made it jump.
+
+- **A downloaded trip file no longer holds the join code or the crew list.** Anyone you send the file to can read it. It now leaves these out, as the share link already does (#784).
+
+- **Link previews now load Wikimedia covers from our own domain.** A publication whose cover is a Commons upload used to advertise the Wikimedia address. Facebook's crawler gets 403 there, so its preview had no image. Every other crawler gets the 1.3 MB original. The card now points at `/api/cover`. That function asks the MediaWiki API for one known width. It fetches the thumb from a Wikimedia image host only and follows no redirect. It refuses a body over 2 MB, or a type that is not JPEG, PNG, WebP or GIF. It caches the bytes for 30 days. A file name with a comma or an accent works. A failure sends the brand card. A cover in our Supabase bucket keeps its own address.
+
+- **A fixed commitment now moves with its stop.** When you move a stop to another day on the Board or the Timeline, its linked time moves too. Train, flight and boat times all follow the stop. Expenses linked to the stop also move. The deadline check keeps working (#989).
+
+- **Trip editors cannot change owner-only settings.** Visibility and trash changes need the owner, an enabled admin, or a trusted backend. Plan saves preserve those settings. Both trip card layouts limit trash to owners. Trash and Undo wait for server confirmation. Private crew contributions stay within the crew. Checked invite sharing remains available. (#932)
+
+- **My trips and Explore load without a loader flash or a footer jump.** The loading block now waits a short time before it shows, so a fast load shows no loader. It holds one page of height, so the footer no longer jumps up and down. The layout shift on both pages falls from 0.55 to under 0.01. A slow load still shows the loading block.
+
+- **Day plan slot rows keep to two clean lines.** The stop name or the "Added by the app" note sits under the slot label on one line. The time or the Auto mark sits at the row's right. A long name ends with an ellipsis instead of a wrapped block.
+
+- **The trip settings form warns about an edit only when a setting really changed.** The warning appears when a field of the form changes while the form is open. Your own saves do not raise it. Changes to other parts of the trip do not raise it. On a trip with no other editor, the warning names your other tab or device, not a crew member (#414).
+
+- **An itinerary link that previews with a scene now declares the scene's real size.** The card states 640 x 427 and `image/webp`. A crawler can then lay out the first preview before it fetches the file. The empty-state vignettes and files on other hosts declare no size, because their size differs.
+
+- **A creator's tagged post link now previews as the creator's own card.** The link used the app path, so every crawler got the generic home card. It now uses `/c/<id>` with the same post tag. The card sends a browser on to the creator page with the tag. The visit still counts against the post.
+
+- **Crawlers now get the publication card at `/pub/<id>`.** The preview crawlers of Facebook, WhatsApp, X, LinkedIn, Slack and Discord get the same rich card that `/i/<id>` serves. So do those of Telegram, Apple, Pinterest and Reddit. People and the Google and Bing search crawlers still get the app at the same address. The card's canonical URL and og:url point to `/pub/<id>`, the address that was copied. The card sends no redirect to that address, so a crawler that runs script cannot loop. The card response sends `Vary: User-Agent`.
+
+- **The stop edit card on the map now closes.** A close button, the Escape key and a click on empty map close it. Focus returns to the stop that opened it.
+
+- **Every version promoted to main gets a release with the Android APK attached.** The push to main now creates the release from the CHANGELOG.md section when no release exists. Then it attaches the APK. A forgotten tag no longer leaves the in-app updater without a build.
+
 ## [0.88.1] - 2026-11-18
 
 ### Fixed
