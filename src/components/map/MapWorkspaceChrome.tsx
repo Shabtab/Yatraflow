@@ -11,7 +11,7 @@ import { budgetBlockView, budgetValueParts, fixProblemReason, fixReasonLine, win
 import { dayColor } from '../../lib/mapStyles/dayColors'
 import { fixProblemSubLine, lastNightStaySub, railClockOrder, railDepartureFirst, standsOnLastNightStay, railDepartClock, railLegVisible, railMarkerKind, railStopNumber, railStopPaid } from './railModel'
 import { ribbonAxis, ribbonLabelLayout, ribbonPercent, ribbonTickText, ribbonStops, ribbonRange, ribbonSignature, ribbonResetMinute, ribbonKeyMinute, ribbonScrub, ribbonClockMinutes, retimedStops, type RibbonPosition, type RibbonPreview } from '../../lib/mapJourneyRibbon'
-import { railOverflow, type RailOverflow } from '../../lib/railOverflow'
+import { railOverflow, railScrollToReveal, type RailOverflow } from '../../lib/railOverflow'
 
 export type { SheetSnap, SheetSnapSource } from '../../lib/mapSheetGesture'
 export type { RibbonPreview }
@@ -221,8 +221,15 @@ export function MapItinerary({ trip, journey, corrections, activeDay, budgetMin,
     }
   }, [days.length, publishDayOverflow])
   useEffect(() => {
-    const selected = dayStripRef.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
-    selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    // Move the strip only. scrollIntoView would also scroll the page, the rail
+    // or the sheet when the footer sits below the fold.
+    const strip = dayStripRef.current
+    const selected = strip?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
+    if (strip == null || selected == null) return
+    const stripBox = strip.getBoundingClientRect()
+    const chipBox = selected.getBoundingClientRect()
+    const left = chipBox.left - stripBox.left + strip.scrollLeft
+    strip.scrollLeft = railScrollToReveal(strip.scrollLeft, strip.scrollWidth, strip.clientWidth, left, left + chipBox.width)
   }, [activeDay, allDays, days.length])
   const estimated = points.some((point, index) => {
     if (!point.legIn) return false

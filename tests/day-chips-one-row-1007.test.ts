@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { railScrollToReveal } from '../src/lib/railOverflow'
 
 /* #1007: a long trip used to wrap the map's day chips into a second row.
    These source pins keep the strip on one sideways-scrolling row. */
@@ -47,6 +48,20 @@ describe('map day chips', () => {
     expect(footer).toMatch(/flex-direction:\s*row/)
     expect(footer).toMatch(/align-items:\s*center/)
     expect(link).toMatch(/flex:\s*none/)
-    expect(chrome).toMatch(/scrollIntoView\(\{ block: 'nearest', inline: 'nearest' \}\)/)
+    expect(chrome).toMatch(/strip\.scrollLeft = railScrollToReveal\(/)
+    // scrollIntoView also scrolls the page and the rail, not only the strip.
+    expect(chrome).not.toMatch(/selected\??\.scrollIntoView\(/)
+    expect(chrome).not.toMatch(/inline: 'nearest'/)
+  })
+
+  it('moves the strip just far enough to show the selected day', () => {
+    // 30 chips of 40px in a 318px strip: day 12 sits at 440 to 480.
+    expect(railScrollToReveal(0, 1200, 318, 440, 480)).toBe(162)
+    // Already in view: the strip keeps its position.
+    expect(railScrollToReveal(200, 1200, 318, 440, 480)).toBe(200)
+    // Behind the left edge: the strip moves back to the chip's start.
+    expect(railScrollToReveal(600, 1200, 318, 440, 480)).toBe(440)
+    // A strip that fits does not move.
+    expect(railScrollToReveal(0, 300, 318, 40, 80)).toBe(0)
   })
 })
