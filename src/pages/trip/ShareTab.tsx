@@ -679,7 +679,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           <div className="shr-invite-field" role="group" aria-labelledby="share-invite-label">
             <span className="shr-field-label" id="share-invite-label">Invite link</span>
             {inviteLink ? (
-              <div className="share-link-box"><code title={inviteLink}>{inviteLink}</code><CopyButton text={inviteLink} /></div>
+              <div className="share-link-box shr-invite-link"><InlineIcon icon={Link2} size={14} gap={0} /><code title={inviteLink}>{inviteLink}</code><CopyButton text={inviteLink} /></div>
             ) : mintFailed ? (
               // The code is a write, so its three outcomes are three
               // statements. The failed one used to be a polite hint line, which a
@@ -707,7 +707,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
               <span className="shr-join-label">Join code</span>
               <div className="shr-join-code-row">
                 <code className="shr-join-code" aria-label={`Trip code ${inviteCode}`}>{inviteCode}</code>
-                <CopyButton text={inviteCode} />
+                <CopyButton text={inviteCode} label="Copy code" />
               </div>
               <span className="small muted">Read it out loud. Friends type it on the home screen</span>
             </div>

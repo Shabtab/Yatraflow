@@ -17,13 +17,16 @@
 .shr-share-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .shr-join-tile { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 16px; background: var(--bg-soft); }
 .shr-join-code-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.shr-join-code { font-family: var(--font-display); font-size: 30px; font-weight: 800; letter-spacing: .18em; color: var(--teal-deep); }
+.shr-join-code { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: .1em; white-space: nowrap; color: var(--teal-deep); }
+.shr-invite-link { gap: 10px; }
+.shr-invite-link > svg { flex: none; color: var(--text-2); }
+.shr-invite-link code { direction: ltr; text-align: left; }
 .shr-cover { position: relative; height: 150px; border-radius: 16px; overflow: hidden; background: var(--bg-soft); }
 .shr-cover > img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .shr-cover-chip { position: absolute; left: 12px; bottom: 12px; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--bg-soft); color: var(--text-2); }
 .shr-cover-change { position: absolute; right: 12px; top: 12px; }
 .shr-day-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
-.shr-day-row { padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 14px; }
+.ts-dayrows .shr-day-row, .shr-day-row { padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 14px; }
 .shr-day-row.is-free { border-color: var(--teal); background: var(--teal-soft); }
 .shr-hidden-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--bg-soft); }
 .shr-take-list { display: flex; flex-direction: column; gap: 8px; }
