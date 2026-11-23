@@ -14,8 +14,8 @@
 .shr-column { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .shr-field-label, .shr-join-label { font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--text-2); }
 .shr-invite-field { display: flex; flex-direction: column; gap: 8px; }
-.shr-share-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
-.shr-join-tile { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 16px; background: var(--bg-soft); }
+.shr-share-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.shr-join-tile { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; padding: 14px 16px; border-radius: 16px; background: var(--bg-soft); }
 .shr-join-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .shr-join-code { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: .1em; white-space: nowrap; color: var(--teal-deep); }
 .shr-invite-link { gap: 10px; }
