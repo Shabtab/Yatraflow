@@ -1160,7 +1160,7 @@ Each row covers one mockup page. The bundles record gaps without a promise to bu
 | I-208 | 22 · Stop editor | PARTLY | 7 (T1 5, T2 2) | Photos with attribution; kind-of-place chips; provenance on numbers |
 | I-209 | 23 · Change preview | PARTLY | 3 (T1 3) | Before and after values; change title; one-tap fix buttons |
 | I-210 | 24 · AI companion | PARTLY | 9 (T1 6, T2 3) | "It can see" panel; three-change answer card; duplicate-stop suggestion |
-| I-211 | 25 · Log in and sign up | PARTLY | 6 (T1 5, T2 1) | Two-column auth; password meter; invite arrival card |
+| I-211 | 25 · Log in and sign up | PARTLY | 6 (T1 5, T2 1) | Invite arrival card; offline note in the card; hand-off fade. Built in #1010 (2026-11-23): two-column cover, password meter, invite cue, plain error copy, field, button and tab restyle |
 | I-212 | 26 · Notifications, banners, states | PARTLY | 13 (T1 10, T2 3) | Filter tabs; live-collaboration banner; private-trip state |
 | I-213 | 27 · Phone home and bottom nav | PARTLY | 6 (T1 3, T2 3) | Bottom tab bar; live-trip card; join code on home |
 | I-214 | 28 · Phone, Day 2 open | PARTLY | 2 (T1 2) | 390 px timeline check; suggested-by attribution; fix button |

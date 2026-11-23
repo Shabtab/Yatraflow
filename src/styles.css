@@ -48,6 +48,7 @@
 @import './styles/pages/creator.css';
 @import './styles/pages/group-input.css';
 @import './styles/components/map-v2-rail.css';
+@import './styles/pages/auth.css';
 
 /* Settings controls keep their state legible in both themes. */
 .tset-main .tset-danger-btn:disabled { opacity: 1; color: var(--pw-ink-2); }

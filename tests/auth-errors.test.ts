@@ -2,9 +2,11 @@
 // Pure logic, node env. Guards the fix for "login fails on preview builds with
 // no useful message": the placeholder Supabase client must be *reported*, not
 // silently used, and a thrown network error must not surface as a bad password.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
+  INVALID_CREDENTIALS_MESSAGE,
   MISSING_BACKEND_MESSAGE,
+  NETWORK_FAILURE_MESSAGE,
   PLACEHOLDER_SUPABASE_URL,
   describeAuthFailure,
   isRealSupabaseUrl,
@@ -42,17 +44,31 @@ describe('describeAuthFailure', () => {
     expect(MISSING_BACKEND_MESSAGE.toLowerCase()).toContain('redeploy')
   })
 
-  it('reframes thrown/returned network failures as unreachable-backend', () => {
-    for (const err of [new TypeError('Failed to fetch'), { message: 'fetch failed' }]) {
+  it('reframes thrown/returned network failures as one plain line', () => {
+    for (const err of [new TypeError('Failed to fetch'), { message: 'fetch failed' }, { message: 'Load failed' }]) {
       const out = describeAuthFailure(err, { configured: true })
-      expect(out).toContain('Cannot reach the Supabase backend')
+      expect(out).toBe(NETWORK_FAILURE_MESSAGE)
+      // The line names no provider, no browser rule and no raw error text.
+      expect(out).not.toMatch(/supabase|cors|failed to fetch|fetch failed/i)
     }
   })
 
-  it('passes genuine Supabase responses through untouched', () => {
-    expect(
-      describeAuthFailure({ message: 'Invalid login credentials' }, { configured: true }),
-    ).toBe('Invalid login credentials')
+  it('keeps the raw network text in the console, not on the screen', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      describeAuthFailure(new TypeError('Failed to fetch'), { configured: true })
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('sign-in request did not reach the server'), 'Failed to fetch')
+    } finally { warn.mockRestore() }
+  })
+
+  it('maps the rejected-credentials response to the plain copy', () => {
+    const out = describeAuthFailure({ message: 'Invalid login credentials' }, { configured: true })
+    expect(out).toBe(INVALID_CREDENTIALS_MESSAGE)
+    expect(out).toBe("That email and password don't match. Try again, or mail support to reset.")
+    expect(describeAuthFailure(new Error('invalid login credentials'), { configured: true })).toBe(INVALID_CREDENTIALS_MESSAGE)
+  })
+
+  it('passes other genuine Supabase responses through untouched', () => {
     expect(
       describeAuthFailure(
         { message: 'Email not confirmed' },

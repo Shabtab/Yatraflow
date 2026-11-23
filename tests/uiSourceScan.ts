@@ -17,6 +17,9 @@ export function sourceTree(file: string, input = readFileSync(file, 'utf8'), set
 
 // The dash character, its HTML entity, and the escape text a source file can carry.
 const BANNED_DASH = /—|&mdash;|&#8212;|&#x2014;|\\u2014|\\u\{2014\}/i
+// The owner locked the main product line word for word, with its em dash (2026-11-20).
+// Only this exact single-quoted literal is exempt. Any other spelling or wording still fails.
+const LOCKED_BRAND_LINES = new Set(["'Plan Indian trips together — not in a chaotic group chat.'"])
 
 export function emDashLabels(file: string, input?: string): string[] {
   const normalized = (input ?? readFileSync(file, 'utf8')).replace(/\r\n/g, '\n')
@@ -28,7 +31,7 @@ export function emDashLabels(file: string, input?: string): string[] {
     if (ts.isStringLiteralLike(node) || ts.isJsxText(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
       // Check the literal source text, so an escape cannot hide a dash the emitted text would show.
       const raw = source.slice(node.getStart(tree), node.end)
-      if (BANNED_DASH.test(raw)) failures.push(`${file}:${tree.getLineAndCharacterOfPosition(node.getStart(tree)).line + 1}: ${raw.trim()}`)
+      if (BANNED_DASH.test(raw) && !LOCKED_BRAND_LINES.has(raw)) failures.push(`${file}:${tree.getLineAndCharacterOfPosition(node.getStart(tree)).line + 1}: ${raw.trim()}`)
     }
     ts.forEachChild(node, visit)
   }

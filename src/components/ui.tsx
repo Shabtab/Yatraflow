@@ -159,6 +159,10 @@ export function Field(props: {
   label: string
   error?: string
   hint?: string
+  hideHintFromAssistiveTech?: boolean
+  /** A decorative glyph drawn inside the control's leading edge. The caller
+   *  passes it with aria-hidden. A page styles `.field-lead`. */
+  lead?: React.ReactNode
   children: React.ReactNode
 }) {
   const controlId = useId()
@@ -182,14 +186,14 @@ export function Field(props: {
     // validate themselves (the stop editor's source link, for one).
     const extra: Partial<{ id: string; 'aria-describedby': string; 'aria-invalid': boolean }> = { id: controlId }
     if (props.error) { extra['aria-describedby'] = errId; extra['aria-invalid'] = true }
-    else if (props.hint) extra['aria-describedby'] = hintId
+    else if (props.hint && !props.hideHintFromAssistiveTech) extra['aria-describedby'] = hintId
     return React.cloneElement(el, extra)
   })
   return (
     <div className="field">
       <label className="label" htmlFor={associated ? controlId : undefined}>{props.label}</label>
-      {wired}
-      {props.hint && !props.error && <span className="hint-text" id={hintId}>{props.hint}</span>}
+      {props.lead ? <span className="field-lead">{props.lead}{wired}</span> : wired}
+      {props.hint && !props.error && <span className="hint-text" id={hintId} aria-hidden={props.hideHintFromAssistiveTech}>{props.hint}</span>}
       {/* Field-tied error copy is POLITE, not assertive: a form submit that fails
           in several fields would otherwise fire one interrupting announcement per
           field (the create form measured three at once). The page's summary
