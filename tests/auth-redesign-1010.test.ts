@@ -89,10 +89,16 @@ describe('motion: tokens only, with a reduced-motion opt-out', () => {
     expect(css).toContain('animation: authSpin calc(var(--motion-slower) * 2) linear infinite')
   })
 
+  it('keeps outgoing messages mounted and hides them from assistive tech', () => {
+    expect(auth).toContain('if (error || notice) setOutgoingMessage({ error, notice })')
+    expect(auth).toContain('inert={!error && !notice} aria-hidden={!error && !notice}')
+    expect(css).toContain(".auth-message-clip[data-visible='true'] { grid-template-rows: 1fr; }")
+  })
+
   it('turns every animation off under prefers-reduced-motion', () => {
     const block = css.match(/@media \(prefers-reduced-motion: reduce\) \{\n  \.auth-cover-art, \.auth-spin \{ animation: none; \}[^]*?\n\}/)?.[0] ?? ''
     expect(block).not.toBe('')
-    expect(block).toContain('.auth-extra-clip, .auth-reset-clip, .auth-invite-clip, .auth-extra, .auth-form .auth-reset-help, .auth-invite-clip > div, .auth-crossfade > span { transition: none; }')
+    expect(block).toContain('.auth-extra-clip, .auth-reset-clip, .auth-invite-clip, .auth-message-clip, .auth-extra, .auth-form .auth-reset-help, .auth-invite-clip > div, .auth-crossfade > span { transition: none; }')
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.auth-submit-notice \{ animation: none; \} \}/)
   })
 })

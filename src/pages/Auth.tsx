@@ -52,6 +52,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   /** Success or info copy for the form, such as "check your email". It is kept
    *  apart from `error`: a new error clears it, and a new notice clears an error. */
   const [notice, setNotice] = useState<string | null>(null)
+  const [outgoingMessage, setOutgoingMessage] = useState<{ error: string | null; notice: string | null } | null>(null)
   /** Field-scoped errors. The form-level `error` above is for failures with
    *  no single field to blame (bad credentials, network); a field's own
    *  failure (empty name, short password) belongs on that field, marked and
@@ -93,6 +94,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
     e.preventDefault()
     setError(null)
     setNotice(null)
+    setOutgoingMessage(null)
     setNameErr(null)
     setPasswordErr(null)
     setDobErr(null)
@@ -168,6 +170,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   function switchMode(key: string) {
     if (mode === 'login' && key === 'signup') setSignupVisit(visit => visit + 1)
     setMode(key === 'signup' ? 'signup' : 'login')
+    if (error || notice) setOutgoingMessage({ error, notice })
     setError(null); setNotice(null); setNameErr(null); setPasswordErr(null); setDobErr(null)
   }
 
@@ -232,12 +235,14 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
                 <input className="input" type="password" name="password" data-short={mode === 'signup' && meter.short ? 'true' : undefined} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={mode === 'signup' ? 8 : undefined} value={password} onChange={e => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null) }} placeholder="••••••••" ref={passwordRef} />
               </Field>
             </div>
-            {/* A live region that stays in the DOM. A status node inserted with
-                its text is announced unreliably, so only its copy changes. */}
-            <div role="status" aria-live="polite">
-              {notice && <div className="hub-note auth-submit-notice">{notice}</div>}
+            <div className="sr-only" role="status" aria-live="polite">{notice}</div>
+            <div className="auth-message-clip" data-visible={Boolean(error || notice)} inert={!error && !notice} aria-hidden={!error && !notice}
+              onTransitionEnd={e => { if (e.target === e.currentTarget && e.propertyName === 'grid-template-rows' && !error && !notice) setOutgoingMessage(null) }}>
+              <div className="auth-message-content" data-error={Boolean(error || outgoingMessage?.error)}>
+                {(notice || outgoingMessage?.notice) && <div className="hub-note auth-submit-notice" aria-hidden="true">{notice || outgoingMessage?.notice}</div>}
+                {(error || outgoingMessage?.error) && <div className="err-text auth-submit-error" role="alert" tabIndex={-1} ref={errRef}><InlineIcon icon={TriangleAlert} size={13} gap={4} />{error || outgoingMessage?.error}</div>}
+              </div>
             </div>
-            {error && <div className="err-text auth-submit-error" role="alert" tabIndex={-1} ref={errRef}><InlineIcon icon={TriangleAlert} size={13} gap={4} />{error}</div>}
             <button type="submit" className="btn btn-primary auth-submit" disabled={saving}>
               {saving && <RefreshCw className="auth-spin" size={15} aria-hidden="true" />}
               <span className="auth-crossfade">

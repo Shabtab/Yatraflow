@@ -36,21 +36,14 @@ describe('the page routes on the field, not on copy text', () => {
 })
 
 describe('the confirmation renders as a status notice', () => {
-  it('the notice sits inside a polite role="status" region', () => {
-    expect(auth).toMatch(
-      /<div role="status" aria-live="polite">\s*\{notice && <div className="hub-note auth-submit-notice">\{notice\}<\/div>\}\s*<\/div>/,
-    )
-  })
-
-  it('the notice carries no alert role and no error style', () => {
-    const notice = auth.match(/\{notice && <div[^\n]*\{notice\}<\/div>\}/)?.[0] ?? ''
-    expect(notice).not.toBe('')
-    expect(notice).not.toMatch(/alert|err-text|TriangleAlert/)
+  it('keeps a polite live region and hides the visual copy from assistive tech', () => {
+    expect(auth).toContain('<div className="sr-only" role="status" aria-live="polite">{notice}</div>')
+    expect(auth).toMatch(/className="hub-note auth-submit-notice" aria-hidden="true"/)
   })
 
   it('the page has one alert region, and it still renders the error', () => {
     expect(auth.match(/role="alert"/g)).toHaveLength(1)
-    expect(auth).toMatch(/className="err-text auth-submit-error" role="alert"[^\n]*\{error\}<\/div>/)
+    expect(auth).toContain('{error || outgoingMessage?.error}</div>')
   })
 })
 
