@@ -1514,4 +1514,4 @@ The editor primitives are the default; a script is the exception.
 
 - Map UI labels start with a capital and use short label and value pairs. Use middle dots between facts. Keep full sentences in tooltips, accessible names, and suggestion help only.
 - Every visible label in `src/` starts with a capital or a number, not only on the Map. `tests/ui-label-capitals.test.ts` scans all of `src/`. Fix the string. Allowlist only a piece that follows other words, a unit after a number, or text that never shows. Give each entry a reason.
-- UI strings in `src/` must not contain an em dash or its HTML entity. Preserve en dashes in time ranges. The source scan reports the file and line.
+- UI strings in `src/` must not contain an em dash or its HTML entity. Preserve en dashes in time ranges. The source scan reports the file and line. One exception: the owner's locked main line, as one exact single-quoted literal (`LOCKED_BRAND_LINES` in `tests/uiSourceScan.ts`). Add nothing else to that set without the owner.

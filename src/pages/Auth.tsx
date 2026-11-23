@@ -36,8 +36,8 @@ const AUTH_TABS = [
 const CONFIRM_EMAIL_COPY = 'Check your email to confirm your account, then log in.'
 
 /** The cover panel copy. The headline is the locked main line. */
-const COVER_HEADLINE = 'Plan Indian trips together, not in a chaotic group chat.'
-const COVER_LINE = 'Your whole crew plans one shared trip, with every stop, halt and cost in one place.'
+const COVER_HEADLINE = 'Plan Indian trips together — not in a chaotic group chat.'
+const COVER_LINE = 'Every stop, hour and rupee in one plan your group can actually follow.'
 const COVER_CHIPS = ['Free to plan', 'Works offline', 'Made for India'] as const
 
 export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
