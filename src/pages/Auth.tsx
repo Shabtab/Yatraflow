@@ -185,10 +185,14 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
             </ul>
           </div>
         </div>
-        <div className="card auth-card">
-          <h1>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
-          <p className="muted small auth-description">
-            {mode === 'login' ? 'Log in to your trip plans.' : 'Free to plan. No card needed.'}
+        <div className="card auth-card" data-mode={mode}>
+          <h1 className="auth-crossfade" aria-label={mode === 'login' ? 'Welcome back' : 'Create your account'}>
+            <span aria-hidden="true" className="auth-login-copy">Welcome back</span>
+            <span aria-hidden="true" className="auth-signup-copy">Create your account</span>
+          </h1>
+          <p className="muted small auth-description auth-crossfade" aria-label={mode === 'login' ? 'Log in to your trip plans.' : 'Free to plan. No card needed.'}>
+            <span aria-hidden="true" className="auth-login-copy">Log in to your trip plans.</span>
+            <span aria-hidden="true" className="auth-signup-copy">Free to plan. No card needed.</span>
           </p>
 
           <SegmentedTabs semantics="tablist" className="tabbar tabbar-sunken auth-tabs" label="Login or sign up" items={AUTH_TABS} value={mode} onChange={switchMode} />
@@ -208,7 +212,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           <div id="auth-panel" role="tabpanel" aria-labelledby={mode === 'login' ? 'auth-tab-login' : 'auth-tab-signup'}>
           <form className="auth-form" onSubmit={submit} noValidate>
             {/* The sign-up fields enter together as one block (auth.css). */}
-            {mode === 'signup' && (
+            <div className="auth-extra-clip" inert={mode !== 'signup'} aria-hidden={mode !== 'signup'}>
               <div className="auth-extra">
                 <Field label="Your name" error={nameErr ?? undefined}>
                   <input className="input" name="name" autoComplete="name" ref={nameRef} value={name}
@@ -219,11 +223,13 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
                     onChange={v => { setDob(v); if (dobErr) setDobErr(null) }} />
                 </Field>
               </div>
-            )}
+            </div>
             <Field label="Email" lead={<Mail size={15} aria-hidden="true" />}><input className="input" type="email" name="email" autoComplete="email" spellCheck={false} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></Field>
-            <Field label="Password" lead={<Lock size={15} aria-hidden="true" />} hint={mode === 'signup' ? meter.text : undefined} error={passwordErr ?? undefined}>
+            <div className="auth-password">
+            <Field label="Password" lead={<Lock size={15} aria-hidden="true" />} hint={meter.text} error={passwordErr ?? undefined}>
               <input className="input" type="password" name="password" data-short={mode === 'signup' && meter.short ? 'true' : undefined} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={mode === 'signup' ? 8 : undefined} value={password} onChange={e => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null) }} placeholder="••••••••" ref={passwordRef} />
             </Field>
+            </div>
             {/* A live region that stays in the DOM. A status node inserted with
                 its text is announced unreliably, so only its copy changes. */}
             <div role="status" aria-live="polite">
@@ -232,14 +238,17 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
             {error && <div className="err-text auth-submit-error" role="alert" tabIndex={-1} ref={errRef}><InlineIcon icon={TriangleAlert} size={13} gap={4} />{error}</div>}
             <button type="submit" className="btn btn-primary auth-submit" disabled={saving}>
               {saving && <RefreshCw className="auth-spin" size={15} aria-hidden="true" />}
-              {saving ? (mode === 'login' ? 'Signing in…' : 'Creating account…') : mode === 'login' ? 'Log in' : 'Create account'}
+              <span className="auth-crossfade" aria-label={saving ? (mode === 'login' ? 'Signing in…' : 'Creating account…') : mode === 'login' ? 'Log in' : 'Create account'}>
+                <span aria-hidden="true" className="auth-login-copy">{saving ? 'Signing in…' : 'Log in'}</span>
+                <span aria-hidden="true" className="auth-signup-copy">{saving ? 'Creating account…' : 'Create account'}</span>
+              </span>
             </button>
-            {mode === 'login' && (
+            <div className="auth-reset-clip" inert={mode !== 'login'} aria-hidden={mode !== 'login'}>
               <p className="hint-text auth-reset-help">
                 Forgot your password? Resets aren’t self-serve yet.{' '}
                 <a className="text-link" href="mailto:support@yatraflow.app?subject=Reset%20my%20YatraFlow%20password">Mail support and we’ll reset it</a>.
               </p>
-            )}
+            </div>
           </form>
           </div>
 

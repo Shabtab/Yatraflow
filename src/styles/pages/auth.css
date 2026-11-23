@@ -82,8 +82,16 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 .auth-form { display: flex; flex-direction: column; gap: 14px; }
 .auth-form .field { margin-bottom: 0; gap: 5px; }
 .auth-form .label { font-size: 12.5px; font-weight: 700; color: var(--text-2); }
-/* The sign-up fields enter as one block. */
-.auth-extra { display: flex; flex-direction: column; gap: 14px; animation: authRise var(--motion-med) var(--ease-paper) both; }
+/* The clips keep their contents mounted through both directions of the switch. */
+.auth-extra-clip, .auth-reset-clip { display: grid; grid-template-rows: 0fr; margin-bottom: -14px; transition: grid-template-rows var(--motion-med) var(--ease-glide), margin-bottom var(--motion-med) var(--ease-glide); }
+.auth-extra, .auth-form .auth-reset-help { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(8px); transition: opacity var(--motion-med) var(--ease-glide), transform var(--motion-med) var(--ease-glide); }
+.auth-extra { display: flex; flex-direction: column; gap: 14px; }
+.auth-card[data-mode='signup'] .auth-extra-clip, .auth-card[data-mode='login'] .auth-reset-clip { grid-template-rows: 1fr; margin-bottom: 0; }
+.auth-card[data-mode='signup'] .auth-extra, .auth-card[data-mode='login'] .auth-reset-help { opacity: 1; transform: translateY(0); }
+.auth-card[data-mode='login'] .auth-extra, .auth-card[data-mode='signup'] .auth-reset-help { transform: translateY(8px); }
+.auth-crossfade { display: grid; }
+.auth-crossfade > span { grid-area: 1 / 1; transition: opacity var(--motion-med) var(--ease-glide); }
+.auth-card[data-mode='login'] .auth-signup-copy, .auth-card[data-mode='signup'] .auth-login-copy { opacity: 0; }
 
 /* Inputs: the owner's variables first, then the few properties the owner does not own. */
 .auth-form .input {
@@ -110,6 +118,8 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 /* The hint under a field; the password hint turns to the error colour while short. */
 .auth-form .hint-text, .auth-form .err-text { font-size: 11.5px; }
 .auth-form .hint-text { transition: color var(--motion-instant) var(--ease-paper); }
+.auth-password .hint-text { max-height: 3em; opacity: 1; overflow: hidden; transition: max-height var(--motion-med) var(--ease-glide), opacity var(--motion-med) var(--ease-glide), color var(--motion-instant) var(--ease-paper); }
+.auth-card[data-mode='login'] .auth-password .hint-text { max-height: 0; opacity: 0; visibility: hidden; }
 .auth-form .field-lead:has(input[data-short='true']) ~ .hint-text { color: var(--pw-risk); }
 
 /* Submit: pill, 46px (above the 44px floor), full width. */
@@ -138,12 +148,12 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 /* ---------- Motion ---------- */
 /* The cover settles from a slight zoom. The sign-up fields rise in. The spinner turns. */
 @keyframes authSettle { from { transform: scale(1.035); } to { transform: scale(1); } }
-@keyframes authRise { from { opacity: 0; transform: translateY(8px); } }
 @keyframes authSpin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .auth-submit-notice { animation: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .auth-cover-art, .auth-extra, .auth-spin { animation: none; }
-  .auth-form .hint-text { transition: none; }
+  .auth-cover-art, .auth-spin { animation: none; }
+  .auth-extra-clip, .auth-reset-clip, .auth-extra, .auth-form .auth-reset-help, .auth-crossfade > span { transition: none; }
+  .auth-form .hint-text, .auth-password .hint-text { transition: none; }
 }
 
 /* ---------- Phone and narrow windows: a 150px cover strip above the form ---------- */

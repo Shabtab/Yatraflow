@@ -64,7 +64,7 @@ describe('the invite cue shows only for an invite route, on the log in form', ()
 describe('the sign-up password hint counts live', () => {
   it('feeds the hint from the pure helper', () => {
     expect(auth).toContain('const meter = passwordMeter(password)')
-    expect(auth).toContain("hint={mode === 'signup' ? meter.text : undefined}")
+    expect(auth).toContain("hint={meter.text}")
   })
 
   it('turns the hint to the error colour while the password is short', () => {
@@ -80,13 +80,16 @@ describe('motion: tokens only, with a reduced-motion opt-out', () => {
 
   it('names a token for every animation', () => {
     expect(css).toContain('animation: authSettle var(--motion-slower) var(--ease-glide) both')
-    expect(css).toContain('animation: authRise var(--motion-med) var(--ease-paper) both')
+    expect(css).toContain('grid-template-rows var(--motion-med) var(--ease-glide)')
+    expect(auth).toContain("className=\"auth-extra-clip\" inert={mode !== 'signup'}")
+    expect(css).toContain(".auth-card[data-mode='login'] .auth-extra")
     expect(css).toContain('animation: authSpin calc(var(--motion-slower) * 2) linear infinite')
   })
 
   it('turns every animation off under prefers-reduced-motion', () => {
-    const block = css.match(/@media \(prefers-reduced-motion: reduce\) \{\n  \.auth-cover-art, \.auth-extra, \.auth-spin \{ animation: none; \}[^]*?\n\}/)?.[0] ?? ''
+    const block = css.match(/@media \(prefers-reduced-motion: reduce\) \{\n  \.auth-cover-art, \.auth-spin \{ animation: none; \}[^]*?\n\}/)?.[0] ?? ''
     expect(block).not.toBe('')
+    expect(block).toContain('.auth-extra-clip, .auth-reset-clip, .auth-extra, .auth-form .auth-reset-help, .auth-crossfade > span { transition: none; }')
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.auth-submit-notice \{ animation: none; \} \}/)
   })
 })
