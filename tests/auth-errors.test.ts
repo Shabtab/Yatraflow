@@ -2,7 +2,7 @@
 // Pure logic, node env. Guards the fix for "login fails on preview builds with
 // no useful message": the placeholder Supabase client must be *reported*, not
 // silently used, and a thrown network error must not surface as a bad password.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   INVALID_CREDENTIALS_MESSAGE,
   MISSING_BACKEND_MESSAGE,
@@ -51,6 +51,14 @@ describe('describeAuthFailure', () => {
       // The line names no provider, no browser rule and no raw error text.
       expect(out).not.toMatch(/supabase|cors|failed to fetch|fetch failed/i)
     }
+  })
+
+  it('keeps the raw network text in the console, not on the screen', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      describeAuthFailure(new TypeError('Failed to fetch'), { configured: true })
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('sign-in request did not reach the server'), 'Failed to fetch')
+    } finally { warn.mockRestore() }
   })
 
   it('maps the rejected-credentials response to the plain copy', () => {

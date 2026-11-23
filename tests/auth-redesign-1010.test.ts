@@ -13,7 +13,7 @@ const css = source('../src/styles/pages/auth.css')
 const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '')
 
 describe('the cover panel keeps the locked main line', () => {
-  it('states the headline, with a comma where the brief had a dash', () => {
+  it('states the headline with its em dash and the support line', () => {
     expect(auth).toContain("const COVER_HEADLINE = 'Plan Indian trips together — not in a chaotic group chat.'")
     expect(auth).toContain("const COVER_LINE = 'Every stop, hour and rupee in one plan your group can actually follow.'")
     expect(auth).toContain('{COVER_HEADLINE}')

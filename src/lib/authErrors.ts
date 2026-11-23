@@ -65,6 +65,9 @@ export function describeAuthFailure(
   const msg = extractMessage(err)
   if (!msg) return 'Sign-in failed for an unknown reason. Check the browser console.'
   if (/failed to fetch|networkerror|fetch failed|load failed|err_connection|timed? ?out/i.test(msg)) {
+    // The user line is plain on purpose. The raw text (CORS, auth protection, DNS) is the only
+    // clue to a real outage, so it goes to the console instead of the screen.
+    console.warn('[yatraflow] sign-in request did not reach the server:', msg)
     return NETWORK_FAILURE_MESSAGE
   }
   if (/invalid login credentials/i.test(msg)) return INVALID_CREDENTIALS_MESSAGE

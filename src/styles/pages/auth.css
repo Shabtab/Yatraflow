@@ -43,7 +43,7 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
   background: color-mix(in srgb, var(--pw-card) 86%, transparent);
   -webkit-backdrop-filter: blur(var(--yf-blur-panel)); backdrop-filter: blur(var(--yf-blur-panel));
 }
-.auth-cover-title { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; color: var(--text); }
+.auth-cover-title { margin: 0; text-wrap: balance; font-size: 26px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; color: var(--text); }
 .auth-cover-line { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
 .auth-cover-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .auth-chip {
