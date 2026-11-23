@@ -215,7 +215,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
             <div className="auth-extra-clip" inert={mode !== 'signup'} aria-hidden={mode !== 'signup'}>
               <div className="auth-extra">
                 <Field label="Your name" error={nameErr ?? undefined}>
-                  <input className="input" name="name" autoComplete="name" ref={nameRef} value={name}
+                  <input className="input" name={mode === 'signup' ? 'name' : undefined} autoComplete="name" ref={nameRef} value={name}
                     onChange={e => { setName(e.target.value); if (nameErr) setNameErr(null) }} placeholder="e.g. Meera Nair" />
                 </Field>
                 <Field label="Date of birth" hint="Checked at signup. Never stored." error={dobErr ?? undefined}>

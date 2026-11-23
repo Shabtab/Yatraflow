@@ -82,6 +82,7 @@ describe('motion: tokens only, with a reduced-motion opt-out', () => {
     expect(css).toContain('animation: authSettle var(--motion-slower) var(--ease-glide) both')
     expect(css).toContain('grid-template-rows var(--motion-med) var(--ease-glide)')
     expect(auth).toContain("className=\"auth-extra-clip\" inert={mode !== 'signup'}")
+    expect(auth).toContain("name={mode === 'signup' ? 'name' : undefined}")
     expect(css).toContain(".auth-card[data-mode='login'] .auth-extra")
     expect(css).toContain('animation: authSpin calc(var(--motion-slower) * 2) linear infinite')
   })
