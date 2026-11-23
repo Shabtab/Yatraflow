@@ -1,55 +1,52 @@
-// ============ Auth cover art ============
-// The artwork behind the /auth glass panel (desktop) and the 150 px strip
-// (phone). Both use one scene: the app's own generated winding hill road
-// (`road-2`), drawn by RegionArt. The phone strip crops the same scene.
-//
-// Night art is one separate file pair in public/auth/. CSS shows one layer:
-// the day art by default, the night art under [data-theme='dark'].
-//
-// The night image hides itself when its file is missing or fails to decode, so
-// the dimmed day art (RegionArt's own dark scrim) stays as the fallback.
-import { useState } from 'react'
-import { RegionArt } from './RegionArt'
+import { useEffect, useRef, useState } from 'react'
+import { useTheme } from '../lib/theme'
 
-/** The generated art id for both covers. */
-export const AUTH_COVER_ID = 'road-2'
+export function AuthCoverArt() {
+  const dark = useTheme()
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const connection = 'connection' in navigator ? navigator.connection : undefined
+  const saveData = Boolean(connection && typeof connection === 'object' && 'saveData' in connection && connection.saveData)
+  const scene = dark ? 'night' : 'day'
+  const poster = `/auth/cover-${scene}-poster.jpg`
 
-/** The night file, served from public/. The @2x file backs the 2x srcset entry. */
-export const AUTH_NIGHT_SRC = '/auth/cover-night.jpg'
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const update = () => { setReducedMotion(query.matches) }
+    query.addEventListener('change', update)
+    return () => { query.removeEventListener('change', update) }
+  }, [])
 
-function NightArt() {
-  const [failed, setFailed] = useState(false)
-  if (failed) return null
-  const retina = AUTH_NIGHT_SRC.replace(/\.jpg$/, '@2x.jpg')
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    let onScreen = false
+    const update = () => {
+      if (document.hidden || !onScreen) video.pause()
+      else void video.play().catch(() => {})
+    }
+    const observer = new IntersectionObserver(entries => {
+      onScreen = entries[0]?.isIntersecting ?? false
+      update()
+    })
+    observer.observe(video)
+    document.addEventListener('visibilitychange', update)
+    return () => {
+      observer.disconnect()
+      document.removeEventListener('visibilitychange', update)
+    }
+  }, [scene, reducedMotion, saveData])
+
   return (
-    <img
-      className="auth-cover-night"
-      src={AUTH_NIGHT_SRC}
-      srcSet={`${AUTH_NIGHT_SRC} 1x, ${retina} 2x`}
-      width={960}
-      height={640}
-      alt=""
-      aria-hidden="true"
-      loading="lazy"
-      decoding="async"
-      onError={() => { setFailed(true) }}
-    />
-  )
-}
-
-/** The artwork layer of the cover. It fills its positioned parent. */
-export function AuthCoverArt({ variant }: { variant: 'desktop' | 'phone' }) {
-  const desktop = variant === 'desktop'
-  return (
-    <div className={`auth-cover-art auth-cover-art--${variant}`} aria-hidden="true">
-      <RegionArt
-        id={AUTH_COVER_ID}
-        ratio={desktop ? '3:2' : '21:9'}
-        sizes={desktop ? '(max-width: 1100px) 55vw, 760px' : '100vw'}
-        eager={false}
-        fallback={<span className="auth-cover-floor" />}
-      />
-      <NightArt />
+    <div className="auth-cover-art" aria-hidden="true">
+      {reducedMotion || saveData ? (
+        <img className="auth-cover-media" src={poster} alt="" />
+      ) : (
+        <video key={scene} ref={videoRef} className="auth-cover-media" muted autoPlay loop playsInline preload="metadata" poster={poster} aria-hidden="true" tabIndex={-1} disablePictureInPicture>
+          <source src={`/auth/cover-${scene}.webm`} type="video/webm" />
+          <source src={`/auth/cover-${scene}.mp4`} type="video/mp4" />
+        </video>
+      )}
     </div>
   )
 }

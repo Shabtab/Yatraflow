@@ -180,8 +180,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
         {/* The cover is decoration plus the product line. On a phone only the
             art strip shows; the glass panel is desktop only. */}
         <div className="auth-cover">
-          <AuthCoverArt variant="desktop" />
-          <AuthCoverArt variant="phone" />
+          <AuthCoverArt />
           <div className="auth-cover-panel">
             <p className="auth-cover-title">{COVER_HEADLINE}</p>
             <p className="auth-cover-line">{COVER_LINE}</p>

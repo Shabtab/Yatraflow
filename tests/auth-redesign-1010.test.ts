@@ -28,28 +28,24 @@ describe('the cover panel keeps the locked main line', () => {
   })
 })
 
-describe('the cover uses the app art, with a night file wired', () => {
-  it('draws one generated scene through RegionArt', () => {
-    expect(cover).toContain("export const AUTH_COVER_ID = 'road-2'")
-    expect(cover).toContain('<RegionArt')
+describe('the cover uses the themed lake video', () => {
+  it('chooses one scene from the active theme', () => {
+    expect(cover).toContain("const scene = dark ? 'night' : 'day'")
+    expect(cover).toContain('const dark = useTheme()')
   })
 
-  it('marks the artwork as decoration', () => {
-    expect(cover).toMatch(/alt=""/)
-    expect(cover).toContain('aria-hidden="true"')
+  it('renders decorative video with WebM before MP4', () => {
+    expect(cover).toContain('muted autoPlay loop playsInline preload="metadata"')
+    expect(cover).toContain('aria-hidden="true" tabIndex={-1} disablePictureInPicture')
+    expect(cover.indexOf('type="video/webm"')).toBeLessThan(cover.indexOf('type="video/mp4"'))
   })
 
-  it('sets width and height on the night image', () => {
-    expect(cover).toMatch(/width=\{960\}/)
-    expect(cover).toMatch(/height=\{640\}/)
-  })
-
-  it('shows the night layer only under the dark theme', () => {
-    expect(css).toMatch(/\.auth-cover-night \{ display: none;/)
-    expect(css).toContain("[data-theme='dark'] .auth-cover-night { display: block; }")
+  it('uses a poster for reduced motion or Data Saver', () => {
+    expect(cover).toContain('reducedMotion || saveData')
+    expect(cover).toContain('<img className="auth-cover-media" src={poster} alt="" />')
+    expect(cover).toContain("addEventListener('change', update)")
   })
 })
-
 describe('the invite cue shows only for an invite route, on the log in form', () => {
   it('gates the cue on the log in mode and the invite check', () => {
     expect(auth).toContain('const inviteRoute = isInviteNext(nextRoute())')

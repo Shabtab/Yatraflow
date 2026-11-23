@@ -31,11 +31,7 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 .auth-cover { position: relative; min-height: 360px; overflow: hidden; background: var(--pw-lagoon-100); }
 /* The settle runs on the artwork layer, never on the clipping box. */
 .auth-cover-art { position: absolute; inset: 0; animation: authSettle var(--motion-slower) var(--ease-glide) both; }
-.auth-cover-art--phone { display: none; }
-.auth-cover-floor { position: absolute; inset: 0; background: var(--pw-lagoon-100); }
-.auth-cover-night { display: none; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
-[data-theme='dark'] .auth-cover-night { display: block; }
-.auth-cover-art--phone .auth-cover-night { object-position: 50% 40%; }
+.auth-cover-media { width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
 
 .auth-cover-panel {
   position: absolute; left: 36px; right: 36px; bottom: 36px;
@@ -182,7 +178,7 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
     border: 0; border-radius: 0; background: transparent; overflow: visible;
   }
   .auth-cover { height: 150px; min-height: 0; border-radius: 22px; }
-  .auth-cover-art--desktop, .auth-cover-panel { display: none; }
-  .auth-cover-art--phone { display: block; }
+  .auth-cover-panel { display: none; }
+  .auth-cover-media { object-position: 50% 40%; }
   .auth-card { padding: 0; }
 }
