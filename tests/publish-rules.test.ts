@@ -507,10 +507,11 @@ describe('#592 — a charged plan at ₹0 does not exist', () => {
   })
 
   it('the ₹1 floor is ONE vocabulary across the form, the rules and the page', () => {
-    // The form coerces 0 to entirely-free before validating; the rules refuse
-    // it at the writer; and the page renders a row that slipped through as
-    // FREE rather than as an unchargeable ₹0 CTA.
-    expect(SHARE).toContain('priceNum === 0')
+    // The form keeps Premium on at 0 and never coerces it to free. The rules
+    // refuse it in the form and at the writer, with one message. The page
+    // renders a row that slipped through as FREE rather than as an
+    // unchargeable ₹0 CTA.
+    expect(SHARE).toContain('const entirelyFree = !premium')
     expect(RULES).toContain('Price must be at least ₹1 to charge for a plan.')
     expect(PAGE).toContain('const price = pub.premiumPriceInr || undefined')
   })

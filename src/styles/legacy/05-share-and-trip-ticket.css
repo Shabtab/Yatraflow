@@ -16,8 +16,10 @@
 .shr-invite-field { display: flex; flex-direction: column; gap: 8px; }
 .shr-share-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .shr-join-tile { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 16px; background: var(--bg-soft); }
-.shr-join-code-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.shr-join-code { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: .1em; white-space: nowrap; color: var(--teal-deep); }
+.shr-join-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.shr-join-code-row { display: inline-flex; flex: none; align-items: center; gap: 10px; white-space: nowrap; }
+.shr-join-caption { flex: 1 1 180px; min-width: 0; }
+.shr-join-code { font-family: var(--font-display); font-size: 20px; font-weight: 800; letter-spacing: .1em; white-space: nowrap; color: var(--teal-deep); }
 .shr-invite-link { gap: 10px; }
 .shr-invite-link > svg { flex: none; color: var(--text-2); }
 .shr-invite-link code { direction: ltr; text-align: left; }
@@ -25,22 +27,38 @@
 .shr-cover > img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .shr-cover-chip { position: absolute; left: 12px; bottom: 12px; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--bg-soft); color: var(--text-2); }
 .shr-cover-change { position: absolute; right: 12px; top: 12px; }
-.shr-day-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
-.ts-dayrows .shr-day-row, .shr-day-row { padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 14px; }
-.shr-day-row.is-free { border-color: var(--teal); background: var(--teal-soft); }
+.shr-day-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
 .shr-hidden-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--bg-soft); }
 .shr-take-list { display: flex; flex-direction: column; gap: 8px; }
-.shr-take-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color var(--motion-fast) var(--ease-paper), border-color var(--motion-fast) var(--ease-paper); }
+.shr-take-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color var(--motion-fast) var(--ease-paper), border-color var(--motion-fast) var(--ease-paper); }
 .shr-take-row:hover { background: var(--bg-soft); border-color: var(--teal); }
+.shr-take-row:disabled { cursor: progress; }
 .shr-take-icon { display: flex; align-items: center; justify-content: center; flex: none; width: 38px; height: 38px; border-radius: 12px; background: var(--bg-soft); color: var(--text-2); }
 .shr-take-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.shr-day-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 56px; padding: 6px 4px; border: 1.5px solid var(--line); border-radius: 14px; background: transparent; color: var(--text-2); font: inherit; cursor: pointer; transition: background-color var(--motion-fast) var(--ease-paper), border-color var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper); }
+.shr-day-tile:disabled { cursor: default; }
+.shr-day-tile.is-free { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-deep); }
+.shr-day-tag { font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.shr-day-num { font-family: var(--font-display); font-size: 18px; font-weight: 800; line-height: 1; }
+/* Free / Premium control. Its glider is the group's ::before, moved by data-layout. */
+.shr-seg { position: relative; align-self: flex-start; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--card); }
+.shr-seg::before { content: ''; position: absolute; z-index: 0; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 6px) / 2); border-radius: 999px; background: var(--text); pointer-events: none; transition: left var(--motion-med) var(--ease-glide); }
+.shr-seg[data-layout='premium']::before { left: calc(50% + 1px); }
+.shr-seg button { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 18px; border: 0; border-radius: 999px; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: color var(--motion-med) var(--ease-glide); }
+.shr-seg button[aria-pressed='true'] { color: var(--bg); }
+.shr-seg button:focus-visible { outline: none; box-shadow: var(--ring); }
+.shr-more-toggle { align-self: flex-start; }
+.shr-member-row.is-entering { animation: shr-member-in var(--motion-med) var(--ease-paper) backwards; }
 .shr-qr { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .shr-qr-image { animation: shr-fade-in var(--motion-med) var(--ease-paper) backwards; }
 .shr-qr-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+@keyframes shr-member-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes shr-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .shr-take-row { transition: none; }
   .shr-qr-image { animation: none; }
+  .shr-seg::before, .shr-seg button, .shr-day-tile { transition: none; }
+  .shr-member-row.is-entering { animation: none; }
 }
 .share-tablist {
   display: flex;

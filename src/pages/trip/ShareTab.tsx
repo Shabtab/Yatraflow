@@ -33,6 +33,8 @@ import { Avatar, Chip, ConfirmDialog, CopyButton, Field, FormErrorSummary, Modal
 import { StateBlock } from '../../components/page/StateBlock'
 import { Surface } from '../../components/page/Surface'
 import { PrintExport } from '../../components/PrintExport'
+import { SegmentedTabs } from '../../components/page/SegmentedTabs'
+import { presenceAttrs, usePresenceList } from '../../lib/usePresenceList'
 import { cap, timeAgo } from './shared'
 
 // The three-column layout starts here (#1012). The same width is written in
@@ -92,9 +94,8 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
       <span className="share-intent share-intent--info">3 · Keep a record</span>
       <h3 className="shr-card-title">Take it with you</h3>
       <p className="hint-text shr-snapshot-description">
-        Take the whole plan anywhere. The trip sits inside the link, so the reader&rsquo;s browser unpacks it and no
-        server holds a copy. Two things follow. Anyone who holds the link can read the trip, and you cannot take the
-        link back. It is not registered anywhere. Treat it like a key, and share it only with the people you mean to.
+        Anyone with a snapshot link can read the whole trip, and you cannot take the link back. The trip sits inside
+        the link, so no server keeps a copy.
       </p>
       <div className="shr-take-list">
         <button type="button" className="shr-take-row" title="One calendar event per day plus timed events for flights and fixed commitments. Imports into Google/Apple/Outlook calendars"
@@ -103,19 +104,19 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
           <span className="shr-take-text"><b className="small">Add to calendar</b><span className="small muted">One event per day, plus timed events</span></span>
           <InlineIcon icon={ChevronRight} size={16} gap={0} />
         </button>
+        <PrintExport trip={trip} legCorrections={legCorrections} variant="row" />
         <button type="button" className="shr-take-row" onClick={() => downloadTripJson(trip, publication)}>
           <span className="shr-take-icon"><InlineIcon icon={Download} size={16} gap={0} /></span>
           <span className="shr-take-text"><b className="small">Download JSON</b><span className="small muted">Everything, to keep or import later</span></span>
           <InlineIcon icon={ChevronRight} size={16} gap={0} />
         </button>
-        <ImportTripButton ownerId={me.id} onNavigate={onNavigate} className="btn btn-outline btn-sm" />
-        <PrintExport trip={trip} legCorrections={legCorrections} />
-      </div>
-      <div className="shr-snapshot-actions">
-        <button className="btn btn-outline btn-sm" onClick={makeLink} disabled={busy} aria-busy={busy}>
-          <InlineIcon icon={Link2} size={13} gap={4} />{busy ? 'Building…' : 'Create snapshot link'}
+        <button type="button" className="shr-take-row" onClick={makeLink} disabled={busy} aria-busy={busy}>
+          <span className="shr-take-icon"><InlineIcon icon={Link2} size={16} gap={0} /></span>
+          <span className="shr-take-text"><b className="small">{busy ? 'Building…' : 'Create snapshot link'}</b><span className="small muted">One link holds the whole plan</span></span>
+          <InlineIcon icon={ChevronRight} size={16} gap={0} />
         </button>
       </div>
+      <ImportTripButton ownerId={me.id} onNavigate={onNavigate} className="btn btn-ghost btn-sm" />
       {link && (
         <div className="share-link-box shr-snapshot-link">
           <code className="shr-snapshot-url" title={link}>{link}</code>
@@ -143,7 +144,7 @@ const DEFAULT_WARNINGS = ['All costs are estimates based on typical prices. Veri
  *  now chooses which days are the free preview, whether the itinerary is
  *  premium at all (empty/₹0 price = entirely free), and the reader-facing
  *  copy — pre-filled from the live publication when updating. */
-function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone, onWriting, saveErr, setSaveErr, publishRead, legCorrections }: {
+function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone, onWriting, saveErr, setSaveErr, publishRead, legCorrections, hiddenCard }: {
   legCorrections?: Record<string, LegEstimate>
   trip: Trip
   pub: PublishedItinerary | undefined
@@ -169,6 +170,8 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   /** The publish status read. The form can stay open while it is pending or
    *  failed, but its submit waits for a read that succeeded (#704). */
   publishRead: ReadState
+  /** The hidden-from-public card. It sits just above Publish, where the owner reads it last. */
+  hiddenCard?: ReactNode
 }) {
   const defaultTagline = `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`
   // The draft wins over a live row: it is the freshest intent the creator
@@ -182,6 +185,11 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   const [bestSeason, setBestSeason] = useState(draft?.bestSeason ?? pub?.bestSeason ?? '')
   const [tips, setTips] = useState(() => (draft?.travelTips ?? pub?.travelTips ?? DEFAULT_TRAVEL_TIPS).join('\n'))
   const [cta, setCta] = useState(draft?.subscriberCta ?? pub?.subscriberCta ?? '')
+  // #1012 R2: Free or Premium is a choice of its own. A saved price above zero opens on Premium.
+  const [premium, setPremium] = useState(() => Number(price) > 0)
+  // The reader-facing copy sits behind "More details". It opens when any of it differs from the default.
+  const [moreOpen, setMoreOpen] = useState(() =>
+    tagline !== defaultTagline || bestSeason !== '' || tips !== DEFAULT_TRAVEL_TIPS.join('\n') || cta !== '')
   // #389 — F-15, ported from CreateTrip rather than invented a second time.
   // The form had ONE `err: string` driving ONE `role="alert"` banner at the
   // bottom: a screen-reader user heard "Premium days need a call-to-action" and
@@ -212,7 +220,8 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
     : 'Publishing waits until this trip’s publish status has loaded.'
 
   const priceNum = price.trim() === '' ? 0 : Number(price)
-  const entirelyFree = price.trim() === '' || priceNum === 0
+  // Free means Premium is off. publishValidation refuses a Premium price of 0.
+  const entirelyFree = !premium
   const allIndexes = trip.days.map(d => d.index)
   const hasPremiumDay = !entirelyFree && free.size < trip.days.length
   // The publication's cover defaults to the generated scene that fits the
@@ -224,6 +233,14 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   const defaultArt = defaultArtId && defaultArtUrl ? { id: defaultArtId, url: defaultArtUrl } : null
   const coverSrc = trip.coverImageUrl?.trim() || defaultArt?.url || null
   const coverEditing = coverOpen || !!errs.cover
+  // The details region stays open while its CTA holds an error, as the cover picker does.
+  const moreEditing = moreOpen || !!errs.cta
+  // The one-line preview under the day tiles, in words.
+  const planLine = entirelyFree
+    ? 'Entirely free. Every day is viewable.'
+    : free.size >= trip.days.length
+      ? 'Every day is free. Lock at least one day to charge.'
+      : `${free.size} of ${trip.days.length} days free. The other ${trip.days.length - free.size} are premium${priceNum > 0 ? ` at ${formatInr(priceNum)}` : ''}.`
 
   /** #389 — one field's edit clears that field's message and nothing else, so
    *  fixing the price does not wipe a still-true complaint about the CTA. */
@@ -233,6 +250,26 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
     delete next[field]
     return next
   })
+
+  /** Premium turns the price field on. That field takes focus once it mounts. */
+  function choosePremium() {
+    setPremium(true)
+    setSaveErr(null)
+    window.setTimeout(() => fieldRefs.current.price?.focus(), 0)
+  }
+
+  /** Free clears the price, and the price and free-day messages that no longer apply. */
+  function chooseFree() {
+    setPremium(false)
+    setPrice('')
+    setSaveErr(null)
+    setErrs(prev => {
+      const next = { ...prev }
+      delete next.price
+      delete next.freeDays
+      return next
+    })
+  }
 
   /** F-15: focus the FIRST invalid field in the order the checks run, so a
    *  keyboard user is taken to the topmost thing needing a fix. A field with no
@@ -247,15 +284,13 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
     }
   }
 
-  /** A cover error opens the picker, which mounts the focus target. The focus
-   *  waits one tick so the picker is in the DOM before focus moves to it. */
+  /** A cover error opens the picker, and a CTA error opens More details. Either one
+   *  mounts its focus target, so focus waits one tick for the DOM to show it. */
   function reportErrors(bad: Record<string, string>) {
-    if (bad.cover) {
-      setCoverOpen(true)
-      window.setTimeout(() => focusFirstInvalid(bad), 0)
-    } else {
-      focusFirstInvalid(bad)
-    }
+    if (bad.cover) setCoverOpen(true)
+    if (bad.cta) setMoreOpen(true)
+    if (bad.cover || bad.cta) window.setTimeout(() => focusFirstInvalid(bad), 0)
+    else focusFirstInvalid(bad)
   }
 
   function toggleDay(index: number) {
@@ -414,74 +449,80 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
       {/* The picker's own message wins over the form's, so this is a fallback:
           it only shows when the picker has nothing of its own to say. */}
       {errs.cover && !coverEditing && <p className="err-text" id="pub-cover-err" role="status" aria-live="polite">{errs.cover}</p>}
-      <Field label="Tagline" hint="One line that sells the route on Explore and the public page.">
-        <input className="input" value={tagline} onChange={e => { setTagline(e.target.value); setSaveErr(null) }} maxLength={140} />
-      </Field>
-      <div className="form-row">
+      {/* Free or Premium. The control is two pressed buttons, so its glider moves
+          between them. Premium opens the price field, and Free clears the price. */}
+      <div className="ts-subhead"><b>Access</b></div>
+      <SegmentedTabs semantics="toggle" className="shr-seg" label="Free or Premium"
+        value={premium ? 'premium' : 'free'} onChange={key => (key === 'premium' ? choosePremium() : chooseFree())}
+        items={[{ key: 'free', label: 'Free' }, { key: 'premium', label: 'Premium' }]} />
+      {premium && (
         <Field label="Premium price (₹)" error={errs.price} hint={priceNum > 0
-          // The floor, not the rate: the ladder charges 15% up to ₹25,000 of
-          // LIFETIME gross and 10% after, so a price seen on its own can only
-          // honestly promise the least a creator keeps. Pricing is the moment
-          // this number matters, and the hub is too late to inform it.
-          //
-          // Floored, because `formatInr` rounds: a net of ₹172.55 must not be
-          // promised as ₹173 — a figure you can *at least* count on is the only
-          // one this sentence is allowed to state.
+          // The floor, not the rate: a price seen alone can only promise the least
+          // a creator keeps. Floored, because formatInr rounds up.
           ? `At ${formatInr(priceNum)} a sale nets you at least ${formatInr(Math.floor(netOfFeeInr(priceNum)))}. The platform fee is ${PLATFORM_FEE_SUMMARY}.`
-          : 'Leave empty or 0 for an entirely free itinerary.'}>
+          : 'Enter the price readers pay to unlock the premium days.'}>
           <input className="input" type="number" min={0} inputMode="numeric" placeholder="e.g. 199"
             ref={el => { fieldRefs.current.price = el }}
             value={price} onChange={e => { setPrice(e.target.value); clearErr('price'); setSaveErr(null) }} />
         </Field>
-        <Field label="Best season" hint="Optional. Shown as practical guidance.">
-          <input className="input" value={bestSeason} onChange={e => { setBestSeason(e.target.value); setSaveErr(null) }} placeholder="e.g. Sep–Mar" />
-        </Field>
-      </div>
-      <Field label="Travel tips" hint="One per line.">
-        <textarea className="textarea" rows={3} value={tips} onChange={e => { setTips(e.target.value); setSaveErr(null) }} />
-      </Field>
-      <Field label="Subscriber call-to-action" error={errs.cta} hint={hasPremiumDay ? 'Required while any day is premium.' : 'Used on premium days. Add one before charging.'}>
-        <input className="input" value={cta} ref={el => { fieldRefs.current.cta = el }}
-          onChange={e => { setCta(e.target.value); clearErr('cta'); setSaveErr(null) }} placeholder="e.g. Full checklist + stay contacts." />
-      </Field>
+      )}
 
       <div className="ts-subhead">
         <b>Free preview days</b>
-        {entirelyFree && <span className="small muted">Entirely free. Every day is viewable.</span>}
+        <span className="small muted">{planLine}</span>
       </div>
-      {/* The day picker's focus target: the group, not one button — moving focus
-          to an arbitrary day would be worse than moving it to the group that
-          owns the choice. `tabIndex={-1}` is the a11y-sanctioned way to make a
-          non-interactive group focusable for exactly this. */}
-      <div className="ts-dayrows shr-day-grid" ref={el => { fieldRefs.current.freeDays = el }} tabIndex={-1}
+      {/* The group takes focus, not one day, because the choice belongs to the group. */}
+      <div className="shr-day-grid" ref={el => { fieldRefs.current.freeDays = el }} tabIndex={-1}
         role="group" aria-label="Free preview days"
         aria-invalid={errs.freeDays ? true : undefined}
         aria-describedby={errs.freeDays ? 'pub-free-err' : undefined}>
         {trip.days.map(d => {
           const isFree = entirelyFree || free.has(d.index)
+          const name = `Day ${d.index + 1}${d.title ? ` · ${d.title}` : ''}`
           return (
-            <div key={d.id} className={`shr-day-row row-between${isFree ? ' is-free' : ''}`}>
-              <span className="small">Day {d.index + 1}{d.title ? ` · ${d.title}` : ''}</span>
-              {/* Marigold is for money only (#1012), so the premium day is an outline
-                  control with a lock. Its toggle, pressed state and label are unchanged. */}
-              <button type="button" className="btn btn-outline btn-sm"
-                disabled={entirelyFree} aria-pressed={!isFree}
-                aria-label={`Day ${d.index + 1}${d.title ? ` · ${d.title}` : ''}: ${isFree ? 'Free' : 'Premium'}`}
-                onClick={() => toggleDay(d.index)}>
-                {isFree ? <>Free</> : <><InlineIcon icon={Lock} size={11} gap={3} />Premium</>}
-              </button>
-            </div>
+            // A small square tile. Its pressed state (premium) and its label are the same as the old row.
+            <button key={d.id} type="button" className={`shr-day-tile${isFree ? ' is-free' : ''}`}
+              disabled={entirelyFree} aria-pressed={!isFree} title={name}
+              aria-label={`${name}: ${isFree ? 'Free' : 'Premium'}`}
+              onClick={() => toggleDay(d.index)}>
+              <span className="shr-day-tag">Day</span>
+              <span className="shr-day-num">{d.index + 1}</span>
+              {!isFree && <InlineIcon icon={Lock} size={10} gap={0} />}
+            </button>
           )
         })}
       </div>
-      {/* Field-tied, so POLITE — the summary above owns the one assertive beat. */}
+      {/* Field-tied, so the message is polite. The summary above carries the assertive announcement. */}
       {errs.freeDays && <p className="err-text" id="pub-free-err" role="status" aria-live="polite">{errs.freeDays}</p>}
+
+      <button type="button" className="btn btn-ghost btn-sm shr-more-toggle" aria-expanded={moreEditing}
+        aria-controls="pub-more-details" onClick={() => setMoreOpen(open => !open)}>
+        More details
+      </button>
+      {/* The copy the reader sees. Hidden, not unmounted, so every field ref stays
+          attached while the region is closed. */}
+      <div id="pub-more-details" hidden={!moreEditing}>
+        <Field label="Tagline" hint="One line that sells the route on Explore and the public page.">
+          <input className="input" value={tagline} onChange={e => { setTagline(e.target.value); setSaveErr(null) }} maxLength={140} />
+        </Field>
+        <Field label="Best season" hint="Optional. Shown as practical guidance.">
+          <input className="input" value={bestSeason} onChange={e => { setBestSeason(e.target.value); setSaveErr(null) }} placeholder="e.g. Sep–Mar" />
+        </Field>
+        <Field label="Travel tips" hint="One per line.">
+          <textarea className="textarea" rows={3} value={tips} onChange={e => { setTips(e.target.value); setSaveErr(null) }} />
+        </Field>
+        <Field label="Subscriber call-to-action" error={errs.cta} hint={hasPremiumDay ? 'Required while any day is premium.' : 'Used on premium days. Add one before charging.'}>
+          <input className="input" value={cta} ref={el => { fieldRefs.current.cta = el }}
+            onChange={e => { setCta(e.target.value); clearErr('cta'); setSaveErr(null) }} placeholder="e.g. Full checklist + stay contacts." />
+        </Field>
+      </div>
 
       {/* #389 — the ONE assertive banner stays, and it stays the SUMMARY. It is
           the failed-WRITE case only now: a validation failure speaks through
           FormErrorSummary plus the field messages, so this line is no longer the
           only way to hear about six different rules, which is what made it
           useless for locating one. */}
+      {hiddenCard}
       {saveErr && <p className="err-text ts-warn-note" role="alert">{saveErr}</p>}
       {/* The fieldset carries the publish-status gate (#704). A disabled fieldset
           disables the button inside it, and the button keeps its own owner and
@@ -663,6 +704,25 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
     toast('Unpublished. Removed from Explore')
   }
 
+  // #1012 R2: the member list. usePresenceList plays a removed member's exit. A
+  // joined member's entrance needs a baseline: the ids present at the first paint.
+  const members = trip.members ?? []
+  const { entries: memberEntries, attachList: attachMembers } = usePresenceList(members, m => m.userId)
+  const [joinBaseline, setJoinBaseline] = useState<Set<string> | null>(() =>
+    members.length > 0 ? new Set(members.map(m => m.userId)) : null)
+  // Seed the baseline from the first list that has members. This guarded set during
+  // render is React's pattern for state that follows a prop. An effect would cost a render.
+  if (joinBaseline === null && members.length > 0) setJoinBaseline(new Set(members.map(m => m.userId)))
+
+  // #1012: what the public copy leaves out. Only the two items the publish path
+  // was checked against are listed (docs HIDDEN-AUDIT).
+  const hiddenCard = (
+    <div className="shr-hidden-card">
+      <span className="shr-field-label">Hidden from the public copy</span>
+      <span className="small">Crew names, and the booking reference on each flight.</span>
+    </div>
+  )
+
   // The body of each panel. Narrow screens wrap it in a tab panel; wide screens
   // place it in a column. The content is written once, so the two layouts
   // cannot drift apart.
@@ -705,26 +765,31 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           {inviteCode && (
             <div className="shr-join-tile">
               <span className="shr-join-label">Join code</span>
-              <div className="shr-join-code-row">
-                <code className="shr-join-code" aria-label={`Trip code ${inviteCode}`}>{inviteCode}</code>
-                <CopyButton text={inviteCode} label="Copy code" />
+              <div className="shr-join-row">
+                <div className="shr-join-code-row">
+                  <code className="shr-join-code" aria-label={`Trip code ${inviteCode}`}>{inviteCode}</code>
+                  <CopyButton text={inviteCode} label="Copy code" />
+                </div>
+                <span className="small muted shr-join-caption">Read it out loud. Friends type it on the home screen.</span>
               </div>
-              <span className="small muted">Read it out loud. Friends type it on the home screen</span>
             </div>
           )}
           <hr className="divider" />
           <h3 className="shr-card-title">Members and roles · {(trip.members ?? []).length}</h3>
-          <div className="shr-members">
-            {(trip.members ?? []).length === 0 ? (
+          <div className="shr-members" ref={attachMembers}>
+            {memberEntries.length === 0 ? (
               <div className="shr-state">
                 <StateBlock kind="empty" size="compact" title="No one is on this trip yet."
                   body="Share the invite link above and the travellers who join appear here."
                   art={<Mascot pose="wave" size={96} />} />
               </div>
-            ) : (trip.members ?? []).map(m => {
+            ) : memberEntries.map(({ item: m, key, exiting }) => {
               const u = userById(m.userId)
+              // A member who joined after the first paint rises in once. The baseline holds
+              // the crew from that paint, so opening the tab never animates the existing rows.
+              const entering = !exiting && joinBaseline !== null && !joinBaseline.has(m.userId)
               return (
-                <div key={m.userId} className="feed-item shr-member-row">
+                <div key={key} {...presenceAttrs({ exiting })} className={`feed-item shr-member-row${entering ? ' is-entering' : ''}`}>
                   <Avatar user={u} size="lg" />
                   <div className="shr-member-details">
                     {/* #800: a crew member's account email is PRIVATE. Being on the
@@ -789,7 +854,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           <span className="share-intent share-intent--saffron">2 · Share publicly</span>
           <h3 className="shr-card-title">Publish as public itinerary</h3>
           <p className="hint-text shr-publication-description">
-            List this trip on Explore so anyone can discover and fork it. Choose which days are the free preview. The rest sit behind a premium placeholder (no real payments in this MVP).
+            List this trip on Explore. Pick the free preview days. No real payments in this MVP.
           </p>
           {/* Loading, failed and "not published" are three different statements
               (#704). The last one is said only after a read that succeeded.
@@ -828,17 +893,13 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
                 </button>} />
             </div>
           )}
-          {/* #1012 — what the public copy leaves out. Only the two items the
-              publish path was checked against are listed (docs HIDDEN-AUDIT). */}
-          <div className="shr-hidden-card">
-            <span className="shr-field-label">Hidden from the public copy</span>
-            <span className="small">Crew names, and the booking reference on each flight.</span>
-          </div>
           {/* The form reads its fields when it mounts. It mounts only once the
               status has loaded, stays open through a later refresh, and remounts
-              when the publication changes (#704). */}
-          {mount.mounted && (
+              when the publication changes (#704). The hidden card sits inside the
+              form, just above Publish. Until then it shows on its own. */}
+          {mount.mounted ? (
             <PublicationForm key={formKey} legCorrections={legCorrections} trip={trip} pub={pub} draft={draft} live={pubLive} isOwner={isOwner} creatorId={me.id}
+              hiddenCard={hiddenCard}
               publishRead={publishRead}
               onDone={wasPublished => {
                 // A published draft is spent. A later remount must not seed the form from it again.
@@ -847,7 +908,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
               }}
               onWriting={writing => setFrozenKey(writing ? publishFormKey(pub) : null)}
               saveErr={saveErr} setSaveErr={setSaveErr} />
-          )}
+          ) : hiddenCard}
           {pub && isOwner && pubLive && (
             <button className="btn btn-ghost btn-sm shr-unpublish-action" onClick={() => setPendingUnpublish(true)}>Unpublish</button>
           )}

@@ -67,8 +67,10 @@ describe('Share tab: danger zone, record and marigold', () => {
     expect(tab).toMatch(/btn btn-saffron" disabled=\{!isOwner \|\| busy\}/)
   })
 
-  it('the snapshot link is an outline button', () => {
-    expect(tab).toMatch(/<button className="btn btn-outline btn-sm" onClick=\{makeLink\}/)
+  it('the snapshot link is one of the four equal take-it rows', () => {
+    expect(tab).toMatch(/<button type="button" className="shr-take-row" onClick=\{makeLink\}/)
+    expect(tab.match(/className="shr-take-row"/g)).toHaveLength(3)
+    expect(tab).toContain('<PrintExport trip={trip} legCorrections={legCorrections} variant="row" />')
   })
 
   it('the calendar copy keeps one event per day until the export changes', () => {
@@ -117,6 +119,31 @@ describe('Share tab: motion and reduced motion', () => {
   })
 })
 
+describe('Share tab: round 2 (REVIEW-1)', () => {
+  it('Free or Premium is a toggle on the shr-seg glider, with no raw Premium price for Free', () => {
+    expect(tab).toMatch(/<SegmentedTabs semantics="toggle" className="shr-seg"/)
+    expect(tab).toContain('const entirelyFree = !premium')
+    expect(tab).toContain("{premium && (\n        <Field label=\"Premium price (₹)\"")
+  })
+
+  it('the reader copy sits behind More details, which the CTA error opens', () => {
+    expect(tab).toContain('aria-expanded={moreEditing}')
+    expect(tab).toContain('<div id="pub-more-details" hidden={!moreEditing}>')
+    expect(tab).toMatch(/if \(bad\.cta\) setMoreOpen\(true\)/)
+  })
+
+  it('the member rows come from usePresenceList, and a join is the only entrance', () => {
+    expect(tab).toContain('usePresenceList(members, m => m.userId)')
+    expect(tab).toContain("className={`feed-item shr-member-row${entering ? ' is-entering' : ''}`}")
+    expect(css).toContain('.shr-member-row.is-entering { animation: shr-member-in')
+  })
+
+  it('the DAY tiles are small square buttons, six to a row', () => {
+    expect(tab).toContain('className={`shr-day-tile${isFree ? \' is-free\' : \'\'}`}')
+    expect(css).toMatch(/\.shr-day-grid \{ display: grid; grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/)
+  })
+})
+
 describe('Share tab: compact cover', () => {
   it('the full picker mounts only when the cover is open or holds an error', () => {
     expect(tab).toContain('const coverEditing = coverOpen || !!errs.cover')
@@ -124,6 +151,6 @@ describe('Share tab: compact cover', () => {
   })
 
   it('a cover error opens the picker before focus moves to it', () => {
-    expect(tab).toMatch(/if \(bad\.cover\) \{\s*setCoverOpen\(true\)/)
+    expect(tab).toMatch(/if \(bad\.cover\) setCoverOpen\(true\)/)
   })
 })
