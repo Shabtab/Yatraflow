@@ -145,8 +145,10 @@ describe('#388 — a stale error never sits beside a field the user just fixed',
       const line = shareTab.slice(idx, shareTab.indexOf('\n', idx))
       expect(line, `${setter} does not clear the write-failure notice`).toContain('setSaveErr(null)')
     }
-    // The two fields that own a rule clear exactly their own key.
-    for (const [setter, field] of [['setPrice(', 'price'], ['setCta(', 'cta']] as const) {
+    // The two fields that own a rule clear exactly their own key. Anchor on each
+    // input's edit handler: a bare `setPrice(` matches the Free-plan reset in
+    // chooseFree first, which is a different call (it deletes the key outright).
+    for (const [setter, field] of [['setPrice(e.target.value)', 'price'], ['setCta(e.target.value)', 'cta']] as const) {
       const idx = shareTab.indexOf(setter)
       expect(idx, `${setter} not found`).toBeGreaterThan(-1)
       const line = shareTab.slice(idx, shareTab.indexOf('\n', idx))
