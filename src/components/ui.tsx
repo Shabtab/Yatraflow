@@ -159,6 +159,7 @@ export function Field(props: {
   label: string
   error?: string
   hint?: string
+  describeHint?: boolean
   /** A decorative glyph drawn inside the control's leading edge. The caller
    *  passes it with aria-hidden. A page styles `.field-lead`. */
   lead?: React.ReactNode
@@ -185,7 +186,7 @@ export function Field(props: {
     // validate themselves (the stop editor's source link, for one).
     const extra: Partial<{ id: string; 'aria-describedby': string; 'aria-invalid': boolean }> = { id: controlId }
     if (props.error) { extra['aria-describedby'] = errId; extra['aria-invalid'] = true }
-    else if (props.hint) extra['aria-describedby'] = hintId
+    else if (props.hint && props.describeHint !== false) extra['aria-describedby'] = hintId
     return React.cloneElement(el, extra)
   })
   return (
