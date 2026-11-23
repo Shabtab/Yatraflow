@@ -186,13 +186,13 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           </div>
         </div>
         <div className="card auth-card" data-mode={mode}>
-          <h1 className="auth-crossfade" aria-label={mode === 'login' ? 'Welcome back' : 'Create your account'}>
-            <span aria-hidden="true" className="auth-login-copy">Welcome back</span>
-            <span aria-hidden="true" className="auth-signup-copy">Create your account</span>
+          <h1 className="auth-crossfade">
+            <span aria-hidden={mode !== 'login'} className="auth-login-copy">Welcome back</span>
+            <span aria-hidden={mode !== 'signup'} className="auth-signup-copy">Create your account</span>
           </h1>
-          <p className="muted small auth-description auth-crossfade" aria-label={mode === 'login' ? 'Log in to your trip plans.' : 'Free to plan. No card needed.'}>
-            <span aria-hidden="true" className="auth-login-copy">Log in to your trip plans.</span>
-            <span aria-hidden="true" className="auth-signup-copy">Free to plan. No card needed.</span>
+          <p className="muted small auth-description auth-crossfade">
+            <span aria-hidden={mode !== 'login'} className="auth-login-copy">Log in to your trip plans.</span>
+            <span aria-hidden={mode !== 'signup'} className="auth-signup-copy">Free to plan. No card needed.</span>
           </p>
 
           <SegmentedTabs semantics="tablist" className="tabbar tabbar-sunken auth-tabs" label="Login or sign up" items={AUTH_TABS} value={mode} onChange={switchMode} />
@@ -238,9 +238,9 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
             {error && <div className="err-text auth-submit-error" role="alert" tabIndex={-1} ref={errRef}><InlineIcon icon={TriangleAlert} size={13} gap={4} />{error}</div>}
             <button type="submit" className="btn btn-primary auth-submit" disabled={saving}>
               {saving && <RefreshCw className="auth-spin" size={15} aria-hidden="true" />}
-              <span className="auth-crossfade" aria-label={saving ? (mode === 'login' ? 'Signing in…' : 'Creating account…') : mode === 'login' ? 'Log in' : 'Create account'}>
-                <span aria-hidden="true" className="auth-login-copy">{saving ? 'Signing in…' : 'Log in'}</span>
-                <span aria-hidden="true" className="auth-signup-copy">{saving ? 'Creating account…' : 'Create account'}</span>
+              <span className="auth-crossfade">
+                <span aria-hidden={mode !== 'login'} className="auth-login-copy">{saving ? 'Signing in…' : 'Log in'}</span>
+                <span aria-hidden={mode !== 'signup'} className="auth-signup-copy">{saving ? 'Creating account…' : 'Create account'}</span>
               </span>
             </button>
             <div className="auth-reset-clip" inert={mode !== 'login'} aria-hidden={mode !== 'login'}>
