@@ -91,8 +91,13 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 .auth-card[data-mode='signup'] .auth-extra, .auth-card[data-mode='login'] .auth-reset-help { opacity: 1; transform: translateY(0); }
 .auth-card[data-mode='login'] .auth-extra, .auth-card[data-mode='signup'] .auth-reset-help { transform: translateY(8px); }
 .auth-crossfade { display: grid; }
-.auth-crossfade > span { grid-area: 1 / 1; transition: opacity var(--motion-med) var(--ease-glide); }
-.auth-card[data-mode='login'] .auth-signup-copy, .auth-card[data-mode='signup'] .auth-login-copy { opacity: 0; }
+.auth-crossfade > span {
+  grid-area: 1 / 1;
+  transition: opacity var(--motion-fast) var(--ease-glide) calc(var(--motion-med) - var(--motion-fast));
+}
+.auth-card[data-mode='login'] .auth-signup-copy, .auth-card[data-mode='signup'] .auth-login-copy {
+  opacity: 0; transition-delay: initial;
+}
 
 /* Inputs: the owner's variables first, then the few properties the owner does not own. */
 .auth-form .input {
