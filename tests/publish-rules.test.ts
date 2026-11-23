@@ -359,8 +359,12 @@ describe('#389 — the publish form reports a rule against its own field', () =>
   it('focuses the FIRST invalid field, in form order', () => {
     // The bug: one banner at the bottom, no field marked, focus left on the
     // submit button. A keyboard user had no way to find which of six rules failed.
-    expect(SHARE).toContain('const first = PUBLISH_FIELD_ORDER.find(k => k in next)')
+    // #1012 moved this into `focusFirstInvalid(bad)`, which both the submit
+    // and the refused-write path call. The order and the fallback are unchanged.
+    expect(SHARE).toContain('const first = PUBLISH_FIELD_ORDER.find(k => k in bad)')
     expect(SHARE).toMatch(/const target = first \? fieldRefs\.current\[first\] : null/)
+    expect(SHARE).toMatch(/reportErrors\(next\)/)
+    expect(SHARE).toMatch(/reportErrors\(e\.errors\)/)
     expect(SHARE).toContain('if (target) target.focus()')
     // The fallback for a field with no focusable element of its own, made
     // focusable for the occasion.

@@ -1,9 +1,9 @@
 // ============ Trip workspace — Share tab ============
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 // Includes SnapshotCard — ShareTab is its only consumer.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { InlineIcon } from '../../components/icons'
-import { CalendarDays, Download, Link2, Lock } from 'lucide-react'
+import { CalendarDays, ChevronRight, Download, Link2, Lock } from 'lucide-react'
 import type { Trip, PublishedItinerary } from '../../data/types'
 import { useDb, userById, setMemberRole, removeMember, restoreMember, readMemberAccess, publishItinerary, unpublishItinerary, ensureInviteCode, rereadPublicSlices } from '../../store/store'
 import type { AccessMember, MemberAccessState } from '../../lib/memberAccess'
@@ -12,7 +12,8 @@ import { ImportTripButton } from '../../components/ImportTripButton'
 import { CoverImagePicker } from '../../components/CoverImagePicker'
 import { currentPublicShareUrl, withShareRef } from '../../lib/shareUrl'
 import { downloadTripIcs } from '../../lib/ics'
-import { nativeCopyText } from '../../lib/native'
+import { nativeCopyText, openExternal } from '../../lib/native'
+import { whatsAppSendUrl } from '../../lib/whatsAppShare'
 import { useTablist } from '../../hooks/useTablist'
 import { computeTotals, formatInr, type LegEstimate } from '../../lib/engine'
 import { publishablePlannedKm } from '../../lib/creatorFacts'
@@ -28,11 +29,24 @@ import { pubArtId } from '../../lib/pubDayArt'
 import { artCoverOrigin, artCoverUrl } from '../../lib/artCover'
 import { sliceState, rowsView, type ReadState, type RowsView } from '../../lib/readState'
 import type { PublicationDraft } from '../../lib/itinerarySpec'
-import { Avatar, Chip, ConfirmDialog, CopyButton, Field, FormErrorSummary, toast, undoToast } from '../../components/ui'
+import { Avatar, Chip, ConfirmDialog, CopyButton, Field, FormErrorSummary, Modal, toast, undoToast, useMedia } from '../../components/ui'
 import { StateBlock } from '../../components/page/StateBlock'
 import { Surface } from '../../components/page/Surface'
 import { PrintExport } from '../../components/PrintExport'
 import { cap, timeAgo } from './shared'
+
+// The three-column layout starts here (#1012). The same width is written in
+// src/styles/legacy/05-share-and-trip-ticket.css; tests pin both values.
+const SHARE_WIDE_QUERY = '(min-width: 1100px)'
+
+// The invite message and the mail link are plain text. They name the code and
+// the link, and nothing else about the trip or its members.
+function inviteMessage(code: string, link: string): string {
+  return `Join my YatraFlow trip with the code ${code}: ${link}`
+}
+function mailtoUrl(subject: string, body: string): string {
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+}
 
 // ================= Snapshot (export / import / URL share) =================
 
@@ -76,20 +90,31 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
   return (
     <Surface className="card shr-panel">
       <span className="share-intent share-intent--info">3 · Keep a record</span>
-      <h3 className="shr-card-title">Export & snapshot sharing</h3>
+      <h3 className="shr-card-title">Take it with you</h3>
       <p className="hint-text shr-snapshot-description">
         Take the whole plan anywhere. The trip sits inside the link, so the reader&rsquo;s browser unpacks it and no
         server holds a copy. Two things follow. Anyone who holds the link can read the trip, and you cannot take the
         link back. It is not registered anywhere. Treat it like a key, and share it only with the people you mean to.
       </p>
+      <div className="shr-take-list">
+        <button type="button" className="shr-take-row" title="One calendar event per day plus timed events for flights and fixed commitments. Imports into Google/Apple/Outlook calendars"
+          onClick={() => downloadTripIcs(trip, legCorrections)}>
+          <span className="shr-take-icon"><InlineIcon icon={CalendarDays} size={16} gap={0} /></span>
+          <span className="shr-take-text"><b className="small">Add to calendar</b><span className="small muted">One event per day, plus timed events</span></span>
+          <InlineIcon icon={ChevronRight} size={16} gap={0} />
+        </button>
+        <button type="button" className="shr-take-row" onClick={() => downloadTripJson(trip, publication)}>
+          <span className="shr-take-icon"><InlineIcon icon={Download} size={16} gap={0} /></span>
+          <span className="shr-take-text"><b className="small">Download JSON</b><span className="small muted">Everything, to keep or import later</span></span>
+          <InlineIcon icon={ChevronRight} size={16} gap={0} />
+        </button>
+        <ImportTripButton ownerId={me.id} onNavigate={onNavigate} className="btn btn-outline btn-sm" />
+        <PrintExport trip={trip} legCorrections={legCorrections} />
+      </div>
       <div className="shr-snapshot-actions">
-                  <ImportTripButton ownerId={me.id} onNavigate={onNavigate} className="btn btn-outline btn-sm" />
-                  <button className="btn btn-outline btn-sm" onClick={() => downloadTripJson(trip, publication)}><InlineIcon icon={Download} size={13} gap={4} />Download JSON</button>
-                  <PrintExport trip={trip} legCorrections={legCorrections} />
-                  <button className="btn btn-outline btn-sm" onClick={() => downloadTripIcs(trip, legCorrections)} title="One calendar event per day plus timed events for flights and fixed commitments. Imports into Google/Apple/Outlook calendars"><InlineIcon icon={CalendarDays} size={13} gap={4} />Add to calendar</button>
-                   <button className="btn btn-saffron btn-sm" onClick={makeLink} disabled={busy} aria-busy={busy}>
-                     <InlineIcon icon={Link2} size={13} gap={4} />{busy ? 'Building…' : 'Create snapshot link'}
-                   </button>
+        <button className="btn btn-outline btn-sm" onClick={makeLink} disabled={busy} aria-busy={busy}>
+          <InlineIcon icon={Link2} size={13} gap={4} />{busy ? 'Building…' : 'Create snapshot link'}
+        </button>
       </div>
       {link && (
         <div className="share-link-box shr-snapshot-link">
@@ -168,6 +193,10 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   const [errs, setErrs] = useState<Record<string, string>>({})
   /** first-invalid focus targets (F-15) — plain inputs and the day picker only */
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
+  // #1012: the cover is compact until someone asks to change it, or until it
+  // holds a message. The picker is mounted only while it is open, so a cover
+  // error always opens it first and the focus target exists before focus moves.
+  const [coverOpen, setCoverOpen] = useState(false)
   // A publish is a network write, and this button was the only publish control
   // in the app without a busy state (#388). Two clicks fired two upserts, two
   // `refreshedAt` stamps and two toasts — the duplicate was only prevented by
@@ -193,6 +222,8 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   const defaultArtId = pubArtId({ seed: `${trip.id}:cover`, slotPlaces: [], planPlaces })
   const defaultArtUrl = defaultArtId ? artCoverUrl(defaultArtId, artCoverOrigin()) : null
   const defaultArt = defaultArtId && defaultArtUrl ? { id: defaultArtId, url: defaultArtUrl } : null
+  const coverSrc = trip.coverImageUrl?.trim() || defaultArt?.url || null
+  const coverEditing = coverOpen || !!errs.cover
 
   /** #389 — one field's edit clears that field's message and nothing else, so
    *  fixing the price does not wipe a still-true complaint about the CTA. */
@@ -202,6 +233,30 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
     delete next[field]
     return next
   })
+
+  /** F-15: focus the FIRST invalid field in the order the checks run, so a
+   *  keyboard user is taken to the topmost thing needing a fix. A field with no
+   *  focusable element of its own falls back to its own message. */
+  function focusFirstInvalid(bad: Record<string, string>) {
+    const first = PUBLISH_FIELD_ORDER.find(k => k in bad)
+    const target = first ? fieldRefs.current[first] : null
+    if (target) target.focus()
+    else {
+      const firstErr = document.querySelector<HTMLElement>('.err-text')
+      if (firstErr) { firstErr.setAttribute('tabindex', '-1'); firstErr.focus() }
+    }
+  }
+
+  /** A cover error opens the picker, which mounts the focus target. The focus
+   *  waits one tick so the picker is in the DOM before focus moves to it. */
+  function reportErrors(bad: Record<string, string>) {
+    if (bad.cover) {
+      setCoverOpen(true)
+      window.setTimeout(() => focusFirstInvalid(bad), 0)
+    } else {
+      focusFirstInvalid(bad)
+    }
+  }
 
   function toggleDay(index: number) {
     if (free.has(index) && free.size <= 1) {
@@ -255,18 +310,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
     setErrs(next)
     setSaveErr(null)
     if (Object.keys(next).length) {
-      // F-15: move focus to the FIRST invalid field in the order the checks run
-      // below, so a keyboard user is taken to the topmost thing needing a fix
-      // rather than left on the submit button. A field with no focusable element
-      // of its own falls back to its own message, made focusable for the
-      // occasion — which is why the `.err-text` fallback exists at all.
-      const first = PUBLISH_FIELD_ORDER.find(k => k in next)
-      const target = first ? fieldRefs.current[first] : null
-      if (target) target.focus()
-      else {
-        const firstErr = document.querySelector<HTMLElement>('.err-text')
-        if (firstErr) { firstErr.setAttribute('tabindex', '-1'); firstErr.focus() }
-      }
+      reportErrors(next)
       return
     }
     setBusy(true)
@@ -314,13 +358,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
       // since the reader does need to know the publication did not happen.
       if (e instanceof PublishRejected) {
         setErrs(e.errors)
-        const first = PUBLISH_FIELD_ORDER.find(k => k in e.errors)
-        const target = first ? fieldRefs.current[first] : null
-        if (target) target.focus()
-        else {
-          const firstErr = document.querySelector<HTMLElement>('.err-text')
-          if (firstErr) { firstErr.setAttribute('tabindex', '-1'); firstErr.focus() }
-        }
+        reportErrors(e.errors)
         return
       }
       // `saveErr`, not `errs`: a write that failed is not a field's fault, and
@@ -344,16 +382,28 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         <b>Cover</b>
         <span className="small muted">Your artwork shows by default. Upload or paste a photo to replace it.</span>
       </div>
-      {/* Two of the six rules are about this control, and it took no `error`
-          prop — so a refused publish said "add a cover photo" with nothing
-          marked on the control it was talking about. The wrapper carries the
-          focus target: the picker is a group of buttons, and its own message
-          node is the focusable fallback. */}
-      <div ref={el => { fieldRefs.current.cover = el }} tabIndex={-1}
-        aria-invalid={errs.cover ? true : undefined}
-        aria-describedby={errs.cover ? 'pub-cover-err' : undefined}>
-        <CoverImagePicker trip={trip} editable={isOwner} error={errs.cover ?? null} defaultArt={defaultArt} />
+      {/* #1012 — the compact cover: the trip's own image, its chip and a Change
+          action. The picker below is the same control as before; it opens on
+          Change and stays open while it holds a message (#389). */}
+      <div className="shr-cover">
+        {coverSrc && <img src={coverSrc} alt="" />}
+        <span className="shr-cover-chip">Cover · shows on every shared link</span>
+        <button type="button" className="btn btn-outline btn-sm shr-cover-change" aria-expanded={coverEditing}
+          disabled={!isOwner} onClick={() => setCoverOpen(open => !open)}>
+          {coverEditing ? 'Done' : 'Change'}
+        </button>
       </div>
+      {/* The picker is mounted only while the cover is open. Two of the six rules
+          are about this control, and it took no `error` prop — so the wrapper
+          carries the focus target: the picker is a group of buttons, and its own
+          message node is the focusable fallback. */}
+      {coverEditing && (
+        <div ref={el => { fieldRefs.current.cover = el }} tabIndex={-1}
+          aria-invalid={errs.cover ? true : undefined}
+          aria-describedby={errs.cover ? 'pub-cover-err' : undefined}>
+          <CoverImagePicker trip={trip} editable={isOwner} error={errs.cover ?? null} defaultArt={defaultArt} />
+        </div>
+      )}
       {!trip.coverImageUrl && (
         <p className="hint-text ts-note">
           {defaultArt
@@ -363,7 +413,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
       )}
       {/* The picker's own message wins over the form's, so this is a fallback:
           it only shows when the picker has nothing of its own to say. */}
-      {errs.cover && <p className="err-text" id="pub-cover-err" role="status" aria-live="polite">{errs.cover}</p>}
+      {errs.cover && !coverEditing && <p className="err-text" id="pub-cover-err" role="status" aria-live="polite">{errs.cover}</p>}
       <Field label="Tagline" hint="One line that sells the route on Explore and the public page.">
         <input className="input" value={tagline} onChange={e => { setTagline(e.target.value); setSaveErr(null) }} maxLength={140} />
       </Field>
@@ -403,16 +453,18 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
           to an arbitrary day would be worse than moving it to the group that
           owns the choice. `tabIndex={-1}` is the a11y-sanctioned way to make a
           non-interactive group focusable for exactly this. */}
-      <div className="ts-dayrows" ref={el => { fieldRefs.current.freeDays = el }} tabIndex={-1}
+      <div className="ts-dayrows shr-day-grid" ref={el => { fieldRefs.current.freeDays = el }} tabIndex={-1}
         role="group" aria-label="Free preview days"
         aria-invalid={errs.freeDays ? true : undefined}
         aria-describedby={errs.freeDays ? 'pub-free-err' : undefined}>
         {trip.days.map(d => {
           const isFree = entirelyFree || free.has(d.index)
           return (
-            <div key={d.id} className="row-between">
+            <div key={d.id} className={`shr-day-row row-between${isFree ? ' is-free' : ''}`}>
               <span className="small">Day {d.index + 1}{d.title ? ` · ${d.title}` : ''}</span>
-              <button type="button" className={`btn btn-sm ${isFree ? 'btn-outline' : 'btn-saffron'}`}
+              {/* Marigold is for money only (#1012), so the premium day is an outline
+                  control with a lock. Its toggle, pressed state and label are unchanged. */}
+              <button type="button" className="btn btn-outline btn-sm"
                 disabled={entirelyFree} aria-pressed={!isFree}
                 aria-label={`Day ${d.index + 1}${d.title ? ` · ${d.title}` : ''}: ${isFree ? 'Free' : 'Premium'}`}
                 onClick={() => toggleDay(d.index)}>
@@ -452,6 +504,8 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
 // Danger zone is re-homed under "Plan together" (matches the approved variant).
 // Heading order is corrected (page h1 → panel h2 → card h3) via sr-only h2s.
 // Trip settings moved to its own workspace tab (#213).
+// #1012: from SHARE_WIDE_QUERY up, the three panels sit side by side with no
+// tablist. Below it, the numbered tabs stay as they were.
 
 const SHARE_TABS = [
   { id: 'plan', label: '1 · Plan together' },
@@ -488,6 +542,24 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
     return () => { alive = false }
   }, [trip.id, inviteKey])
   const inviteLink = inviteCode ? `${location.origin}/join/${inviteCode}` : ''
+  // #1012 — the QR code is drawn only when asked for, from a library loaded then.
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrSrc, setQrSrc] = useState<string | null>(null)
+  const [qrFailed, setQrFailed] = useState(false)
+  async function openQr() {
+    if (!inviteLink) return
+    setQrOpen(true)
+    setQrSrc(null)
+    setQrFailed(false)
+    try {
+      // Lazy: the QR library is fetched on the first press, never at page load (ROADMAP I-77).
+      const QR = await import('qrcode')
+      setQrSrc(await QR.toDataURL(inviteLink, { margin: 1, width: 240 }))
+    } catch (e) {
+      console.error('[yatraflow] invite QR failed', e)
+      setQrFailed(true)
+    }
+  }
   const pub = db.published.find(p => p.tripId === trip.id)
   // #350 — a soft-unpublished publication keeps its row (so buyers keep what
   // they paid for and the sales history stays whole) but it is NOT live. Every
@@ -523,6 +595,9 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   // nowhere. Reviewing and publishing stay in the creator's hands.
   const [draft, setDraft] = useState(() => takePublishDraft(trip.id))
   const [tab, setTab] = useState<ShareTabId>('plan')
+  // #1012 — three columns from SHARE_WIDE_QUERY. The first render reads the query
+  // directly, so a wide screen never flashes the tabs before the columns.
+  const wide = useMedia(SHARE_WIDE_QUERY, typeof window !== 'undefined' && window.matchMedia(SHARE_WIDE_QUERY).matches)
   const [pendingRemove, setPendingRemove] = useState<NonNullable<Trip['members']>[number] | null>(null)
   const [memberBusy, setMemberBusy] = useState(false)
   const [accessRead, setAccessRead] = useState<{ key: string; state: MemberAccessState | null } | null>(null)
@@ -588,54 +663,57 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
     toast('Unpublished. Removed from Explore')
   }
 
-  return (
-    <div className="share-tabbed">
-      <div className="share-tablist" role="tablist" aria-label="Share and trip options">
-        {SHARE_TABS.map((t, i) => (
-          <button key={t.id} ref={tabRefs(i)} type="button" role="tab"
-            id={`share-tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`share-panel-${t.id}`}
-            onClick={() => setTab(t.id)} {...tabProps(t.id, i)}
-            className={`share-tab${tab === t.id ? ' is-active' : ''}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ---- Plan together ---- */}
-      <section role="tabpanel" id="share-panel-plan" aria-labelledby="share-tab-plan"
-        className="share-panel" hidden={tab !== 'plan'}>
+  // The body of each panel. Narrow screens wrap it in a tab panel; wide screens
+  // place it in a column. The content is written once, so the two layouts
+  // cannot drift apart.
+  const panelBody: Record<ShareTabId, ReactNode> = {
+    plan: (
+      <>
         <h2 className="sr-only">Plan together</h2>
         <Surface className="card shr-panel">
           <span className="share-intent share-intent--teal">1 · Plan together</span>
           <h3 className="shr-card-title">Invite collaborators</h3>
           <p className="hint-text shr-invite-description">New members join as editors. Returning members keep their assigned role. Removed members need an owner restore.</p>
+          {/* #1012 — a labelled link, then the join code as its own tile. The link
+              and the code are two different things, so they are two blocks. */}
+          <div className="shr-invite-field" role="group" aria-labelledby="share-invite-label">
+            <span className="shr-field-label" id="share-invite-label">Invite link</span>
+            {inviteLink ? (
+              <div className="share-link-box"><code title={inviteLink}>{inviteLink}</code><CopyButton text={inviteLink} /></div>
+            ) : mintFailed ? (
+              // The code is a write, so its three outcomes are three
+              // statements. The failed one used to be a polite hint line, which a
+              // screen reader could sit through while the panel claimed nothing was
+              // wrong; the shared block announces it.
+              <div className="shr-state">
+                <StateBlock kind="failed" size="compact" title="We could not make an invite link."
+                  actions={<button type="button" className="btn btn-outline btn-sm" onClick={() => { setMintFailed(false); setMintTry(n => n + 1) }}>Try again</button>} />
+              </div>
+            ) : (
+              <div className="shr-state">
+                <StateBlock kind="loading" size="compact" title="Making your invite link…" />
+              </div>
+            )}
+            {inviteLink && (
+              <div className="shr-share-buttons">
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => openExternal(whatsAppSendUrl(inviteMessage(inviteCode ?? '', inviteLink)))}>WhatsApp</button>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => openExternal(mailtoUrl('Join my YatraFlow trip', inviteMessage(inviteCode ?? '', inviteLink)))}>Email</button>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => { void openQr() }}>Show QR</button>
+              </div>
+            )}
+          </div>
           {inviteCode && (
-            <div className="invite-code-row shr-invite-code-row">
-              <div className="invite-code-chip">
-                <code className="invite-code-text" aria-label={`Trip code ${inviteCode}`}>{inviteCode}</code>
+            <div className="shr-join-tile">
+              <span className="shr-join-label">Join code</span>
+              <div className="shr-join-code-row">
+                <code className="shr-join-code" aria-label={`Trip code ${inviteCode}`}>{inviteCode}</code>
                 <CopyButton text={inviteCode} />
               </div>
               <span className="small muted">Read it out loud. Friends type it on the home screen</span>
             </div>
           )}
-          {/* Minting the code is a write, so its three outcomes are three
-              statements. The failed one used to be a polite hint line, which a
-              screen reader could sit through while the panel claimed nothing was
-              wrong; the shared block announces it. */}
-          {inviteLink ? (
-            <div className="share-link-box"><code title={inviteLink}>{inviteLink}</code><CopyButton text={inviteLink} /></div>
-          ) : mintFailed ? (
-            <div className="shr-state">
-              <StateBlock kind="failed" size="compact" title="We could not make an invite link."
-                actions={<button type="button" className="btn btn-outline btn-sm" onClick={() => { setMintFailed(false); setMintTry(n => n + 1) }}>Try again</button>} />
-            </div>
-          ) : (
-            <div className="shr-state">
-              <StateBlock kind="loading" size="compact" title="Making your invite link…" />
-            </div>
-          )}
           <hr className="divider" />
-          <h3 className="shr-card-title">Members &amp; roles</h3>
+          <h3 className="shr-card-title">Members and roles · {(trip.members ?? []).length}</h3>
           <div className="shr-members">
             {(trip.members ?? []).length === 0 ? (
               <div className="shr-state">
@@ -670,6 +748,9 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           </div>
         </Surface>
 
+        {/* Danger zone: the app's own wording and its own rule (a removal needs
+            another member to remove). The trip's delete lives in Settings as
+            "Move to trash", so no delete action appears here (#1012). */}
         {isOwner && (trip.members ?? []).length > 1 && (
           <Surface className="card shr-panel">
             <h3 className="shr-card-title">Danger zone</h3>
@@ -699,11 +780,10 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
             {memberBusy && <p role="status" className="hint-text">Saving trip access…</p>}
           </Surface>
         )}
-      </section>
-
-      {/* ---- Share publicly ---- */}
-      <section role="tabpanel" id="share-panel-publish" aria-labelledby="share-tab-publish"
-        className="share-panel" hidden={tab !== 'publish'}>
+      </>
+    ),
+    publish: (
+      <>
         <h2 className="sr-only">Share publicly</h2>
         <Surface className="card shr-panel">
           <span className="share-intent share-intent--saffron">2 · Share publicly</span>
@@ -748,6 +828,12 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
                 </button>} />
             </div>
           )}
+          {/* #1012 — what the public copy leaves out. Only the two items the
+              publish path was checked against are listed (docs HIDDEN-AUDIT). */}
+          <div className="shr-hidden-card">
+            <span className="shr-field-label">Hidden from the public copy</span>
+            <span className="small">Crew names, and the booking reference on each flight.</span>
+          </div>
           {/* The form reads its fields when it mounts. It mounts only once the
               status has loaded, stays open through a later refresh, and remounts
               when the publication changes (#704). */}
@@ -767,11 +853,10 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           )}
           {pubLink && <div className="share-link-box shr-publication-link"><code title={pubLink}>{pubLink}</code><CopyButton text={pubLink} label="Copy" /></div>}
         </Surface>
-      </section>
-
-      {/* ---- Keep a record ---- */}
-      <section role="tabpanel" id="share-panel-record" aria-labelledby="share-tab-record"
-        className="share-panel" hidden={tab !== 'record'}>
+      </>
+    ),
+    record: (
+      <>
         <h2 className="sr-only">Keep a record</h2>
         <SnapshotCard
           trip={trip}
@@ -780,8 +865,58 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           legCorrections={legCorrections}
           publication={pub ? { ...pub } as unknown as Record<string, unknown> : undefined}
         />
-      </section>
+      </>
+    ),
+  }
 
+  return (
+    <div className="share-tabbed" data-layout={wide ? 'columns' : 'tabs'}>
+      <header className="shr-page-head">
+        <span className="shr-eyebrow">Share</span>
+        <h2 className="shr-page-title">Share this trip</h2>
+        <p className="shr-page-lede">Three different jobs, in the order people need them.</p>
+      </header>
+
+      {!wide && (
+        <div className="share-tablist" role="tablist" aria-label="Share and trip options">
+          {SHARE_TABS.map((t, i) => (
+            <button key={t.id} ref={tabRefs(i)} type="button" role="tab"
+              id={`share-tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`share-panel-${t.id}`}
+              onClick={() => setTab(t.id)} {...tabProps(t.id, i)}
+              className={`share-tab${tab === t.id ? ' is-active' : ''}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {wide ? (
+        <div className="shr-columns">
+          {SHARE_TABS.map(t => (
+            <section key={t.id} className="shr-column" data-share-column={t.id}>{panelBody[t.id]}</section>
+          ))}
+        </div>
+      ) : (
+        SHARE_TABS.map(t => (
+          <section key={t.id} role="tabpanel" id={`share-panel-${t.id}`} aria-labelledby={`share-tab-${t.id}`}
+            className="share-panel" hidden={tab !== t.id}>
+            {panelBody[t.id]}
+          </section>
+        ))
+      )}
+
+      <Modal open={qrOpen} onClose={() => setQrOpen(false)} title="Invite QR code">
+        <div className="shr-qr">
+          {qrSrc ? (
+            <img className="shr-qr-image" src={qrSrc} width={240} height={240} alt="QR code for the invite link" />
+          ) : qrFailed ? (
+            <StateBlock kind="failed" size="compact" title="Could not draw the QR code." body="The invite link still works. Copy it instead." />
+          ) : (
+            <StateBlock kind="loading" size="compact" title="Drawing the QR code…" />
+          )}
+          {inviteLink && <code className="shr-qr-link" title={inviteLink}>{inviteLink}</code>}
+        </div>
+      </Modal>
       <ConfirmDialog
         open={!!pendingRemove}
         title={`Remove ${userById(pendingRemove?.userId)?.profile.name ?? 'this member'}?`}

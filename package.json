@@ -55,11 +55,13 @@
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.73.0",
     "maplibre-gl": "^6.18.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.16",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",

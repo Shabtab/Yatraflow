@@ -2,6 +2,43 @@
 /* Replaces the cramped .two-col grid: each share concern gets its own surface
    behind an ARIA tablist. Tokens are theme-aware so this works in dark mode. */
 .share-tabbed { margin-top: 4px; }
+
+/* #1012 — Share tab, three columns from 1100px. The same width is SHARE_WIDE_QUERY
+   in ShareTab.tsx. The wider container is the Share tab's only (data-share-wide). */
+.container.yf-workspace[data-share-wide='true'] { max-width: var(--share-wide-max, 1240px); }
+.shr-page-head { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 18px; }
+.shr-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--teal-deep); }
+.shr-page-title { margin: 0; font-family: var(--font-body); font-size: 26px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; }
+.shr-page-lede { margin: 0; font-size: 14px; line-height: 1.45; color: var(--text-2); }
+.shr-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .85fr); gap: 14px; align-items: start; }
+.shr-column { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.shr-field-label, .shr-join-label { font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--text-2); }
+.shr-invite-field { display: flex; flex-direction: column; gap: 8px; }
+.shr-share-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.shr-join-tile { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 16px; background: var(--bg-soft); }
+.shr-join-code-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.shr-join-code { font-family: var(--font-display); font-size: 30px; font-weight: 800; letter-spacing: .18em; color: var(--teal-deep); }
+.shr-cover { position: relative; height: 150px; border-radius: 16px; overflow: hidden; background: var(--bg-soft); }
+.shr-cover > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.shr-cover-chip { position: absolute; left: 12px; bottom: 12px; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--bg-soft); color: var(--text-2); }
+.shr-cover-change { position: absolute; right: 12px; top: 12px; }
+.shr-day-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.shr-day-row { padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 14px; }
+.shr-day-row.is-free { border-color: var(--teal); background: var(--teal-soft); }
+.shr-hidden-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--bg-soft); }
+.shr-take-list { display: flex; flex-direction: column; gap: 8px; }
+.shr-take-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color var(--motion-fast) var(--ease-paper), border-color var(--motion-fast) var(--ease-paper); }
+.shr-take-row:hover { background: var(--bg-soft); border-color: var(--teal); }
+.shr-take-icon { display: flex; align-items: center; justify-content: center; flex: none; width: 38px; height: 38px; border-radius: 12px; background: var(--bg-soft); color: var(--text-2); }
+.shr-take-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.shr-qr { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.shr-qr-image { animation: shr-fade-in var(--motion-med) var(--ease-paper) backwards; }
+.shr-qr-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+@keyframes shr-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .shr-take-row { transition: none; }
+  .shr-qr-image { animation: none; }
+}
 .share-tablist {
   display: flex;
   gap: 2px;
