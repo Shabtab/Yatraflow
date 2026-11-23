@@ -52,8 +52,9 @@ describe('the cover uses the app art, with a night file wired', () => {
 
 describe('the invite cue shows only for an invite route, on the log in form', () => {
   it('gates the cue on the log in mode and the invite check', () => {
-    expect(auth).toContain("const showInviteCue = mode === 'login' && isInviteNext(nextRoute())")
-    expect(auth).toMatch(/\{showInviteCue && \(\s*<div className="auth-invite-cue">/)
+    expect(auth).toContain('const inviteRoute = isInviteNext(nextRoute())')
+    expect(auth).toMatch(/\{inviteRoute && \(\s*<div className="auth-invite-clip" inert=\{mode !== 'login'\} aria-hidden=\{mode !== 'login'\}>/)
+    expect(css).toContain(".auth-card[data-mode='login'] .auth-invite-clip { grid-template-rows: 1fr; }")
   })
 
   it('renders the cue copy once', () => {
@@ -91,7 +92,7 @@ describe('motion: tokens only, with a reduced-motion opt-out', () => {
   it('turns every animation off under prefers-reduced-motion', () => {
     const block = css.match(/@media \(prefers-reduced-motion: reduce\) \{\n  \.auth-cover-art, \.auth-spin \{ animation: none; \}[^]*?\n\}/)?.[0] ?? ''
     expect(block).not.toBe('')
-    expect(block).toContain('.auth-extra-clip, .auth-reset-clip, .auth-extra, .auth-form .auth-reset-help, .auth-crossfade > span { transition: none; }')
+    expect(block).toContain('.auth-extra-clip, .auth-reset-clip, .auth-invite-clip, .auth-extra, .auth-form .auth-reset-help, .auth-invite-clip > div, .auth-crossfade > span { transition: none; }')
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.auth-submit-notice \{ animation: none; \} \}/)
   })
 })

@@ -72,7 +72,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
 
   const [saving, setSaving] = useState(false)
   // The invite cue shows on the log in form only, and only for an invite route.
-  const showInviteCue = mode === 'login' && isInviteNext(nextRoute())
+  const inviteRoute = isInviteNext(nextRoute())
   // The live password hint. Sign-up only: log in never counts characters.
   const meter = passwordMeter(password)
 
@@ -257,10 +257,14 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           </p>
 
           {/* Only an invite route earns this line. On a plain log in it would be false. */}
-          {showInviteCue && (
-            <div className="auth-invite-cue">
-              <Users size={16} aria-hidden="true" />
-              <span>Joining with an invite? Log in and you land straight in the trip.</span>
+          {inviteRoute && (
+            <div className="auth-invite-clip" inert={mode !== 'login'} aria-hidden={mode !== 'login'}>
+              <div>
+                <div className="auth-invite-cue">
+                  <Users size={16} aria-hidden="true" />
+                  <span>Joining with an invite? Log in and you land straight in the trip.</span>
+                </div>
+              </div>
             </div>
           )}
         </div>

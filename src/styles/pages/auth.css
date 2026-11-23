@@ -84,11 +84,13 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 .auth-form .label { font-size: 12.5px; font-weight: 700; color: var(--text-2); }
 .auth-form .hint-text { transition: color var(--motion-instant) var(--ease-paper); }
 /* The clips keep their contents mounted through both directions of the switch. */
-.auth-extra-clip, .auth-reset-clip { display: grid; grid-template-rows: 0fr; margin-bottom: -14px; transition: grid-template-rows var(--motion-med) var(--ease-glide), margin-bottom var(--motion-med) var(--ease-glide); }
-.auth-extra, .auth-form .auth-reset-help { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(8px); transition: opacity var(--motion-med) var(--ease-glide), transform var(--motion-med) var(--ease-glide); }
+.auth-extra-clip, .auth-reset-clip, .auth-invite-clip { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--motion-med) var(--ease-glide), margin-bottom var(--motion-med) var(--ease-glide); }
+.auth-extra-clip, .auth-reset-clip { margin-bottom: -14px; }
+.auth-extra, .auth-form .auth-reset-help, .auth-invite-clip > div { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(8px); transition: opacity var(--motion-med) var(--ease-glide), transform var(--motion-med) var(--ease-glide); }
 .auth-extra { display: flex; flex-direction: column; gap: 14px; }
 .auth-card[data-mode='signup'] .auth-extra-clip, .auth-card[data-mode='login'] .auth-reset-clip { grid-template-rows: 1fr; margin-bottom: 0; }
-.auth-card[data-mode='signup'] .auth-extra, .auth-card[data-mode='login'] .auth-reset-help { opacity: 1; transform: translateY(0); }
+.auth-card[data-mode='login'] .auth-invite-clip { grid-template-rows: 1fr; }
+.auth-card[data-mode='signup'] .auth-extra, .auth-card[data-mode='login'] :is(.auth-reset-help, .auth-invite-clip > div) { opacity: 1; transform: translateY(0); }
 .auth-card[data-mode='login'] .auth-extra, .auth-card[data-mode='signup'] .auth-reset-help { transform: translateY(8px); }
 .auth-crossfade { display: grid; }
 .auth-crossfade > span {
@@ -162,7 +164,7 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 @media (prefers-reduced-motion: reduce) { .auth-submit-notice { animation: none; } }
 @media (prefers-reduced-motion: reduce) {
   .auth-cover-art, .auth-spin { animation: none; }
-  .auth-extra-clip, .auth-reset-clip, .auth-extra, .auth-form .auth-reset-help, .auth-crossfade > span { transition: none; }
+  .auth-extra-clip, .auth-reset-clip, .auth-invite-clip, .auth-extra, .auth-form .auth-reset-help, .auth-invite-clip > div, .auth-crossfade > span { transition: none; }
   .auth-form .hint-text, .auth-password .hint-text { transition: none; }
 }
 

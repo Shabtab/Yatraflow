@@ -492,7 +492,8 @@
         "auth-wrap", "auth-shell", "auth-cover", "auth-cover-art", "auth-cover-art--desktop", "auth-cover-art--phone",
         "auth-cover-floor", "auth-cover-night", "auth-cover-panel", "auth-cover-title", "auth-cover-line", "auth-cover-chips",
         "auth-chip", "auth-card", "auth-description", "auth-tabs", "auth-backend-warning", "auth-backend-detail",
-        "auth-form", "auth-extra", "auth-submit", "auth-spin", "auth-submit-error", "auth-submit-notice",
+        "auth-form", "auth-extra", "auth-extra-clip", "auth-reset-clip", "auth-invite-clip", "auth-password",
+        "auth-crossfade", "auth-login-copy", "auth-signup-copy", "auth-submit", "auth-spin", "auth-submit-error", "auth-submit-notice",
         "auth-reset-help", "auth-sample-note", "auth-invite-cue"
       ],
       "configClasses": [],
