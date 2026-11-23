@@ -1665,6 +1665,7 @@ begin
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
+      and p.prokind in ('f', 'p')
       and pg_get_functiondef(p.oid) ~ '(insert into|update|delete from) public\.trip_members'
   loop
     if v_fn.proname not in ('join_trip', 'change_trip_access', 'move_trip_access_owner') then
@@ -1692,6 +1693,12 @@ begin
   if position('auth.uid() is not null' in v_src) = 0
     or position('state=''active''' in v_src) = 0 then
     raise exception '#936: the owner hand-over must check for an active member when a caller has a JWT';
+  end if;
+
+  -- A remove needs an active member, so a member who left cannot be pulled back.
+  select pg_get_functiondef('public.change_trip_access(uuid,text,uuid,text,bigint)'::regprocedure) into v_src;
+  if position('p_action=''remove'' and v_access.state<>''active''' in v_src) = 0 then
+    raise exception '#936: change_trip_access must return stale for a remove that is not on an active member';
   end if;
 
   -- History follows its trip: the foreign key cascades on a hard delete.

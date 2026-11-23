@@ -176,6 +176,35 @@ describe('member consent boundary through actual SQL (#936, file 1)', () => {
     expect((await db.query<{ owner_id: string }>('select owner_id from public.trips where id=$1', [tripD])).rows[0].owner_id).toBe(stranger)
   })
 
+  it('the owner guard refuses an anon caller with no JWT subject, and the service role still hands the trip over', async () => {
+    const tripE = '20000000-0000-4000-8000-000000000005'
+    await seedTrip(tripE)
+    await joinTrip(tripE, member)
+    // The 20261020 trigger, with the guard body from file 1. The anon and
+    // service_role policies let the update reach the trigger, so only the
+    // guard can refuse it. On the old guard, the anon update passes.
+    await db.exec(`create trigger trips_owner_id_immutable before update of owner_id on public.trips
+        for each row execute function public.trips_owner_id_immutable();
+      grant select, update on public.trips to anon, service_role;
+      create policy fixture_trips_anon_read on public.trips for select to anon using(true);
+      create policy fixture_trips_anon_update on public.trips for update to anon using(true) with check(true);
+      create policy fixture_trips_service on public.trips for all to service_role using(true) with check(true);`)
+    await db.query("select set_config('test.uid','',false)")
+    await db.exec('set role anon')
+    try {
+      await expect(db.query('update public.trips set owner_id=$1 where id=$2', [stranger, tripE])).rejects.toMatchObject({ code: '42501' })
+    } finally {
+      await db.exec('reset role')
+    }
+    await db.exec('set role service_role')
+    try {
+      await db.query('update public.trips set owner_id=$1 where id=$2', [member, tripE])
+    } finally {
+      await db.exec('reset role')
+    }
+    expect((await db.query<{ owner_id: string }>('select owner_id from public.trips where id=$1', [tripE])).rows[0].owner_id).toBe(member)
+  })
+
   it('file 1 runs a second time without error and leaves the policies gone', async () => {
     await db.exec(consent)
     const left = await db.query<{ n: number }>(
