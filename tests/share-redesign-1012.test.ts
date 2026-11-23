@@ -138,6 +138,16 @@ describe('Share tab: round 2 (REVIEW-1)', () => {
     expect(css).toContain('.shr-member-row.is-entering { animation: shr-member-in')
   })
 
+  it('the join tile puts Copy beside the label, so the 14-character code keeps the full tile width', () => {
+    expect(tab).toContain('<div className="shr-join-head">')
+    expect(css).toContain('.shr-join-head { display: flex')
+    expect(css).not.toContain('.shr-join-code-row')
+  })
+
+  it('the Premium segment names the price once one is typed', () => {
+    expect(tab).toContain('premium && priceNum > 0 ? `Premium · ${formatInr(priceNum)}` : \'Premium\'')
+  })
+
   it('the DAY tiles are small square buttons, six to a row', () => {
     expect(tab).toContain('className={`shr-day-tile${isFree ? \' is-free\' : \'\'}`}')
     expect(css).toMatch(/\.shr-day-grid \{ display: grid; grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/)

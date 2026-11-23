@@ -454,7 +454,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
       <div className="ts-subhead"><b>Access</b></div>
       <SegmentedTabs semantics="toggle" className="shr-seg" label="Free or Premium"
         value={premium ? 'premium' : 'free'} onChange={key => (key === 'premium' ? choosePremium() : chooseFree())}
-        items={[{ key: 'free', label: 'Free' }, { key: 'premium', label: 'Premium' }]} />
+        items={[{ key: 'free', label: 'Free' }, { key: 'premium', label: premium && priceNum > 0 ? `Premium · ${formatInr(priceNum)}` : 'Premium' }]} />
       {premium && (
         <Field label="Premium price (₹)" error={errs.price} hint={priceNum > 0
           // The floor, not the rate: a price seen alone can only promise the least
@@ -764,14 +764,14 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           </div>
           {inviteCode && (
             <div className="shr-join-tile">
-              <span className="shr-join-label">Join code</span>
-              <div className="shr-join-row">
-                <div className="shr-join-code-row">
-                  <code className="shr-join-code" aria-label={`Trip code ${inviteCode}`}>{inviteCode}</code>
-                  <CopyButton text={inviteCode} label="Copy code" />
-                </div>
-                <span className="small muted shr-join-caption">Read it out loud. Friends type it on the home screen.</span>
+              {/* The label and Copy share the top line. The code is 14 characters, so it
+                  needs the full tile width, and Copy beside it would not fit at 1100. */}
+              <div className="shr-join-head">
+                <span className="shr-join-label">Join code</span>
+                <CopyButton text={inviteCode} label="Copy code" />
               </div>
+              <code className="shr-join-code" aria-label={`Trip code ${inviteCode}`}>{inviteCode}</code>
+              <span className="small muted shr-join-caption">Read it out loud. Friends type it on the home screen.</span>
             </div>
           )}
           <hr className="divider" />
