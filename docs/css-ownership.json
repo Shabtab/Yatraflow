@@ -484,6 +484,19 @@
       ],
       "configClasses": [],
       "variables": []
+    },
+    {
+      "id": "auth",
+      "file": "src/styles/pages/auth.css",
+      "owned": [
+        "auth-wrap", "auth-shell", "auth-cover", "auth-cover-art", "auth-cover-art--desktop", "auth-cover-art--phone",
+        "auth-cover-floor", "auth-cover-night", "auth-cover-panel", "auth-cover-title", "auth-cover-line", "auth-cover-chips",
+        "auth-chip", "auth-card", "auth-description", "auth-tabs", "auth-backend-warning", "auth-backend-detail",
+        "auth-form", "auth-extra", "auth-submit", "auth-spin", "auth-submit-error", "auth-submit-notice",
+        "auth-reset-help", "auth-sample-note", "auth-invite-cue"
+      ],
+      "configClasses": [],
+      "variables": []
     }
   ],
   "legacy": [
@@ -624,8 +637,8 @@
       "src/styles/legacy/16-motion-and-cover-v2.css::.container.yf-workspace.yf-workspace::padding-top",
       "src/styles/legacy/16-motion-and-cover-v2.css::.yf-page .yf-member .avatar::border",
       "src/styles/legacy/16-motion-and-cover-v2.css::.yf-page .yf-member .avatar::font-size",
-      "src/styles/legacy/16-motion-and-cover-v2.css:::is( .page-enter > *, .empty-state > *, .board-col, .tab-panel, .route-panel, .trip-enter, .ex-enter:not([data-presence='exit']), .ex-hero-copy, .ex-hero-visual, .ex-aside > *, .ex-selects.is-open, .mt-card:not([data-presence='exit']), .mt-shelf-item:not([data-presence='exit']), .yf-surface.is-entering:not([data-presence='exit']), .yf-surface.tsx-card, .unlock-reveal > *, .unlock-reveal-facts > *, .purchase-list > *, .sf-daygrid > .sf-day, .sf-cover-pattern .sf-cover-dot, .popover, .map-legend-body, .tl-mode-copy, .engine-tips-text, .gin-followup, .err-text, .auth-submit-notice, .remote-edit-banner, .ovw-weather-failed, .ovw-weather-kept, .shr-read-failed, .shr-read-kept, .shr-read-loading, .hub-read-failed, .hub-read-kept, .shr-state, .tl-state, .tm-state, .ex-page .ex-clear:not([data-presence='exit']), .trips-page .ex-clear[style*='visible']:not([data-presence='exit']) ):not([data-presence='exit'])::animation",
-      "src/styles/legacy/16-motion-and-cover-v2.css:::is( .page-enter > *, .empty-state > *, .board-col, .tab-panel, .route-panel, .trip-enter, .ex-enter:not([data-presence='exit']), .ex-hero-copy, .ex-hero-visual, .ex-aside > *, .ex-selects.is-open, .mt-card:not([data-presence='exit']), .mt-shelf-item:not([data-presence='exit']), .yf-surface.is-entering:not([data-presence='exit']), .yf-surface.tsx-card, .unlock-reveal > *, .unlock-reveal-facts > *, .purchase-list > *, .sf-daygrid > .sf-day, .sf-cover-pattern .sf-cover-dot, .popover, .map-legend-body, .tl-mode-copy, .engine-tips-text, .gin-followup, .err-text, .auth-submit-notice, .remote-edit-banner, .ovw-weather-failed, .ovw-weather-kept, .shr-read-failed, .shr-read-kept, .shr-read-loading, .hub-read-failed, .hub-read-kept, .shr-state, .tl-state, .tm-state, .ex-page .ex-clear:not([data-presence='exit']), .trips-page .ex-clear[style*='visible']:not([data-presence='exit']) ):not([data-presence='exit'])::animation-delay",
+      "src/styles/legacy/16-motion-and-cover-v2.css:::is( .page-enter > *, .empty-state > *, .board-col, .tab-panel, .route-panel, .trip-enter, .ex-enter:not([data-presence='exit']), .ex-hero-copy, .ex-hero-visual, .ex-aside > *, .ex-selects.is-open, .mt-card:not([data-presence='exit']), .mt-shelf-item:not([data-presence='exit']), .yf-surface.is-entering:not([data-presence='exit']), .yf-surface.tsx-card, .unlock-reveal > *, .unlock-reveal-facts > *, .purchase-list > *, .sf-daygrid > .sf-day, .sf-cover-pattern .sf-cover-dot, .popover, .map-legend-body, .tl-mode-copy, .engine-tips-text, .gin-followup, .err-text, .remote-edit-banner, .ovw-weather-failed, .ovw-weather-kept, .shr-read-failed, .shr-read-kept, .shr-read-loading, .hub-read-failed, .hub-read-kept, .shr-state, .tl-state, .tm-state, .ex-page .ex-clear:not([data-presence='exit']), .trips-page .ex-clear[style*='visible']:not([data-presence='exit']) ):not([data-presence='exit'])::animation",
+      "src/styles/legacy/16-motion-and-cover-v2.css:::is( .page-enter > *, .empty-state > *, .board-col, .tab-panel, .route-panel, .trip-enter, .ex-enter:not([data-presence='exit']), .ex-hero-copy, .ex-hero-visual, .ex-aside > *, .ex-selects.is-open, .mt-card:not([data-presence='exit']), .mt-shelf-item:not([data-presence='exit']), .yf-surface.is-entering:not([data-presence='exit']), .yf-surface.tsx-card, .unlock-reveal > *, .unlock-reveal-facts > *, .purchase-list > *, .sf-daygrid > .sf-day, .sf-cover-pattern .sf-cover-dot, .popover, .map-legend-body, .tl-mode-copy, .engine-tips-text, .gin-followup, .err-text, .remote-edit-banner, .ovw-weather-failed, .ovw-weather-kept, .shr-read-failed, .shr-read-kept, .shr-read-loading, .hub-read-failed, .hub-read-kept, .shr-state, .tl-state, .tm-state, .ex-page .ex-clear:not([data-presence='exit']), .trips-page .ex-clear[style*='visible']:not([data-presence='exit']) ):not([data-presence='exit'])::animation-delay",
       "src/styles/legacy/16-motion-and-cover-v2.css:::is( .page-enter > *, .empty-state > *, .board-col, .unlock-reveal > *, .unlock-reveal-facts > *, .purchase-list > *, .ex-aside > *, .inv-preview-row, .nh-trip-row, .yf-surface.tsx-card )::animation-delay",
       "src/styles/legacy/17-overview-tiles-and-cover.css::.member-stack .avatar, .yf-avatars .avatar::box-shadow",
       "src/styles/legacy/17-overview-tiles-and-cover.css::.ovw2 .btn.btn-sm, .ovw-weather .btn.btn-sm::padding-inline",

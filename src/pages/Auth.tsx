@@ -1,17 +1,19 @@
 // ============ Auth page ============
 import { useEffect, useRef, useState } from 'react'
 import { InlineIcon } from '../components/icons'
-import { TriangleAlert } from 'lucide-react'
+import { Lock, Mail, RefreshCw, TriangleAlert, Users } from 'lucide-react'
 import { SegmentedTabs } from '../components/page/SegmentedTabs'
 import { useDb, currentUser, login, signup } from '../store/store'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { isAdultSignup } from '../lib/ageGate'
 import { looksLikeEmail } from '../lib/emailShape'
 import { currentQuery } from '../lib/router'
-import { authNext } from '../lib/authNext'
+import { authNext, isInviteNext } from '../lib/authNext'
+import { passwordMeter } from '../lib/passwordMeter'
 import { MISSING_BACKEND_MESSAGE } from '../lib/authErrors'
 import { Field } from '../components/ui'
 import { DobPicker } from '../components/DobPicker'
+import { AuthCoverArt } from '../components/AuthCover'
 
 /** Post-login destination: the `next` param when the auth page was entered
  *  from a deep link (an invite), else My Trips. The param is
@@ -32,6 +34,11 @@ const AUTH_TABS = [
  *  link. The store reports that state as a field, and this page owns the copy.
  *  tests/auth-notice.test.ts pins the field. */
 const CONFIRM_EMAIL_COPY = 'Check your email to confirm your account, then log in.'
+
+/** The cover panel copy. The headline is the locked main line. */
+const COVER_HEADLINE = 'Plan Indian trips together, not in a chaotic group chat.'
+const COVER_LINE = 'Your whole crew plans one shared trip, with every stop, halt and cost in one place.'
+const COVER_CHIPS = ['Free to plan', 'Works offline', 'Made for India'] as const
 
 export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
@@ -64,6 +71,10 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const errRef = useRef<HTMLDivElement>(null)
 
   const [saving, setSaving] = useState(false)
+  // The invite cue shows on the log in form only, and only for an invite route.
+  const showInviteCue = mode === 'login' && isInviteNext(nextRoute())
+  // The live password hint. Sign-up only: log in never counts characters.
+  const meter = passwordMeter(password)
 
   useEffect(() => {
     if (me) onNavigate(nextRoute()) // already logged in — back to where the link pointed
@@ -160,65 +171,90 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
 
   return (
     <div className="auth-wrap page-enter">
-      <div className="card auth-card">
-        <h1>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
-        <p className="muted small auth-description">
-          {mode === 'login' ? 'Log in to your trip plans.' : 'Free to plan. No card needed.'}
-        </p>
-
-        <SegmentedTabs semantics="tablist" className="tabbar auth-tabs" label="Login or sign up" items={AUTH_TABS} value={mode} onChange={switchMode} />
-
-        {/* Say so up front: a build with no Supabase project compiled in can
-            only ever fail, and "Failed to fetch" blames the wrong thing. */}
-        {!isSupabaseConfigured && (
-          <div className="err-text auth-backend-warning" role="status">
-            <InlineIcon icon={TriangleAlert} size={13} gap={4} /><strong>This build has no backend configured.</strong>
-            <div className="small auth-backend-detail">{MISSING_BACKEND_MESSAGE}</div>
+      <div className="auth-shell">
+        {/* The cover is decoration plus the product line. On a phone only the
+            art strip shows; the glass panel is desktop only. */}
+        <div className="auth-cover">
+          <AuthCoverArt variant="desktop" />
+          <AuthCoverArt variant="phone" />
+          <div className="auth-cover-panel">
+            <p className="auth-cover-title">{COVER_HEADLINE}</p>
+            <p className="auth-cover-line">{COVER_LINE}</p>
+            <ul className="auth-cover-chips">
+              {COVER_CHIPS.map((chip, i) => <li key={chip} className={i === 0 ? 'auth-chip is-primary' : 'auth-chip'}>{chip}</li>)}
+            </ul>
           </div>
-        )}
-
-        {/* `role="tabpanel"` is not permitted on `<form>`, so the panel wrapper
-            carries it (and the id the tablist's aria-controls points at); the
-            form inside stays a plain form. */}
-        <div id="auth-panel" role="tabpanel" aria-labelledby={mode === 'login' ? 'auth-tab-login' : 'auth-tab-signup'}>
-        <form onSubmit={submit} noValidate>
-          {mode === 'signup' && (
-            <Field label="Your name" error={nameErr ?? undefined}>
-              <input className="input" name="name" autoComplete="name" ref={nameRef} value={name}
-                onChange={e => { setName(e.target.value); if (nameErr) setNameErr(null) }} placeholder="e.g. Meera Nair" />
-            </Field>
-          )}
-          {mode === 'signup' && (
-            <Field label="Date of birth" hint="Checked at signup. Never stored." error={dobErr ?? undefined}>
-              <DobPicker focusRef={dobRef} value={dob} max={todayISO}
-                onChange={v => { setDob(v); if (dobErr) setDobErr(null) }} />
-            </Field>
-          )}
-          <Field label="Email"><input className="input" type="email" name="email" autoComplete="email" spellCheck={false} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></Field>
-          <Field label="Password" hint={mode === 'signup' ? 'At least 8 characters' : undefined} error={passwordErr ?? undefined}>
-            <input className="input" type="password" name="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={mode === 'signup' ? 8 : undefined} value={password} onChange={e => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null) }} placeholder="••••••••" ref={passwordRef} />
-          </Field>
-          {/* A live region that stays in the DOM. A status node inserted with
-              its text is announced unreliably, so only its copy changes. */}
-          <div role="status" aria-live="polite">
-            {notice && <div className="hub-note auth-submit-notice">{notice}</div>}
-          </div>
-          {error && <div className="err-text auth-submit-error" role="alert" tabIndex={-1} ref={errRef}><InlineIcon icon={TriangleAlert} size={13} gap={4} />{error}</div>}
-          <button type="submit" className="btn btn-primary btn-lg auth-submit" disabled={saving}>
-            {saving ? (mode === 'login' ? 'Signing in…' : 'Creating account…') : mode === 'login' ? 'Log in' : 'Create account'}
-          </button>
-          {mode === 'login' && (
-            <p className="hint-text auth-reset-help">
-              Forgot your password? Resets aren’t self-serve yet.{' '}
-              <a className="text-link" href="mailto:support@yatraflow.app?subject=Reset%20my%20YatraFlow%20password">Mail support and we’ll reset it</a>.
-            </p>
-          )}
-        </form>
         </div>
+        <div className="card auth-card">
+          <h1>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
+          <p className="muted small auth-description">
+            {mode === 'login' ? 'Log in to your trip plans.' : 'Free to plan. No card needed.'}
+          </p>
 
-        <p className="hint-text auth-sample-note">
-          Three sample trips arrive in My Trips on first sign-in. Delete them any time.
-        </p>
+          <SegmentedTabs semantics="tablist" className="tabbar tabbar-sunken auth-tabs" label="Login or sign up" items={AUTH_TABS} value={mode} onChange={switchMode} />
+
+          {/* Say so up front: a build with no Supabase project compiled in can
+              only ever fail, and "Failed to fetch" blames the wrong thing. */}
+          {!isSupabaseConfigured && (
+            <div className="err-text auth-backend-warning" role="status">
+              <InlineIcon icon={TriangleAlert} size={13} gap={4} /><strong>This build has no backend configured.</strong>
+              <div className="small auth-backend-detail">{MISSING_BACKEND_MESSAGE}</div>
+            </div>
+          )}
+
+          {/* `role="tabpanel"` is not allowed on `<form>`, so the panel wrapper
+              carries it (and the id the tablist's aria-controls points at); the
+              form inside stays a plain form. */}
+          <div id="auth-panel" role="tabpanel" aria-labelledby={mode === 'login' ? 'auth-tab-login' : 'auth-tab-signup'}>
+          <form className="auth-form" onSubmit={submit} noValidate>
+            {/* The sign-up fields enter together as one block (auth.css). */}
+            {mode === 'signup' && (
+              <div className="auth-extra">
+                <Field label="Your name" error={nameErr ?? undefined}>
+                  <input className="input" name="name" autoComplete="name" ref={nameRef} value={name}
+                    onChange={e => { setName(e.target.value); if (nameErr) setNameErr(null) }} placeholder="e.g. Meera Nair" />
+                </Field>
+                <Field label="Date of birth" hint="Checked at signup. Never stored." error={dobErr ?? undefined}>
+                  <DobPicker focusRef={dobRef} value={dob} max={todayISO}
+                    onChange={v => { setDob(v); if (dobErr) setDobErr(null) }} />
+                </Field>
+              </div>
+            )}
+            <Field label="Email" lead={<Mail size={15} aria-hidden="true" />}><input className="input" type="email" name="email" autoComplete="email" spellCheck={false} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></Field>
+            <Field label="Password" lead={<Lock size={15} aria-hidden="true" />} hint={mode === 'signup' ? meter.text : undefined} error={passwordErr ?? undefined}>
+              <input className="input" type="password" name="password" data-short={mode === 'signup' && meter.short ? 'true' : undefined} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={mode === 'signup' ? 8 : undefined} value={password} onChange={e => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null) }} placeholder="••••••••" ref={passwordRef} />
+            </Field>
+            {/* A live region that stays in the DOM. A status node inserted with
+                its text is announced unreliably, so only its copy changes. */}
+            <div role="status" aria-live="polite">
+              {notice && <div className="hub-note auth-submit-notice">{notice}</div>}
+            </div>
+            {error && <div className="err-text auth-submit-error" role="alert" tabIndex={-1} ref={errRef}><InlineIcon icon={TriangleAlert} size={13} gap={4} />{error}</div>}
+            <button type="submit" className="btn btn-primary auth-submit" disabled={saving}>
+              {saving && <RefreshCw className="auth-spin" size={15} aria-hidden="true" />}
+              {saving ? (mode === 'login' ? 'Signing in…' : 'Creating account…') : mode === 'login' ? 'Log in' : 'Create account'}
+            </button>
+            {mode === 'login' && (
+              <p className="hint-text auth-reset-help">
+                Forgot your password? Resets aren’t self-serve yet.{' '}
+                <a className="text-link" href="mailto:support@yatraflow.app?subject=Reset%20my%20YatraFlow%20password">Mail support and we’ll reset it</a>.
+              </p>
+            )}
+          </form>
+          </div>
+
+          <p className="hint-text auth-sample-note">
+            Three sample trips arrive in My Trips on first sign-in. Delete them any time.
+          </p>
+
+          {/* Only an invite route earns this line. On a plain log in it would be false. */}
+          {showInviteCue && (
+            <div className="auth-invite-cue">
+              <Users size={16} aria-hidden="true" />
+              <span>Joining with an invite? Log in and you land straight in the trip.</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

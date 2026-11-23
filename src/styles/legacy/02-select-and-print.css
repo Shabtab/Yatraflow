@@ -1264,13 +1264,7 @@
 /* ---------- Confirm dialog ---------- */
 .confirm-actions { display: flex; gap: 9px; margin-top: 16px; flex-wrap: wrap; }
 
-/* ---------- Auth ---------- */
-.auth-card { width: 100%; max-width: 430px; }
-/* contained heading — the card is a 430px panel, not a full-width page (was
-   an inline fontSize that bypassed every scale) */
-.auth-card h1 { font-size: 26px; }
-/* Dark inputs otherwise sit nearly flush with the card surface — lift them. */
-[data-theme='dark'] .auth-card .input { --input-background: rgba(255, 255, 255, .06); }
+/* Auth page rules live in pages/auth.css. */
 
 /* ---------- Hero (landing) — split layout per CTI homepage mockup ---------- */
 /* The hero is transparent: the atmospheric ramp lives on the page-level
@@ -2188,15 +2182,6 @@ a.creator-line:focus-visible { outline: 2px solid var(--teal); outline-offset: 2
 .footer-inner { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 
 /* ---------- Pages ---------- */
-/* Auth composes its own canvas rather than parking a card at the top of one.
-   #main already stretches (inline flex:1 on <main>), but it is a plain block
-   and the page sits one level deeper inside .route-panel — so the height has
-   to be handed down the chain, and a percentage on the wrap resolves against
-   nothing. Scoped with :has() to the one route that owns an .auth-wrap, so no
-   other page's flow is touched. */
-main:has(.auth-wrap) { display: flex; flex-direction: column; }
-main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: column; }
-.auth-wrap { display: flex; justify-content: center; align-items: center; flex: 1; padding: 54px 18px; }
 .form-page { max-width: 1080px; padding-top: 26px; padding-bottom: 30px; }
 /* Profile and settings: the artboard's three columns. It used to be one
    720px column (#86), which left a 340px gutter empty at desktop widths. The

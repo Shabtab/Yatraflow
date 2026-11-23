@@ -256,7 +256,6 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .brand svg { flex: 0 0 auto; }
 .nav-links { margin-left: 10px; }
 /* The pill nav family is owned by components/pill-nav-01.css. */
-.auth-tabs { margin: 18px 0; }
 .nav-link {
   border: none; background: none; padding: 8px 13px; border-radius: 999px;
   font-size: 14px; font-weight: 600; color: var(--text-2);

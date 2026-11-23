@@ -16,6 +16,14 @@ export const MISSING_BACKEND_MESSAGE =
   'were missing when it was compiled, so sign-in requests go nowhere. ' +
   'Set both variables for this environment and redeploy (they are read at build time).'
 
+/** Shown for a rejected email and password. The provider's raw text is not user copy. */
+export const INVALID_CREDENTIALS_MESSAGE =
+  "That email and password don't match. Try again, or mail support to reset."
+
+/** Shown when the request never reached the server. It names no provider and no browser rule. */
+export const NETWORK_FAILURE_MESSAGE =
+  "We can't reach the server. Check your connection and try again."
+
 /**
  * Is this a usable Supabase project URL, or an absent / placeholder / unfilled
  * template value? Rejects the placeholder origin and the `.env.example`
@@ -57,7 +65,8 @@ export function describeAuthFailure(
   const msg = extractMessage(err)
   if (!msg) return 'Sign-in failed for an unknown reason. Check the browser console.'
   if (/failed to fetch|networkerror|fetch failed|load failed|err_connection|timed? ?out/i.test(msg)) {
-    return `Cannot reach the Supabase backend (network, CORS or an auth-protection rule blocked the request): ${msg}`
+    return NETWORK_FAILURE_MESSAGE
   }
+  if (/invalid login credentials/i.test(msg)) return INVALID_CREDENTIALS_MESSAGE
   return msg
 }

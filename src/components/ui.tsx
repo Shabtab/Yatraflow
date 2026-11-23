@@ -159,6 +159,9 @@ export function Field(props: {
   label: string
   error?: string
   hint?: string
+  /** A decorative glyph drawn inside the control's leading edge. The caller
+   *  passes it with aria-hidden. A page styles `.field-lead`. */
+  lead?: React.ReactNode
   children: React.ReactNode
 }) {
   const controlId = useId()
@@ -188,7 +191,7 @@ export function Field(props: {
   return (
     <div className="field">
       <label className="label" htmlFor={associated ? controlId : undefined}>{props.label}</label>
-      {wired}
+      {props.lead ? <span className="field-lead">{props.lead}{wired}</span> : wired}
       {props.hint && !props.error && <span className="hint-text" id={hintId}>{props.hint}</span>}
       {/* Field-tied error copy is POLITE, not assertive: a form submit that fails
           in several fields would otherwise fire one interrupting announcement per

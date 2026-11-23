@@ -75,6 +75,10 @@
     width var(--motion-med) var(--ease-paper), height var(--motion-med) var(--ease-paper),
     opacity var(--motion-fast) var(--ease-paper), background var(--motion-fast) var(--ease-paper);
 }
+/* A sunken-track rail (the /auth mode switch): a raised paper pill on a sunken
+   track. Only the fill changes; the glide above is unchanged. */
+.tabbar-sunken .pill-glider { background: var(--pw-card); box-shadow: var(--elev-press); }
+[data-theme='dark'] .tabbar-sunken .pill-glider { background: var(--pw-raised); }
 /* inside a pill nav the glider paints the active background — the items don't
    (no background AND no glow on the item itself: a shadow that pops on/off on
    the chip while the glider glides is exactly the two-step switch feel the

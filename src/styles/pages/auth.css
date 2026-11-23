@@ -1,0 +1,160 @@
+/* Auth page (/auth): log in and sign up.
+   Owns every `.auth-*` class. The rules sat in legacy/01, 02, 12 and 16.
+
+   Desktop is a two-column board: a cover (artwork plus a glass panel) on the
+   left and the form on the right. At 860px and below the board becomes a 150px
+   cover strip above the form, with no panel.
+
+   Shared controls keep their owners. The input, the button and the tab rail
+   are restyled through the variables their owners document. The glider fill is
+   set in components/pill-nav.css. */
+
+/* Auth composes its own canvas rather than parking a card at the top of one.
+   #main already stretches (inline flex:1 on <main>), but it is a plain block
+   and the page sits one level deeper inside .route-panel — so the height has
+   to be handed down the chain, and a percentage on the wrap resolves against
+   nothing. Scoped with :has() to the one route that owns an .auth-wrap, so no
+   other page's flow is touched. */
+main:has(.auth-wrap) { display: flex; flex-direction: column; }
+main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: column; }
+.auth-wrap { display: flex; justify-content: center; align-items: flex-start; flex: 1; padding: 32px 40px 54px; }
+
+/* ---------- The board ---------- */
+.auth-shell {
+  display: grid; grid-template-columns: minmax(0, 1fr) clamp(400px, 46%, 520px);
+  width: 100%; max-width: 1360px; min-height: max(640px, min(820px, calc(100dvh - 150px)));
+  border: 1px solid var(--pw-line-soft); border-radius: var(--radius-lg);
+  background: var(--pw-card); overflow: hidden;
+}
+
+/* ---------- Cover ---------- */
+.auth-cover { position: relative; min-height: 360px; overflow: hidden; background: var(--pw-lagoon-100); }
+/* The settle runs on the artwork layer, never on the clipping box. */
+.auth-cover-art { position: absolute; inset: 0; animation: authSettle var(--motion-slower) var(--ease-glide) both; }
+.auth-cover-art--phone { display: none; }
+.auth-cover-floor { position: absolute; inset: 0; background: var(--pw-lagoon-100); }
+.auth-cover-night { display: none; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
+[data-theme='dark'] .auth-cover-night { display: block; }
+.auth-cover-art--phone .auth-cover-night { object-position: 50% 40%; }
+
+.auth-cover-panel {
+  position: absolute; left: 36px; right: 36px; bottom: 36px;
+  display: flex; flex-direction: column; gap: 10px; padding: 22px; border-radius: 22px;
+  background: color-mix(in srgb, var(--pw-card) 86%, transparent);
+  -webkit-backdrop-filter: blur(var(--yf-blur-panel)); backdrop-filter: blur(var(--yf-blur-panel));
+}
+.auth-cover-title { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; color: var(--text); }
+.auth-cover-line { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
+.auth-cover-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.auth-chip {
+  display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  font-size: 11.5px; font-weight: 700; background: var(--pw-sunken); color: var(--text-2);
+}
+.auth-chip.is-primary { background: var(--pw-lagoon-100); color: var(--pw-sea-700); }
+
+/* ---------- Form column ---------- */
+/* The board is the card: the form column drops the card's own chrome. */
+.auth-card {
+  display: flex; flex-direction: column; justify-content: center; width: 100%; max-width: none;
+  padding: 56px; border: 0; border-radius: 0; box-shadow: none; background: transparent;
+}
+/* contained heading — the form column is a 520px panel, not a full-width page */
+.auth-card h1 { font-size: 26px; }
+.auth-description { margin-top: 4px; }
+.auth-tabs { margin: 18px 0 14px; }
+.auth-backend-warning { margin-bottom: 12px; }
+.auth-backend-detail { margin-top: 4px; }
+
+/* Tab rail: a sunken track with a raised pill. The glider and its glide stay
+   the pill nav's; its fill is set in components/pill-nav.css. */
+.tabbar.auth-tabs {
+  gap: 2px; padding: 3px; border: 0; border-radius: 999px; background: var(--pw-sunken); box-shadow: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none; overflow: hidden;
+}
+.tabbar.auth-tabs .tab-btn {
+  flex: 1; justify-content: center; min-height: 36px; padding: 0 12px;
+  font-size: 13px; font-weight: 600; color: var(--text-2);
+}
+.tabbar.auth-tabs .tab-btn:hover { background: transparent; color: var(--text); }
+.tabbar.auth-tabs .tab-btn.active, .tabbar.auth-tabs .tab-btn.active:hover { color: var(--text); font-weight: 700; }
+@media (pointer: coarse) { .tabbar.auth-tabs .tab-btn { min-height: 44px; } }
+
+.auth-form { display: flex; flex-direction: column; gap: 14px; }
+.auth-form .field { margin-bottom: 0; gap: 5px; }
+.auth-form .label { font-size: 12.5px; font-weight: 700; color: var(--text-2); }
+/* The sign-up fields enter as one block. */
+.auth-extra { display: flex; flex-direction: column; gap: 14px; animation: authRise var(--motion-med) var(--ease-paper) both; }
+
+/* Inputs: the owner's variables first, then the few properties the owner does not own. */
+.auth-form .input {
+  --input-padding: 0 12px;
+  --input-radius: 12px;
+  --input-border-color: var(--pw-line);
+  --input-background: var(--pw-card);
+}
+/* Dark inputs otherwise sit nearly flush with the card surface — lift them. */
+[data-theme='dark'] .auth-card .input { --input-background: rgba(255, 255, 255, .06); }
+.auth-form .field-lead .input { --input-padding: 0 12px 0 36px; }
+.auth-form input { height: 42px; font-size: 14px; border-width: 1px; }
+.auth-form input:focus, .auth-form input:focus-visible {
+  border-color: var(--pw-sea-700); box-shadow: 0 0 0 .5px var(--pw-sea-700), 0 0 0 4px var(--pw-lagoon-100);
+}
+.auth-form input[aria-invalid='true'], .auth-form input[data-short='true'] { border-width: 1.5px; border-color: var(--pw-risk); }
+.auth-form input[aria-invalid='true']:focus-visible, .auth-form input[data-short='true']:focus-visible {
+  border-color: var(--pw-risk); box-shadow: 0 0 0 4px var(--pw-risk-100);
+}
+/* The leading glyph sits inside the control's left edge. */
+.field-lead { position: relative; display: block; }
+.field-lead > svg { position: absolute; left: 12px; top: 50%; translate: 0 -50%; color: var(--text-3); pointer-events: none; }
+
+/* The hint under a field; the password hint turns to the error colour while short. */
+.auth-form .hint-text, .auth-form .err-text { font-size: 11.5px; }
+.auth-form .hint-text { transition: color var(--motion-instant) var(--ease-paper); }
+.auth-form .field-lead:has(input[data-short='true']) ~ .hint-text { color: var(--pw-risk); }
+
+/* Submit: pill, 46px (above the 44px floor), full width. */
+.btn.auth-submit { width: 100%; gap: 7px; --btn-min-height: 46px; --btn-padding: 0 16px; --btn-font-size: 13.5px; --btn-weight: 700; }
+.auth-spin { flex: none; animation: authSpin calc(var(--motion-slower) * 2) linear infinite; }
+
+/* Form-level failure: a tinted banner. The icon carries the risk ink. */
+.auth-submit-error {
+  display: flex; align-items: flex-start; gap: 10px; margin-bottom: 0; padding: 12px 14px; border-radius: 14px;
+  background: var(--pw-risk-100); color: var(--text); font-size: 12.5px; font-weight: 500; line-height: 1.45;
+}
+.auth-submit-error svg { flex: none; margin-top: 1px; color: var(--pw-risk); }
+/* The sign-up confirmation note enters like the error line. Its gap is 8px because 10px is off the spacing ladder. */
+.auth-submit-notice { margin-bottom: 8px; animation: errIn var(--motion-med) var(--ease-out); }
+
+.hint-text.auth-reset-help { margin: 0; text-align: center; font-size: 12.5px; }
+.hint-text.auth-sample-note { text-align: center; margin-top: 14px; font-size: 12.5px; }
+
+/* The invite cue. It renders only for an invite route. */
+.auth-invite-cue {
+  display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px 14px; border-radius: 14px;
+  background: var(--pw-lagoon-50); color: var(--text-2); font-size: 12.5px; line-height: 1.45;
+}
+.auth-invite-cue svg { flex: none; color: var(--pw-sea-700); }
+
+/* ---------- Motion ---------- */
+/* The cover settles from a slight zoom. The sign-up fields rise in. The spinner turns. */
+@keyframes authSettle { from { transform: scale(1.035); } to { transform: scale(1); } }
+@keyframes authRise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes authSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .auth-submit-notice { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .auth-cover-art, .auth-extra, .auth-spin { animation: none; }
+  .auth-form .hint-text { transition: none; }
+}
+
+/* ---------- Phone and narrow windows: a 150px cover strip above the form ---------- */
+@media (max-width: 860px) {
+  .auth-wrap { padding: 20px 18px 40px; }
+  .auth-shell {
+    display: flex; flex-direction: column; gap: 18px; max-width: 520px; min-height: 0;
+    border: 0; border-radius: 0; background: transparent; overflow: visible;
+  }
+  .auth-cover { height: 150px; min-height: 0; border-radius: 22px; }
+  .auth-cover-art--desktop, .auth-cover-panel { display: none; }
+  .auth-cover-art--phone { display: block; }
+  .auth-card { padding: 0; }
+}
