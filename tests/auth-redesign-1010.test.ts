@@ -66,7 +66,7 @@ describe('the sign-up password hint counts live', () => {
   it('feeds the hint from the pure helper', () => {
     expect(auth).toContain('const meter = passwordMeter(password)')
     expect(auth).toContain("hint={meter.text}")
-    expect(auth).toContain("describeHint={mode === 'signup'}")
+    expect(auth).toContain("hideHintFromAssistiveTech={mode === 'login'}")
   })
 
   it('turns the hint to the error colour while the password is short', () => {

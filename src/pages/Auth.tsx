@@ -228,7 +228,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
             </div>
             <Field label="Email" lead={<Mail size={15} aria-hidden="true" />}><input className="input" type="email" name="email" autoComplete="email" spellCheck={false} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></Field>
             <div className="auth-password">
-              <Field label="Password" lead={<Lock size={15} aria-hidden="true" />} hint={meter.text} describeHint={mode === 'signup'} error={passwordErr ?? undefined}>
+              <Field label="Password" lead={<Lock size={15} aria-hidden="true" />} hint={meter.text} hideHintFromAssistiveTech={mode === 'login'} error={passwordErr ?? undefined}>
                 <input className="input" type="password" name="password" data-short={mode === 'signup' && meter.short ? 'true' : undefined} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={mode === 'signup' ? 8 : undefined} value={password} onChange={e => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null) }} placeholder="••••••••" ref={passwordRef} />
               </Field>
             </div>
