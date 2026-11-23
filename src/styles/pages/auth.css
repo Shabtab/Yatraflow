@@ -82,6 +82,7 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 .auth-form { display: flex; flex-direction: column; gap: 14px; }
 .auth-form .field { margin-bottom: 0; gap: 5px; }
 .auth-form .label { font-size: 12.5px; font-weight: 700; color: var(--text-2); }
+.auth-form .hint-text { transition: color var(--motion-instant) var(--ease-paper); }
 /* The clips keep their contents mounted through both directions of the switch. */
 .auth-extra-clip, .auth-reset-clip { display: grid; grid-template-rows: 0fr; margin-bottom: -14px; transition: grid-template-rows var(--motion-med) var(--ease-glide), margin-bottom var(--motion-med) var(--ease-glide); }
 .auth-extra, .auth-form .auth-reset-help { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(8px); transition: opacity var(--motion-med) var(--ease-glide), transform var(--motion-med) var(--ease-glide); }
@@ -117,7 +118,6 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 
 /* The hint under a field; the password hint turns to the error colour while short. */
 .auth-form .hint-text, .auth-form .err-text { font-size: 11.5px; }
-.auth-form .hint-text { transition: color var(--motion-instant) var(--ease-paper); }
 .auth-password .hint-text {
   max-height: 3em; opacity: 1; overflow: hidden;
   transition: max-height var(--motion-med) var(--ease-glide), margin-top var(--motion-med) var(--ease-glide),
