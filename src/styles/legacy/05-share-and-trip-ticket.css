@@ -29,7 +29,7 @@
 .shr-cover-change { position: absolute; right: 12px; top: 12px; }
 .shr-day-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
 .shr-hidden-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--bg-soft); }
-.shr-take-list { display: flex; flex-direction: column; gap: 8px; }
+.shr-take-list { display: grid; grid-auto-rows: 1fr; gap: 8px; }
 .shr-take-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color var(--motion-fast) var(--ease-paper), border-color var(--motion-fast) var(--ease-paper); }
 .shr-take-row:hover { background: var(--bg-soft); border-color: var(--teal); }
 .shr-take-row:disabled { cursor: progress; }
