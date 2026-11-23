@@ -851,7 +851,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
       <>
         <h2 className="sr-only">Share publicly</h2>
         <Surface className="card shr-panel">
-          <span className="share-intent share-intent--saffron">2 · Share publicly</span>
+          <span className="share-intent share-intent--info">2 · Share publicly</span>
           <h3 className="shr-card-title">Publish as public itinerary</h3>
           <p className="hint-text shr-publication-description">
             List this trip on Explore. Pick the free preview days. No real payments in this MVP.
