@@ -44,6 +44,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
   const [mode, setMode] = useState<'login' | 'signup'>(currentQuery().get('mode') === 'signup' ? 'signup' : 'login')
+  const [signupVisit, setSignupVisit] = useState(0)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -165,6 +166,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   // sits in one panel whose label follows the active tab. Every switch clears
   // every message. A stale error never follows the user to the other form.
   function switchMode(key: string) {
+    if (mode === 'login' && key === 'signup') setSignupVisit(visit => visit + 1)
     setMode(key === 'signup' ? 'signup' : 'login')
     setError(null); setNotice(null); setNameErr(null); setPasswordErr(null); setDobErr(null)
   }
@@ -219,7 +221,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
                     onChange={e => { setName(e.target.value); if (nameErr) setNameErr(null) }} placeholder="e.g. Meera Nair" />
                 </Field>
                 <Field label="Date of birth" hint="Checked at signup. Never stored." error={dobErr ?? undefined}>
-                  <DobPicker focusRef={dobRef} value={dob} max={todayISO}
+                  <DobPicker key={signupVisit} focusRef={dobRef} value={dob} max={todayISO}
                     onChange={v => { setDob(v); if (dobErr) setDobErr(null) }} />
                 </Field>
               </div>
