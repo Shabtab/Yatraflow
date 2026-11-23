@@ -17,8 +17,11 @@ describe('Share tab: three columns from one breakpoint', () => {
     expect(css).toContain('from 1100px')
   })
 
-  it('the wide layout has no tablist and no hidden tab panels', () => {
-    expect(tab).toMatch(/\{!wide && \(\s*<div className="share-tablist"/)
+  it('the narrow jobs use the shared pill glider, with ids that label the panels', () => {
+    expect(tab).toMatch(/\{!wide && \(\s*<SegmentedTabs semantics="tablist" className="tabbar share-job-tabs"/)
+    expect(tab).toContain('label="Share and trip options"')
+    expect(tab).toContain('id: `share-tab-${t.id}`')
+    expect(tab).toContain('controls: `share-panel-${t.id}`')
     expect(tab).toMatch(/\{wide \? \(\s*<div className="shr-columns">/)
   })
 

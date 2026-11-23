@@ -14,7 +14,6 @@ import { currentPublicShareUrl, withShareRef } from '../../lib/shareUrl'
 import { downloadTripIcs } from '../../lib/ics'
 import { nativeCopyText, openExternal } from '../../lib/native'
 import { whatsAppSendUrl } from '../../lib/whatsAppShare'
-import { useTablist } from '../../hooks/useTablist'
 import { computeTotals, formatInr, type LegEstimate } from '../../lib/engine'
 import { publishablePlannedKm } from '../../lib/creatorFacts'
 import { publishableStateCodes } from '../../lib/routeStates'
@@ -555,6 +554,9 @@ const SHARE_TABS = [
 ] as const
 type ShareTabId = (typeof SHARE_TABS)[number]['id']
 const SHARE_TAB_IDS = SHARE_TABS.map(t => t.id)
+function isShareTabId(key: string): key is ShareTabId {
+  return (SHARE_TAB_IDS as readonly string[]).includes(key)
+}
 
 export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   trip: Trip
@@ -657,11 +659,6 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
     return () => { alive = false }
   }, [trip.id, isOwner, accessKey])
   const [pendingUnpublish, setPendingUnpublish] = useState(false)
-
-  // #87: this implementation was extracted verbatim into the shared
-  // useTablist hook so Auth, Admin and the workspace tab bar follow the
-  // same APG contract — kept as the reference.
-  const { refs: tabRefs, tabProps } = useTablist(SHARE_TAB_IDS, tab, setTab)
 
   async function restoreRemoved(member: AccessMember) {
     if (memberBusy) return
@@ -939,16 +936,15 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
       </header>
 
       {!wide && (
-        <div className="share-tablist" role="tablist" aria-label="Share and trip options">
-          {SHARE_TABS.map((t, i) => (
-            <button key={t.id} ref={tabRefs(i)} type="button" role="tab"
-              id={`share-tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`share-panel-${t.id}`}
-              onClick={() => setTab(t.id)} {...tabProps(t.id, i)}
-              className={`share-tab${tab === t.id ? ' is-active' : ''}`}>
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <SegmentedTabs semantics="tablist" className="tabbar share-job-tabs" label="Share and trip options"
+          items={SHARE_TABS.map(t => ({
+            key: t.id,
+            label: t.label,
+            id: `share-tab-${t.id}`,
+            controls: `share-panel-${t.id}`,
+          }))}
+          value={tab}
+          onChange={key => { if (isShareTabId(key)) setTab(key) }} />
       )}
 
       {wide ? (

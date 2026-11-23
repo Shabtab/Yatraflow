@@ -58,49 +58,16 @@
   .shr-seg::before, .shr-seg button, .shr-day-tile { transition: none; }
   .shr-member-row.is-entering { animation: none; }
 }
-.share-tablist {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 18px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  /* scroll affordance: edge fades painted on the `scroll` layer show only on
-     the side that still has content; `local` covers slide over them at the
-     ends so the fade never sits under a reached edge. */
-  background:
-    linear-gradient(90deg, var(--card) 25%, transparent) left / 22px 100% no-repeat local,
-    linear-gradient(270deg, var(--card) 25%, transparent) right / 22px 100% no-repeat local,
-    linear-gradient(90deg, var(--card), transparent) left / 22px 100% no-repeat scroll,
-    linear-gradient(270deg, var(--card), transparent) right / 22px 100% no-repeat scroll;
-}
-.share-tab {
-  appearance: none;
-  -webkit-appearance: none;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--text-3);
-  padding: 11px 14px;
-  cursor: pointer;
-  white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  border-radius: 8px 8px 0 0;
-  transition: color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out);
-}
-.share-tab:hover { color: var(--text-2); }
-.share-tab.is-active {
-  color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
-}
-.share-tab:focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
-}
+/* #1012 — below the wide breakpoint the three jobs use the shared pill glider
+   (.tabbar + PillNav), as the workspace rail does. The capsule hugs its labels
+   and starts at the left edge. `fit-content` keeps that shape; `max-width`
+   lets it scroll sideways at 390px if the labels do not fit. The 18px bottom
+   margin keeps the old row's rhythm. `overflow-y: hidden` stops `overflow-x:
+   auto` from computing a vertical scrollbar and adding one pixel of height. */
+.share-job-tabs { width: fit-content; max-width: 100%; margin-bottom: 18px; overflow-y: hidden; }
+/* The phone block shortens every .tabbar to 10px; this row keeps the old row's
+   18px at every width, so the compound wins on phone too. */
+.share-tabbed .share-job-tabs { margin-bottom: 18px; }
 .share-panel { display: block; }
 /* Guard: keep [hidden] authoritative so inactive panels leave the a11y tree. */
 .share-panel[hidden] { display: none; }

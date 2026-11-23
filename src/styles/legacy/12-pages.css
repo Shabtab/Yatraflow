@@ -265,13 +265,6 @@
    call, so the direction that shipped stays. */
 .shr-state { animation: errIn var(--motion-med) var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .shr-state { animation: none; } }
-/* The section switch transitioned its colour with no opt-out, so a reader who
-   asked for less motion still got a fade on hover and on the active state. The
-   duration stays on the token the rule already used: the legacy `--t-fast` step
-   is the slower of the two, so moving it would change how fast the tab answers,
-   and a motion feel is the user's call, not this pass's. */
-@media (prefers-reduced-motion: reduce) { .share-tab { transition: none; } }
-
 /* ===== P14: Native home (Android shell) ===== */
 /* The native home keeps its own one-column, big-touch grammar at 360px. The
    root takes yf-page for the shared page scope, and the page keeps its own
