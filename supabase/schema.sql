@@ -373,10 +373,11 @@ create index if not exists idx_published_creator on public.published_itineraries
 --
 -- Fails closed. The comparison is `is distinct from`, so a null on either side
 -- counts as a change instead of slipping past a null = null test. Allowed: the
--- current owner, a masteradmin, and a caller with no authenticated user
--- (service role / SQL editor / migration). An editor matches none of them and
--- is refused with 42501. Mirrored for existing installs by
--- supabase/migrations/20261020_trip_owner_and_delete_guards.sql.
+-- current owner, a masteradmin, and a caller with no JWT subject that is not anon
+-- or authenticated (service role / SQL editor / migration). An editor matches none
+-- of them and is refused with 42501. Mirrored for existing installs by
+-- supabase/migrations/20261020_trip_owner_and_delete_guards.sql, then
+-- supabase/migrations/20261124a_member_consent_boundary.sql.
 create or replace function public.trips_owner_id_immutable()
 returns trigger
 language plpgsql
@@ -387,7 +388,7 @@ begin
   if new.owner_id is not distinct from old.owner_id then
     return new;
   end if;
-  if auth.uid() is null then
+  if auth.uid() is null and current_user not in ('anon','authenticated') then
     return new;
   end if;
   if old.owner_id = auth.uid() then
@@ -584,7 +585,6 @@ create policy "admin audit read" on public.admin_audit for select to authenticat
 -- inbox) and admin_audit (append-only via RPCs, no direct writes at all).
 create policy "admin write" on public.profiles for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin write" on public.trips for all to authenticated using (public.is_admin()) with check (public.is_admin());
-create policy "admin write" on public.trip_members for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin write" on public.suggestions for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin write" on public.decisions for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin write" on public.activity for all to authenticated using (public.is_admin()) with check (public.is_admin());
@@ -745,32 +745,9 @@ create policy "members read" on public.trip_members
     or public.is_member(trip_members.trip_id)
   );
 
--- The trip owner adds member rows here. A joiner gets a row from join_trip()
--- instead, so no client writes a row for itself.
-create policy "members insert" on public.trip_members
-  for insert with check (
-    exists (
-      select 1 from public.trips t
-      where t.id = trip_members.trip_id and t.owner_id = auth.uid()
-    )
-  );
-
-create policy "members update" on public.trip_members
-  for update using (
-    exists (
-      select 1 from public.trips t
-      where t.id = trip_members.trip_id and t.owner_id = auth.uid()
-    )
-  );
-
-create policy "members delete" on public.trip_members
-  for delete using (
-    exists (
-      select 1 from public.trips t
-      where t.id = trip_members.trip_id and t.owner_id = auth.uid()
-    )
-    or user_id = auth.uid()  -- leave a trip you're on
-  );
+-- No write policy on trip_members (#936, 20261124a). Membership rows change only
+-- through join_trip(), change_trip_access() and move_trip_access_owner(), which
+-- are security definer functions.
 
 -- ---------- suggestions ----------
 create policy "suggestions read" on public.suggestions
@@ -1096,7 +1073,7 @@ commit;
 -- #799: the owner_id guard is invoked by the table, so no client role needs
 -- execute on it. Revoked from the API roles by name, because `revoke ... from
 -- public` does not revoke from anon or authenticated on Supabase.
-revoke all on function public.trips_owner_id_immutable() from public, anon, authenticated;
+revoke all on function public.trips_owner_id_immutable() from public, anon, authenticated, service_role;
 
 -- Apply before the app update. Old two- and three-argument counter calls remain valid.
 -- Re-running is safe. No historical trip origin is inferred or rewritten.
@@ -2635,6 +2612,22 @@ create table if not exists public.trip_member_access (
 alter table public.trip_member_access enable row level security;
 revoke all on public.trip_member_access from public, anon, authenticated, service_role;
 
+-- History follows its trip (#936 gap C, 20261124a). A hard delete of a trip
+-- removes its history rows.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.trip_member_access'::regclass
+      and conname = 'trip_member_access_trip_id_fkey'
+  ) then
+    alter table public.trip_member_access
+      add constraint trip_member_access_trip_id_fkey
+      foreign key (trip_id) references public.trips(id) on delete cascade;
+  end if;
+end;
+$$;
+
 alter table public.trips add column if not exists access_version bigint not null default 0;
 
 create or replace function public.trip_access_only_change(p_old jsonb,p_new jsonb)
@@ -2813,6 +2806,9 @@ begin
       if p_action='leave' and v_access.state<>'active' then
         raise exception 'Not an active member.' using errcode='42501';
       end if;
+      if p_action='remove' and v_access.state<>'active' then
+        return jsonb_build_object('status','stale','state',public.trip_access_state(p_trip_id));
+      end if;
       v_rotate := p_action='remove';
       update public.trip_member_access set state=case when p_action='remove' then 'removed' else 'left' end,
         revision=revision+1 where trip_id=p_trip_id and user_id=v_target;
@@ -2926,6 +2922,10 @@ returns trigger language plpgsql security definer set search_path=public as $$
 begin
   if exists(select 1 from public.trip_member_access where trip_id=new.id and user_id=new.owner_id and state='removed') then
     raise exception 'Restore access before transferring ownership.' using errcode='42501';
+  end if;
+  if auth.uid() is not null and not exists(
+    select 1 from public.trip_member_access where trip_id=new.id and user_id=new.owner_id and state='active') then
+    raise exception 'The new owner must be a current member.' using errcode='42501';
   end if;
   update public.trip_member_access set owner_id=new.owner_id,
     role=case when user_id=old.owner_id and role='owner' then 'editor' else role end,

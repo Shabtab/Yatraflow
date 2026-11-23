@@ -148,6 +148,9 @@ export function deriveProbes(sql) {
  *  errors at call time) or covered by another live suite. A silent failure to
  *  apply is the one thing this check refuses to wave through. */
 export const NO_PROBE_SURFACE = {
+  '20261124a_member_consent_boundary.sql': {
+    reason: 'policy, function, trigger, grant and foreign key changes only. A missing file is silent, so the cover is the contract: supabase/tests/rls_contract.test.sql fails on a hosted project that lacks it, and tests/member-consent-936.test.ts runs the file on PGlite.',
+  },
   '20261120_collab_commenter_commands.sql': {
     reason: 'functions and grants only (`can_comment`, `submit_collab_command`). A missing helper fails a commenter command at call time, not silently.',
   },
