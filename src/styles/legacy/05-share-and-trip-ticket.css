@@ -68,6 +68,18 @@
 /* The phone block shortens every .tabbar to 10px; this row keeps the old row's
    18px at every width, so the compound wins on phone too. */
 .share-tabbed .share-job-tabs { margin-bottom: 18px; }
+/* Short job names below 480px, so all three tabs fit without sideways scroll.
+   The full name is visually hidden there, not removed: a screen reader still
+   announces the same name at every width. The short copy is aria-hidden and
+   only the visible copy sizes the button, so PillNav measures the right pill. */
+.shr-tab-short { display: none; }
+@media (max-width: 479px) {
+  .shr-tab-name {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  .shr-tab-short { display: inline; }
+}
 .share-panel { display: block; }
 /* Guard: keep [hidden] authoritative so inactive panels leave the a11y tree. */
 .share-panel[hidden] { display: none; }

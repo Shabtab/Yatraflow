@@ -25,6 +25,17 @@ describe('Share tab: three columns from one breakpoint', () => {
     expect(tab).toMatch(/\{wide \? \(\s*<div className="shr-columns">/)
   })
 
+  it('phones show short job names but keep the full accessible name', () => {
+    expect(tab).toContain("short: '1 · Plan'")
+    expect(tab).toContain("short: '2 · Publish'")
+    expect(tab).toContain("short: '3 · Keep'")
+    expect(tab).toContain('<span className="shr-tab-name">{t.label}</span>')
+    expect(tab).toContain('<span className="shr-tab-short" aria-hidden="true">{t.short}</span>')
+    expect(css).toMatch(/@media \(max-width: 479px\) \{\s*\.shr-tab-name \{/)
+    expect(css).toContain('.shr-tab-short { display: inline; }')
+    expect(css).toContain('.shr-tab-short { display: none; }')
+  })
+
   it('the three columns use the 1440 grid, and the Share tab alone widens the container', () => {
     expect(css).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .85fr)')
     expect(css).toContain(".container.yf-workspace[data-share-wide='true']")

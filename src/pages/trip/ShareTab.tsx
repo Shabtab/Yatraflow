@@ -548,9 +548,9 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
 // tablist. Below it, the numbered tabs stay as they were.
 
 const SHARE_TABS = [
-  { id: 'plan', label: '1 · Plan together' },
-  { id: 'publish', label: '2 · Share publicly' },
-  { id: 'record', label: '3 · Keep a record' },
+  { id: 'plan', label: '1 · Plan together', short: '1 · Plan' },
+  { id: 'publish', label: '2 · Share publicly', short: '2 · Publish' },
+  { id: 'record', label: '3 · Keep a record', short: '3 · Keep' },
 ] as const
 type ShareTabId = (typeof SHARE_TABS)[number]['id']
 const SHARE_TAB_IDS = SHARE_TABS.map(t => t.id)
@@ -939,7 +939,10 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
         <SegmentedTabs semantics="tablist" className="tabbar share-job-tabs" label="Share and trip options"
           items={SHARE_TABS.map(t => ({
             key: t.id,
-            label: t.label,
+            label: <>
+              <span className="shr-tab-name">{t.label}</span>
+              <span className="shr-tab-short" aria-hidden="true">{t.short}</span>
+            </>,
             id: `share-tab-${t.id}`,
             controls: `share-panel-${t.id}`,
           }))}
