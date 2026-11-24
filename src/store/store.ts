@@ -2597,11 +2597,10 @@ export async function fetchTripByInviteCode(code: string): Promise<InviteLookup>
     console.error('[yatraflow] invite-code lookup failed', rpc.error)
     return { kind: 'failed' }
   }
-  // #804 — get_trip_by_invite_code names every trips column except the five protected ones, so this row
-  // is INCOMPLETE: flights, tank_l, rent_per_day_inr, local_train and ref are
-  // absent. It is returned to the caller, which keeps it in local state for the
-  // gate to render, and it is deliberately NOT put into cache.trips, the offline
-  // queues or any snapshot.
+  // #804 — get_trip_by_invite_code returns a partial row. The omitted columns
+  // include flights, tank_l, rent_per_day_inr, local_train and ref.
+  // The gate renders the preview from local state. The preview stays out of
+  // cache.trips, the offline queues and all snapshots.
   //
   // That is the whole fix. A partial row that never enters the writable cache
   // cannot be built into a whole-row UPDATE, so no write can erase the five

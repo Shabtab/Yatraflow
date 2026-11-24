@@ -5,8 +5,7 @@
 //    is_editor(), which is false until the membership exists, so a join that
 //    fires side effects first writes nothing (console errors only).
 // 2. CODE LOOKUP — fetchTripByInviteCode resolves a short code via the
-//    get_trip_by_invite_code RPC and merges the trip into the cache, so
-//    My Trips and the workspace find it.
+//    get_trip_by_invite_code RPC. The partial row stays out of the trip cache.
 import { describe, it, expect, vi } from 'vitest'
 
 const { state, writes } = vi.hoisted(() => ({
@@ -97,8 +96,7 @@ vi.mock('../src/lib/supabase', () => {
           const then = (res: (v: { data: unknown; error: unknown }) => unknown) => Promise.resolve(result).then(res)
           return { setHeader: () => ({ then }), then }
         }
-        // #1019 — a planted error is a failed read, not a dead code. Tests set
-        // `state.rpcError` and clear it again.
+        if (state.rpcRejection) return Promise.reject(state.rpcRejection)
         return Promise.resolve({ data: state.rpcRows, error: state.rpcError ?? null })
       },
     },
@@ -170,10 +168,8 @@ function row(overrides: Partial<TripRow> = {}): TripRow {
 
 describe('fetchTripByInviteCode', () => {
   it('resolves a code via the RPC and returns the trip WITHOUT caching it', async () => {
-    // #804 — the preview row is partial (31 of 34 columns), so it is returned to
-    // the caller and deliberately never merged into cache.trips. The gate keeps
-    // it in local state; a partial row in the writable cache is what let a
-    // whole-row write erase the five columns it had not read.
+    // #804 — the gate keeps the partial row in local state. A whole-row write
+    // from a cached preview could erase columns the RPC did not return.
     state.rpcRows = [row({ invite_code: 'GOA-K7QF' })]
     state.tripRow = null
     const t = await fetchTripByInviteCode('goa k7qf'.replace(' ', '-'))
@@ -208,6 +204,15 @@ describe('fetchTripByInviteCode', () => {
       expect(await fetchTripByInviteCode('GOABEACHWE-K7QF')).toEqual({ kind: 'failed' })
     } finally {
       state.rpcError = null
+    }
+  })
+
+  it('answers failed when the RPC promise rejects', async () => {
+    state.rpcRejection = new Error('connection reset')
+    try {
+      expect(await fetchTripByInviteCode('GOABEACHWE-K7QF')).toEqual({ kind: 'failed' })
+    } finally {
+      state.rpcRejection = null
     }
   })
 

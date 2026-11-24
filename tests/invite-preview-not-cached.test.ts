@@ -638,15 +638,15 @@ describe('B2 — a resolved link leaves the loading status', () => {
   it('App sets ready when the read returns a trip', () => {
     expect(APP).toContain("setStatus('ready')")
     // The set must be inside the success branch, next to the trip it returns.
-    // Round 10 keeps the trip WITH its target, so the setter is `setResolved`.
+    // The gate stores the trip with the target and account generation.
     const at = APP.indexOf("setStatus('ready')")
-    expect(APP.slice(Math.max(0, at - 160), at)).toContain('setResolved({ target: linkTarget, trip: result.trip })')
+    expect(APP.slice(Math.max(0, at - 160), at)).toContain('setResolved({ target: linkTarget, identityGen, trip: result.trip })')
   })
 
   it('the loading render is only for a genuinely unread link', () => {
     // The spinner must not swallow the terminal screens or the signed-out
     // preview, so "loading" needs the read to still be in flight.
-    expect(APP).toMatch(/status === 'loading' \|\| !shownTrip/)
+    expect(APP).toMatch(/currentStatus === 'loading' \|\| !shownTrip/)
   })
 })
 

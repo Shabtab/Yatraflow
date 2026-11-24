@@ -241,7 +241,7 @@ function memberRow(userId: string, role: string): Record<string, unknown> {
  * epoch has advanced. Nothing here writes a field on the mock to fake an
  * identity: the identity comes from the session the SDK reports.
  */
-async function storeFor(account: string) {
+async function storeFor(account: string | null) {
   vi.resetModules()
   state.sessionUserId = account
   state.authHandler = null
@@ -260,9 +260,10 @@ async function storeFor(account: string) {
  * the mock left the store believing it was still the old account, which is why
  * the first harness could not fail.
  */
-function switchAccount(account: string): void {
+function switchAccount(account: string | null): void {
   state.sessionUserId = account
-  state.authHandler?.('SIGNED_IN', { user: { id: account } })
+  if (account === null) state.authHandler?.('SIGNED_OUT', null)
+  else state.authHandler?.('SIGNED_IN', { user: { id: account } })
 }
 
 /** Hold one read open, and report when the store is inside it. */
@@ -300,10 +301,14 @@ beforeEach(() => {
 })
 
 describe('the invite preview is an await a real account switch can land in', () => {
-  it('a preview that resolves after the account changed is refused', async () => {
+  it.each([
+    { before: ALICE, after: BOB, transition: 'an account switch' },
+    { before: null, after: BOB, transition: 'sign-in' },
+    { before: ALICE, after: null, transition: 'sign-out' },
+  ])('a preview that resolves after $transition is refused', async ({ before, after }) => {
     // The guard: `fetchTripByInviteCode` re-checks the identity epoch and the
     // session account after its RPC await, and answers `cancelled` when either moved.
-    const store = await storeFor(ALICE)
+    const store = await storeFor(before)
     const held = hold('get_trip_by_invite_code')
     state.inviteRows = [previewRow()]
 
@@ -311,7 +316,7 @@ describe('the invite preview is an await a real account switch can land in', () 
     // The receipt: the store is inside the RPC await now.
     await held.entered
     // The account changes while the store waits.
-    await interleave(held.entered, () => switchAccount(BOB), held.release)
+    await interleave(held.entered, () => switchAccount(after), held.release)
     await drain()
 
     // The store's own answer, not a value the test wrote anywhere.
