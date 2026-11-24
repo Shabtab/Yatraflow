@@ -24,9 +24,10 @@ import { decodeTripSnapshot } from './lib/snapshot'
 import { analyticsBeforeSend } from './lib/analyticsPrivacy'
 import { scrollBehavior } from './lib/motion'
 import { pageTitle, routeParts } from './lib/pageTitle'
-import { CREATE_SEGMENT, CREATE_PATH } from './lib/routes'
+import { CREATE_SEGMENT, CREATE_PATH, signupThenCreatePath } from './lib/routes'
+import { stashCalcPrefillFromSearch } from './lib/calcPrefill'
 import { createFunnelOn } from './lib/featureFlags'
-import { currentRoute, navigate as navigateRoute, onRouteChange, settleLegacyHash } from './lib/router'
+import { currentQuery, currentRoute, navigate as navigateRoute, onRouteChange, settleLegacyHash } from './lib/router'
 import { appLink } from './lib/appLink'
 import { App as CapApp } from '@capacitor/app'
 import { isNative } from './lib/native'
@@ -71,6 +72,22 @@ const DMCAPage = lazy(() => import('./pages/DMCAPage').then(m => ({ default: m.D
 
 /** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. The `page-enter` root gives the block the shared entrance. The `route-fallback` root stays invisible for a short grace period. It also holds a page's height. A fast load then shows no loader and no footer jump. */
 const lazyRouteFallback = <div className="container page-enter route-fallback"><StateBlock kind="loading" titleLevel="h2" art={<Mascot pose="loading" size={112} />} title="Loading…" /></div>
+
+/** A signed-out `/new` is a request to create a trip, not the marketing home.
+ *  It used to fall through the `!me` branch to the landing page, so a
+ *  calculator CTA (`/new?ref=calculator&…`) dropped its query and the visitor's
+ *  estimate with it. The stash and the redirect run in one effect, never as a
+ *  render side effect, and the redirect goes through signupThenCreatePath so
+ *  the create form is where the new account lands. */
+function CalcPrefillGate() {
+  useEffect(() => {
+    stashCalcPrefillFromSearch(currentQuery().toString())
+    navigateRoute(signupThenCreatePath())
+  }, [])
+  // The same loading block every lazy route shows, under the page scope so the
+  // one frame before the redirect keeps the page's own frame.
+  return <div className="container page-enter route-fallback yf-page"><StateBlock kind="loading" titleLevel="h2" art={<Mascot pose="loading" size={112} />} title="Loading…" /></div>
+}
 
 export type ProfileLookupState = 'anonymous' | 'reading' | 'failed' | 'missing' | 'ready'
 
@@ -582,6 +599,7 @@ export default function App() {
     else if (parts[0] === 'auth' && !sessionUserId) page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
     else if (profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) page = <ProfileLookupPage state={profileState} />
     else if (parts[0] === 'trip' && parts[1]) page = <SignedOutTripPage route={route} navigate={navigate} />
+    else if (parts[0] === CREATE_SEGMENT) page = <CalcPrefillGate />
     else page = <LandingPage onNavigate={navigate} />
   } else if (!GUEST_ROUTE_SEGMENTS.has(parts[0] ?? '')
     && profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) {
@@ -861,7 +879,7 @@ export default function App() {
         </svg>
         <div className="container footer-inner">
           <span><b>YatraFlow</b>: plan together, travel better. Built for Indian travellers</span>
-          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh trip cost calculator</a></span>
+          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/trip-cost-calculators/">Free trip cost calculators</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh</a></span>
         </div>
       </footer>
 

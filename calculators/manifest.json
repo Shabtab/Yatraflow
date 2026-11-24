@@ -1,0 +1,47 @@
+{
+  "generated": true,
+  "note": "Written by scripts/build-calculators.mjs. Consumed by api/sitemap.js, public/sw.js and tests/calculators.test.ts.",
+  "hub": "trip-cost-calculators",
+  "calculators": [
+    {
+      "key": "goa",
+      "slug": "goa-trip-cost-calculator",
+      "dest": "Goa",
+      "season": "Peak November–February",
+      "pricesChecked": "November 2026",
+      "dateModified": "2026-11-25",
+      "ogImage": "/og/calc-goa.png",
+      "estimate": "₹6,900 – ₹12,700"
+    },
+    {
+      "key": "rajasthan",
+      "slug": "rajasthan-trip-cost-calculator",
+      "dest": "Rajasthan",
+      "season": "Peak November–February",
+      "pricesChecked": "November 2026",
+      "dateModified": "2026-11-25",
+      "ogImage": "/og/calc-rajasthan.png",
+      "estimate": "₹15,800 – ₹25,800"
+    },
+    {
+      "key": "meghalaya",
+      "slug": "meghalaya-trip-cost-calculator",
+      "dest": "Meghalaya",
+      "season": "Best October–April",
+      "pricesChecked": "November 2026",
+      "dateModified": "2026-11-25",
+      "ogImage": "/og/calc-meghalaya.png",
+      "estimate": "₹9,700 – ₹16,600"
+    },
+    {
+      "key": "ladakh",
+      "slug": "ladakh-trip-cost-calculator",
+      "dest": "Ladakh",
+      "season": "Ride June–September",
+      "pricesChecked": "October 2026",
+      "dateModified": "2026-11-25",
+      "ogImage": "/og/calc-ladakh.png",
+      "estimate": "₹15,400 – ₹22,300"
+    }
+  ]
+}

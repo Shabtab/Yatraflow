@@ -946,7 +946,9 @@ describe('the default share card agrees everywhere it is written', () => {
     expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([card.DEFAULT_CARD_WIDTH, card.DEFAULT_CARD_HEIGHT])
   })
 
-  it.each(['../index.html', '../public/ladakh-trip-cost-calculator/index.html'])(
+  // The trip cost calculator pages are NOT in this list: each carries its own
+  // destination card, and tests/calculators.test.ts pins that instead.
+  it.each(['../index.html'])(
     '%s writes the same card, size, type and alt text as the handlers',
     async path => {
       const card = await import('../api/_shareCard.js')

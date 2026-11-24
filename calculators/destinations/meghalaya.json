@@ -1,0 +1,367 @@
+{
+  "key": "meghalaya",
+  "slug": "meghalaya-trip-cost-calculator",
+  "dest": "Meghalaya",
+  "title": "Meghalaya Trip Cost Calculator 2026–27 (Free, No Signup)",
+  "h1": "Meghalaya trip cost calculator",
+  "description": "Work out a Meghalaya trip budget in ₹: Guwahati to Shillong, Cherrapunji and Dawki, by SUV with driver, shared cab or rented bike. Free, no signup.",
+  "lead": "Meghalaya is where a group's transport choice decides the whole budget. A private SUV with a driver, shared sumos or rented bikes all land in very different places, and the entry fees and registration are easy to forget. Pick your choices and see the total in rupees, per person and for the whole group.",
+  "season": "Best October–April",
+  "seasonNote": "The dry months run October to April. Monsoon June to September brings the waterfalls at their fullest and the slides, washouts and leeches with them. Dawki boating and the root-bridge treks can close without notice in heavy rain.",
+  "pricesChecked": "November 2026",
+  "datePublished": "2026-11-25",
+  "dateModified": "2026-11-25",
+  "ogImage": "/og/calc-meghalaya.png",
+  "faqTitle": "Questions about Meghalaya trip costs",
+  "hubBlurb": "Guwahati–Shillong–Cherrapunji–Dawki, priced the way groups actually travel it.",
+  "siblings": [
+    "goa-trip-cost-calculator",
+    "rajasthan-trip-cost-calculator",
+    "ladakh-trip-cost-calculator"
+  ],
+  "defaultRoute": "classic-5",
+  "kmFromRoute": true,
+  "peoplePerRoom": 2,
+  "fuel": {
+    "mileage": 35,
+    "price": 105
+  },
+  "defaults": {
+    "people": 4,
+    "stay": "homestay",
+    "food": "local",
+    "transport": "suv-driver"
+  },
+  "routes": {
+    "classic-5": {
+      "label": "Classic circuit",
+      "meta": "Guwahati–Shillong–Cherrapunji–Dawki · 5 days",
+      "days": 5,
+      "km": 600,
+      "note": "The route almost every first Meghalaya trip runs, about 600 km in all."
+    },
+    "full-7": {
+      "label": "Meghalaya + Kaziranga",
+      "meta": "The circuit plus Assam · 7 days",
+      "days": 7,
+      "km": 1100,
+      "note": "Adds the Kaziranga drives and a safari morning. The Assam leg is long, so the days go up with it."
+    },
+    "weekend-3": {
+      "label": "Shillong weekend",
+      "meta": "Shillong–Cherrapunji · 3 days",
+      "days": 3,
+      "km": 300,
+      "note": "Three days out of Guwahati, with no Dawki run. The tight version."
+    },
+    "custom": {
+      "label": "Custom",
+      "meta": "Your km, your days",
+      "days": 5,
+      "km": 0,
+      "note": "Enter the distance you actually plan to cover."
+    }
+  },
+  "fuelLabel": "Distance, km",
+  "groups": [
+    {
+      "key": "transport",
+      "legend": "Getting around",
+      "hint": "A private SUV with a driver is how most Indian groups do Meghalaya. Shared sumos are much cheaper and much slower.",
+      "options": [
+        {
+          "value": "suv-driver",
+          "label": "SUV with driver",
+          "appMode": "taxi"
+        },
+        {
+          "value": "shared-cab",
+          "label": "Shared cabs",
+          "appMode": "bus"
+        },
+        {
+          "value": "bikes",
+          "label": "Rented bikes",
+          "appMode": "motorcycle"
+        }
+      ]
+    }
+  ],
+  "stays": {
+    "homestay": {
+      "label": "Homestay",
+      "low": 1200,
+      "high": 2200,
+      "style": "budget"
+    },
+    "hotel": {
+      "label": "Hotel",
+      "low": 2500,
+      "high": 4500,
+      "style": "comfort"
+    },
+    "resort": {
+      "label": "Resort",
+      "low": 4500,
+      "high": 8000,
+      "style": "luxury"
+    }
+  },
+  "foods": {
+    "local": {
+      "label": "Local eateries",
+      "low": 400,
+      "high": 700
+    },
+    "restaurant": {
+      "label": "Restaurants",
+      "low": 800,
+      "high": 1300
+    }
+  },
+  "lines": [
+    {
+      "key": "suv",
+      "name": "Private SUV with driver",
+      "kind": "unit-day",
+      "units": 1,
+      "when": {
+        "group": "transport",
+        "in": [
+          "suv-driver"
+        ]
+      },
+      "rateLabel": "SUV with driver, per day",
+      "rate": {
+        "low": 3000,
+        "high": 4500
+      },
+      "hint": "An Innova or Bolero-class car with a driver, fuel included. Five days is the usual quote for the Guwahati loop.",
+      "params": {
+        "low": "sv",
+        "high": "sV"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "sharedCab",
+      "name": "Shared cabs",
+      "kind": "person-day",
+      "when": {
+        "group": "transport",
+        "in": [
+          "shared-cab"
+        ]
+      },
+      "rateLabel": "Shared cabs, per person per day",
+      "rate": {
+        "low": 700,
+        "high": 1200
+      },
+      "hint": "Shared sumos between Guwahati, Shillong, Cherrapunji and Dawki. They leave when full, so a day can go on waiting.",
+      "params": {
+        "low": "sc",
+        "high": "sC"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "fuel",
+      "name": "Fuel (rented bikes)",
+      "kind": "km",
+      "units": "half-people",
+      "when": {
+        "group": "transport",
+        "in": [
+          "bikes"
+        ]
+      },
+      "rateLabel": "Fuel and distance",
+      "hint": "One bike between two people. Hill mileage is worse than the number you get at home.",
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "bikeRent",
+      "name": "Bike rent",
+      "kind": "unit-day",
+      "units": "half-people",
+      "when": {
+        "group": "transport",
+        "in": [
+          "bikes"
+        ]
+      },
+      "rateLabel": "Bike rent, per bike per day",
+      "rate": {
+        "low": 1200,
+        "high": 1800
+      },
+      "hint": "Shillong and Guwahati rentals. Bike taxis are restricted in parts of Shillong, so check what your rental allows before you book.",
+      "params": {
+        "low": "br",
+        "high": "bR"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "entries",
+      "name": "Entry fees and boating",
+      "kind": "person",
+      "rateLabel": "Entry fees, per person",
+      "rate": {
+        "low": 600,
+        "high": 1400
+      },
+      "hint": "Mawsmai, the eco parks, the Double Decker root bridge and the Dawki boat ride. Each one is small; together they are not.",
+      "params": {
+        "low": "en",
+        "high": "eN"
+      },
+      "source": {
+        "label": "sourced",
+        "href": "#src-tourism"
+      }
+    },
+    {
+      "key": "registration",
+      "name": "Tourism registration",
+      "kind": "person",
+      "rateLabel": "Registration, per person",
+      "rate": {
+        "low": 100,
+        "high": 200
+      },
+      "hint": "Meghalaya asks visitors to register, and the fee is small but real. Check the current rule on the state tourism site before you go.",
+      "params": {
+        "low": "rg",
+        "high": "rG"
+      },
+      "source": {
+        "label": "sourced",
+        "href": "#src-tourism"
+      }
+    },
+    {
+      "key": "guide",
+      "name": "Local guide",
+      "kind": "person",
+      "optional": true,
+      "on": false,
+      "optionalLabel": "Add a local guide",
+      "offLabel": "Not included, add a guide if you want one",
+      "rateLabel": "Guide, per person",
+      "rate": {
+        "low": 800,
+        "high": 1500
+      },
+      "hint": "Several root-bridge and cave walks are not safe to do unguided, and a local guide is also the difference between seeing a village and driving past it.",
+      "params": {
+        "low": "gd",
+        "high": "gD",
+        "off": "gdo"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "stay",
+      "name": "Stay",
+      "kind": "room-night",
+      "tier": "stay",
+      "tierLegend": "Stay",
+      "tierParam": "s",
+      "tierHint": "Price per room per night. Two people share a room.",
+      "rateLabel": "Stay, per room per night",
+      "params": {
+        "low": "sl",
+        "high": "sh"
+      }
+    },
+    {
+      "key": "food",
+      "name": "Food",
+      "kind": "person-day",
+      "tier": "food",
+      "tierLegend": "Food",
+      "tierParam": "f",
+      "rateLabel": "Food, per person per day",
+      "params": {
+        "low": "fl",
+        "high": "fH"
+      }
+    },
+    {
+      "key": "misc",
+      "name": "Buffer",
+      "kind": "person",
+      "rateLabel": "Buffer, per person",
+      "rate": {
+        "low": 800,
+        "high": 1500
+      },
+      "hint": "Rain gear, a poncho you buy twice, parking, and the things nobody plans for.",
+      "params": {
+        "low": "ml",
+        "high": "mh"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    }
+  ],
+  "faqs": [
+    {
+      "q": "How much does a private cab cost in Meghalaya for 5 days?",
+      "a": "An Innova or Bolero-class SUV with a driver runs about ₹3,000 to ₹4,500 a day for the Guwahati–Shillong–Cherrapunji–Dawki loop, and five days is the usual quote. That is ₹15,000 to ₹22,500 for the car, split across your group, so four people pay roughly ₹3,750 to ₹5,600 each for transport alone. The driver's food and stay are usually settled separately at the end of the trip, and are not in this figure."
+    },
+    {
+      "q": "What is the Meghalaya budget per person for 4 friends?",
+      "a": "With the default settings here, four people on the 5-day classic circuit in a private SUV with a driver, staying in homestays and eating locally, the calculator lands near ₹9,700 to ₹16,600 per person. That is ₹38,600 to ₹66,500 for the group. Shared cabs bring transport down sharply and add waiting time; rented bikes sit in between and are the most fun in the dry months."
+    },
+    {
+      "q": "Do I need a permit or registration for Meghalaya?",
+      "a": "Meghalaya asks visitors to register, and the fee is small: roughly ₹100 to ₹200 a person. It is counted as its own line here because groups forget it. Some individual sights, such as the Double Decker root bridge and Dawki boating, charge their own fees and are covered by the entry line. Nothing else needs a permit for Indian nationals. Check the state tourism site for the current rule before you travel, because it changes."
+    },
+    {
+      "q": "Should we rent bikes or take a cab in Meghalaya?",
+      "a": "Bikes are cheaper on paper, about ₹1,200 to ₹1,800 a bike a day plus fuel, and one bike between two people works well for a group of four. But the roads climb hard and the rain arrives fast, and some Shillong roads restrict bike taxis. A cab with a driver costs more and removes the weather risk. Switch the Getting around option above and compare both totals rather than the daily rate."
+    },
+    {
+      "q": "What are the best months to visit Meghalaya?",
+      "a": "October to April is the dry season and the safe window. Cherrapunji and Mawsynram are the wettest places in India, and June to September brings the waterfalls at their fullest along with slides, washed-out roads and trails that close without notice. The ranges here are a dry-season week. If you go in the monsoon, add to the buffer and expect to drop a day."
+    }
+  ],
+  "sources": [
+    {
+      "id": "src-tourism",
+      "kind": "Sourced",
+      "text": "Visitor registration, the entry fees for the eco parks and the root bridge, and the season timing: ",
+      "links": [
+        {
+          "text": "Meghalaya Tourism, official state tourism site",
+          "href": "https://www.meghalayatourism.in/"
+        }
+      ]
+    },
+    {
+      "id": "src-assume",
+      "kind": "Assumption",
+      "text": "Route distances of about 600 km for the classic circuit, 1,100 km with Kaziranga and 300 km for the Shillong weekend; stays, food, the SUV-with-driver rate, shared-cab and bike rates, the guide range, the buffer, mileage of 35 km per litre and fuel at ₹105 per litre are YatraFlow planning estimates checked in November 2026. They are market ranges, not a quote and not an official tariff: replace each one with the price you were actually given."
+    }
+  ]
+}

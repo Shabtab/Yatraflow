@@ -54,6 +54,7 @@ import { haptic, HAPTIC } from '../lib/haptics'
 import { useTimeFormat, formatHM, validHM } from '../lib/timefmt'
 import { cap } from '../lib/labels'
 import { readBenchPrefill } from '../lib/planBench'
+import { readCalcPrefill, calcPrefillTripName } from '../lib/calcPrefill'
 import { scrollBehavior } from '../lib/motion'
 import { LocationInput } from '../components/LocationInput'
 import { PageHeader } from '../components/page/PageHeader'
@@ -207,6 +208,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   // moment it can compute one, and keeps it live as the plan grows — until the
   // user edits the field themselves (or a bench hand-off set it explicitly).
   const [budgetTouched, setBudgetTouched] = useState(false)
+  /** The calculator slug this form was pre-filled from, if any (see below). */
+  const calcSlugRef = useRef<string | null>(null)
   // Plan Bench hand-off (issue #37): when the homepage calculator stashed its
   // inputs into sessionStorage, pre-fill the matching fields. Read-once — the
   // stash clears itself on read, so a refresh returns to the plain form.
@@ -229,6 +232,42 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
         ? { fuelEconomy: String(p.kmPerL), fuelPrice: String(p.inrPerL) }
         : {}),
     }))
+  }, [])
+
+  // Calculator hand-off (src/lib/calcPrefill.ts): a destination page's estimate
+  // arrives as a pending row. Deliberately a second effect, not folded into the
+  // bench one — each reads its own key, so neither stash can swallow the other.
+  // Read-only: Auth has already read the same row for its banner, and the
+  // 30-minute TTL retires it. Only stated fields are filled; a visitor with no
+  // `calc` slug is a plain /new visit and gets the untouched form.
+  useEffect(() => {
+    const p = readCalcPrefill()
+    if (!p || !p.calc) return
+    // Kept for the submit event: which calculator priced this trip is the one
+    // attribution fact the row does not already carry.
+    calcSlugRef.current = p.calc
+    // Same reason as the bench above, but only when a figure was stated: with
+    // no budget in the query the smart-budget pre-fill stays free to work.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the input is the stashed row, not this render
+    if (p.budget != null) setBudgetTouched(true)
+    const name = calcPrefillTripName(p)
+    // Tomorrow onward, only when the form has no dates yet — a calculator says
+    // how many days, never which day.
+    const start = isoAddDays(isoDay(new Date()), 1)
+    setF(prev => ({
+      ...prev,
+      // The user's own typing (or a resumed draft) wins over the trip name.
+      ...(name && !prev.name ? { name } : {}),
+      ...(p.people != null ? { travellers: p.people } : {}),
+      ...(p.mode ? { transportMode: p.mode } : {}),
+      ...(p.stay ? { stayStyle: p.stay } : {}),
+      ...(p.budget != null ? { budgetPerPersonInr: p.budget } : {}),
+      ...(!prev.startDate && p.days != null ? { startDate: start, endDate: isoAddDays(start, p.days - 1) } : {}),
+    }))
+    // The destination answers the "where" step, so the traveller only has to
+    // say where they start from. No coordinates: the calculator knows a place
+    // name, not a pin, and the geocoder resolves it in the usual flow.
+    if (p.dest) setDests(prev => (prev.length ? prev : [{ name: p.dest! }]))
   }, [])
 
   // The dock's "Print bill" is pinned to the bottom of the screen while the bill
@@ -889,7 +928,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
    *  draft cleared, and the route in. Navigation never precedes the save — a
    *  workspace opened over a failed write is a trip that vanishes on reload. */
   function finishCreate(trip: Trip) {
-    recordCreateEvent('submitted', { days: trip.days.length, travellers: trip.travellers, mode: trip.transportMode }, { tripId: trip.id, userId: me?.id })
+    recordCreateEvent('submitted', { days: trip.days.length, travellers: trip.travellers, mode: trip.transportMode, calcSlug: calcSlugRef.current ?? undefined }, { tripId: trip.id, userId: me?.id })
     haptic(HAPTIC.success)
     clearDraft()
     if (createFunnelOn('moment')) {

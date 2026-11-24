@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#FAF7F2">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0C1420">
+<link rel="canonical" href="https://www.yatraflow.in/{{slug}}/">
+<link rel="preload" href="/calculators/fonts/sora-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/calculators/fonts/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/calculators/shared.css">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="YatraFlow">
+<meta property="og:title" content="{{title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:url" content="https://www.yatraflow.in/{{slug}}/">
+<meta property="og:image" content="https://www.yatraflow.in{{ogImage}}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="{{ogAlt}}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{title}}">
+<meta name="twitter:description" content="{{description}}">
+<meta name="twitter:image" content="https://www.yatraflow.in{{ogImage}}">
+<meta name="twitter:image:alt" content="{{ogAlt}}">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/icons/favicon-96.png" sizes="96x96" type="image/png">
+{{jsonLd}}
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><a href="https://www.yatraflow.in/"><svg width="24" height="24" viewBox="4.25 5.5 55.5 56.5" aria-hidden="true" focusable="false"><path d="M15 6C15 26 32 24 32 40" fill="none" stroke="#0B6B63" stroke-width="11"/><path d="M49 6C49 26 32 24 32 40V46" fill="none" stroke="#0D8D82" stroke-width="11"/><circle cx="32" cy="56" r="5.5" fill="#F59E2D"/></svg>YatraFlow</a></header>
+  <main>
+    <h1>{{h1}}</h1>
+    <p class="lead">{{lead}}</p>
+    <p class="season">{{season}}</p>
+    <p class="fresh">Prices checked {{pricesChecked}}. Planning estimate, not a quote.</p>
+
+    <section class="panel summary" id="summary" aria-label="Estimate at a glance">
+      <div data-hero><!--gen:hero-->
+{{hero}}
+<!--/gen:hero--></div>
+      <a class="jump" href="#result">See the breakdown</a>
+    </section>
+
+    <div class="layout">
+      <form class="panel" id="calc" autocomplete="off" onsubmit="return false">
+        <fieldset>
+          <legend>Route</legend>
+          <div class="routes">
+{{routes}}
+          </div>
+          <p class="hint" id="routeHint">{{routeHint}}</p>
+          <div class="row three" id="routeRow">
+            <div class="field" id="kmField">
+              <label for="km">{{fuelLabel}}</label>
+              <input type="number" id="km" inputmode="numeric" min="0" step="50" value="{{kmValue}}" placeholder="{{kmPlaceholder}}" aria-describedby="m-km">
+              <p class="msg" id="m-km" hidden></p>
+            </div>
+            <div class="field">
+              <label for="days">Days</label>
+              <input type="number" id="days" inputmode="numeric" min="1" step="1" value="{{days}}" aria-describedby="m-days">
+              <p class="msg" id="m-days" hidden></p>
+            </div>
+            <div class="field">
+              <label for="nights">Nights</label>
+              <input type="number" id="nights" inputmode="numeric" min="0" step="1" value="{{nights}}" aria-describedby="m-nights">
+              <p class="msg" id="m-nights" hidden></p>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Group</legend>
+          <div class="row">
+            <div class="field">
+              <label for="people">People</label>
+              <input type="number" id="people" inputmode="numeric" min="1" step="1" value="{{people}}" aria-describedby="m-people">
+              <p class="msg" id="m-people" hidden></p>
+            </div>
+{{unitsField}}
+          </div>
+          <p class="note" id="peopleNote" hidden></p>
+        </fieldset>
+{{groups}}
+{{tiers}}
+{{optionals}}
+        <details class="rates" id="rates">
+          <summary>Adjust prices and rates<span class="edited" id="edited" hidden>(edited)</span></summary>
+{{rates}}
+        </details>
+      </form>
+
+      <section class="panel result" id="result" aria-labelledby="resultTitle">
+        <h2 id="resultTitle">Your estimate</h2>
+        <div data-hero><!--gen:hero-->
+{{hero}}
+<!--/gen:hero--></div>
+        <p class="note warn" id="fuelNote" hidden>Fuel is not counted yet. Enter a mileage to add it.</p>
+        <ul class="break" id="breakdown">
+<!--gen:breakdown-->
+{{breakdown}}
+<!--/gen:breakdown-->
+        </ul>
+        <p class="legend"><b>Solid bar</b> is the low figure. <b>Striped bar</b> is the extra up to the high figure.</p>
+        <p class="honest">These are planning estimates built from the sources and assumptions listed below. They are not quotes. Amounts are rounded to the nearest ₹100.</p>
+        <div class="actions">
+          <a class="cta" id="cta" href="{{ctaHref}}">Plan this trip with your group</a>
+          <a class="share" id="wa" href="{{waHref}}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="currentColor"><path d="M12.04 2C6.6 2 2.2 6.4 2.2 11.84a9.78 9.78 0 0 0 1.34 4.94L2 22l5.36-1.4a9.9 9.9 0 0 0 4.68 1.19h.01c5.43 0 9.84-4.4 9.84-9.84S17.47 2 12.04 2Zm0 17.97a8.2 8.2 0 0 1-4.16-1.14l-.3-.18-3.09.81.83-3.02-.19-.31a8.13 8.13 0 0 1-1.25-4.3c0-4.5 3.67-8.16 8.17-8.16a8.16 8.16 0 0 1 0 16.3Zm4.48-6.11c-.25-.12-1.46-.72-1.68-.8-.23-.09-.39-.13-.55.12-.16.25-.63.8-.78.96-.14.16-.29.18-.53.06-.25-.12-1.04-.38-1.98-1.22-.73-.65-1.22-1.46-1.36-1.7-.15-.25-.02-.38.11-.5.11-.11.25-.29.37-.44.12-.14.16-.25.25-.41.08-.16.04-.31-.02-.43-.06-.12-.55-1.33-.76-1.82-.2-.48-.4-.41-.55-.42h-.47c-.16 0-.41.06-.63.31-.21.25-.82.8-.82 1.96s.84 2.27.96 2.43c.12.16 1.65 2.52 4 3.53.56.24 1 .38 1.34.49.56.18 1.07.15 1.48.09.45-.07 1.46-.6 1.67-1.18.21-.58.21-1.07.15-1.18-.06-.1-.22-.16-.47-.28Z"/></svg>Share estimate on WhatsApp</a>
+        </div>
+        <p class="keeps">This page's link keeps your numbers, so you can copy it from the address bar. Everything here is free and needs no signup.</p>
+      </section>
+    </div>
+    <p class="sr-only" role="status" id="status"><!--gen:status-->{{status}}<!--/gen:status--></p>
+
+    <section class="below" aria-labelledby="faqTitle">
+      <h2 id="faqTitle">{{faqTitle}}</h2>
+{{faqs}}
+    </section>
+
+    <section class="below" id="sources" aria-labelledby="srcTitle">
+      <h2 id="srcTitle">Sources and assumptions</h2>
+      <p class="hint" style="max-width:66ch">Sourced numbers come from the pages below as read in 2026. Prices change, so check them against your own quotes. Everything marked as an assumption is our own planning guess.</p>
+      <details>
+        <summary>Read the sources</summary>
+        <ul class="sources">
+{{sources}}
+        </ul>
+      </details>
+    </section>
+
+    <section class="below" aria-labelledby="moreTitle">
+      <h2 id="moreTitle">More trip cost calculators</h2>
+      <ul class="siblings">
+{{siblings}}
+      </ul>
+      <a class="hub-link" href="/trip-cost-calculators/">All India trip cost calculators</a>
+    </section>
+  </main>
+  <footer>
+    <a href="https://www.yatraflow.in/">YatraFlow</a>: plan trips together. This calculator gives planning estimates, not quotes.
+  </footer>
+</div>
+<a class="mini" id="mini" href="#result" hidden><span>Per person</span><span id="miniRange"></span></a>
+{{cfg}}
+<script type="module" src="/calculators/client.js"></script>
+</body>
+</html>

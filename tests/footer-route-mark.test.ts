@@ -25,11 +25,14 @@ describe('footer route mark (P1)', () => {
     expect(footer).toMatch(/<svg\b[^>]*focusable="false"/)
   })
 
-  it('keeps the feedback link and the calculator link, and adds no anchor', () => {
+  it('keeps the feedback link and the two calculator links, and adds no other anchor', () => {
     expect(footer).toContain('href={feedbackHref()}')
     expect(footer).toContain('Send feedback')
+    // The hub is the discovery path for all four calculators; Ladakh stays
+    // named because it is the page that already ranks.
+    expect(footer).toContain('href="/trip-cost-calculators/"')
     expect(footer).toContain('href="/ladakh-trip-cost-calculator/"')
-    expect(footer.match(/<a\s/g)?.length).toBe(2)
+    expect(footer.match(/<a\s/g)?.length).toBe(3)
   })
 
   it('positions the mark against the footer itself, not against its padding', () => {

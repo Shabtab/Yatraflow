@@ -11,6 +11,7 @@ import { currentQuery } from '../lib/router'
 import { authNext, isInviteNext } from '../lib/authNext'
 import { passwordMeter } from '../lib/passwordMeter'
 import { MISSING_BACKEND_MESSAGE } from '../lib/authErrors'
+import { readCalcPrefill, calcPrefillBannerText } from '../lib/calcPrefill'
 import { Field } from '../components/ui'
 import { DobPicker } from '../components/DobPicker'
 import { AuthCoverArt } from '../components/AuthCover'
@@ -73,6 +74,14 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const errRef = useRef<HTMLDivElement>(null)
 
   const [saving, setSaving] = useState(false)
+  // A calculator visitor arrives here from /new with their estimate stashed
+  // (src/lib/calcPrefill.ts). The sentence names only what the row carries,
+  // and it is read once on mount. The row is NOT cleared: the create form
+  // reads the same one after sign-up.
+  const [calcBanner] = useState(() => {
+    const p = readCalcPrefill()
+    return p ? calcPrefillBannerText(p) : null
+  })
   // The invite cue shows on the log in form only, and only for an invite route.
   const inviteRoute = isInviteNext(nextRoute())
   // The live password hint. Sign-up only: log in never counts characters.
@@ -198,6 +207,10 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
             <span aria-hidden={mode !== 'login'} className="auth-login-copy">Log in to your trip plans.</span>
             <span aria-hidden={mode !== 'signup'} className="auth-signup-copy">Free to plan. No card needed.</span>
           </p>
+
+          {/* What the visitor was pricing before they came here. Static content
+              on arrival, so it is a plain paragraph — not a live region. */}
+          {calcBanner && <p className="hub-note">{calcBanner}</p>}
 
           <SegmentedTabs semantics="tablist" className="tabbar tabbar-sunken auth-tabs" label="Login or sign up" items={AUTH_TABS} value={mode} onChange={switchMode} />
 
