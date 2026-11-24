@@ -65,3 +65,32 @@
 @media (prefers-reduced-motion: reduce) {
 .modal-full { animation: none; }
 }
+
+/* Stop editor: one responsive form on the shared dialog surface. */
+.modal-stop-editor { --dialog-max-width: 960px; }
+.stop-editor-key, .stop-editor-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--space-10); }
+.stop-editor-section { min-width: 0; }
+.stop-editor-section-title { margin: var(--space-5) 0; font-size: 14px; }
+.stop-editor-disclosure { display: none; }
+.stop-editor-fold { display: grid; grid-template-rows: 1fr; }
+.stop-editor-fold-inner { min-height: 0; }
+.stop-editor-actions { display: flex; justify-content: flex-end; gap: var(--space-4); padding-top: var(--space-5); }
+@media (max-width: 639px) {
+  .modal-stop-editor { height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh; border-radius: 0; animation: stop-editor-enter var(--motion-slow) var(--ease-paper); }
+  .modal-stop-editor .stop-editor-key, .modal-stop-editor .stop-editor-details { grid-template-columns: minmax(0, 1fr); }
+  .stop-editor-section { border-top: 1px solid var(--line); }
+  .stop-editor-section-title { display: none; }
+  .stop-editor-disclosure { display: flex; width: 100%; justify-content: space-between; align-items: center; padding: var(--space-7) 0; border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 700; }
+  .stop-editor-fold { grid-template-rows: 0fr; transition: grid-template-rows var(--motion-slower) var(--ease-resize); }
+  .stop-editor-fold.is-open { grid-template-rows: 1fr; }
+  .stop-editor-fold-inner { overflow: hidden; }
+  .stop-editor-actions { position: sticky; bottom: calc(-1 * (22px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))); background: var(--card); padding-bottom: calc(var(--space-5) + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); }
+  .modal-overlay-exiting .modal-stop-editor { animation: stop-editor-exit var(--motion-med) var(--ease-exit) forwards; }
+}
+.modal-overlay-exiting { pointer-events: none; }
+@keyframes stop-editor-enter { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes stop-editor-exit { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(18px); } }
+@media (prefers-reduced-motion: reduce) {
+  .modal-stop-editor, .modal-overlay-exiting .modal-stop-editor { animation: none; }
+  .stop-editor-fold { transition: none; }
+}

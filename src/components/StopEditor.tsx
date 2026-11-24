@@ -1,5 +1,5 @@
 // ============ Stop add/edit modal ============
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { InlineIcon } from './icons'
 import type { ItineraryStop, StopCategory, StopStatus, Trip } from '../data/types'
 import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
@@ -74,6 +74,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
   banner?: React.ReactNode
 }) {
   const timeFormat = useTimeFormat()
+  const [sectionsOpen, setSectionsOpen] = useState(0)
   // #424 guard: saving a location that was never pinned asks for coordinates
   // before the write. Hook stays with the others, above every exit (§6e).
   const { resolvePick, dialog: resolvePickDialog } = useResolvePick()
@@ -221,10 +222,11 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
     if (v.openTime && v.closeTime && v.closeTime <= v.openTime) next.closeTime = 'Closing time must be after opening time.'
     setErrs(next)
     if (Object.keys(next).length) {
+      setSectionsOpen(n => n + 1)
       // F-15: focus the first invalid field (role="alert" announces the message;
       // LocationInput fields don't register a ref, so the first focusable one wins)
       const first = Object.keys(next).find(k => fieldRefs.current[k])
-      if (first) fieldRefs.current[first]!.focus()
+      if (first) requestAnimationFrame(() => fieldRefs.current[first]?.focus())
       return
     }
     // #424: a NEW stop whose location was never pinned must not write the
@@ -253,20 +255,13 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
 
   return (
     <>
-    <Modal open={open} onClose={onModalClose} title={`${initial?.title ? 'Edit stop' : 'Add stop'}${dayLabel ? ` · ${dayLabel}` : ''}`}>
+    <Modal variant="stop-editor" open={open} onClose={onModalClose} title={`${initial?.title ? 'Edit stop' : 'Add stop'}${dayLabel ? ` · ${dayLabel}` : ''}`}>
       {banner}
       <form onSubmit={submit}>
-        <div className="form-row">
+        <div className="stop-editor-key">
           <Field label="Stop name" error={errs.title}>
             <input className="input" ref={el => { fieldRefs.current.title = el }} aria-invalid={!!errs.title} value={v.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Cheeyappara Waterfalls" />
           </Field>
-          <Field label="Category">
-            <Select value={v.category} onChange={val => set('category', val as StopCategory)}
-              options={STOP_CATEGORIES.map(c => ({ value: c, label: titleCase(c) }))} />
-          </Field>
-        </div>
-
-        <div className="form-row">
           <Field label="Location / area" hint={v.geocoded ? 'Pinned to a real place on the map' : 'Start typing and pick a suggestion to pin it on the map'} error={errs.locationName}>
             <LocationInput
               value={v.locationName}
@@ -275,6 +270,9 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
               placeholder="Search, e.g. Idukki district, Kerala"
             />
           </Field>
+              <Field label="Visit duration (min)" error={errs.visitMinutes}>
+                <input type="number" min={0} step={5} className="input" ref={el => { fieldRefs.current.visitMinutes = el }} aria-invalid={!!errs.visitMinutes} value={v.visitMinutes} onChange={e => set('visitMinutes', Number(e.target.value))} />
+              </Field>
           <Field label="Priority">
             <Select value={v.priority} onChange={val => set('priority', val as ItineraryStop['priority'])}
               options={[
@@ -284,15 +282,15 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
               ]} />
           </Field>
         </div>
-
-        {(() => {
-          const hoursRelevant = v.pickedKind === 'poi' || !!v.openTime || !!v.closeTime ||
-            (!v.geocoded && HOURS_CATEGORIES.has(v.category))
-          return (
-            <div className="form-row" style={{ gridTemplateColumns: hoursRelevant ? '1fr 1fr 1fr' : '1fr' }}>
-              <Field label="Visit duration (min)" error={errs.visitMinutes}>
-                <input type="number" min={0} step={5} className="input" ref={el => { fieldRefs.current.visitMinutes = el }} aria-invalid={!!errs.visitMinutes} value={v.visitMinutes} onChange={e => set('visitMinutes', Number(e.target.value))} />
-              </Field>
+        <div className="stop-editor-details">
+          <EditorSection title="Category and hours" forceOpen={sectionsOpen}>
+          <Field label="Category">
+            <Select value={v.category} onChange={val => set('category', val as StopCategory)}
+              options={STOP_CATEGORIES.map(c => ({ value: c, label: titleCase(c) }))} />
+          </Field>
+            {(() => {
+              const hoursRelevant = v.pickedKind === 'poi' || !!v.openTime || !!v.closeTime || (!v.geocoded && HOURS_CATEGORIES.has(v.category))
+              return hoursRelevant ? <div className="form-row">
               {hoursRelevant && (
                 <Field label="Opens at" hint={hoursHint}>
                   <Select value={v.openTime} onChange={val => set('openTime', val)} options={openTimeOptions} aria-label="Opens at" />
@@ -304,10 +302,10 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
                     buttonRef={el => (fieldRefs.current.closeTime = el)} />
                 </Field>
               )}
-            </div>
-          )
-        })()}
-
+              </div> : null
+            })()}
+          </EditorSection>
+          <EditorSection title="Costs" forceOpen={sectionsOpen}>
         <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
           <Field label="Entry fee per person (₹)" hint="0 for free places">
             <input type="number" min={0} className="input" value={v.entryFeeInrPerPerson} onChange={e => set('entryFeeInrPerPerson', Number(e.target.value))} />
@@ -317,6 +315,8 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
           </Field>
         </div>
 
+          </EditorSection>
+        </div>
         {legContext && v.geocoded && (
           <div className="card" style={{ background: 'var(--bg-soft)', padding: 12, marginBottom: 12 }}>
             <div className="small" style={{ fontWeight: 600, marginBottom: 6 }}>
@@ -352,6 +352,8 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
           </div>
         )}
 
+        <EditorSection title="Details and status" forceOpen={sectionsOpen}>
+          <div className="stop-editor-details">
         <Field label="Description">
           <textarea className="textarea" value={v.description} onChange={e => set('description', e.target.value)} placeholder="What makes this place worth the detour?" />
         </Field>
@@ -379,7 +381,10 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
           </Field>
         </div>
 
-        <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 6 }}>
+          </div>
+        </EditorSection>
+
+        <div className="stop-editor-actions">
           <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-primary">{initial?.title ? 'Save changes' : 'Add to timeline'}</button>
         </div>
@@ -388,6 +393,34 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
     {resolvePickDialog}
     </>
   )
+}
+
+function EditorSection({ title, forceOpen, children }: { title: string; forceOpen: number; children: React.ReactNode }) {
+  const [expanded, setExpanded] = useState(false)
+  const [phone, setPhone] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const id = React.useId()
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 639px)')
+    const update = () => setPhone(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  useEffect(() => { if (forceOpen) setExpanded(true) }, [forceOpen])
+  const visible = !phone || expanded
+  return <section className="stop-editor-section">
+    <button ref={buttonRef} type="button" className="stop-editor-disclosure" aria-expanded={visible} aria-controls={id}
+      onClick={() => {
+        if (expanded && bodyRef.current?.contains(document.activeElement)) buttonRef.current?.focus()
+        setExpanded(!expanded)
+      }}>{title}<span aria-hidden="true">{expanded ? '-' : '+'}</span></button>
+    <h3 className="stop-editor-section-title">{title}</h3>
+    <div id={id} className={`stop-editor-fold${visible ? ' is-open' : ''}`} ref={bodyRef} inert={!visible ? true : undefined}>
+      <div className="stop-editor-fold-inner">{children}</div>
+    </div>
+  </section>
 }
 
 /** The blank form every add starts from — exported so the Timeline's quick

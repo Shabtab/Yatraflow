@@ -3,6 +3,7 @@ import React, { useEffect, useId, useRef, useState } from 'react'
 import { InlineIcon } from './icons'
 import { Check, Map as MapIcon, Mountain, Sailboat, Tent, TriangleAlert, Trees, Users, X } from 'lucide-react'
 import { nativeCopyText } from '../lib/native'
+import { motionExitTiming, prefersReducedMotion } from '../lib/motion'
 import { haptic } from '../lib/haptics'
 import { registerTouchDnd, touchPressAbort, touchPressStart, encodeDropKey, isInteractiveTarget, consumeCarryRect } from '../lib/touchDnd'
 import { type AvatarTone } from '../lib/avatarTone'
@@ -44,11 +45,18 @@ export function Modal({ open, onClose, title, children, initialFocus, variant = 
   /** `full` is the same dialog — one focus trap, one Escape handler, one
    *  scroll lock — with the sheet's own padding given to the content. Used by
    *  the unlock moment, which is a page-filling ceremony rather than a form. */
-  variant?: 'dialog' | 'full'
+  variant?: 'dialog' | 'full' | 'stop-editor'
 }) {
   const bodyRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = React.useId()
+  const [present, setPresent] = useState(open)
+  useEffect(() => {
+    if (open) { setPresent(true); return }
+    if (variant !== 'stop-editor' || prefersReducedMotion()) { setPresent(false); return }
+    const timer = window.setTimeout(() => setPresent(false), motionExitTiming('--motion-med').duration)
+    return () => window.clearTimeout(timer)
+  }, [open, variant])
   useEffect(() => {
     if (!open) return
     const previouslyFocused = document.activeElement as HTMLElement | null
@@ -60,7 +68,7 @@ export function Modal({ open, onClose, title, children, initialFocus, variant = 
           dialogRef.current.querySelectorAll<HTMLElement>(
             'button, [href], input:not([type=hidden]), select, textarea, [tabindex]:not([tabindex="-1"])',
           ),
-        ).filter(el => !el.hasAttribute('disabled'))
+        ).filter(el => !el.hasAttribute('disabled') && !el.closest('[inert]'))
         if (focusables.length === 0) return
         const first = focusables[0]
         const last = focusables[focusables.length - 1]
@@ -88,10 +96,10 @@ export function Modal({ open, onClose, title, children, initialFocus, variant = 
       if (previouslyFocused?.isConnected) previouslyFocused.focus()
     }
   }, [open, onClose, initialFocus])
-  if (!open) return null
+  if (!open && (variant !== 'stop-editor' || !present)) return null
   return (
-    <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div ref={dialogRef} className={variant === 'full' ? 'modal modal-full' : 'modal'} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+    <div className={`modal-overlay${!open ? ' modal-overlay-exiting' : ''}`} onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div ref={dialogRef} className={variant === 'full' ? 'modal modal-full' : variant === 'stop-editor' ? 'modal modal-stop-editor' : 'modal'} role="dialog" aria-modal="true" aria-labelledby={titleId} inert={!open ? true : undefined}>
         <div className="modal-head">
           <h2 id={titleId}>{title}</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close"><X size={16} aria-hidden /></button>
