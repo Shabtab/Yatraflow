@@ -82,6 +82,7 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
 
           {(result.openingHoursIssues.length > 0 || result.commitmentConflicts.length > 0) && (
             <div className="warn-list section-gap" style={{ marginTop: 12 }}>
+              <div className="label">Conflicts in proposed plan</div>
               {result.commitmentConflicts.map(c => (
                 <div key={c} className="warn-item sev-high">
                   <span className="warn-icon"><AlarmClock size={13} aria-hidden /></span>
@@ -110,8 +111,25 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
             <p className="small muted" style={{ marginTop: 10 }}><InlineIcon icon={ArrowUpRight} size={12} gap={3} />{result.crossDayNote}</p>
           )}
 
-          {(result.clearedWarnings.length > 0 && !result.newWarnings.length) && (
-            <p className="small chip chip-ok" style={{ marginTop: 10 }}>This change actually clears an earlier warning. Nice.</p>
+          {result.newWarnings.length > 0 && (
+            <div className="warn-list section-gap" style={{ marginTop: 12 }}>
+              <div className="label">New warnings</div>
+              {result.newWarnings.map((warning, i) => (
+                <div className="warn-item" key={`${warning.code}-${i}`}>
+                  <div><div className="warn-title">{warning.title}</div><div className="warn-fix">{warning.detail}</div></div>
+                </div>
+              ))}
+            </div>
+          )}
+          {result.clearedWarnings.length > 0 && (
+            <div className="warn-list section-gap" style={{ marginTop: 12 }}>
+              <div className="label">Cleared warnings</div>
+              {result.clearedWarnings.map((warning, i) => (
+                <div className="warn-item impact-cleared" key={`${warning.code}-${i}`}>
+                  <div><div className="warn-title">{warning.title}</div><div className="warn-fix">{warning.detail}</div></div>
+                </div>
+              ))}
+            </div>
           )}
 
           {uncertain && (
