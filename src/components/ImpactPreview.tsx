@@ -49,18 +49,18 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
         </div>
         <div className="impact-body">
           <div className="impact-grid">
-            {Number.isFinite(result.beforeTotals.timeMin) && Number.isFinite(result.afterTotals.timeMin) && (
-              <div className="impact-cell">
-                <div className="k">Trip time <span className="muted">Driving + stops</span></div>
-                <div className="impact-values"><s>{minutesToHM(time.from)}</s> → <b>{minutesToHM(time.to)}</b></div>
-                <div className={cls(time.delta)}>{time.sign}{minutesToHM(Math.abs(time.delta))}</div>
-              </div>
-            )}
             {Number.isFinite(result.beforeTotals.distanceKm) && Number.isFinite(result.afterTotals.distanceKm) && (
               <div className="impact-cell">
                 <div className="k">Trip distance</div>
                 <div className="impact-values"><s>{distance.from} km</s> → <b>{distance.to} km</b></div>
                 <div className={cls(distance.delta)}>{distance.sign}{Math.abs(distance.delta)} km</div>
+              </div>
+            )}
+            {Number.isFinite(result.beforeTotals.timeMin) && Number.isFinite(result.afterTotals.timeMin) && (
+              <div className="impact-cell">
+                <div className="k">Trip time <span className="muted">Driving + stops</span></div>
+                <div className="impact-values"><s>{minutesToHM(time.from)}</s> → <b>{minutesToHM(time.to)}</b></div>
+                <div className={cls(time.delta)}>{time.sign}{minutesToHM(Math.abs(time.delta))}</div>
               </div>
             )}
             {Number.isFinite(result.beforeTotals.costInr) && Number.isFinite(result.afterTotals.costInr) && (
