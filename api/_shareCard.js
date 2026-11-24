@@ -56,6 +56,26 @@ export function twitterImageTags(image) {
 const VIGNETTE_IDS = new Set(Object.values(artManifest.vignettes ?? {}))
 const ART_PATH_RE = /^\/art\/([a-z0-9][a-z0-9-]*)\.webp$/
 
+/** The two text budgets a WhatsApp preview keeps whole on a 360px screen.
+ *  A card that runs past them loses its punchline in the chat list. */
+export const OG_TITLE_MAX = 58
+export const OG_DESCRIPTION_MAX = 115
+
+/** One line of card text, cut to a budget at a word boundary.
+ *
+ *  The cut keeps whole words and ends with an ellipsis, so a long trip name
+ *  reads as shortened rather than broken. Text inside the budget is returned
+ *  unchanged, whitespace collapsed. */
+export function fitOg(text, max) {
+  const line = String(text ?? '').replace(/\s+/g, ' ').trim()
+  if (line.length <= max) return line
+  const room = max - 1
+  const cut = line.slice(0, room)
+  const space = cut.lastIndexOf(' ')
+  const head = (space > 0 ? cut.slice(0, space) : cut).replace(/[\s·,;:–—-]+$/, '')
+  return `${head}…`
+}
+
 /** A scene card with its real size, or null for every other URL.
  *
  *  Only a scene on this deployment's host or the production host qualifies.

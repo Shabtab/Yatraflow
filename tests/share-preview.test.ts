@@ -82,8 +82,9 @@ describe('share preview handler in node', () => {
   it('renders publication-specific metadata and escapes benign ampersands and quotes', async () => {
     respond([publication])
     const res = await runHandler()
-    const title = 'Tom &amp; Jerry&#39;s &quot;Monsoon&quot; Escape — YatraFlow'
-    const description = 'Kochi &amp; back via &quot;Munnar&quot; tea hills'
+    const title = 'Tom &amp; Jerry&#39;s &quot;Monsoon&quot; Escape — 5-Day India Plan'
+    // The creator's tagline leads, and the plan's own numbers follow it.
+    const description = 'Kochi &amp; back via &quot;Munnar&quot; tea hills · ₹12,500/person est. · 5 days · Kochi → Munnar'
     const canonical = `https://www.yatraflow.in/i/${publication.id}`
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toBe('text/html; charset=utf-8')
@@ -117,12 +118,12 @@ describe('share preview handler in node', () => {
     respond([{ ...publication, tagline: null }])
     const res = await runHandler()
     expect(res.statusCode).toBe(200)
-    expect(res.body).toContain('content="5 days · ₹12,500/person · Kochi → Munnar"')
+    expect(res.body).toContain('content="₹12,500/person est. · 5 days · Kochi → Munnar. Open free preview or fork for your crew."')
   })
 
   it('supports a string route summary', async () => {
     respond([{ ...publication, tagline: '', route_summary: 'Delhi & Agra' }])
-    expect((await runHandler()).body).toContain('5 days · ₹12,500/person · Delhi &amp; Agra')
+    expect((await runHandler()).body).toContain('₹12,500/person est. · 5 days · Delhi &amp; Agra. Open free preview or fork for your crew.')
   })
 
   it('includes an optional https cover in Open Graph and Twitter metadata', async () => {
@@ -364,7 +365,7 @@ describe('the buyer’s card (I-21)', () => {
     const res = await runHandler('GET', publication.id, { buyer: BUYER })
     expect(res.statusCode).toBe(200)
     expect(res.body).toContain('I bought Tom &amp; Jerry&#39;s &quot;Monsoon&quot; Escape — YatraFlow')
-    expect(res.body).toContain('Bought on YatraFlow · 5 days · ₹12,500/person · Kochi → Munnar')
+    expect(res.body).toContain('Bought on YatraFlow · ₹12,500/person est. · 5 days · Kochi → Munnar')
     // The creator's own pitch belongs on the creator's card.
     expect(res.body).not.toContain('tea hills')
     expect(res.body).toContain('<meta name="twitter:title" content="I bought')
@@ -1000,6 +1001,51 @@ describe('the default share card agrees everywhere it is written', () => {
   })
 })
 
+// Part 1.3 of the share copy: WhatsApp drops the tail of a card that runs past
+// its budget on a 360px screen, so both lines are measured here.
+describe('both card lines stay inside the WhatsApp budgets', () => {
+  const meta = (page: string, attr: string, key: string) => {
+    const m = new RegExp(`<meta ${attr}="${key}" content="([^"]*)"`).exec(page)
+    return m ? m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&') : ''
+  }
+
+  it('keeps a long plan name inside 58 characters', async () => {
+    respond([{
+      ...publication,
+      title: 'A very long monsoon escape through the Western Ghats and back again',
+      tagline: 'Eleven days of tea, rain and hairpin bends with six friends from college',
+    }])
+    const res = await runHandler()
+    const title = meta(res.body, 'property', 'og:title')
+    expect(title.length).toBeLessThanOrEqual(58)
+    expect(title.endsWith('…')).toBe(true)
+    expect(meta(res.body, 'property', 'og:description').length).toBeLessThanOrEqual(115)
+  })
+
+  it('gives a short plan its length in the title', async () => {
+    respond([publication])
+    const title = meta((await runHandler()).body, 'property', 'og:title')
+    expect(title).toBe('Tom & Jerry\'s "Monsoon" Escape — 5-Day India Plan')
+    expect(title.length).toBeLessThanOrEqual(58)
+  })
+
+  it('counts the stops the public page can actually open', async () => {
+    fetchMock.mockReset()
+    const day = (index: number, stops: number, locked = false) => ({
+      index,
+      locked,
+      stops: Array.from({ length: stops }, (_, stop) => ({ title: `Stop ${stop}` })),
+    })
+    fetchMock.mockImplementation(async input => String(input).includes('get_public_trip')
+      ? new Response(JSON.stringify([{ days: [day(0, 3), day(1, 4), day(2, 2, true)] }]))
+      : new Response(JSON.stringify([{ ...publication, tagline: null, premium_price_inr: null }])))
+    const res = await runHandler()
+    const description = meta(res.body, 'property', 'og:description')
+    expect(description).toContain('7 timed stops')
+    expect(description.length).toBeLessThanOrEqual(115)
+  })
+})
+
 describe('a scene card declares the size it really has', () => {
   const tag = (page: string, key: string) => metaContent(page, 'property', key)
   // A lossy WebP stores its frame size after the VP8 start code (RFC 9649, section 2.5).
@@ -1072,7 +1118,7 @@ describe('a post-tagged creator link previews as the creator card (G8)', () => {
   it('gives a crawler the creator card and sends a browser on with the tag', async () => {
     const res = await runCreator({ src: 'post', p: POST })
     expect(res.statusCode).toBe(200)
-    expect(res.body).toContain('og:title" content="Asha on YatraFlow"')
+    expect(res.body).toContain('og:title" content="Asha on YatraFlow — India Routes &amp; Stats"')
     expect(res.body).toContain(`location.replace("/creator/${CREATOR}?src=post&p=${POST}")`)
     // The canonical stays the clean creator address.
     expect(res.body).toContain(`<link rel="canonical" href="https://www.yatraflow.in/c/${CREATOR}" />`)

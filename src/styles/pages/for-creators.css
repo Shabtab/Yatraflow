@@ -1,0 +1,204 @@
+/* ============ For creators page ============
+   The creator pitch page owns only its own layout. The card skin comes from
+   the shared `cr-card` recipe, the buttons from the button module and the type
+   scale from the Papercut tokens, so both themes hold without a second block.
+   Entrances come from the page cascade (`.page-enter > *`), never from here. */
+
+.fcr-page {
+  padding-block: var(--space-13) var(--space-15);
+}
+
+/* ---------- Hero ---------- */
+
+.fcr-head {
+  margin-bottom: var(--space-12);
+}
+
+.fcr-hero-note {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 660px;
+}
+
+.fcr-hero-fact {
+  margin: 0;
+  font: var(--pw-body-l);
+  color: var(--pw-ink-2);
+}
+
+.fcr-hero-fact b {
+  color: var(--pw-ink);
+}
+
+.fcr-reassure {
+  margin: 0;
+  font: var(--pw-caption);
+  color: var(--pw-ink-3);
+}
+
+/* ---------- Sections ---------- */
+
+.fcr-section {
+  margin-top: var(--space-15);
+}
+
+.fcr-section-title {
+  margin: 0;
+  font: var(--pw-display-m);
+  letter-spacing: var(--pw-display-m-tracking);
+  color: var(--pw-ink);
+  text-wrap: balance;
+}
+
+.fcr-section-lede {
+  max-width: 680px;
+  margin: var(--space-4) 0 0;
+  font: var(--pw-body-l);
+  color: var(--pw-ink-2);
+}
+
+/* ---------- Numbered steps ---------- */
+
+.fcr-steps {
+  display: grid;
+  gap: var(--space-5);
+  margin: var(--space-8) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fcr-step {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: var(--space-5);
+  align-items: start;
+  padding: var(--space-7) var(--space-9);
+  border: 1px solid var(--pw-line-soft);
+  border-radius: var(--radius-lg);
+  background: var(--pw-card);
+}
+
+.fcr-step-number {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-pill);
+  background: var(--pw-lagoon-100);
+  color: var(--pw-sea-900);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fcr-step-body {
+  margin: 0;
+  font: var(--pw-body);
+  color: var(--pw-ink-2);
+}
+
+.fcr-step-body b {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-weight: 700;
+  color: var(--pw-ink);
+}
+
+.fcr-steps--tight {
+  gap: var(--space-4);
+}
+
+/* ---------- Live and next cards ---------- */
+
+.fcr-grid {
+  display: grid;
+  gap: var(--space-7a);
+  margin-top: var(--space-9);
+}
+
+.fcr-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.fcr-card-index {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  color: var(--pw-lagoon-600);
+  font-variant-numeric: tabular-nums;
+}
+
+.fcr-card-title {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -.02em;
+  color: var(--pw-ink);
+}
+
+.fcr-card-body {
+  margin: 0;
+  font: var(--pw-meta);
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--pw-ink-2);
+}
+
+/* ---------- Closing band ---------- */
+
+.fcr-final {
+  padding-top: var(--space-11);
+  border-top: 1px dashed var(--pw-line);
+}
+
+.fcr-close {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5) var(--space-9);
+  margin-top: var(--space-9);
+}
+
+.fcr-close-note {
+  margin: 0;
+  font: var(--pw-meta);
+  color: var(--pw-ink-3);
+}
+
+.fcr-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  color: var(--pw-sea-700);
+  font-weight: 600;
+  text-underline-offset: 3px;
+  transition: color var(--motion-fast) var(--ease-paper);
+}
+
+.fcr-link:hover {
+  color: var(--pw-lagoon-600);
+}
+
+@media (min-width: 720px) {
+  .fcr-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 980px) {
+  .fcr-grid--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fcr-link {
+    transition: none;
+  }
+}

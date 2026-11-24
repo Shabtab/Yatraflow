@@ -78,6 +78,9 @@ const DMCAPage = lazy(() => import('./pages/DMCAPage').then(m => ({ default: m.D
 const FaqPage = lazy(() => import('./pages/FaqPage').then(m => ({ default: m.FaqPage })))
 const HowItWorksPage = lazy(() => import('./pages/HowItWorksPage').then(m => ({ default: m.HowItWorksPage })))
 const AboutPage = lazy(() => import('./pages/AboutPage').then(m => ({ default: m.AboutPage })))
+// The creator pitch page is static and public, so a DM or comment reply links it
+// directly (no store read, so it also renders before hydrate).
+const ForCreatorsPage = lazy(() => import('./pages/ForCreatorsPage').then(m => ({ default: m.ForCreatorsPage })))
 
 /** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. The `page-enter` root gives the block the shared entrance. The `route-fallback` root stays invisible for a short grace period. It also holds a page's height. A fast load then shows no loader and no footer jump. */
 const lazyRouteFallback = <div className="container page-enter route-fallback"><StateBlock kind="loading" titleLevel="h2" art={<Mascot pose="loading" size={112} />} title="Loading…" /></div>
@@ -129,7 +132,7 @@ export function profileLookupState(
 
 /** Route segments that answer for a signed-out visitor. They stay reachable when
  *  the signed-in account's private read fails. */
-const GUEST_ROUTE_SEGMENTS = new Set(['pub', 'creator', 'explore'])
+const GUEST_ROUTE_SEGMENTS = new Set(['pub', 'creator', 'explore', 'creators', 'for-creators'])
 
 /** Routes that are static copy: they read no store data, so they paint before
  *  the hydrate settles instead of showing the loading block. */
@@ -657,6 +660,9 @@ export default function App() {
     else if (parts[0] === 'creator' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><CreatorPage creatorId={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'explore') page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'creators') page = <Suspense fallback={lazyRouteFallback}><CreatorRankingsPage /></Suspense>
+    // A creator's DM answer must open for a signed-out reader, so this page
+    // sits beside explore rather than inside the signed-in switch.
+    else if (parts[0] === 'for-creators') page = <Suspense fallback={lazyRouteFallback}><ForCreatorsPage /></Suspense>
     else if (parts[0] === 'auth' && !sessionUserId) page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
     else if (profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) page = <ProfileLookupPage state={profileState} />
     else if (parts[0] === 'trip' && parts[1]) page = <SignedOutTripPage route={route} navigate={navigate} />
@@ -701,6 +707,9 @@ export default function App() {
         break
       case 'creators':
         page = <Suspense fallback={lazyRouteFallback}><CreatorRankingsPage /></Suspense>
+        break
+      case 'for-creators':
+        page = <Suspense fallback={lazyRouteFallback}><ForCreatorsPage /></Suspense>
         break
       case 'pub':
         page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage key={parts[1]} slug={parts[1] ?? ''} onNavigate={navigate} /></Suspense>
@@ -942,7 +951,7 @@ export default function App() {
         </svg>
         <div className="container footer-inner">
           <span><b>YatraFlow</b>: plan together, travel better. Built for Indian travellers</span>
-          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" {...appLink('/about')}>About YatraFlow</a> · <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" {...appLink('/how-it-works')}>How it works</a> · <a className="footer-link" {...appLink('/faq')}>FAQ</a> · <a className="footer-link" href="/trip-cost-calculators/">Free trip cost calculators</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh</a></span>
+          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" {...appLink('/about')}>About YatraFlow</a> · <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" {...appLink('/how-it-works')}>How it works</a> · <a className="footer-link" {...appLink('/faq')}>FAQ</a> · <a className="footer-link" href="/trip-cost-calculators/">Free trip cost calculators</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh</a> · <a className="footer-link" {...appLink('/for-creators')}>For travel creators</a></span>
         </div>
       </footer>
 

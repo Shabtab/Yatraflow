@@ -648,6 +648,18 @@
       ],
       "configClasses": [],
       "variables": []
+    },
+    {
+      "id": "for-creators",
+      "file": "src/styles/pages/for-creators.css",
+      "owned": [
+        "fcr-page", "fcr-head", "fcr-hero-note", "fcr-hero-fact", "fcr-reassure",
+        "fcr-section", "fcr-section-title", "fcr-section-lede", "fcr-steps", "fcr-step", "fcr-step-number",
+        "fcr-step-body", "fcr-steps--tight", "fcr-grid", "fcr-grid--three", "fcr-card", "fcr-card-index",
+        "fcr-card-title", "fcr-card-body", "fcr-final", "fcr-close", "fcr-close-note", "fcr-link"
+      ],
+      "configClasses": [],
+      "variables": []
     }
   ],
   "legacy": [

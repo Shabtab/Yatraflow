@@ -66,6 +66,7 @@ export const ROUTED_SEGMENTS: readonly string[] = [
   'faq',
   'how-it-works',
   'about',
+  'for-creators',
 ]
 
 // ============ Real paths, and the legacy hashes that must reach them (#426)
