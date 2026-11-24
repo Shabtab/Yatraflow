@@ -1872,10 +1872,10 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
    their explanatory money columns so the deciding ones fit (see the media block
    at the foot of this file). When a long title or a zoomed viewport does push
    one wider, the scrollbar itself is the cue — `thin`, and visible only while
-   there is something to scroll. The file's other convention for horizontal
-   scrollers (`.share-tablist`) also paints edge fades; not repeated here,
-   because a fade on a `scroll` layer would tint the first and last DATA cells
-   whether or not anything is hidden. */
+   there is something to scroll. The share job tabs (`.share-job-tabs`) use the
+   shared `.tabbar[data-overflow]` edge fade; it is not repeated here, because
+   a fade on a `scroll` layer would tint the first and last DATA cells whether
+   or not anything is hidden. */
 .pub-ledger { scrollbar-width: thin; scrollbar-color: var(--text-3) transparent; }
 /* `Show amounts as` governs the whole TABLE, not just the headline tile: the
    chosen basis keeps full ink and the other money column drops to the muted

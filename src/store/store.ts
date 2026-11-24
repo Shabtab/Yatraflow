@@ -18,7 +18,8 @@ import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
-import { DRIVES_PART_MISSING_REASON, drivesPartWriteVerdict, isMissingColumnError, rowToTrip, tripToRow, tripUpdateRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { DRIVES_PART_MISSING_REASON, drivesPartWriteVerdict, isMissingColumnError, rowToTrip, tripToRow, tripUpdateRow, validWriteVersion, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { classifyInviteRows } from '../lib/inviteLookup'
 import { emptyLockedDay, isWireLocked, withoutLockMarker } from '../lib/lockedDay'
 import type { ShareSource } from '../lib/shareUrl'
 import { dayCountForRange } from '../lib/dayCount'
@@ -2553,34 +2554,53 @@ export async function fetchPublicTrip(pubId: string): Promise<Trip | null> {
 }
 
 /**
+ * What a code lookup found (#1019). `found` carries the preview trip. `dead`
+ * means no trip has this code, or the code is blank. `failed` means the read
+ * gave no answer the client can act on: an RPC error, a network failure, or a
+ * refused row shape, which is a server fault and not a dead code. `cancelled`
+ * means the account changed while the read was in flight.
+ */
+export type InviteLookup =
+  | { kind: 'found'; trip: Trip }
+  | { kind: 'dead' }
+  | { kind: 'failed' }
+  | { kind: 'cancelled' }
+
+/**
  * Resolve a short invite code ("GOA-K7QF") to its trip via the
  * security-definer `get_trip_by_invite_code` RPC — the code is the
  * capability, so this works for private trips and logged-out visitors
- * alike (the join gate previews before login). Merges the trip into the
- * cache so the workspace can open it without another round-trip. Returns
- * null for an unknown code.
+ * alike (the join gate previews before login). The preview is never cached.
+ * Answers `dead` for a code no trip has, and `failed` for a read that gave no
+ * usable answer (#1019).
  */
-export async function fetchTripByInviteCode(code: string): Promise<Trip | null> {
+export async function fetchTripByInviteCode(code: string): Promise<InviteLookup> {
   const epoch = identityEpoch
   const userId = cache.sessionUserId
   const normalized = normalizeInviteCode(code)
-  if (!normalized) return null
+  if (!normalized) return { kind: 'dead' }
   // A member who re-clicks the link already has the FULL row cached, and that
   // row is safe to reuse: it came from a full read, not from the preview RPC.
   // The preview RPC's own answer is never cached, so this can only hit a
   // complete row.
   const cached = cache.trips.find(t => t.inviteCode === normalized)
-  if (cached) return cached
-  const rpc = await supabase.rpc('get_trip_by_invite_code', { p_code: normalized })
-  if (epoch !== identityEpoch || cache.sessionUserId !== userId) return null
-  if (rpc.error) console.error('[yatraflow] invite-code lookup failed', rpc.error)
-  const rows = rpc.data as TripRow[] | null
-  if (!Array.isArray(rows) || rows.length === 0) return null
-  // #804 — get_trip_by_invite_code names 31 of the 34 trips columns, so this row
-  // is INCOMPLETE: flights, tank_l, rent_per_day_inr, local_train and ref are
-  // absent. It is returned to the caller, which keeps it in local state for the
-  // gate to render, and it is deliberately NOT put into cache.trips, the offline
-  // queues or any snapshot.
+  if (cached) return { kind: 'found', trip: cached }
+  let rpc: { data: unknown; error: unknown }
+  try {
+    rpc = await supabase.rpc('get_trip_by_invite_code', { p_code: normalized })
+  } catch (err) {
+    // A network failure can reject instead of returning an error. It is still a failed read.
+    rpc = { data: null, error: err }
+  }
+  if (epoch !== identityEpoch || cache.sessionUserId !== userId) return { kind: 'cancelled' }
+  if (rpc.error) {
+    console.error('[yatraflow] invite-code lookup failed', rpc.error)
+    return { kind: 'failed' }
+  }
+  // #804 — get_trip_by_invite_code returns a partial row. The omitted columns
+  // include flights, tank_l, rent_per_day_inr, local_train and ref.
+  // The gate renders the preview from local state. The preview stays out of
+  // cache.trips, the offline queues and all snapshots.
   //
   // That is the whole fix. A partial row that never enters the writable cache
   // cannot be built into a whole-row UPDATE, so no write can erase the five
@@ -2592,13 +2612,10 @@ export async function fetchTripByInviteCode(code: string): Promise<Trip | null> 
   //
   // The caller cannot write this trip anyway: it is not a member yet, so RLS
   // refuses. After joinViaInvite the full row is fetched into the cache.
-  const preview = rows[0]
-  // B3 (round 10) — provenance, in the same terms as every other admission: no
-  // shape, no trip. A preview that names no trip id, or carries no usable
-  // revision, is not an answer this client can act on. The gate treats a refusal
-  // as a dead link instead of previewing and joining an unrelated trip.
-  if (typeof preview?.id !== 'string' || preview.id.length === 0 || !validWriteVersion(preview.write_version)) return null
-  return rowToTrip(preview, [])
+  // B3 provenance and the dead-or-failed split live in classifyInviteRows (#1019).
+  const verdict = classifyInviteRows(rpc.data)
+  if (verdict.kind !== 'found') return verdict
+  return { kind: 'found', trip: rowToTrip(verdict.row, []) }
 }
 
 const accessReceipts = new Map<ID, { owner: string; epoch: number; version: number }>()
@@ -4862,10 +4879,6 @@ export async function tripPreviewPending(operation: TripPreviewOperation): Promi
 function sameQueuedWrite(a: QueuedWrite, b: QueuedWrite): boolean {
   return a.ownerId === b.ownerId && a.tripId === b.tripId
     && (a.revision ?? a.capturedAt) === (b.revision ?? b.capturedAt)
-}
-
-function validWriteVersion(value: unknown): value is number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 
 /** A string that is present and not empty. */

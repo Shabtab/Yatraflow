@@ -376,7 +376,9 @@ describe('#704 — the Share tab does not say "not published" over an unread sta
     expect(share).toMatch(/const mount = publishFormMount\(\{ read: publishRead, formKey, shownKey \}\)/)
     // A render-phase update, guarded so it settles after one pass.
     expect(share).toMatch(/if \(mount\.shownKey !== shownKey\) setShownKey\(mount\.shownKey\)/)
-    expect(share).toMatch(/\{mount\.mounted && \(\s*<PublicationForm/)
+    // #704: the form sits in the mounted branch of a ternary; the unmounted branch
+    // shows only the hidden card, so the form is never rendered before the read.
+    expect(share).toMatch(/\{mount\.mounted \? \(\s*<PublicationForm key=\{formKey\}/)
   })
 
   it('disables submit with the reason until the status is ready again', () => {

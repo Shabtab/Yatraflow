@@ -560,6 +560,16 @@ begin
   end loop;
 end $$;
 
+-- #1019: the invite preview must return write_version. Without it the client
+-- refuses every preview and a valid link shows "didn't load". Positive token
+-- in the live function source.
+do $$
+begin
+  if position('write_version' in pg_get_functiondef('public.get_trip_by_invite_code(text)'::regprocedure)) = 0 then
+    raise exception 'get_trip_by_invite_code must return write_version (#1019)';
+  end if;
+end $$;
+
 -- ------------------------------------------------------------------ 8. realtime
 do $$
 declare
