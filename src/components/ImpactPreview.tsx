@@ -93,14 +93,14 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
               {result.commitmentConflicts.map(c => (
                 <div key={c} className="warn-item sev-high">
                   <span className="warn-icon"><AlarmClock size={13} aria-hidden /></span>
-                  <div><div className="warn-title">Fixed commitment at risk: {c}</div>
+                  <div><div className="warn-title">{result.existingCommitmentConflicts.includes(c) ? 'Existing fixed commitment at risk' : 'Fixed commitment at risk'}: {c}</div>
                     <div className="warn-fix">Cut an earlier stop or start sooner.</div></div>
                 </div>
               ))}
               {result.openingHoursIssues.map(h => (
                 <div key={h} className="warn-item">
                   <span className="warn-icon"><Clock size={13} aria-hidden /></span>
-                  <div><div className="warn-title">Opening hours conflict</div>
+                  <div><div className="warn-title">{result.existingOpeningHoursIssues.includes(h) ? 'Existing opening hours conflict' : 'Opening hours conflict'}</div>
                     <div className="warn-fix">{h}</div></div>
                 </div>
               ))}
@@ -110,7 +110,7 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
           {result.backtracking && (
             <div className="warn-item sev-low" style={{ marginTop: 12 }}>
               <span className="warn-icon"><Repeat size={13} aria-hidden /></span>
-              <div><div className="warn-title">Route backtracking detected</div>
+              <div><div className="warn-title">{result.existingBacktracking ? 'Existing route backtracking' : 'Route backtracking detected'}</div>
                 <div className="warn-fix">Reorder stops to run one direction.</div></div>
             </div>
           )}

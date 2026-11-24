@@ -4,6 +4,9 @@
 // to (not to whatever sits at that index afterwards), agree with the day pill
 // about "busy", and not lose an opening-hours conflict to a NaN dwell.
 import { describe, it, expect } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { ImpactPreviewPanel } from '../src/components/ImpactPreview'
 import { computeImpact } from '../src/lib/impact'
 import { simulateDay, originOf, legKey } from '../src/lib/engine'
 import type { LegEstimate } from '../src/lib/engine'
@@ -148,5 +151,36 @@ describe('cross-day honesty', () => {
     // A change with no cross-day effect stays quiet.
     const noop = tripOf([day(0, [stop({ id: 'a', title: 'Fort' })]), day(1, [])])
     expect(computeImpact(noop, noop, 'edit', 0).crossDayNote).toBeUndefined()
+  })
+})
+
+
+describe('preview totals and warnings', () => {
+  it('returns each total with its original delta', () => {
+    const before = tripOf([day(0, [stop({ entryFeeInrPerPerson: 100 })])])
+    const after = tripOf([day(0, [stop({ visitMinutes: 90, entryFeeInrPerPerson: 250 })])])
+    const impact = computeImpact(before, after, 'edit', 0)
+    expect(impact.beforeTotals.timeMin + impact.timeDeltaMin).toBeCloseTo(impact.afterTotals.timeMin, 6)
+    expect(impact.beforeTotals.distanceKm + impact.distanceDeltaKm).toBeCloseTo(impact.afterTotals.distanceKm, 6)
+    expect(impact.beforeTotals.costInr + impact.costDeltaInr).toBeCloseTo(impact.afterTotals.costInr, 6)
+  })
+
+  it('does not label an existing conflict as new and shows only reported cleared warnings', () => {
+    const conflict = tripOf([day(0, [stop({ title: 'Fort gate', openTime: '23:00', closeTime: '23:30' })])])
+    const clear = tripOf([day(0, [stop({ title: 'Fort gate' })])])
+    const render = (result: ReturnType<typeof computeImpact>) => renderToStaticMarkup(createElement(ImpactPreviewPanel, {
+      result, onKeep: () => {}, onMoveDay: () => {}, onRemove: () => {},
+    }))
+    const existing = computeImpact(conflict, conflict, 'edit', 0)
+    expect(existing.newWarnings).toHaveLength(0)
+    expect(render(existing)).toContain('Existing opening hours conflict')
+    expect(render(existing)).not.toContain('New warnings</div>')
+    expect(render(existing)).not.toContain('Cleared warnings')
+    const cleared = computeImpact(conflict, clear, 'edit', 0)
+    expect(cleared.clearedWarnings.some(w => w.title.includes('Fort gate'))).toBe(true)
+    expect(render(cleared)).toContain('Cleared warnings')
+    expect(render(cleared)).toContain(cleared.clearedWarnings[0].title)
+    expect(render(cleared)).not.toContain('aria-label="Close')
+    expect((render(cleared).match(/<button/g) || [])).toHaveLength(3)
   })
 })

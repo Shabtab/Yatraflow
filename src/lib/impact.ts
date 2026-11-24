@@ -27,6 +27,9 @@ export interface ImpactResult {
   crossDayNote?: string
   tooBusy: boolean
   backtracking: boolean
+  existingBacktracking: boolean
+  existingCommitmentConflicts: string[]
+  existingOpeningHoursIssues: string[]
   commitmentConflicts: string[]
   openingHoursIssues: string[]
   assumptions: string
@@ -195,6 +198,12 @@ export function computeImpact(trip: Trip, proposed: Trip, kind: ImpactResult['ki
   // at n=6 while the pill showed busy — one day, two answers.
   const propBusyCount = day ? simulateDay(day, proposed, originOf(proposed, dayIndex), dayIndex, legCorrections).activeStops.length : 0
 
+  const commitmentConflicts = commitmentConflictsFor(proposed, legCorrections)
+  const openingHoursIssues = openingHoursIssuesFor(proposed, legCorrections)
+  const priorCommitments = new Set(commitmentConflictsFor(trip, legCorrections))
+  const issueStop = (issue: string) => issue.slice(0, issue.lastIndexOf(': '))
+  const priorOpeningStops = new Set(openingHoursIssuesFor(trip, legCorrections).map(issueStop))
+
   return {
     kind,
     dayIndex,
@@ -209,8 +218,11 @@ export function computeImpact(trip: Trip, proposed: Trip, kind: ImpactResult['ki
     crossDayNote,
     tooBusy: propBusyCount > 5,
     backtracking: detectBacktrack(proposed, legCorrections),
-    commitmentConflicts: commitmentConflictsFor(proposed, legCorrections),
-    openingHoursIssues: openingHoursIssuesFor(proposed, legCorrections),
+    existingBacktracking: detectBacktrack(trip, legCorrections),
+    commitmentConflicts,
+    openingHoursIssues,
+    existingCommitmentConflicts: commitmentConflicts.filter(c => priorCommitments.has(c)),
+    existingOpeningHoursIssues: openingHoursIssues.filter(h => priorOpeningStops.has(issueStop(h))),
     assumptions: assumptionsText(proposed),
   }
 }

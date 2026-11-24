@@ -1162,12 +1162,12 @@
   position: fixed; inset: 0;
   z-index: var(--z-impact);
   background: rgba(0,0,0,0.35);
-  display: flex; justify-content: flex-end; align-items: stretch;
+  display: flex; justify-content: flex-end; align-items: stretch; pointer-events: none;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   animation: impact-scrim var(--motion-slow) var(--ease-paper);
 }
 .impact-panel {
-  width: min(100%, 480px); overflow-y: auto; overscroll-behavior: contain;
+  width: min(100%, 480px); overflow-y: auto; overscroll-behavior: contain; pointer-events: auto;
   background: var(--card); border-left: 1px solid var(--line);
   animation: impact-enter-right var(--motion-slow) var(--ease-paper);
 }
@@ -1209,9 +1209,8 @@
 .impact-cleared { background: var(--ok-soft); color: var(--ink-ok); }
 .assumptions { font-size: 12px; color: var(--text-3); background: var(--bg-soft); padding: 9px 12px; border-radius: 10px; line-height: 1.6; }
 .impact-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 13px; }
-.impact-actions .btn { min-height: 44px; transition: background-color var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper), transform var(--motion-fast) var(--ease-paper); }
+.impact-actions .btn { --btn-min-height: 44px; }
 .impact-actions .impact-move { grid-column: 1 / -1; justify-self: center; }
-@media (prefers-reduced-motion: reduce) { .impact-actions .btn { transition: none; } }
 
 .suggestion-refresh-btn { white-space: nowrap; }
 
