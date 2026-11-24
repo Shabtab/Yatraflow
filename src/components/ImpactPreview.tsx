@@ -144,8 +144,8 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
 
           <div className="impact-actions">
             <button className="btn btn-primary btn-sm" onClick={handleKeep} disabled={busy}>{busy ? 'Saving…' : 'Keep change'}</button>
-            <button className="btn btn-outline btn-sm" onClick={onMoveDay} disabled={busy}>Move to another day</button>
-            <button className="btn btn-danger btn-sm" onClick={() => { onRemove() }} disabled={busy}>Remove change</button>
+            <button className="btn btn-outline btn-sm" onClick={() => { onRemove() }} disabled={busy}>Remove change</button>
+            <button className="btn btn-ghost btn-sm impact-move" onClick={onMoveDay} disabled={busy}>Move to another day</button>
           </div>
         </div>
       </div>
