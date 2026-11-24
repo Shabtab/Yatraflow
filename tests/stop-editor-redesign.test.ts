@@ -88,4 +88,11 @@ describe('phone section summaries', () => {
     expect(summary).toEqual({ categoryHours: 'Museum · Opens 09:00–17:00', costs: 'Entry ₹50', details: 'Notes · Confirmed' })
     expect(stopEditorSummaries({ closeTime: '17:00' }, '24h').categoryHours).toBe('Closes 17:00')
   })
+  it('keeps paise so a small fee never reads as zero', () => {
+    expect(stopEditorSummaries({ entryFeeInrPerPerson: 0.25 }, '24h').costs).toBe('Entry ₹0.25')
+  })
+  it('renders the summary inside the fold row', () => {
+    const html = renderToStaticMarkup(React.createElement(StopEditor, { open: true, onClose() {}, onSave() {}, initial: { entryFeeInrPerPerson: 50 } }))
+    expect(html).toContain('<span class="stop-editor-summary">Entry ₹50</span>')
+  })
 })
