@@ -275,6 +275,21 @@ describe('S1 — an unmounted gate relinquishes its registry state', () => {
   })
 })
 
+describe('#1019 — the lookup answer picks the screen', () => {
+  it('a dead code renders the dead-link copy, word for word', async () => {
+    const h = mountGate(async () => 'not-member', { fetchTripByInviteCode: async () => ({ kind: 'dead' }) })
+    await h.settle()
+    expect(h.stateBlock()?.props.title).toBe('This invite link no longer works.')
+    expect(h.stateBlock()?.props.body).toBe('Ask the trip owner for a new one. If you are already on this trip, open it from My trips.')
+  })
+
+  it('a failed read renders the retry screen, never the dead-link copy', async () => {
+    const h = mountGate(async () => 'not-member', { fetchTripByInviteCode: async () => ({ kind: 'failed' }) })
+    await h.settle()
+    expect(h.stateBlock()?.props.title).toBe('This invite didn’t load')
+  })
+})
+
 describe('B5 — the real invite screen names each terminal refusal', () => {
   it.each([
     ['not-member', 'This account is not on the trip'],
