@@ -273,6 +273,28 @@ describe('calculator link state', () => {
     expect(html).not.toContain('&lt;a class=')
   })
 
+  it('keeps both ends of a range when only the low end is edited', () => {
+    // A pair goes out as a pair. A link that carried only the end that moved
+    // would say "one number", and one number is a flat fee — the reopened
+    // estimate priced a Rs 1,000-2,600 fare as Rs 1,500 flat.
+    for (const dest of DESTINATIONS) {
+      for (const line of dest.lines.filter((l: any) => l.params?.high && l.rate)) {
+        const input = { ...engine.defaultInputs(dest), [`${line.key}Low`]: 1500 }
+        const back = engine.parseInputs(dest, '?' + engine.serializeInputs(dest, input))
+        expect(back[`${line.key}Low`], `${dest.slug} ${line.key} low`).toBe(1500)
+        expect(back[`${line.key}High`], `${dest.slug} ${line.key} high`).toBe(input[`${line.key}High`])
+      }
+    }
+  })
+
+  it('leaves the default range alone when a value in the link is junk', () => {
+    const dest = byKey.goa
+    const base = engine.defaultInputs(dest)
+    const back = engine.parseInputs(dest, '?jt=abc')
+    expect(back.trainFareLow).toBe(base.trainFareLow)
+    expect(back.trainFareHigh).toBe(base.trainFareHigh)
+  })
+
   it('keeps a link that names only the stay tier priced at that tier', () => {
     const dest = byKey.ladakh
     const back = engine.parseInputs(dest, '?s=camp')
@@ -442,10 +464,11 @@ describe('calculator pages', () => {
     for (const v of values) expect(Number.isFinite(Number(v)), `value="${v}"`).toBe(true)
     expect(html).not.toContain('value="undefined"')
     expect(html).not.toContain('value="NaN"')
-    // And the optional contribution's own amount is one of them.
+    // And the optional contribution's own amount is one of them. Ladakh is the
+    // only destination with one, so the assertion is a literal.
     for (const line of dest.lines.filter((l: any) => l.addOn)) {
-      expect(html).toContain(`id="${line.key}Add"`)
-      expect(html).toMatch(new RegExp(`id="${line.key}Add"[^>]*value="${line.addOn.amount}"`))
+      expect(line.key).toBe('permits')
+      expect(html).toMatch(/id="permitsAdd"[^>]*value="50"/)
     }
   })
 
@@ -489,6 +512,29 @@ describe('calculator pages', () => {
     for (const dest of DESTINATIONS) expect(hub).toContain(`href="/${dest.slug}/"`)
     expect(hub).toContain('"@type": "CollectionPage"')
     expect(hub).toContain('<script defer src="/_vercel/insights/script.js"></script>')
+  })
+
+  it('cannot be talked into emitting markup', () => {
+    // The live result is written with innerHTML from the same two renderers the
+    // static page is generated from, so those strings must never carry a tag
+    // the renderer did not put there — whatever the destination or the input
+    // says. Codacy's rule cannot see this; the assertion can.
+    const hostile = {
+      ...byKey.ladakh,
+      lines: byKey.ladakh.lines.map((l: any) => ({ ...l, name: '<script>alert(1)</script>', offLabel: '<img src=x onerror=alert(1)>' })),
+    }
+    const input = { ...engine.defaultInputs(hostile), people: '"><svg onload=alert(1)>', days: '8' }
+    const res = engine.calculate(hostile, input)
+    const markup = engine.renderHeroHTML(res) + engine.renderBreakdownHTML(res, hostile)
+    // The words survive as TEXT (escaped), which is correct; what must not
+    // survive is a tag the renderer did not write.
+    expect(markup).not.toContain('<script')
+    expect(markup).not.toContain('<img')
+    expect(markup).toContain('&lt;script&gt;')
+    const tags = new Set([...markup.matchAll(/<\/?([a-z]+)/g)].map((m) => m[1]))
+    expect([...tags].sort()).toEqual(['i', 'li', 'p', 'span'])
+    // And the number that does get interpolated is still a number.
+    expect(engine.formatInr(res.perPerson.low)).toMatch(/^₹[\d,]+$/)
   })
 
   it('motion comes from tokens: no raw duration in the shared stylesheet', () => {
@@ -550,7 +596,12 @@ describe('calculator routing and discovery wiring', () => {
 
   const paths = [manifest.hub, ...manifest.calculators.map((c: any) => c.slug)]
   const catchAll = vercel.rewrites.find((r) => r.destination === '/index.html')
-  const catchAllRe = new RegExp(`^${catchAll?.source ?? '$^'}$`)
+  // Vercel's catch-all is `/((?!a/|b/|…).*)`: the alternatives inside the
+  // negative lookahead are the paths it leaves alone. Read them out and match
+  // by prefix — the same decision the platform makes, without compiling a
+  // pattern from a file.
+  const exempt = /^\(\(\?!([^)]*)\)/.exec((catchAll?.source ?? '').replace(/^\//, ''))?.[1].split('|') ?? []
+  const isExempt = (path: string) => exempt.some((alt) => path === `/${alt}` || path.startsWith(`/${alt}`))
 
   it('the manifest lists every destination the generator knows', () => {
     expect(manifest.calculators.map((c: any) => c.slug)).toEqual(DEST_SLUGS)
@@ -568,20 +619,21 @@ describe('calculator routing and discovery wiring', () => {
 
   it('keeps the SPA catch-all exempting every static calculator path', () => {
     expect(catchAll).toBeDefined()
+    expect(exempt.length).toBeGreaterThan(5)
     for (const path of paths) {
-      expect(catchAllRe.test(`/${path}/`), path).toBe(false)
-      expect(catchAllRe.test(`/${path}/index.html`), path).toBe(false)
+      expect(isExempt(`/${path}/`), path).toBe(true)
+      expect(isExempt(`/${path}/index.html`), path).toBe(true)
     }
-    expect(catchAllRe.test('/calculators/client.js')).toBe(false)
-    expect(catchAllRe.test('/og/calc-goa.png')).toBe(false)
+    expect(isExempt('/calculators/client.js')).toBe(true)
+    expect(isExempt('/og/calc-goa.png')).toBe(true)
   })
 
   it('keeps the other catch-all exemptions intact', () => {
     for (const path of ['/sw.js', '/manifest.webmanifest', '/robots.txt', '/sitemap.xml', '/api/sitemap']) {
-      expect(catchAllRe.test(path), path).toBe(false)
+      expect(isExempt(path), path).toBe(true)
     }
-    expect(catchAllRe.test('/trips')).toBe(true)
-    expect(catchAllRe.test('/goa')).toBe(true) // a near-miss slug is still an app route
+    expect(isExempt('/trips')).toBe(false)
+    expect(isExempt('/goa')).toBe(false) // a near-miss slug is still an app route
   })
 
   it('keeps the service worker off every calculator path', () => {

@@ -242,6 +242,8 @@ export function midPerPerson(res) {
 // ---------------- Field messages ----------------
 
 const NUMERIC_SUFFIX = ['Low', 'High', 'DayLow', 'DayHigh', 'Add']
+const PARAM_KEY = { Low: 'low', High: 'high', DayLow: 'day', DayHigh: 'dayHigh', Add: 'add' }
+const paramFor = (params, suffix) => params[PARAM_KEY[suffix]]
 
 /** Field id -> input key, for every numeric control the page renders. */
 export function numericFields(dest) {
@@ -324,16 +326,25 @@ export function serializeInputs(dest, input) {
     if (v === null || v === '' || !Number.isFinite(Number(v))) continue
     if (Number(v) !== Number(base[key] ?? NaN)) p.set(param, String(Number(v)))
   }
+  const differs = (id) => {
+    const v = input[id]
+    if (v === null || v === undefined || v === '' || !Number.isFinite(Number(v))) return false
+    return Number(v) !== Number(base[id] ?? NaN)
+  }
   for (const line of dest.lines) {
     const params = line.params ?? {}
-    for (const suffix of NUMERIC_SUFFIX) {
-      const id = `${line.key}${suffix}`
-      const param = params[suffix === 'Low' ? 'low' : suffix === 'High' ? 'high' : suffix === 'DayLow' ? 'day' : suffix === 'DayHigh' ? 'dayHigh' : 'add']
-      if (!param) continue
-      const v = input[id]
-      if (v === null || v === undefined || v === '' || !Number.isFinite(Number(v))) continue
-      if (Number(v) !== Number(base[id] ?? NaN)) p.set(param, String(Number(v)))
+    // A pair goes out as a pair. Writing only the end that moved leaves a link
+    // that names one number, and one number means a flat fee — so an edited low
+    // would collapse a range on the next open.
+    for (const [loSuffix, hiSuffix] of [['Low', 'High'], ['DayLow', 'DayHigh']]) {
+      const loParam = paramFor(params, loSuffix)
+      if (!loParam || !differs(`${line.key}${loSuffix}`) && !differs(`${line.key}${hiSuffix}`)) continue
+      p.set(loParam, String(Number(input[`${line.key}${loSuffix}`])))
+      const hiParam = paramFor(params, hiSuffix)
+      if (hiParam) p.set(hiParam, String(Number(input[`${line.key}${hiSuffix}`])))
     }
+    const addParam = paramFor(params, 'Add')
+    if (addParam && differs(`${line.key}Add`)) p.set(addParam, String(Number(input[`${line.key}Add`])))
     if (line.tier && input[line.key] !== base[line.key]) p.set(line.tierParam, input[line.key])
     if (line.optional) {
       // An optional extra is off by default, so the link has to be able to say
@@ -393,23 +404,23 @@ export function parseInputs(dest, search) {
   }
   for (const line of dest.lines) {
     const params = line.params ?? {}
+    const read = {}
     for (const suffix of NUMERIC_SUFFIX) {
-      const id = `${line.key}${suffix}`
-      const param = params[suffix === 'Low' ? 'low' : suffix === 'High' ? 'high' : suffix === 'DayLow' ? 'day' : suffix === 'DayHigh' ? 'dayHigh' : 'add']
+      const param = paramFor(params, suffix)
       if (!param) continue
       const n = within(p.get(param), suffix === 'Add' ? 'money' : 'rate')
-      if (n !== null) input[id] = n
+      if (n === null) continue
+      input[`${line.key}${suffix}`] = n
+      read[suffix] = true
     }
-    // A link that names only the low end of a fee means ONE number: mirroring
-    // it stops `ordered()` from swapping ₹450 against an untouched default and
-    // quietly pricing ₹400. A link that names both ends keeps both.
-    const mirrors = [['low', 'high', 'Low', 'High'], ['day', 'dayHigh', 'DayLow', 'DayHigh']]
-    for (const [loParam, hiParam, loSuffix, hiSuffix] of mirrors) {
-      if (!params[loParam]) continue
-      if (p.get(params[loParam]) === null) continue
-      if (params[hiParam] && p.has(params[hiParam])) continue
+    // A link that names ONE end of a fee means one number: mirroring it stops
+    // `ordered()` from swapping ₹450 against an untouched default and quietly
+    // pricing ₹400. A link that names both keeps both, and a value that failed
+    // to parse mirrors nothing, so junk never invents a flat fee.
+    for (const [loSuffix, hiSuffix] of [['Low', 'High'], ['DayLow', 'DayHigh']]) {
+      if (!read[loSuffix]) continue
+      if (params[PARAM_KEY[hiSuffix]] && p.has(params[PARAM_KEY[hiSuffix]])) continue
       input[`${line.key}${hiSuffix}`] = input[`${line.key}${loSuffix}`]
-      input[`${line.key}${loSuffix}`] = input[`${line.key}${hiSuffix}`]
     }
     if (line.tier) {
       const tiers = line.tier === 'stay' ? dest.stays : dest.foods
@@ -469,6 +480,11 @@ export function statusText(res) {
   return `Estimate ${formatRange(res.perPerson)} per person, ${formatRange(res.group)} for ${peopleText(res.people)}.`
 }
 
+/** Text nodes the breakdown writes from the destination config. Escaped here
+ *  because the live page assigns the result with innerHTML: a label is data,
+ *  and data never gets to close a tag. */
+const text = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
 const pct = (v) => Math.round(v * 1000) / 10
 
 /** The breakdown rows. Each bar runs solid to the low figure, then striped to
@@ -481,13 +497,13 @@ export function renderBreakdownHTML(res, dest) {
   return live
     .map((r) => {
       if (!r.active) {
-        return `<li class="off"><span class="cat">${r.name}</span><span class="val">${r.off}</span></li>`
+        return `<li class="off"><span class="cat">${text(r.name)}</span><span class="val">${text(r.off)}</span></li>`
       }
       const lo = pct(r.low / scale)
       const span = pct((r.high - r.low) / scale)
       const hi = span > 0 ? `<i class="hi" data-k="${r.key}-hi" style="width:${span}%"></i>` : ''
       return (
-        `<li><span class="cat">${r.name}</span><span class="val">${rangeHTML(r)}</span>` +
+        `<li><span class="cat">${text(r.name)}</span><span class="val">${rangeHTML(r)}</span>` +
         `<span class="bar" aria-hidden="true"><i class="lo" data-k="${r.key}-lo" style="width:${lo}%"></i>${hi}</span></li>`
       )
     })
