@@ -1,5 +1,5 @@
 // ============ Impact Preview panel ============
-import { AlarmClock, ArrowUpRight, ClipboardList, Clock, Repeat, TriangleAlert, Zap } from 'lucide-react'
+import { AlarmClock, ArrowUpRight, ClipboardList, Clock, Repeat, TriangleAlert, Check } from 'lucide-react'
 import { InlineIcon } from './icons'
 import type { ImpactResult } from '../lib/impact'
 import { minutesToHM, formatInr } from '../lib/engine'
@@ -40,9 +40,10 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
     <div className="impact-sheet" role="status" aria-busy={busy}>
       <div className="impact-panel" tabIndex={0} aria-label="Impact preview">
         <div className="impact-head">
-          <span><Zap size={14} aria-hidden /></span>
-          <span>Impact preview: estimates only</span>
-          <span style={{ marginLeft: 'auto' }} className={`chip ${result.newWarnings.length ? 'chip-danger' : 'chip-ok'}`}>
+          <span className="impact-kicker">Impact preview · estimates only</span>
+          <h2>Review this change</h2>
+          <p>Nothing has changed yet. Keep it, or remove it.</p>
+          <span className={`chip ${result.newWarnings.length ? 'chip-danger' : 'chip-ok'}`}>
             {result.newWarnings.length ? `+${result.newWarnings.length} warning${result.newWarnings.length > 1 ? 's' : ''}` : 'No new warnings'}
           </span>
         </div>
@@ -51,30 +52,30 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
             {Number.isFinite(result.beforeTotals.timeMin) && Number.isFinite(result.afterTotals.timeMin) && (
               <div className="impact-cell">
                 <div className="k">Trip time <span className="muted">Driving + stops</span></div>
-                <div className="v">{minutesToHM(time.from)} → {minutesToHM(time.to)}</div>
+                <div className="impact-values"><s>{minutesToHM(time.from)}</s> → <b>{minutesToHM(time.to)}</b></div>
                 <div className={cls(time.delta)}>{time.sign}{minutesToHM(Math.abs(time.delta))}</div>
               </div>
             )}
             {Number.isFinite(result.beforeTotals.distanceKm) && Number.isFinite(result.afterTotals.distanceKm) && (
               <div className="impact-cell">
                 <div className="k">Trip distance</div>
-                <div className="v">{distance.from} km → {distance.to} km</div>
-                <div className={cls(distance.delta)}>{distance.sign}{Math.abs(distance.delta)} km}</div>
+                <div className="impact-values"><s>{distance.from} km</s> → <b>{distance.to} km</b></div>
+                <div className={cls(distance.delta)}>{distance.sign}{Math.abs(distance.delta)} km</div>
               </div>
             )}
             {Number.isFinite(result.beforeTotals.costInr) && Number.isFinite(result.afterTotals.costInr) && (
               <div className="impact-cell">
                 <div className="k">Trip est. cost</div>
-                <div className="v">{formatInr(cost.from)} → {formatInr(cost.to)}</div>
+                <div className="impact-values"><s>{formatInr(cost.from)}</s> → <b>{formatInr(cost.to)}</b></div>
                 <div className={cls(cost.delta)}>{cost.sign}{formatInr(Math.abs(cost.delta))}</div>
               </div>
             )}
-            <div className="impact-cell">
+          </div>
+          <div className="impact-busy-verdict">
               <div className="k">Too busy?</div>
               <div className={`v ${result.tooBusy ? 'impact-busy' : 'impact-ok'}`}>
                 {result.tooBusy ? 'Yes: over-packed day' : 'No'}
               </div>
-            </div>
           </div>
 
           {result.arrivalChanges.length > 0 && (
@@ -98,14 +99,14 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
             <div className="warn-list section-gap" style={{ marginTop: 12 }}>
               <div className="label">Conflicts in proposed plan</div>
               {result.commitmentConflicts.map(c => (
-                <div key={c} className="warn-item sev-high">
+                <div key={c} className="warn-item impact-conflict">
                   <span className="warn-icon"><AlarmClock size={13} aria-hidden /></span>
                   <div><div className="warn-title">{result.existingCommitmentConflicts.includes(c) ? 'Existing fixed commitment at risk' : 'Fixed commitment at risk'}: {c}</div>
                     <div className="warn-fix">Cut an earlier stop or start sooner.</div></div>
                 </div>
               ))}
               {result.openingHoursIssues.map(h => (
-                <div key={h} className="warn-item">
+                <div key={h} className="warn-item impact-conflict">
                   <span className="warn-icon"><Clock size={13} aria-hidden /></span>
                   <div><div className="warn-title">{result.existingOpeningHoursIssues.includes(h) ? 'Existing opening hours conflict' : 'Opening hours conflict'}</div>
                     <div className="warn-fix">{h}</div></div>
@@ -129,7 +130,8 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
             <div className="warn-list section-gap" style={{ marginTop: 12 }}>
               <div className="label">New warnings</div>
               {result.newWarnings.map((warning, i) => (
-                <div className="warn-item" key={`${warning.code}-${i}`}>
+                <div className="warn-item impact-conflict" key={`${warning.code}-${i}`}>
+                  <span className="warn-icon"><TriangleAlert size={18} aria-hidden /></span>
                   <div><div className="warn-title">{warning.title}</div><div className="warn-fix">{warning.detail}</div></div>
                 </div>
               ))}
@@ -140,6 +142,7 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
               <div className="label">Cleared warnings</div>
               {result.clearedWarnings.map((warning, i) => (
                 <div className="warn-item impact-cleared" key={`${warning.code}-${i}`}>
+                  <span className="warn-icon"><Check size={18} aria-hidden /></span>
                   <div><div className="warn-title">{warning.title}</div><div className="warn-fix">{warning.detail}</div></div>
                 </div>
               ))}

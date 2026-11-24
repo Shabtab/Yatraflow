@@ -195,8 +195,23 @@ it('shows changes between rounded endpoints', () => {
       timeDeltaMin: 0.2, distanceDeltaKm: 0.2, costDeltaInr: 0.2 },
     onKeep: () => {}, onMoveDay: () => {}, onRemove: () => {},
   }))
-  expect(html).toContain('10 km → 11 km')
+  expect(html).toContain('<s>10 km</s> → <b>11 km</b>')
   expect(html).toContain('+1 km')
   expect(html).toContain('+0h 01m')
   expect(html).toContain('+₹1')
+})
+
+
+it('keeps the raw sign when a change rounds to zero', () => {
+  const base = tripOf([day(0, [stop()])])
+  const impact = computeImpact(base, base, 'edit', 0)
+  const html = renderToStaticMarkup(createElement(ImpactPreviewPanel, {
+    result: { ...impact, beforeTotals: { timeMin: 10.1, distanceKm: 10.1, costInr: 10.1 },
+      afterTotals: { timeMin: 10.2, distanceKm: 10.2, costInr: 10.2 },
+      timeDeltaMin: 0.1, distanceDeltaKm: 0.1, costDeltaInr: 0.1 },
+    onKeep: () => {}, onMoveDay: () => {}, onRemove: () => {},
+  }))
+  expect(html).toContain('+0 km')
+  expect(html).toContain('+0h 00m')
+  expect(html).toContain('+₹0')
 })

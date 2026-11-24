@@ -1183,17 +1183,19 @@
 }
 @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
-.impact-head {
-  display: flex; align-items: center; gap: 9px;
-  padding: 11px 16px; background: var(--saffron-soft);
-  font-weight: 700; font-size: 13.5px; color: var(--ink-amber);
-  font-family: var(--font-display);
-}
-.impact-body { padding: 15px 16px; }
-.impact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 9px; margin-bottom: 12px; }
-.impact-cell { background: var(--bg-soft); border-radius: 10px; padding: 9px 12px; }
-.impact-cell .k { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
-.impact-cell .v { font-weight: 800; font-size: 14.5px; margin-top: 1px; font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+.impact-head { padding: 24px 24px 0; color: var(--text); }
+.impact-kicker { display: block; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.impact-head h2 { margin: 3px 0; font-family: var(--font-body); font-size: 19px; line-height: 1.25; font-weight: 800; }
+.impact-head p { margin: 0 0 8px; color: var(--text-3); font-size: 12.5px; line-height: 1.45; }
+.impact-body { padding: 16px 24px 24px; }
+.impact-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.impact-cell { min-width: 0; display: flex; flex-direction: column; gap: 3px; background: var(--card-soft); border-radius: 14px; padding: 12px; }
+.impact-cell .k, .impact-busy-verdict .k { font-size: 11px; font-weight: 800; color: var(--text-3); text-transform: uppercase; letter-spacing: .07em; }
+.impact-values { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.impact-values b { font-family: var(--font-display); font-size: 16px; color: var(--text); }
+.impact-cell > .delta-pos, .impact-cell > .delta-neg, .impact-cell > .delta-zero { font-size: 12px; font-weight: 700; }
+.impact-busy-verdict { display: flex; gap: 8px; align-items: baseline; margin-bottom: 16px; font-size: 13px; }
+@media (max-width: 400px) { .impact-head { padding-inline: 16px; } .impact-body { padding-inline: 16px; } .impact-cell { padding: 8px; } }
 .delta-pos { color: var(--danger); } .delta-neg { color: var(--ink-ok); } .delta-zero { color: var(--text-2); }
 /* The delta inks sit on the --bg-soft cell fill, so light theme needs the same
    deepen as the map rail: raw --danger is 4.36:1 there (dark's #E06C6C is
@@ -1206,7 +1208,12 @@
 .impact-busy { color: var(--danger); }
 :root:not([data-theme='dark']) .impact-busy { color: var(--danger-600); }
 .impact-ok { color: var(--ink-ok); }
-.impact-cleared { background: var(--ok-soft); color: var(--ink-ok); }
+.impact-panel .impact-conflict, .impact-panel .impact-cleared { gap: 10px; padding: 12px 14px; border-radius: 14px; line-height: 1.45; }
+.impact-panel .impact-conflict { background: var(--danger-soft); }
+.impact-panel .impact-cleared { background: var(--ok-soft); }
+.impact-panel .impact-conflict .warn-icon { color: var(--danger); }
+.impact-panel .impact-cleared .warn-icon { color: var(--ink-ok); }
+.impact-panel .warn-title { font-size: 13px; }
 .assumptions { font-size: 12px; color: var(--text-3); background: var(--bg-soft); padding: 9px 12px; border-radius: 10px; line-height: 1.6; }
 .impact-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 13px; }
 .impact-actions .btn { --btn-min-height: 44px; }
