@@ -66,6 +66,7 @@
   "groups": [
     {
       "key": "transport",
+      "param": "m",
       "legend": "Getting around",
       "hint": "A private SUV with a driver is how most Indian groups do Meghalaya. Shared sumos are much cheaper and much slower.",
       "options": [

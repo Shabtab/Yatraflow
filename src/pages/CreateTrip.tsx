@@ -54,7 +54,7 @@ import { haptic, HAPTIC } from '../lib/haptics'
 import { useTimeFormat, formatHM, validHM } from '../lib/timefmt'
 import { cap } from '../lib/labels'
 import { readBenchPrefill } from '../lib/planBench'
-import { readCalcPrefill, calcPrefillTripName } from '../lib/calcPrefill'
+import { readCalcPrefill, clearCalcPrefill, prefillFromSearch, calcPrefillTripName } from '../lib/calcPrefill'
 import { scrollBehavior } from '../lib/motion'
 import { LocationInput } from '../components/LocationInput'
 import { PageHeader } from '../components/page/PageHeader'
@@ -237,12 +237,18 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   // Calculator hand-off (src/lib/calcPrefill.ts): a destination page's estimate
   // arrives as a pending row. Deliberately a second effect, not folded into the
   // bench one — each reads its own key, so neither stash can swallow the other.
-  // Read-only: Auth has already read the same row for its banner, and the
-  // 30-minute TTL retires it. Only stated fields are filled; a visitor with no
-  // `calc` slug is a plain /new visit and gets the untouched form.
+  // Only stated fields are filled; a visitor with no `calc` slug is a plain
+  // /new visit and gets the untouched form.
   useEffect(() => {
-    const p = readCalcPrefill()
+    // A signed-in visitor arrives with the query still on the address bar — the
+    // signed-out gate never runs for them — so the query wins and the stashed
+    // row is the fallback for the sign-up round trip.
+    const search = typeof location === 'undefined' ? '' : location.search
+    const p = prefillFromSearch(search) ?? readCalcPrefill()
     if (!p || !p.calc) return
+    // Read once: this row belongs to the arrival, not to the next trip the
+    // same tab starts inside the TTL.
+    clearCalcPrefill()
     // Kept for the submit event: which calculator priced this trip is the one
     // attribution fact the row does not already carry.
     calcSlugRef.current = p.calc

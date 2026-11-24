@@ -38,9 +38,9 @@
 -- buckets), so this file is declared in NO_PROBE_SURFACE with its reason —
 -- the same shape as the 20260930 allowlist file. What makes the widening
 -- covered instead of unverified: the three-way vocabulary pin in
--- tests/share-attribution.test.ts reads the NEWEST definition (this file,
--- once applied in order) and asserts shareUrl.ts, api/i.js, schema.sql and
--- the constraints all agree.
+-- tests/share-attribution.test.ts reads the NEWEST definition (this file, once
+-- it has applied) and asserts shareUrl.ts, api/i.js, schema.sql and the
+-- constraints all agree.
 
 alter table public.pub_events drop constraint if exists pub_events_source_check;
 alter table public.pub_events add constraint pub_events_source_check

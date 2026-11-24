@@ -66,6 +66,7 @@
   "groups": [
     {
       "key": "transport",
+      "param": "m",
       "legend": "Getting around",
       "hint": "A 2,000 km circuit is a real drive. A car with a driver costs the most but removes the fatigue.",
       "options": [

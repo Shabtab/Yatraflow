@@ -185,7 +185,13 @@ describe('calculator link state', () => {
     changed.stayLow = tier.low
     changed.stayHigh = tier.high
     const back = engine.parseInputs(dest, '?' + engine.serializeInputs(dest, changed))
-    expect(engine.calculate(dest, back).group).toEqual(engine.calculate(dest, changed).group)
+    // The whole estimate has to survive, not just the total: a line whose rate
+    // is lost comes back as zero and the total is the only thing that notices.
+    const what = engine.calculate(dest, changed)
+    const got = engine.calculate(dest, back)
+    expect(got.rows).toEqual(what.rows)
+    expect(got.perPerson).toEqual(what.perPerson)
+    expect(got.group).toEqual(what.group)
     expect(back.people).toBe(5)
     expect(back.days).toBe(6)
     expect(back.stay).toBe(changed.stay)
@@ -231,6 +237,40 @@ describe('calculator link state', () => {
     })
     const r = engine.calculate(dest, back)
     expect(r.rows.find((x: any) => x.key === 'permits').low).toBe(4 * (450 + 25 * 12))
+  })
+
+  it('opens a legacy Ladakh selection link with the choices it named', () => {
+    // `?rent=1&s=camp&f=cafe` is the exact shape the 2026 page handed out.
+    const dest = byKey.ladakh
+    const back = engine.parseInputs(dest, '?rent=1&s=camp&f=cafe')
+    expect(back.bike).toBe('rent')
+    expect(back.stay).toBe('camp')
+    expect(back.food).toBe('cafe')
+    expect(back.stayLow).toBe(500)
+    expect(back.foodLow).toBe(800)
+  })
+
+  it('keeps both ends of an edited fee in the link, and reads a legacy single end as both', () => {
+    const dest = byKey.ladakh
+    // New shape: the low and the high are separate, so an edited high survives.
+    const edited = { ...engine.defaultInputs(dest), permitsLow: 400, permitsHigh: 800, permitsDayLow: 20, permitsDayHigh: 30 }
+    const back = engine.parseInputs(dest, '?' + engine.serializeInputs(dest, edited))
+    expect(back.permitsLow).toBe(400)
+    expect(back.permitsHigh).toBe(800)
+    expect(back.permitsDayHigh).toBe(30)
+    // Legacy shape: one number means one number, not one number and a default.
+    const legacy = engine.parseInputs(dest, '?env=450&wl=25')
+    expect(legacy.permitsLow).toBe(450)
+    expect(legacy.permitsHigh).toBe(450)
+    expect(legacy.permitsDayLow).toBe(25)
+    expect(legacy.permitsDayHigh).toBe(25)
+  })
+
+  it('renders a tier source tag as a link, not as escaped markup', () => {
+    const html = committed('ladakh-trip-cost-calculator')
+    expect(html).toMatch(/<legend>Stay <a class="tag src" href="#src-tata">sourced<\/a><\/legend>/)
+    expect(html).toMatch(/<legend>Food <a class="tag src" href="#src-dheeraj">sourced<\/a><\/legend>/)
+    expect(html).not.toContain('&lt;a class=')
   })
 
   it('keeps a link that names only the stay tier priced at that tier', () => {
@@ -292,6 +332,27 @@ describe('calculator pages', () => {
     // A default page must still keep a clean address in the browser, which is
     // the only place this config is ever used.
     expect(engine.serializeInputs(runtime, input)).toBe('')
+
+    // Every choice the visitor can make has to survive the link through THIS
+    // config. `param`, `token` and `tierParam` are URL metadata the model does
+    // not need, so they are easy to leave out of the trimmed copy — and a
+    // choice with no mapping is silently reset for whoever opens the link.
+    for (const group of dest.groups) {
+      for (const option of group.options) {
+        const chosen = { ...input, [group.key]: option.value }
+        const back = engine.parseInputs(runtime, '?' + engine.serializeInputs(runtime, chosen))
+        expect(back[group.key], `${dest.slug} ${group.key}=${option.value}`).toBe(option.value)
+      }
+    }
+    for (const line of dest.lines.filter((l: any) => l.tier)) {
+      const tiers = line.tier === 'stay' ? dest.stays : dest.foods
+      for (const tier of Object.keys(tiers)) {
+        const chosen = { ...input, [line.key]: tier, [`${line.key}Low`]: tiers[tier].low, [`${line.key}High`]: tiers[tier].high }
+        const back = engine.parseInputs(runtime, '?' + engine.serializeInputs(runtime, chosen))
+        expect(back[line.key], `${dest.slug} ${line.key}=${tier}`).toBe(tier)
+        expect(back[`${line.key}Low`]).toBe(tiers[tier].low)
+      }
+    }
     expect(engine.prefillPath(runtime, input, engine.calculate(runtime, input))).toBe(
       engine.prefillPath(dest, input, engine.calculate(dest, input)),
     )
@@ -369,6 +430,25 @@ describe('calculator pages', () => {
     expect(html).toContain('Plan this trip with your group')
   })
 
+  it.each(DESTINATIONS.map((d) => [d.key, d] as const))('%s: every prefilled input carries a real number', (_key, dest) => {
+    // An input whose value is the string "undefined" (or NaN) is read back as 0
+    // by the browser while the model falls back to its own default — so the
+    // page a visitor lands on disagrees with the page a crawler reads. That is
+    // exactly how the Ladakh Red Cross fee silently priced at zero.
+    const html = committed(dest.slug)
+    // Number inputs only: a radio's value is its option key, not a figure.
+    const values = [...html.matchAll(/<input type="number"[^>]*\svalue="([^"]*)"/g)].map((m) => m[1])
+    expect(values.length).toBeGreaterThan(3)
+    for (const v of values) expect(Number.isFinite(Number(v)), `value="${v}"`).toBe(true)
+    expect(html).not.toContain('value="undefined"')
+    expect(html).not.toContain('value="NaN"')
+    // And the optional contribution's own amount is one of them.
+    for (const line of dest.lines.filter((l: any) => l.addOn)) {
+      expect(html).toContain(`id="${line.key}Add"`)
+      expect(html).toMatch(new RegExp(`id="${line.key}Add"[^>]*value="${line.addOn.amount}"`))
+    }
+  })
+
   it.each(DESTINATIONS.map((d) => [d.key, d] as const))('%s: has no button element, no inline script and no raw animation durations', (_key, dest) => {
     const html = committed(dest.slug)
     expect(html).not.toContain('<button')
@@ -426,6 +506,26 @@ describe('calculator pages', () => {
       expect(png.subarray(1, 4).toString('ascii')).toBe('PNG')
       expect(png.readUInt32BE(16)).toBe(1200)
       expect(png.readUInt32BE(20)).toBe(630)
+    }
+  })
+
+  it('every DOM field the client writes resolves to a real input key', () => {
+    // The client owns an id -> key map. An id whose key is a different name
+    // (`fuel` for `fuelPrice`) writes `undefined` into the form, so a shared
+    // link opened on a phone prices the fuel line at zero. This pins the map
+    // against the model for every destination.
+    const client = read('../calculators/client.mjs')
+    const block = /const FIELD_KEYS = \{([^}]*)\}/.exec(client)
+    expect(block, 'FIELD_KEYS is declared').not.toBeNull()
+    const pairs = [...block![1].matchAll(/(\w+):\s*'(\w+)'/g)].map((m) => [m[1], m[2]])
+    expect(pairs.length).toBeGreaterThan(4)
+    for (const dest of DESTINATIONS) {
+      const input = engine.defaultInputs(dest)
+      for (const [id, key] of pairs) {
+        if (id === 'units' && !dest.units) continue
+        expect(input[key], `${dest.slug}: ${id} -> ${key}`).toBeDefined()
+        expect(Number.isFinite(Number(input[key])), `${dest.slug}: ${id}`).toBe(true)
+      }
     }
   })
 

@@ -61,7 +61,7 @@ function unitsFieldHTML(dest, input) {
   )
 }
 
-function segmented(name, legend, options, chosen, hint) {
+function segmented(name, legend, options, chosen, hint, legendHtml = null) {
   const index = Math.max(0, options.findIndex((o) => o.value === chosen))
   const radios = options
     .map(
@@ -71,7 +71,7 @@ function segmented(name, legend, options, chosen, hint) {
     .join('\n')
   return (
     `        <fieldset>\n` +
-    `          <legend>${esc(legend)}</legend>\n` +
+    `          <legend>${legendHtml ?? esc(legend)}</legend>\n` +
     `          <div class="seg" style="--n:${options.length};--i:${index}" data-seg>\n` +
     `            <span class="glider" aria-hidden="true"></span>\n` +
     `${radios}\n` +
@@ -96,7 +96,8 @@ function tiersHTML(dest, input) {
       const tag = line.tierSource
         ? ` <a class="tag ${line.tierSource.label === 'sourced' ? 'src' : 'asm'}" href="${line.tierSource.href}">${line.tierSource.label}</a>`
         : ''
-      return segmented('g-' + line.key, esc(line.tierLegend) + tag, options, input[line.key], line.tierHint)
+      // The tag is our own markup, so it must not be escaped a second time.
+      return segmented('g-' + line.key, line.tierLegend, options, input[line.key], line.tierHint, esc(line.tierLegend) + tag)
     })
     .join('\n')
 }
@@ -267,7 +268,14 @@ export function runtimeConfig(dest) {
     routes: Object.fromEntries(
       Object.entries(dest.routes).map(([k, r]) => [k, { days: r.days, km: r.km, kmHigh: r.kmHigh, note: r.note }]),
     ),
-    groups: dest.groups.map((g) => ({ key: g.key, options: g.options.map((o) => ({ value: o.value, appMode: o.appMode })) })),
+    // `param`/`token` ride along: the browser serialises and parses the address
+    // bar through this config, so a dropped param means a shared link silently
+    // resets the visitor's transport choice.
+    groups: dest.groups.map((g) => ({
+      key: g.key,
+      param: g.param,
+      options: g.options.map((o) => ({ value: o.value, appMode: o.appMode, param: o.param, token: o.token })),
+    })),
     tiers: dest.lines
       .filter((l) => l.tier)
       .map((l) => ({
@@ -289,6 +297,7 @@ export function runtimeConfig(dest) {
       dayRate: l.dayRate,
       addOn: l.addOn ? { amount: l.addOn.amount, on: l.addOn.on } : null,
       tier: l.tier,
+      tierParam: l.tierParam,
       params: l.params,
     })),
   }

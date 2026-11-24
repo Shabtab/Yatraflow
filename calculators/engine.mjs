@@ -118,7 +118,13 @@ export function inputsForRoute(dest, routeKey) {
     }
     // An optional line is an extra: off until the visitor asks for it.
     if (line.optional) input[`${line.key}On`] = line.on === true
-    if (line.addOn) input[`${line.key}AddOn`] = line.addOn.on !== false
+    if (line.addOn) {
+      input[`${line.key}AddOn`] = line.addOn.on !== false
+      // The amount is an input's value, not just a fallback: leaving it unset
+      // rendered value="undefined", the browser sent the string, and every
+      // optional contribution silently priced at zero.
+      input[`${line.key}Add`] = num(line.addOn.amount)
+    }
   }
   return input
 }
@@ -127,8 +133,8 @@ export function defaultInputs(dest) {
   return inputsForRoute(dest, dest.defaultRoute)
 }
 
-/** The tier rates a segmented control should write when it changes, so the
- *  panel and the model never disagree about what "Comfort" means. */
+/** The tier rates a segmented control must write when it changes, so the panel
+ *  and the model never disagree about what "Comfort" means. */
 export function tierChange(dest, line, value) {
   return tierRates(line.tier === 'stay' ? dest.stays : dest.foods, value)
 }
@@ -244,7 +250,7 @@ export function numericFields(dest) {
   if (dest.lines.some((l) => l.kind === 'km')) fields.push('km')
   for (const line of dest.lines) {
     // A km line prices fuel from the distance and the two pump figures, so it
-    // has no money rate of its own to validate.
+    // has no money rate of its own to check.
     if (line.kind !== 'km') fields.push(`${line.key}Low`, `${line.key}High`)
     if (line.dayRate) fields.push(`${line.key}DayLow`, `${line.key}DayHigh`)
     if (line.addOn) fields.push(`${line.key}Add`)
@@ -392,16 +398,18 @@ export function parseInputs(dest, search) {
       const param = params[suffix === 'Low' ? 'low' : suffix === 'High' ? 'high' : suffix === 'DayLow' ? 'day' : suffix === 'DayHigh' ? 'dayHigh' : 'add']
       if (!param) continue
       const n = within(p.get(param), suffix === 'Add' ? 'money' : 'rate')
-      if (n === null) continue
-      input[id] = n
-      // A line with ONE parameter (a flat fee, a permit) means one number:
-      // mirroring it stops `ordered()` from swapping it against an untouched
-      // default and quietly turning ₹450 into ₹400.
-      if ((suffix === 'Low' && !params.high) || (suffix === 'DayLow' && !params.dayHigh)) {
-        input[`${line.key}${suffix === 'Low' ? 'High' : 'DayHigh'}`] = n
-      }
-      if (suffix === 'High' && !params.low) input[`${line.key}Low`] = n
-      if (suffix === 'DayHigh' && !params.day) input[`${line.key}DayLow`] = n
+      if (n !== null) input[id] = n
+    }
+    // A link that names only the low end of a fee means ONE number: mirroring
+    // it stops `ordered()` from swapping ₹450 against an untouched default and
+    // quietly pricing ₹400. A link that names both ends keeps both.
+    const mirrors = [['low', 'high', 'Low', 'High'], ['day', 'dayHigh', 'DayLow', 'DayHigh']]
+    for (const [loParam, hiParam, loSuffix, hiSuffix] of mirrors) {
+      if (!params[loParam]) continue
+      if (p.get(params[loParam]) === null) continue
+      if (params[hiParam] && p.has(params[hiParam])) continue
+      input[`${line.key}${hiSuffix}`] = input[`${line.key}${loSuffix}`]
+      input[`${line.key}${loSuffix}`] = input[`${line.key}${hiSuffix}`]
     }
     if (line.tier) {
       const tiers = line.tier === 'stay' ? dest.stays : dest.foods
@@ -537,7 +545,7 @@ export function webApplicationJsonLd(dest, origin = 'https://www.yatraflow.in') 
 }
 
 /** The `FAQPage` block, built from the SAME questions and answers the page
- *  prints in its <details> blocks — Google requires the two to match. */
+ *  prints in its <details> blocks. Google rejects a pair that differs. */
 export function faqJsonLd(dest) {
   return {
     '@context': 'https://schema.org',

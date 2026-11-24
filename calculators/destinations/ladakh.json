@@ -218,7 +218,9 @@
       },
       "params": {
         "low": "env",
+        "high": "envh",
         "day": "wl",
+        "dayHigh": "wlh",
         "add": "rcf",
         "off": "rc"
       },

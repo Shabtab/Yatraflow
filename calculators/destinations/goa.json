@@ -63,6 +63,7 @@
   "groups": [
     {
       "key": "transport",
+      "param": "m",
       "legend": "Getting there",
       "hint": "Fares are round trip from a metro. Your own city, dates and how early you book move them a lot.",
       "options": [
@@ -85,6 +86,7 @@
     },
     {
       "key": "local",
+      "param": "l",
       "legend": "Getting around",
       "hint": "One scooty between two people is how most groups cover Goa. A hatchback costs more but is better in the rain.",
       "options": [

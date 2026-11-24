@@ -12,6 +12,7 @@ import {
   type CalcPrefill,
 } from '../src/lib/calcPrefill'
 import { sanitizeCreateMeta } from '../src/lib/createEvents'
+import { readFileSync } from 'node:fs'
 
 const NOW = Date.parse('2026-11-25T10:00:00Z')
 
@@ -241,5 +242,25 @@ describe('the create funnel records which calculator priced the trip', () => {
 
   it('leaves a plain submit exactly as it was', () => {
     expect(sanitizeCreateMeta('submitted', { days: 2, travellers: 2, mode: 'car' })).toEqual({ days: 2, travellers: 2, mode: 'car' })
+  })
+})
+
+describe('the create page consumes the hand-off once', () => {
+  const create = readFileSync(new URL('../src/pages/CreateTrip.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+
+  it('reads the arriving query before the stashed row', () => {
+    // A signed-in visitor never passes the signed-out gate in App.tsx, so the
+    // query is still on the address bar when this page mounts. Reading only
+    // sessionStorage lost every choice for the visitors most likely to convert.
+    expect(create).toMatch(/prefillFromSearch\(search\)\s*\?\?\s*readCalcPrefill\(\)/)
+  })
+
+  it('clears the row once it has been applied', () => {
+    // Without this the row outlived its arrival: a plain /new in the same tab
+    // inside the TTL inherited a stranger's destination and budget, and the
+    // submit was attributed to a calculator the visitor never used.
+    expect(create).toContain('clearCalcPrefill()')
+    const afterRead = create.slice(create.indexOf('const p = prefillFromSearch'), create.indexOf('calcSlugRef.current = p.calc'))
+    expect(afterRead).toContain('clearCalcPrefill()')
   })
 })

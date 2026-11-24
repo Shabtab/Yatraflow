@@ -28,6 +28,12 @@ try {
 
 const state = { nightsTouched: false }
 
+/** DOM id -> input key, for the controls that are not a cost line's rate.
+ *  One map, because an id that silently does not resolve to a key wipes the
+ *  field: the fuel price is `fuelPrice` in the model and `fuel` in the DOM, and
+ *  reading `input['fuel']` emptied it on every link load. */
+const FIELD_KEYS = { days: 'days', nights: 'nights', people: 'people', mileage: 'mileage', fuel: 'fuelPrice', units: 'units' }
+
 const hasKm = () => cfg.lines.some((l) => l.kind === 'km')
 /** Inputs whose id matches their key, present on this page. */
 const LINE_SUFFIXES = ['Low', 'High', 'DayLow', 'DayHigh', 'Add']
@@ -100,8 +106,8 @@ function writeInputs(input) {
     const same = Number(input.kmLow) === km.low && Number(input.kmHigh) === km.high
     $('km').value = same ? '' : input.kmLow
   }
-  for (const id of ['days', 'nights', 'people', 'mileage', 'fuel', 'units']) {
-    if ($(id)) $(id).value = input[id]
+  for (const [id, key] of Object.entries(FIELD_KEYS)) {
+    if ($(id)) $(id).value = input[key]
   }
   for (const id of lineInputIds) $(id).value = input[id]
   state.nightsTouched = input.nights !== input.days - 1
@@ -154,8 +160,9 @@ function showMessages(raw) {
 function showEdited(input) {
   const base = inputsForRoute(cfg, input.route)
   let edited = false
-  for (const id of [...lineInputIds, 'mileage', 'fuel']) {
-    if (Number(input[id]) !== Number(base[id])) { edited = true; break }
+  const tracked = [...lineInputIds, ...Object.keys(FIELD_KEYS).map((id) => FIELD_KEYS[id]).filter((key) => key !== 'days' && key !== 'nights' && key !== 'people')]
+  for (const key of tracked) {
+    if (Number(input[key]) !== Number(base[key])) { edited = true; break }
   }
   $('edited').hidden = !edited
 }
