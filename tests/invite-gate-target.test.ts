@@ -74,9 +74,10 @@ function mountGate(join: (tripId: string) => Promise<gate.JoinResult>, overrides
     // The real state module: the same gateMachine, joinMachine and owner helpers.
     ...gate,
     tripById: () => context.cached,
+    // #1019 — the lookup answers an InviteLookup, not a bare trip.
     fetchTripByInviteCode: async (code: string) => {
       events.push(['resolve', code])
-      return code === 'SECOND' ? trip(TRIP_B) : trip(TRIP_A)
+      return { kind: 'found' as const, trip: code === 'SECOND' ? trip(TRIP_B) : trip(TRIP_A) }
     },
     readSharedTrip: async (id: string) => ({ kind: 'found', trip: trip(id) }),
     viewerIsMemberOf: async () => false,

@@ -537,12 +537,12 @@ describe('the preview stays out of the cache', () => {
     }
   })
 
-  it('returns the row directly, after one provenance check', () => {
-    // Round 10 — a preview with no trip id or no usable revision is not an
-    // answer this client acts on; a well-formed one is returned unchanged.
-    expect(body).toContain('const preview = rows[0]')
-    expect(body).toContain('if (typeof preview?.id !== \'string\' || preview.id.length === 0 || !validWriteVersion(preview.write_version)) return null')
-    expect(body).toMatch(/return rowToTrip\(preview, \[\]\)/)
+  it('classifies the answer with one provenance check, then returns the row', () => {
+    // #1019 — the B3 provenance check moved into classifyInviteRows, which
+    // inviteLookup.test.ts pins row by row. The store only delegates to it.
+    expect(body).toContain('const verdict = classifyInviteRows(rpc.data)')
+    expect(body).toContain("if (verdict.kind !== 'found') return verdict")
+    expect(body).toMatch(/return \{ kind: 'found', trip: rowToTrip\(verdict\.row, \[\]\) \}/)
   })
 
   it('the marker machinery is gone', () => {

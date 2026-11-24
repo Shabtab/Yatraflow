@@ -42,7 +42,7 @@ reuses the helper that ships and adds no second one.
 
 The suite reads the current contract, the one that ships after #804.
 
-- `fetchTripByInviteCode` answers `Trip | null`, and a preview is never cached.
+- `fetchTripByInviteCode` answers an `InviteLookup` (`found`, `dead`, `failed` or `cancelled`), and a preview is never cached.
 - `joinViaInvite` answers a `JoinResult`, and `abandoned` and `not-member` are
   two different answers to two different questions.
 - The membership pre-query answers with certainty, so the store knows whether

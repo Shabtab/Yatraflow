@@ -302,7 +302,7 @@ beforeEach(() => {
 describe('the invite preview is an await a real account switch can land in', () => {
   it('a preview that resolves after the account changed is refused', async () => {
     // The guard: `fetchTripByInviteCode` re-checks the identity epoch and the
-    // session account after its RPC await, and answers null when either moved.
+    // session account after its RPC await, and answers `cancelled` when either moved.
     const store = await storeFor(ALICE)
     const held = hold('get_trip_by_invite_code')
     state.inviteRows = [previewRow()]
@@ -316,7 +316,7 @@ describe('the invite preview is an await a real account switch can land in', () 
 
     // The store's own answer, not a value the test wrote anywhere.
     const preview = await started
-    expect(preview, 'a preview for the previous account must not be returned').toBeNull()
+    expect(preview, 'a preview for the previous account must not be returned').toEqual({ kind: 'cancelled' })
     // And the store's own cache stayed empty: the preview is never cached.
     expect(store.tripById(TRIP), 'the preview must not enter the cache').toBeUndefined()
     expect(store.getSnapshot().trips).toHaveLength(0)
@@ -335,10 +335,11 @@ describe('the invite preview is an await a real account switch can land in', () 
     held.release.resolve(undefined)
     await drain()
 
-    const preview = await started
-    expect(preview, 'the preview must be returned for the current account').not.toBeNull()
-    expect(preview?.id).toBe(TRIP)
-    expect(preview?.name).toBe('Goa Beach Week')
+    const lookup = await started
+    expect(lookup.kind, 'the preview must be returned for the current account').toBe('found')
+    if (lookup.kind !== 'found') return
+    expect(lookup.trip.id).toBe(TRIP)
+    expect(lookup.trip.name).toBe('Goa Beach Week')
   })
 })
 
