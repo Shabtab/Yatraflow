@@ -15,6 +15,7 @@ import { roadLegBetween } from '../lib/routing'
 import { groundAssumptions, hmToMinutes, addMinutesToClock, formatInr } from '../lib/engine'
 import { titleCase, statusLabel } from '../lib/labels'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
+import { STOP_PRIORITY_CHOICES } from '../lib/stopForm'
 
 export interface StopFormValues {
   title: string
@@ -274,12 +275,11 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
                 <input type="number" min={0} step={5} className="input" ref={el => { fieldRefs.current.visitMinutes = el }} aria-invalid={!!errs.visitMinutes} value={v.visitMinutes} onChange={e => set('visitMinutes', Number(e.target.value))} />
               </Field>
           <Field label="Priority">
-            <Select value={v.priority} onChange={val => set('priority', val as ItineraryStop['priority'])}
-              options={[
-                { value: 'must-do', label: 'Must do', icon: <span className="opt-dot" style={{ background: 'var(--coral)' }} /> },
-                { value: 'nice-to-have', label: 'Nice to have', icon: <span className="opt-dot" style={{ background: 'var(--teal)' }} /> },
-                { value: 'optional', label: 'Optional', icon: <span className="opt-dot" style={{ background: 'var(--gray-400)' }} /> },
-              ]} />
+            <div className="stop-editor-priority" role="group" aria-label="Priority">
+              {STOP_PRIORITY_CHOICES.map(choice => <button key={choice.value} type="button" className="clickable-chip"
+                aria-label={choice.accessibleLabel} aria-pressed={v.priority === choice.value}
+                onClick={() => set('priority', choice.value)}>{choice.label}</button>)}
+            </div>
           </Field>
         </div>
         <div className="stop-editor-details">

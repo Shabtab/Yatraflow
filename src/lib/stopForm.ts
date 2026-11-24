@@ -9,6 +9,12 @@ import type { Trip } from '../data/types'
 import { predecessorOf, nextAfter, coLocates, getAssumptions } from './engine'
 import type { StopFormValues, LegContext } from '../components/StopEditor'
 
+export const STOP_PRIORITY_CHOICES = [
+  { value: 'must-do', label: 'Must', accessibleLabel: 'Must do' },
+  { value: 'nice-to-have', label: 'Nice', accessibleLabel: 'Nice to have' },
+  { value: 'optional', label: 'If time', accessibleLabel: 'Optional, if time allows' },
+] as const
+
 /** Which stop the editor is open for — a new one on `dayIndex`, or an existing `stopId`.
  *  A new one may carry the insertion `position` the user picked (#422): the
  *  Timeline's between-stop control knows the slot, so the full editor opens on

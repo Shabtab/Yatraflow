@@ -94,3 +94,7 @@
   .modal-stop-editor, .modal-overlay-exiting .modal-stop-editor { animation: none; }
   .stop-editor-fold { transition: none; }
 }
+.stop-editor-priority { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.stop-editor-priority .clickable-chip { transition: background-color var(--motion-fast) var(--ease-paper), border-color var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper); }
+.stop-editor-priority .clickable-chip[aria-pressed='true'] { background: var(--color-primary); border-color: var(--color-primary); color: var(--pw-raised); }
+@media (prefers-reduced-motion: reduce) { .stop-editor-priority .clickable-chip { transition: none; } }
