@@ -46,6 +46,7 @@ export interface StopPlanFacts {
   arrive?: string
   leave?: string
   stayMin?: number
+  visitMin?: number
   distanceKm?: number
   driveMin?: number
 }
@@ -62,6 +63,7 @@ export function stopPlanFacts(state: StopEditorTarget, facts: DayCardFacts | und
     arrive: row.arrive || undefined,
     leave: row.depart || undefined,
     stayMin: point?.dwellMinutes,
+    visitMin: point?.stop.visitMinutes,
     distanceKm: leg?.distanceKm,
     driveMin: leg?.durationMinutes,
   }

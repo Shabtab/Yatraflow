@@ -403,7 +403,7 @@ export function PlanFactsRow({ facts, timeFormat }: { facts: StopPlanFacts; time
   const parts = [
     facts.arrive ? `arrive ${formatHM(facts.arrive, timeFormat)}` : '',
     facts.leave ? `leave ${formatHM(facts.leave, timeFormat)}` : '',
-    facts.stayMin != null ? `stay ${facts.stayMin} min` : '',
+    facts.stayMin != null ? `stay ${facts.stayMin} min${facts.visitMin != null && facts.stayMin !== facts.visitMin ? ' (incl. buffer)' : ''}` : '',
     facts.distanceKm != null ? `${facts.distanceKm.toFixed(1)} km` : '',
     facts.driveMin != null ? `drive ${Math.round(facts.driveMin)} min` : '',
   ].filter(Boolean)

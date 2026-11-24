@@ -49,6 +49,13 @@ describe('stop editor plan facts', () => {
     expect(html).not.toContain('leave')
     expect(html).not.toContain('drive')
   })
+  it('labels the planned stay when it includes a buffer', () => {
+    const render = (stayMin: number, visitMin: number) => renderToStaticMarkup(React.createElement(PlanFactsRow, { facts: { stayMin, visitMin }, timeFormat: '24h' }))
+    expect(render(55, 40)).toContain('stay 55 min (incl. buffer)')
+    expect(render(55, 55)).toContain('stay 55 min')
+    expect(render(55, 55)).not.toContain('buffer')
+    expect(stopPlanFacts({ mode: 'edit', stopId: 'visit' }, facts)?.visitMin).toBe(90)
+  })
   it('keeps plan facts out of both save paths', () => {
     const source = readFileSync(new URL('../src/components/StopEditor.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
     const submit = source.slice(source.indexOf('  async function submit('), source.indexOf('\n  return (', source.indexOf('  async function submit(')))
