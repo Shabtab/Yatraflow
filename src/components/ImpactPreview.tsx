@@ -31,7 +31,7 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
 
   return (
     <div className="impact-sheet" role="status" aria-busy={busy}>
-      <div className="impact-panel">
+      <div className="impact-panel" tabIndex={0} aria-label="Impact preview">
         <div className="impact-head">
           <span><Zap size={14} aria-hidden /></span>
           <span>Impact preview: estimates only</span>

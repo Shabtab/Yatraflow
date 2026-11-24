@@ -1159,25 +1159,27 @@
 
 /* ---------- Impact preview ---------- */
 .impact-sheet {
-  position: fixed; bottom: 0; left: 0; right: 0;
-  /* Above the toast zone (200): a transient toast must never cover the
-     Keep / Remove decision controls on the sheet while it is open. */
+  position: fixed; inset: 0;
   z-index: var(--z-impact);
   background: rgba(0,0,0,0.35);
-  padding: 10px 12px calc(10px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
-  display: flex; justify-content: center; align-items: flex-start;
-  /* A 390x664 phone needs ~750px of sheet content: with no height cap the top
-     of the panel sat above the viewport and the panel's own `overflow: hidden`
-     left no scroll path to the warning list. The bounds .modal already uses,
-     plus the start alignment that keeps the panel at its natural height so the
-     SHEET scrolls rather than the panel clipping. */
-  max-height: 100dvh; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; justify-content: flex-end; align-items: stretch;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: impact-scrim var(--motion-slow) var(--ease-paper);
 }
 .impact-panel {
-  border: 1.5px solid var(--saffron); border-radius: var(--radius);
-  background: var(--card); overflow: hidden; margin-top: 0;
-  animation: slideUp var(--t-med) var(--ease-out);
-  width: 100%; max-width: 720px;
+  width: min(100%, 480px); overflow-y: auto; overscroll-behavior: contain;
+  background: var(--card); border-left: 1px solid var(--line);
+  animation: impact-enter-right var(--motion-slow) var(--ease-paper);
+}
+@keyframes impact-scrim { from { background-color: transparent; } }
+@keyframes impact-enter-right { from { opacity: 0; transform: translateX(18px); } }
+@keyframes impact-enter-up { from { opacity: 0; transform: translateY(18px); } }
+@media (max-width: 720px) {
+  .impact-sheet { align-items: flex-end; padding: 10px 12px env(safe-area-inset-bottom, 0px); }
+  .impact-panel { width: 100%; max-height: 100%; border: 1px solid var(--line); border-radius: var(--radius-lg); animation-name: impact-enter-up; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .impact-sheet, .impact-panel { animation: none; }
 }
 @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
