@@ -113,9 +113,13 @@ describe('P12 — the motion is on the tokens, with the opt-out', () => {
 
   it('every new animated rule opts out under reduced motion', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.shr-state \{ animation: none; \} \}/)
-    // The section switch had a transition and no opt-out, so a reader who asked
-    // for less motion still got a colour fade on hover and on the active tab.
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.share-tab \{ transition: none; \} \}/)
+    // The section switch now uses the shared pill glider. Its slide is on
+    // --motion-med, which the reduced-motion token block sets to 0ms, so it
+    // opts out without a local rule. The old .share-tab fade is gone.
+    expect(css).toMatch(/--motion-med: 0ms;/)
+    expect(tab).toMatch(/<SegmentedTabs semantics="tablist" className="tabbar share-job-tabs"/)
+    expect(tab).toContain('id: `share-tab-${t.id}`')
+    expect(tab).toContain('controls: `share-panel-${t.id}`')
   })
 
   it('the new section names no raw duration', () => {
