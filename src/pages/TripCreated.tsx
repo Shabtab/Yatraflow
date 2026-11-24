@@ -159,10 +159,10 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
       tripName: trip!.name,
       joinUrl,
       plannerName: handoff?.plannerName || me?.profile.name || '',
-      // This page runs right after the trip is created. Its link has no role
-      // row yet, so it admits editors (the default, #1012 D1). The owner can
-      // change the role only on the Share tab.
-      role: 'editor',
+      // The role of the link, as the last access read left it. A message only
+      // promises a vote when that read said editor. With no read (or after a
+      // realtime change), the softer line holds for both roles (#1012).
+      role: trip!.inviteRole ?? null,
     })
   }
   // conflicts: the engine's own collector, read once for this trip
@@ -664,7 +664,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
             )}
           </div>
           {joinUrl && (
-            <p className="created-detail">They get: {crewInviteMessage({ tripName: trip.name, joinUrl, plannerName: handoff?.plannerName || me?.profile.name || '' })}</p>
+            <p className="created-detail">They get: {inviteText()}</p>
           )}
           {inviteError != null && (
             <StateBlock
