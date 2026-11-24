@@ -222,11 +222,16 @@ export function crewInviteMessage(opts: {
   tripName: string
   joinUrl: string
   plannerName?: string
+  /** The role the link gives. Only a known editor link may promise a vote. A viewer, or an unknown role, gets the line that is true for both (#1012). */
+  role?: 'editor' | 'viewer' | null
 }): string {
   const who = opts.plannerName?.trim() ? `${opts.plannerName.trim()} is planning` : "We're planning"
+  const promise = opts.role === 'editor'
+    ? 'Join to vote on stops and keep the plan in one place'
+    : 'Join to see the plan'
   return [
     `${who} "${opts.tripName}" on YatraFlow.`,
-    `Join to vote on stops and keep the plan in one place: ${opts.joinUrl}`,
+    `${promise}: ${opts.joinUrl}`,
   ].join('\n')
 }
 

@@ -159,6 +159,10 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
       tripName: trip!.name,
       joinUrl,
       plannerName: handoff?.plannerName || me?.profile.name || '',
+      // This page runs right after the trip is created. Its link has no role
+      // row yet, so it admits editors (the default, #1012 D1). The owner can
+      // change the role only on the Share tab.
+      role: 'editor',
     })
   }
   // conflicts: the engine's own collector, read once for this trip

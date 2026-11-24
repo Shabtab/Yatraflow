@@ -69,7 +69,7 @@ describe('crew invites - everything that must be right before anything is sent',
   })
 
   it('the message names the trip, says who is planning, and gives the link', () => {
-    const msg = crewInviteMessage({ tripName: 'Kerala with the crew', joinUrl: 'https://x/#/join/GOA-K7QF', plannerName: 'Asha' })
+    const msg = crewInviteMessage({ tripName: 'Kerala with the crew', joinUrl: 'https://x/#/join/GOA-K7QF', plannerName: 'Asha', role: 'editor' })
     expect(msg).toContain('Asha is planning')
     expect(msg).toContain('"Kerala with the crew"')
     expect(msg).toContain('https://x/#/join/GOA-K7QF')

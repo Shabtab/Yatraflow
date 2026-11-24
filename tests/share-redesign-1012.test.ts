@@ -55,9 +55,12 @@ describe('Share tab: members, invite and copy', () => {
     expect(tab).not.toMatch(/profile\.email|m\.email|u\?\.email/)
   })
 
-  it('the join line stays honest: there is no role toggle in the invite', () => {
-    expect(tab.match(/New members join as editors\./g)).toHaveLength(1)
-    expect(tab).not.toMatch(/Joins as Editor|Joins as Viewer|Reset link/)
+  it('the join line follows the link role, and no role label is hard-coded', () => {
+    // #1012: the role sentence is built from the role the server read, never a fixed word.
+    expect(tab).toMatch(/New members join as \$\{readRole\}s\. /)
+    expect(tab).not.toMatch(/Joins as Editor|Joins as Viewer/)
+    expect(tab).not.toMatch(/Returning members keep their assigned role/)
+    expect(tab).toContain('Reset link')
   })
 
   it('the members label carries the count', () => {

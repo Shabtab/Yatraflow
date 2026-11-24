@@ -45,6 +45,14 @@
 .shr-seg button { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 18px; border: 0; border-radius: 999px; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: color var(--motion-med) var(--ease-glide); }
 .shr-seg button[aria-pressed='true'] { color: var(--bg); }
 .shr-seg button:focus-visible { outline: none; box-shadow: var(--ring); }
+/* Joins as (#1012). The role control reuses .shr-seg; its glider moves to the viewer key. */
+.shr-seg[data-layout='viewer']::before { left: calc(50% + 1px); }
+.shr-role-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.shr-role-control[data-busy] { pointer-events: none; opacity: .6; }
+.shr-role-value { font-size: 14px; font-weight: 700; animation: shr-fade-in var(--motion-fast) var(--ease-paper) backwards; }
+.shr-reset-link { align-self: flex-start; color: var(--danger); border-color: var(--danger); transition: background-color var(--motion-instant) var(--ease-paper), scale var(--motion-instant) var(--ease-paper); }
+.shr-reset-link:hover { background: var(--danger-soft); }
+.shr-reset-link:active { scale: .97; }
 .shr-more-toggle { align-self: flex-start; }
 .shr-member-row.is-entering { animation: shr-member-in var(--motion-med) var(--ease-paper) backwards; }
 .shr-qr { display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -57,6 +65,9 @@
   .shr-qr-image { animation: none; }
   .shr-seg::before, .shr-seg button, .shr-day-tile { transition: none; }
   .shr-member-row.is-entering { animation: none; }
+  .shr-role-value { animation: none; }
+  .shr-reset-link { transition: none; }
+  .shr-reset-link:active { scale: none; }
 }
 /* #1012 — below the wide breakpoint the three jobs use the shared pill glider
    (.tabbar + PillNav), as the workspace rail does. The capsule hugs its labels
