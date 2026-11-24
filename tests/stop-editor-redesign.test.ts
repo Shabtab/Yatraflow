@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { PlanFactsRow, StopEditor } from '../src/components/StopEditor'
-import { STOP_PRIORITY_CHOICES, stopPlanFacts } from '../src/lib/stopForm'
+import { STOP_PRIORITY_CHOICES, stopPlanFacts, stopEditorSummaries } from '../src/lib/stopForm'
 import { buildDayCards } from '../src/lib/dayCards'
 import type { Trip } from '../src/data/types'
 
@@ -67,3 +67,18 @@ describe('stop editor plan facts', () => {
   })
 })
 
+
+describe('phone section summaries', () => {
+  it('omits unknown hours and unset or zero costs', () => {
+    expect(stopEditorSummaries({}, '24h')).toEqual({ categoryHours: '', costs: '', details: '' })
+    const summary = stopEditorSummaries({ entryFeeInrPerPerson: 0, transportCostInrTotal: 0 }, '24h')
+    expect(summary.costs).toBe('')
+    expect(summary.categoryHours).not.toContain('Always open')
+    expect(summary.costs).not.toContain('Free')
+  })
+  it('formats only supplied hours, costs and details', () => {
+    const summary = stopEditorSummaries({ category: 'museum', openTime: '09:00', closeTime: '17:00', entryFeeInrPerPerson: 50, notes: 'Parking', status: 'confirmed' }, '24h')
+    expect(summary).toEqual({ categoryHours: 'Museum · Opens 09:00–17:00', costs: 'Entry ₹50', details: 'Notes · Confirmed' })
+    expect(stopEditorSummaries({ closeTime: '17:00' }, '24h').categoryHours).toBe('Closes 17:00')
+  })
+})

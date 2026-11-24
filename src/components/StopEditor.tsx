@@ -15,7 +15,7 @@ import { roadLegBetween } from '../lib/routing'
 import { groundAssumptions, hmToMinutes, addMinutesToClock, formatInr } from '../lib/engine'
 import { titleCase, statusLabel } from '../lib/labels'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
-import { STOP_PRIORITY_CHOICES, type StopPlanFacts } from '../lib/stopForm'
+import { STOP_PRIORITY_CHOICES, stopEditorSummaries, type StopPlanFacts } from '../lib/stopForm'
 
 export interface StopFormValues {
   title: string
@@ -185,6 +185,8 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
     setV(prev => ({ ...prev, [k]: val }))
   }
 
+  const summaries = stopEditorSummaries(v, timeFormat)
+
   const hoursHint =
     hoursState === 'loading' ? 'Looking up hours from OpenStreetMap…' :
     hoursState === 'found' ? 'Auto-filled from OpenStreetMap. Edit if needed' :
@@ -285,7 +287,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
           </Field>
         </div>
         <div className="stop-editor-details">
-          <EditorSection title="Category and hours" forceOpen={sectionsOpen}>
+          <EditorSection title="Category and hours" summary={summaries.categoryHours} forceOpen={sectionsOpen}>
           <Field label="Category">
             <Select value={v.category} onChange={val => set('category', val as StopCategory)}
               options={STOP_CATEGORIES.map(c => ({ value: c, label: titleCase(c) }))} />
@@ -307,7 +309,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
               </div> : null
             })()}
           </EditorSection>
-          <EditorSection title="Costs" forceOpen={sectionsOpen}>
+          <EditorSection title="Costs" summary={summaries.costs} forceOpen={sectionsOpen}>
         <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
           <Field label="Entry fee per person (₹)" hint="0 for free places">
             <input type="number" min={0} className="input" value={v.entryFeeInrPerPerson} onChange={e => set('entryFeeInrPerPerson', Number(e.target.value))} />
@@ -354,7 +356,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
           </div>
         )}
 
-        <EditorSection title="Details and status" forceOpen={sectionsOpen}>
+        <EditorSection title="Details and status" summary={summaries.details} forceOpen={sectionsOpen}>
           <div className="stop-editor-details">
         <Field label="Description">
           <textarea className="textarea" value={v.description} onChange={e => set('description', e.target.value)} placeholder="What makes this place worth the detour?" />
@@ -415,7 +417,7 @@ function subscribeEditorPhone(callback: () => void) {
   return () => query.removeEventListener('change', callback)
 }
 
-function EditorSection({ title, forceOpen, children }: { title: string; forceOpen: number; children: React.ReactNode }) {
+function EditorSection({ title, summary, forceOpen, children }: { title: string; summary: string; forceOpen: number; children: React.ReactNode }) {
   const [expanded, setExpanded] = useState(false)
   const phone = useSyncExternalStore(subscribeEditorPhone, editorIsPhone, () => false)
   const [seenForceOpen, setSeenForceOpen] = useState(forceOpen)
@@ -429,7 +431,7 @@ function EditorSection({ title, forceOpen, children }: { title: string; forceOpe
       onClick={() => {
         if (expanded && bodyRef.current?.contains(document.activeElement)) buttonRef.current?.focus()
         setExpanded(!expanded)
-      }}>{title}<span aria-hidden="true">{expanded ? '-' : '+'}</span></button>
+      }}><span className="stop-editor-disclosure-copy"><span>{title}</span>{summary && <span className="stop-editor-summary">{summary}</span>}</span><span aria-hidden="true">{expanded ? '-' : '+'}</span></button>
     <h3 className="stop-editor-section-title">{title}</h3>
     <div id={id} className={`stop-editor-fold${visible ? ' is-open' : ''}`} ref={bodyRef} inert={!visible ? true : undefined}>
       <div className="stop-editor-fold-inner">{children}</div>

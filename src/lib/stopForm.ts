@@ -8,6 +8,9 @@
 import type { Trip } from '../data/types'
 import { predecessorOf, nextAfter, coLocates, getAssumptions, scheduleRowsById } from './engine'
 import type { DayCardFacts } from './dayCards'
+import { titleCase, statusLabel } from './labels'
+import { formatHM, type TimeFormat } from './timefmt'
+import { formatInr } from './engine'
 import type { StopFormValues, LegContext } from '../components/StopEditor'
 
 export const STOP_PRIORITY_CHOICES = [
@@ -15,6 +18,20 @@ export const STOP_PRIORITY_CHOICES = [
   { value: 'nice-to-have', label: 'Nice', accessibleLabel: 'Nice to have' },
   { value: 'optional', label: 'If time', accessibleLabel: 'Optional, if time allows' },
 ] as const
+
+export function stopEditorSummaries(values: Partial<StopFormValues>, timeFormat: TimeFormat) {
+  const hours = values.openTime && values.closeTime
+    ? `Opens ${formatHM(values.openTime, timeFormat)}–${formatHM(values.closeTime, timeFormat)}`
+    : values.openTime ? `Opens ${formatHM(values.openTime, timeFormat)}`
+      : values.closeTime ? `Closes ${formatHM(values.closeTime, timeFormat)}` : ''
+  const money = (amount: number | undefined, label: string) =>
+    amount != null && Number.isFinite(amount) && amount > 0 ? `${label} ${formatInr(amount)}` : ''
+  return {
+    categoryHours: [values.category ? titleCase(values.category) : '', hours].filter(Boolean).join(' · '),
+    costs: [money(values.entryFeeInrPerPerson, 'Entry'), money(values.transportCostInrTotal, 'Transport')].filter(Boolean).join(' · '),
+    details: [values.description?.trim() ? 'Description' : '', values.notes?.trim() ? 'Notes' : '', values.sourceUrl?.trim() ? 'Link' : '', values.status ? statusLabel(values.status) : ''].filter(Boolean).join(' · '),
+  }
+}
 
 /** Which stop the editor is open for — a new one on `dayIndex`, or an existing `stopId`.
  *  A new one may carry the insertion `position` the user picked (#422): the
