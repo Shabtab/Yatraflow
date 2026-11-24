@@ -62,7 +62,7 @@ import { toast } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
 import { RemoteEditBanner } from '../../components/RemoteEditBanner'
 import { useStopConflict } from '../../components/useStopConflict'
-import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type StopEditorTarget } from '../../lib/stopForm'
+import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, stopPlanFacts, type StopEditorTarget } from '../../lib/stopForm'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { refuseWhileStaged, removeStopWithUndo, type ApplyChange } from '../../lib/mutationLifecycle'
 import { useResolvePick } from '../../components/ResolvePickDialog'
@@ -992,6 +992,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
         onSave={handleSave}
         dayLabel={editorState?.mode === 'add' ? `Day ${editorState.dayIndex + 1}` : undefined}
         legContext={stopLegContext(editorState, trip)}
+        planFacts={editorState?.mode === 'edit' ? stopPlanFacts(editorState, journeyDays.cards.byDay.get(stopDayIndex(trip, editorState.stopId))) : undefined}
         banner={conflictState.conflict && editorState?.mode === 'edit' ? (
           <RemoteEditBanner
             byName={conflictState.conflictByName?.profile.name ?? ''}

@@ -98,3 +98,4 @@
 .stop-editor-priority .clickable-chip { transition: background-color var(--motion-fast) var(--ease-paper), border-color var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper); }
 .stop-editor-priority .clickable-chip[aria-pressed='true'] { background: var(--color-primary); border-color: var(--color-primary); color: var(--pw-raised); }
 @media (prefers-reduced-motion: reduce) { .stop-editor-priority .clickable-chip { transition: none; } }
+.stop-editor-plan { color: var(--text-2); background: var(--bg-soft); border-radius: var(--radius-sm); padding: var(--space-5); font-size: 13px; }

@@ -6,7 +6,8 @@
 // (as it did) simply couldn't offer the action at all. One implementation here
 // keeps the two views from drifting the way their rejected-stop handling did.
 import type { Trip } from '../data/types'
-import { predecessorOf, nextAfter, coLocates, getAssumptions } from './engine'
+import { predecessorOf, nextAfter, coLocates, getAssumptions, scheduleRowsById } from './engine'
+import type { DayCardFacts } from './dayCards'
 import type { StopFormValues, LegContext } from '../components/StopEditor'
 
 export const STOP_PRIORITY_CHOICES = [
@@ -23,6 +24,28 @@ export type StopEditorTarget =
   | { mode: 'add'; dayIndex: number; position?: number }
   | { mode: 'edit'; stopId: string }
   | null
+
+export interface StopPlanFacts {
+  arrive?: string
+  leave?: string
+  stayMin?: number
+  distanceKm?: number
+  driveMin?: number
+}
+
+export function stopPlanFacts(state: StopEditorTarget, facts: DayCardFacts | undefined): StopPlanFacts | undefined {
+  if (!state || state.mode !== 'edit' || !facts) return undefined
+  const row = scheduleRowsById(facts.sim).get(state.stopId)
+  if (!row) return undefined
+  const point = facts.journey.points.find(p => !p.synthesized && p.stop.id === state.stopId)
+  return {
+    arrive: row.arrive || undefined,
+    leave: row.depart || undefined,
+    stayMin: point?.dwellMinutes,
+    distanceKm: point?.legIn?.distanceKm,
+    driveMin: point?.legIn?.durationMinutes,
+  }
+}
 
 /** Pre-fill for the editor: the existing stop when editing, nothing when adding. */
 export function stopInitialValues(

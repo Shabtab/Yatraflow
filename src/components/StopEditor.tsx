@@ -15,7 +15,7 @@ import { roadLegBetween } from '../lib/routing'
 import { groundAssumptions, hmToMinutes, addMinutesToClock, formatInr } from '../lib/engine'
 import { titleCase, statusLabel } from '../lib/labels'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
-import { STOP_PRIORITY_CHOICES } from '../lib/stopForm'
+import { STOP_PRIORITY_CHOICES, type StopPlanFacts } from '../lib/stopForm'
 
 export interface StopFormValues {
   title: string
@@ -62,7 +62,7 @@ export interface LegContext {
   fuelPricePerL?: number
 }
 
-export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel, legContext, banner }: {
+export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel, legContext, banner, planFacts }: {
   open: boolean
   onClose: () => void
   initial?: Partial<StopFormValues>
@@ -71,6 +71,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
   onSave: (v: StopFormValues) => void
   dayLabel?: string
   legContext?: LegContext
+  planFacts?: StopPlanFacts
   /** M6 B3 — non-blocking remote-edit conflict banner rendered above the form */
   banner?: React.ReactNode
 }) {
@@ -259,6 +260,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
     <Modal variant="stop-editor" open={open} onClose={onModalClose} title={`${initial?.title ? 'Edit stop' : 'Add stop'}${dayLabel ? ` · ${dayLabel}` : ''}`}>
       {banner}
       <form onSubmit={submit}>
+        {planFacts && <PlanFactsRow facts={planFacts} timeFormat={timeFormat} />}
         <div className="stop-editor-key">
           <Field label="Stop name" error={errs.title}>
             <input className="input" ref={el => { fieldRefs.current.title = el }} aria-invalid={!!errs.title} value={v.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Cheeyappara Waterfalls" />
@@ -393,6 +395,17 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
     {resolvePickDialog}
     </>
   )
+}
+
+export function PlanFactsRow({ facts, timeFormat }: { facts: StopPlanFacts; timeFormat: '12h' | '24h' }) {
+  const parts = [
+    facts.arrive ? `arrive ${formatHM(facts.arrive, timeFormat)}` : '',
+    facts.leave ? `leave ${formatHM(facts.leave, timeFormat)}` : '',
+    facts.stayMin != null ? `stay ${facts.stayMin} min` : '',
+    facts.distanceKm != null ? `${facts.distanceKm.toFixed(1)} km` : '',
+    facts.driveMin != null ? `drive ${Math.round(facts.driveMin)} min` : '',
+  ].filter(Boolean)
+  return parts.length ? <p className="stop-editor-plan">In the plan: {parts.join(' · ')}</p> : null
 }
 
 function EditorSection({ title, forceOpen, children }: { title: string; forceOpen: number; children: React.ReactNode }) {
