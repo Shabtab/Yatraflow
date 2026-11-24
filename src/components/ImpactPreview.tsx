@@ -41,20 +41,27 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
         </div>
         <div className="impact-body">
           <div className="impact-grid">
-            <div className="impact-cell">
-              <div className="k">Time on the road<span className="muted" style={{ display: 'block', fontWeight: 400 }}>Driving + stops</span></div>
-              <div className={`v ${cls(result.timeDeltaMin)}`}>{signMin(result.timeDeltaMin)}</div>
-            </div>
-            <div className="impact-cell">
-              <div className="k">Distance</div>
-              <div className={`v ${cls(result.distanceDeltaKm)}`}>{signKm(result.distanceDeltaKm)}</div>
-            </div>
-            <div className="impact-cell">
-              <div className="k">Est. cost</div>
-              <div className={`v ${cls(result.costDeltaInr)}`}>
-                {result.costDeltaInr > 0 ? '+' : result.costDeltaInr < 0 ? '−' : ''}{formatInr(Math.abs(result.costDeltaInr))}
+            {Number.isFinite(result.beforeTotals.timeMin) && Number.isFinite(result.afterTotals.timeMin) && (
+              <div className="impact-cell">
+                <div className="k">Trip time <span className="muted">Driving + stops</span></div>
+                <div className="v">{minutesToHM(result.beforeTotals.timeMin)} → {minutesToHM(result.afterTotals.timeMin)}</div>
+                <div className={cls(result.timeDeltaMin)}>{signMin(result.timeDeltaMin)}</div>
               </div>
-            </div>
+            )}
+            {Number.isFinite(result.beforeTotals.distanceKm) && Number.isFinite(result.afterTotals.distanceKm) && (
+              <div className="impact-cell">
+                <div className="k">Trip distance</div>
+                <div className="v">{result.beforeTotals.distanceKm.toFixed(0)} km → {result.afterTotals.distanceKm.toFixed(0)} km</div>
+                <div className={cls(result.distanceDeltaKm)}>{signKm(result.distanceDeltaKm)}</div>
+              </div>
+            )}
+            {Number.isFinite(result.beforeTotals.costInr) && Number.isFinite(result.afterTotals.costInr) && (
+              <div className="impact-cell">
+                <div className="k">Trip est. cost</div>
+                <div className="v">{formatInr(result.beforeTotals.costInr)} → {formatInr(result.afterTotals.costInr)}</div>
+                <div className={cls(result.costDeltaInr)}>{result.costDeltaInr > 0 ? '+' : result.costDeltaInr < 0 ? '−' : ''}{formatInr(Math.abs(result.costDeltaInr))}</div>
+              </div>
+            )}
             <div className="impact-cell">
               <div className="k">Too busy?</div>
               <div className={`v ${result.tooBusy ? 'impact-busy' : 'impact-ok'}`}>

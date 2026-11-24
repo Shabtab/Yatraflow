@@ -16,6 +16,8 @@ export type LegCorrections = Record<string, LegEstimate> | undefined
 export interface ImpactResult {
   kind: 'add' | 'remove' | 'reorder' | 'edit' | 'move-day'
   dayIndex: number
+  beforeTotals: { timeMin: number; distanceKm: number; costInr: number }
+  afterTotals: { timeMin: number; distanceKm: number; costInr: number }
   timeDeltaMin: number          // + more travel/visit time, − less
   distanceDeltaKm: number
   costDeltaInr: number
@@ -196,6 +198,8 @@ export function computeImpact(trip: Trip, proposed: Trip, kind: ImpactResult['ki
   return {
     kind,
     dayIndex,
+    beforeTotals: { timeMin: curT.mins, distanceKm: curT.km, costInr: curCost },
+    afterTotals: { timeMin: propT.mins, distanceKm: propT.km, costInr: propCost },
     timeDeltaMin: propT.mins - curT.mins,
     distanceDeltaKm: propT.km - curT.km,
     costDeltaInr: propCost - curCost,
