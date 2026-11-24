@@ -17,8 +17,15 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
   onRemove: () => void | boolean | Promise<boolean>
   onScrollToDay?: (dayIndex: number) => void
 }) {
-  const signMin = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${minutesToHM(Math.abs(v))}`
-  const signKm = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(0)} km`
+  const rounded = (before: number, after: number, raw: number, minimum = -Infinity) => {
+    const from = Math.max(minimum, Math.round(before))
+    const to = Math.max(minimum, Math.round(after))
+    const delta = to - from
+    return { from, to, delta, sign: (delta || raw) > 0 ? '+' : (delta || raw) < 0 ? '−' : '' }
+  }
+  const time = rounded(result.beforeTotals.timeMin, result.afterTotals.timeMin, result.timeDeltaMin, 0)
+  const distance = rounded(result.beforeTotals.distanceKm, result.afterTotals.distanceKm, result.distanceDeltaKm)
+  const cost = rounded(result.beforeTotals.costInr, result.afterTotals.costInr, result.costDeltaInr)
   const cls = (v: number) => (v > 0 ? 'delta-pos' : v < 0 ? 'delta-neg' : 'delta-zero')
 
   // Scroll only once the save is acknowledged, never on a refused Keep.
@@ -44,22 +51,22 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
             {Number.isFinite(result.beforeTotals.timeMin) && Number.isFinite(result.afterTotals.timeMin) && (
               <div className="impact-cell">
                 <div className="k">Trip time <span className="muted">Driving + stops</span></div>
-                <div className="v">{minutesToHM(result.beforeTotals.timeMin)} → {minutesToHM(result.afterTotals.timeMin)}</div>
-                <div className={cls(result.timeDeltaMin)}>{signMin(result.timeDeltaMin)}</div>
+                <div className="v">{minutesToHM(time.from)} → {minutesToHM(time.to)}</div>
+                <div className={cls(time.delta)}>{time.sign}{minutesToHM(Math.abs(time.delta))}</div>
               </div>
             )}
             {Number.isFinite(result.beforeTotals.distanceKm) && Number.isFinite(result.afterTotals.distanceKm) && (
               <div className="impact-cell">
                 <div className="k">Trip distance</div>
-                <div className="v">{result.beforeTotals.distanceKm.toFixed(0)} km → {result.afterTotals.distanceKm.toFixed(0)} km</div>
-                <div className={cls(result.distanceDeltaKm)}>{signKm(result.distanceDeltaKm)}</div>
+                <div className="v">{distance.from} km → {distance.to} km</div>
+                <div className={cls(distance.delta)}>{distance.sign}{Math.abs(distance.delta)} km}</div>
               </div>
             )}
             {Number.isFinite(result.beforeTotals.costInr) && Number.isFinite(result.afterTotals.costInr) && (
               <div className="impact-cell">
                 <div className="k">Trip est. cost</div>
-                <div className="v">{formatInr(result.beforeTotals.costInr)} → {formatInr(result.afterTotals.costInr)}</div>
-                <div className={cls(result.costDeltaInr)}>{result.costDeltaInr > 0 ? '+' : result.costDeltaInr < 0 ? '−' : ''}{formatInr(Math.abs(result.costDeltaInr))}</div>
+                <div className="v">{formatInr(cost.from)} → {formatInr(cost.to)}</div>
+                <div className={cls(cost.delta)}>{cost.sign}{formatInr(Math.abs(cost.delta))}</div>
               </div>
             )}
             <div className="impact-cell">

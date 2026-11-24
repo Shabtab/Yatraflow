@@ -184,3 +184,19 @@ describe('preview totals and warnings', () => {
     expect((render(cleared).match(/<button/g) || [])).toHaveLength(3)
   })
 })
+
+
+it('shows changes between rounded endpoints', () => {
+  const base = tripOf([day(0, [stop()])])
+  const impact = computeImpact(base, base, 'edit', 0)
+  const html = renderToStaticMarkup(createElement(ImpactPreviewPanel, {
+    result: { ...impact, beforeTotals: { timeMin: 10.4, distanceKm: 10.4, costInr: 10.4 },
+      afterTotals: { timeMin: 10.6, distanceKm: 10.6, costInr: 10.6 },
+      timeDeltaMin: 0.2, distanceDeltaKm: 0.2, costDeltaInr: 0.2 },
+    onKeep: () => {}, onMoveDay: () => {}, onRemove: () => {},
+  }))
+  expect(html).toContain('10 km → 11 km')
+  expect(html).toContain('+1 km')
+  expect(html).toContain('+0h 01m')
+  expect(html).toContain('+₹1')
+})
