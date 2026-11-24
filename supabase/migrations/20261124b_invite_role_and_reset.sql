@@ -6,9 +6,9 @@
 --   security is on, it has no policies, and no client role has a privilege on
 --   it. Only the security definer commands read or write it. A missing row
 --   means editor, which is the behaviour before this file.
--- Rule: a link never gains power without a new code. Raising the link role
---   replaces the code, so the old link admits nobody. Lowering the link role
---   keeps the code.
+-- Rule: a link never gains power without a new code. When the link role goes
+--   up, a new code replaces the old one, so the old link admits nobody. When
+--   the link role goes down, the code stays.
 -- Reset link: change_trip_access gets two actions, invite_role and invite_reset.
 --   Both need the owner or an admin. A reset always replaces the code.
 -- Join: join_trip reads the link role after its row lock. A returning member

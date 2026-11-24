@@ -1740,7 +1740,7 @@ begin
     raise exception '#1012: trip_invite_role must have no policy';
   end if;
   foreach v_role in array array['anon','authenticated','service_role'] loop
-    foreach v_privilege in array array['SELECT','INSERT','UPDATE','DELETE'] loop
+    foreach v_privilege in array array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop
       if has_table_privilege(v_role,'public.trip_invite_role',v_privilege) then
         raise exception '#1012: % must not have direct % on trip_invite_role',v_role,v_privilege;
       end if;
@@ -1755,6 +1755,12 @@ begin
     where c.conrelid='public.trip_invite_role'::regclass and c.contype='c';
   if v_check is null or position('''editor''' in v_check) = 0 or position('''viewer''' in v_check) = 0 then
     raise exception '#1012: trip_invite_role.role must be checked against editor and viewer';
+  end if;
+  if position('''commenter''' in v_check) > 0 or position('''owner''' in v_check) > 0 then
+    raise exception '#1012: trip_invite_role.role must allow only editor and viewer';
+  end if;
+  if exists (select 1 from pg_publication_tables where schemaname='public' and tablename='trip_invite_role') then
+    raise exception '#1012: trip_invite_role must not be in a realtime publication';
   end if;
   if not exists (
     select 1 from pg_constraint
