@@ -38,12 +38,15 @@ export function stopPlanFacts(state: StopEditorTarget, facts: DayCardFacts | und
   const row = scheduleRowsById(facts.sim).get(state.stopId)
   if (!row) return undefined
   const point = facts.journey.points.find(p => !p.synthesized && p.stop.id === state.stopId)
+  // A leg with no distance and no drive time is the day's start standing on this
+  // stop, not a drive. Showing "0.0 km, drive 0 min" would invent a trip leg.
+  const leg = point?.legIn && (point.legIn.distanceKm >= 0.05 || point.legIn.durationMinutes >= 0.5) ? point.legIn : undefined
   return {
     arrive: row.arrive || undefined,
     leave: row.depart || undefined,
     stayMin: point?.dwellMinutes,
-    distanceKm: point?.legIn?.distanceKm,
-    driveMin: point?.legIn?.durationMinutes,
+    distanceKm: leg?.distanceKm,
+    driveMin: leg?.durationMinutes,
   }
 }
 

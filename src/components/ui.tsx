@@ -54,7 +54,8 @@ export function Modal({ open, onClose, title, children, initialFocus, variant = 
   if (open && !present) setPresent(true)
   useEffect(() => {
     if (open) return
-    const duration = variant === 'stop-editor' && !prefersReducedMotion() ? motionExitTiming('--motion-med').duration : 0
+    // The exit animation exists on the phone sheet only; a desktop dialog leaves at once.
+    const duration = variant === 'stop-editor' && !prefersReducedMotion() && window.matchMedia('(max-width: 639px)').matches ? motionExitTiming('--motion-med').duration : 0
     const timer = window.setTimeout(() => setPresent(false), duration)
     return () => window.clearTimeout(timer)
   }, [open, variant])

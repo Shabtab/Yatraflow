@@ -29,6 +29,19 @@ describe('stop editor plan facts', () => {
     expect(stopPlanFacts({ mode: 'add', dayIndex: 0 }, facts)).toBeUndefined()
     expect(stopPlanFacts({ mode: 'edit', stopId: 'visit' }, undefined)).toBeUndefined()
   })
+  it('shows the real leg into a stop, and no leg when the day starts at the stop', () => {
+    const kochi = { ...trip, startLocationCoords: { lat: 9.93, lng: 76.26 } }
+    const away = stopPlanFacts({ mode: 'edit', stopId: 'visit' }, buildDayCards(kochi, kochi.days).byDay.get(0))
+    expect(away?.distanceKm).toBeGreaterThan(1)
+    expect(away?.driveMin).toBeGreaterThan(0)
+    const here = { ...trip, startLocationCoords: { lat: 10.08, lng: 77.05 } }
+    const first = stopPlanFacts({ mode: 'edit', stopId: 'visit' }, buildDayCards(here, here.days).byDay.get(0))
+    expect(first?.arrive).toBeTruthy()
+    expect(first?.distanceKm).toBeUndefined()
+    expect(first?.driveMin).toBeUndefined()
+    const html = renderToStaticMarkup(React.createElement(PlanFactsRow, { facts: first!, timeFormat: '24h' }))
+    expect(html).not.toMatch(/km|drive/)
+  })
   it('omits absent facts and renders no empty row', () => {
     expect(renderToStaticMarkup(React.createElement(PlanFactsRow, { facts: {}, timeFormat: '24h' }))).toBe('')
     const html = renderToStaticMarkup(React.createElement(PlanFactsRow, { facts: { arrive: '10:40' }, timeFormat: '24h' }))
