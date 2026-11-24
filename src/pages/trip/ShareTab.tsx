@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { InlineIcon } from '../../components/icons'
 import { CalendarDays, ChevronRight, Download, Link2, Lock } from 'lucide-react'
 import type { Trip, PublishedItinerary } from '../../data/types'
-import { useDb, userById, setMemberRole, removeMember, restoreMember, readMemberAccess, publishItinerary, unpublishItinerary, ensureInviteCode, rereadPublicSlices } from '../../store/store'
+import { useDb, userById, setMemberRole, removeMember, restoreMember, readMemberAccess, publishItinerary, unpublishItinerary, ensureInviteCode, rereadPublicSlices, setInviteRole, resetInviteLink, type InviteLinkOutcome } from '../../store/store'
 import type { AccessMember, MemberAccessState } from '../../lib/memberAccess'
 import { encodeTripSnapshot, snapshotUrl, downloadTripJson } from '../../lib/snapshot'
 import { ImportTripButton } from '../../components/ImportTripButton'
@@ -39,6 +39,9 @@ import { cap, timeAgo } from './shared'
 // The three-column layout starts here (#1012). The same width is written in
 // src/styles/legacy/05-share-and-trip-ticket.css; tests pin both values.
 const SHARE_WIDE_QUERY = '(min-width: 1100px)'
+// The link role, as the Joins as control and the read-only line name it (#1012).
+const ROLE_LABEL = { editor: 'Editor', viewer: 'Viewer' } as const
+const ROLE_ITEMS = [{ key: 'editor', label: 'Editor' }, { key: 'viewer', label: 'Viewer' }] as const
 
 // The invite message and the mail link are plain text. They name the code and
 // the link, and nothing else about the trip or its members.
@@ -575,15 +578,16 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   const [mintTry, setMintTry] = useState(0)
   const inviteKey = `${trip.id}:${me.id}:${mintTry}`
   const inviteCode = inviteReady === inviteKey ? trip.inviteCode ?? null : null
+  // A newer access version re-checks the code. A failed re-check never hides a link already on screen (#1012).
   useEffect(() => {
     let alive = true
     void ensureInviteCode(trip.id).then(code => {
       if (!alive) return
-      setInviteReady(code ? inviteKey : null)
+      setInviteReady(prev => (code ? inviteKey : prev === inviteKey ? prev : null))
       setMintFailed(!code)
     })
     return () => { alive = false }
-  }, [trip.id, inviteKey])
+  }, [trip.id, inviteKey, trip.accessVersion])
   const inviteLink = inviteCode ? `${location.origin}/join/${inviteCode}` : ''
   // #1012 — the QR code is drawn only when asked for, from a library loaded then.
   const [qrOpen, setQrOpen] = useState(false)
@@ -645,20 +649,65 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   const [memberBusy, setMemberBusy] = useState(false)
   const [accessRead, setAccessRead] = useState<{ key: string; state: MemberAccessState | null } | null>(null)
   const [accessTry, setAccessTry] = useState(0)
-  const accessKey = `${trip.id}:${me.id}:${accessTry}`
+  // The key holds the access version too. A newer version makes the read stale, so the page waits for a fresh one (#1012).
+  const accessKeyAt = (version: number) => `${trip.id}:${me.id}:${accessTry}:${version}`
+  const accessKey = accessKeyAt(trip.accessVersion ?? -1)
   const accessPending = accessRead?.key !== accessKey
   const accessFailed = !accessPending && !accessRead?.state
   const removedMembers = !accessPending ? accessRead?.state?.removed ?? [] : []
+  // The role comes only from a read that succeeded for this version. The cached trip is never a source (#1012).
+  const readRole = !accessPending ? accessRead?.state?.inviteRole ?? null : null
   useEffect(() => {
-    if (!isOwner) return
     let alive = true
     void readMemberAccess(trip.id).then(state => {
       if (!alive) return
       setAccessRead({ key: accessKey, state })
     })
     return () => { alive = false }
-  }, [trip.id, isOwner, accessKey])
+  }, [trip.id, accessKey])
   const [pendingUnpublish, setPendingUnpublish] = useState(false)
+  // Link role and reset (#1012). The page shows the role the server confirmed, never the one it asked for.
+  const [roleAsk, setRoleAsk] = useState(false)
+  const [resetAsk, setResetAsk] = useState(false)
+  const [inviteBusy, setInviteBusy] = useState(false)
+
+  // Settles one link change: a done outcome installs its read; the other two say what is still true.
+  function settleInvite(outcome: InviteLinkOutcome, copy: { done: string; unchanged: string; unknown: string }) {
+    if (outcome.status === 'done') {
+      setAccessRead({ key: accessKeyAt(outcome.state.version), state: outcome.state })
+      toast(copy.done)
+    } else if (outcome.status === 'unchanged') {
+      toast(copy.unchanged, 'err')
+    } else if (outcome.status === 'unsent') {
+      toast('We could not check the link. Nothing changed. Try again.', 'err')
+    } else {
+      toast(copy.unknown, 'err')
+    }
+  }
+  async function applyInviteRole(role: 'editor' | 'viewer') {
+    if (inviteBusy) return
+    setInviteBusy(true)
+    try {
+      const outcome = await setInviteRole(trip.id, role)
+      settleInvite(outcome, role === 'editor'
+        ? { done: 'New link ready. The old link no longer works.', unchanged: 'Could not change the link. The old link still works.', unknown: 'We could not confirm the change. Check the link before you share it.' }
+        : { done: 'New members join as viewers', unchanged: 'Could not change the link. The old link still works.', unknown: 'We could not confirm the change. Check the link before you share it.' })
+    } finally { setInviteBusy(false) }
+  }
+  async function resetLink() {
+    if (inviteBusy) return
+    setInviteBusy(true)
+    try {
+      const outcome = await resetInviteLink(trip.id)
+      settleInvite(outcome, { done: 'New link ready. The old link no longer works.', unchanged: 'Could not reset the link. The old link still works.', unknown: 'We could not confirm the reset. Check the link before you share it.' })
+    } finally { setInviteBusy(false) }
+  }
+  // Viewer to Editor asks first, because the old link and code stop working. Editor to Viewer applies at once.
+  function chooseRole(next: string) {
+    if (inviteBusy || next === readRole) return
+    if (next === 'editor') setRoleAsk(true)
+    else if (next === 'viewer') void applyInviteRole('viewer')
+  }
 
   async function restoreRemoved(member: AccessMember) {
     if (memberBusy) return
@@ -730,7 +779,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
         <Surface className="card shr-panel">
           <span className="share-intent share-intent--teal">1 · Plan together</span>
           <h3 className="shr-card-title">Invite collaborators</h3>
-          <p className="hint-text shr-invite-description">New members join as editors. Returning members keep their assigned role. Removed members need an owner restore.</p>
+          <p className="hint-text shr-invite-description">{readRole ? <span key={readRole} className="shr-role-fade">{`New members join as ${readRole}s. `}</span> : null}Returning members never get more than their last role. Removed members need an owner restore.</p>
           {/* #1012 — a labelled link, then the join code as its own tile. The link
               and the code are two different things, so they are two blocks. */}
           <div className="shr-invite-field" role="group" aria-labelledby="share-invite-label">
@@ -757,6 +806,31 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => openExternal(mailtoUrl('Join my YatraFlow trip', inviteMessage(inviteCode ?? '', inviteLink)))}>Email</button>
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => { void openQr() }}>Show QR</button>
               </div>
+            )}
+            {/* Joins as (#1012). The owner changes it; everyone else reads it. It shows only from a read that succeeded. */}
+            {accessPending ? (
+              <div className="shr-state">
+                <StateBlock kind="loading" size="compact" title="Checking who joins…" />
+              </div>
+            ) : accessFailed ? (
+              <div className="shr-state">
+                <StateBlock kind="failed" size="compact" title="We could not check who joins."
+                  actions={<button type="button" className="btn btn-outline btn-sm" onClick={() => setAccessTry(n => n + 1)}>Try again</button>} />
+              </div>
+            ) : readRole ? (
+              <div className="shr-role-row">
+                <span className="shr-field-label">Joins as</span>
+                {isOwner ? (
+                  <div className="shr-role-control" data-busy={inviteBusy || undefined}>
+                    <SegmentedTabs semantics="toggle" className="shr-seg" label="Joins as" items={ROLE_ITEMS} value={readRole} onChange={chooseRole} />
+                  </div>
+                ) : (
+                  <span key={readRole} className="shr-role-value">{ROLE_LABEL[readRole]}</span>
+                )}
+              </div>
+            ) : null}
+            {isOwner && readRole && (
+              <button type="button" className="btn btn-outline btn-sm shr-reset-link" disabled={inviteBusy} onClick={() => setResetAsk(true)}>Reset link</button>
             )}
           </div>
           {inviteCode && (
@@ -985,6 +1059,23 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
         danger
         onConfirm={confirmRemoveMember}
         onClose={() => setPendingRemove(null)}
+      />
+      <ConfirmDialog
+        open={roleAsk}
+        title="Make a new editor link?"
+        body="The current link and code stop working. People on the trip keep their role."
+        confirmLabel="Make new link"
+        onConfirm={() => { void applyInviteRole('editor') }}
+        onClose={() => setRoleAsk(false)}
+      />
+      <ConfirmDialog
+        open={resetAsk}
+        title="Reset the invite link?"
+        body="The current link and code stop working at once. People on the trip keep their access. Send the new link to people who have not joined."
+        confirmLabel="Reset link"
+        danger
+        onConfirm={() => { void resetLink() }}
+        onClose={() => setResetAsk(false)}
       />
       <ConfirmDialog
         open={pendingUnpublish}

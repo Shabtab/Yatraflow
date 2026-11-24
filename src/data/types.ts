@@ -398,6 +398,8 @@ export interface Trip {
    * trip. See lib/inviteCode.ts and supabase/migrations/20260909_invite_codes.sql.
    */
   inviteCode?: string
+  /** The link's role, cached from the last access read (#1012). A cache field only: it is never a trips column, and no UI reads it for a role claim. */
+  inviteRole?: 'editor' | 'viewer'
   accessVersion?: number
   visibility: 'private' | 'public'
   /**

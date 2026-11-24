@@ -2628,6 +2628,14 @@ begin
 end;
 $$;
 
+create table if not exists public.trip_invite_role (
+  trip_id uuid primary key references public.trips(id) on delete cascade,
+  role text not null check (role in ('editor','viewer')),
+  changed_at bigint not null
+);
+alter table public.trip_invite_role enable row level security;
+revoke all on public.trip_invite_role from public, anon, authenticated, service_role;
+
 alter table public.trips add column if not exists access_version bigint not null default 0;
 
 create or replace function public.trip_access_only_change(p_old jsonb,p_new jsonb)
@@ -2723,7 +2731,9 @@ begin
     raise exception 'Trip access refused.' using errcode='42501';
   end if;
   return jsonb_build_object(
-    'version',v_trip.access_version,'inviteCode',v_trip.invite_code,'planVersion',to_jsonb(v_trip)->'write_version',
+    'version',v_trip.access_version,'inviteCode',v_trip.invite_code,
+    'inviteRole',coalesce((select r.role from public.trip_invite_role r where r.trip_id=p_trip_id),'editor'),
+    'planVersion',to_jsonb(v_trip)->'write_version',
     'members',coalesce((select jsonb_agg(jsonb_build_object('userId',m.user_id,'role',m.role,
       'joinedAt',m.joined_at,'revision',a.revision) order by m.user_id)
       from public.trip_members m join public.trip_member_access a using(trip_id,user_id)
@@ -2821,6 +2831,33 @@ begin
       insert into public.trip_members(trip_id,user_id,role,joined_at)
         values(p_trip_id,v_target,v_access.role,v_access.joined_at);
     end if;
+  elsif p_action in ('invite_role','invite_reset') then
+    if not v_manager then
+      raise exception 'Only the owner or an admin can change the invite link.' using errcode='42501';
+    end if;
+    if p_user_id is not null or p_expected_revision is not null then
+      raise exception 'Invite change refused.' using errcode='22023';
+    end if;
+    if p_action='invite_reset' then
+      if p_role is not null then
+        raise exception 'Invite change refused.' using errcode='22023';
+      end if;
+      v_rotate := true;
+    else
+      if p_role is null or p_role not in ('editor','viewer') then
+        raise exception 'Invite change refused.' using errcode='22023';
+      end if;
+      if p_role=coalesce((select r.role from public.trip_invite_role r where r.trip_id=p_trip_id),'editor') then
+        return jsonb_build_object('status','applied','state',public.trip_access_state(p_trip_id));
+      end if;
+      v_rotate := array_position(array['viewer','commenter','editor','owner'],p_role)
+        > array_position(array['viewer','commenter','editor','owner'],
+            coalesce((select r.role from public.trip_invite_role r where r.trip_id=p_trip_id),'editor'))
+        and v_trip.invite_code is not null;
+      insert into public.trip_invite_role(trip_id,role,changed_at)
+        values(p_trip_id,p_role,floor(extract(epoch from clock_timestamp())*1000))
+        on conflict(trip_id) do update set role=excluded.role, changed_at=excluded.changed_at;
+    end if;
   else
     raise exception 'Unknown member action.' using errcode='22023';
   end if;
@@ -2849,6 +2886,8 @@ declare
   v_access public.trip_member_access;
   v_actor uuid := auth.uid();
   v_code text := upper(trim(p_code));
+  v_link text;
+  v_role text;
 begin
   if v_actor is null or public.is_disabled() then
     raise exception 'Sign in with an enabled account.' using errcode='42501';
@@ -2858,15 +2897,29 @@ begin
   if v_trip.id is null or v_trip.deleted_at is not null or v_trip.invite_code is distinct from v_code then
     raise exception 'Invite is unavailable.' using errcode='42501';
   end if;
+  -- Read after the row lock, so a join never pairs an old role with a new code.
+  v_link := coalesce((select r.role from public.trip_invite_role r where r.trip_id=v_id),'editor');
   select * into v_access from public.trip_member_access where trip_id=v_id and user_id=v_actor for update;
   if v_access.state='removed' or (v_access.owner_id is not null and v_access.owner_id<>v_trip.owner_id) then
     raise exception 'Ask the owner to restore your access.' using errcode='42501';
   end if;
   if exists(select 1 from public.trip_members where trip_id=v_id and user_id=v_actor) then return v_id; end if;
+  -- The owner stays owner. A new member gets the link role. A repaired active
+  -- row keeps its last role. A returning member gets the lower of the last
+  -- role and the link role.
+  v_role := case
+    when v_actor=v_trip.owner_id then 'owner'
+    when v_access.user_id is null then v_link
+    when v_access.state='active' then v_access.role
+    when array_position(array['viewer','commenter','editor','owner'],v_access.role)
+      <= array_position(array['viewer','commenter','editor','owner'],v_link) then v_access.role
+    else v_link
+  end;
   insert into public.trip_member_access(trip_id,user_id,owner_id,state,role,joined_at)
-    values(v_id,v_actor,v_trip.owner_id,'active',case when v_actor=v_trip.owner_id then 'owner' else 'editor' end,
+    values(v_id,v_actor,v_trip.owner_id,'active',v_role,
       floor(extract(epoch from clock_timestamp())*1000))
-    on conflict(trip_id,user_id) do update set state='active',revision=public.trip_member_access.revision+1;
+    on conflict(trip_id,user_id) do update set state='active', role=excluded.role,
+      revision=public.trip_member_access.revision+1;
   insert into public.trip_members(trip_id,user_id,role,joined_at)
     select trip_id,user_id,role,joined_at from public.trip_member_access where trip_id=v_id and user_id=v_actor
     on conflict(trip_id,user_id) do nothing;

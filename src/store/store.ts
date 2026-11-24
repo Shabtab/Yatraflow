@@ -2643,6 +2643,7 @@ function installMemberAccess(tripId: ID, state: MemberAccessState, scope: Member
   mutateTrip(tripId, draft => {
     draft.members = state.members
     draft.inviteCode = state.inviteCode ?? undefined
+    draft.inviteRole = state.inviteRole
     draft.accessVersion = state.version
   }, { touch: false })
   return true
@@ -2718,6 +2719,64 @@ export async function ensureInviteCode(tripId: ID): Promise<string | null> {
       return result.state.inviteCode
     } catch { return null }
   })
+}
+
+/** The outcome of an invite link change (#1012). `done`: the server applied it, or a re-read showed it.
+ *  `unchanged`: a re-read showed the old link or the old role. `unknown`: the write was sent, and no re-read
+ *  could confirm either. `unsent`: nothing was sent, because the state could not be read first. */
+export type InviteLinkOutcome =
+  | { status: 'done'; state: MemberAccessState }
+  | { status: 'unchanged' }
+  | { status: 'unknown' }
+  | { status: 'unsent' }
+
+type InviteLinkChange = { action: 'invite_role'; role: 'editor' | 'viewer' } | { action: 'invite_reset' }
+
+async function changeInviteLink(tripId: ID, change: InviteLinkChange): Promise<InviteLinkOutcome> {
+  const scope = captureMemberScope()
+  if (!scope || !tripById(tripId)) return { status: 'unsent' }
+  const epoch = tripAccessEpochs.get(tripId) ?? 0
+  const live = () => memberAccessLive(scope, tripId, epoch)
+  return serializeTripWrite(`${scope.epoch}:${scope.userId}:${tripId}`, async (): Promise<InviteLinkOutcome> => {
+    if (!live()) return { status: 'unsent' }
+    // The old state is the baseline for a re-read after an error: a reset is
+    // proven by a new code, a role change by the new role.
+    const before = await readMemberAccess(tripId)
+    if (!before || !live()) return { status: 'unsent' }
+    try {
+      const token = await tripWriteToken(scope)
+      if (!token || !live()) return { status: 'unsent' }
+      const { data, error } = await supabase.rpc('change_trip_access', {
+        p_trip_id: tripId,
+        p_action: change.action,
+        p_user_id: null,
+        p_role: change.action === 'invite_role' ? change.role : null,
+        p_expected_revision: null,
+      }).setHeader('Authorization', 'Bearer ' + token)
+      const result = !error ? memberChangeReceipt(data) : null
+      if (result?.status === 'applied' && result.state) {
+        installMemberAccess(tripId, result.state, scope, epoch)
+        return { status: 'done', state: result.state }
+      }
+    } catch { /* fall through to the re-read: the write's outcome is not known yet */ }
+    // No applied receipt. Read again before any claim.
+    const after = await readMemberAccess(tripId)
+    if (!after) return { status: 'unknown' }
+    const moved = change.action === 'invite_reset'
+      ? after.inviteCode !== before.inviteCode
+      : after.inviteRole === change.role
+    return moved ? { status: 'done', state: after } : { status: 'unchanged' }
+  })
+}
+
+/** Sets who the invite link admits (#1012). A raise replaces the code; a lowering keeps it. */
+export function setInviteRole(tripId: ID, role: 'editor' | 'viewer'): Promise<InviteLinkOutcome> {
+  return changeInviteLink(tripId, { action: 'invite_role', role })
+}
+
+/** Replaces the invite code at once. The old link stops working (#1012). */
+export function resetInviteLink(tripId: ID): Promise<InviteLinkOutcome> {
+  return changeInviteLink(tripId, { action: 'invite_reset' })
 }
 
 export interface NewTripInput {
@@ -3270,6 +3329,7 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
   copy.visibility = opts.makePublic ? 'public' : 'private'
   copy.createdAt = Date.now(); copy.updatedAt = Date.now()
   copy.inviteCode = undefined
+  copy.inviteRole = undefined
   copy.deletedAt = undefined
   // #230 — the fork's own acquisition stamp, never the source trip's. A copy
   // of a copy starts a NEW attribution chain at whatever surface forked it.
@@ -8883,6 +8943,8 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
         && (row?.invite_code === null || typeof row?.invite_code === 'string')) {
         mutateTrip(id, draft => {
           draft.inviteCode = row.invite_code ?? undefined
+          // A newer access version may have changed the link role. The cached role is dropped until a read reports it again (#1012).
+          draft.inviteRole = undefined
           draft.accessVersion = accessVersion
         }, { touch: false })
       }
