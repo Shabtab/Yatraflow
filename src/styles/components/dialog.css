@@ -99,3 +99,6 @@
 .stop-editor-priority .clickable-chip[aria-pressed='true'] { background: var(--color-primary); border-color: var(--color-primary); color: var(--pw-raised); }
 @media (prefers-reduced-motion: reduce) { .stop-editor-priority .clickable-chip { transition: none; } }
 .stop-editor-plan { color: var(--text-2); background: var(--bg-soft); border-radius: var(--radius-sm); padding: var(--space-5); font-size: 13px; }
+@media (max-width: 639px) {
+  .modal-stop-editor .modal-head { position: sticky; top: -18px; z-index: var(--z-raised); background: var(--card); padding: var(--space-5) 0; }
+}

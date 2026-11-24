@@ -51,10 +51,11 @@ export function Modal({ open, onClose, title, children, initialFocus, variant = 
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = React.useId()
   const [present, setPresent] = useState(open)
+  if (open && !present) setPresent(true)
   useEffect(() => {
-    if (open) { setPresent(true); return }
-    if (variant !== 'stop-editor' || prefersReducedMotion()) { setPresent(false); return }
-    const timer = window.setTimeout(() => setPresent(false), motionExitTiming('--motion-med').duration)
+    if (open) return
+    const duration = variant === 'stop-editor' && !prefersReducedMotion() ? motionExitTiming('--motion-med').duration : 0
+    const timer = window.setTimeout(() => setPresent(false), duration)
     return () => window.clearTimeout(timer)
   }, [open, variant])
   useEffect(() => {

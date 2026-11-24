@@ -1,5 +1,5 @@
 // ============ Stop add/edit modal ============
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { InlineIcon } from './icons'
 import type { ItineraryStop, StopCategory, StopStatus, Trip } from '../data/types'
 import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
@@ -408,20 +408,21 @@ export function PlanFactsRow({ facts, timeFormat }: { facts: StopPlanFacts; time
   return parts.length ? <p className="stop-editor-plan">In the plan: {parts.join(' · ')}</p> : null
 }
 
+function editorIsPhone() { return window.matchMedia('(max-width: 639px)').matches }
+function subscribeEditorPhone(callback: () => void) {
+  const query = window.matchMedia('(max-width: 639px)')
+  query.addEventListener('change', callback)
+  return () => query.removeEventListener('change', callback)
+}
+
 function EditorSection({ title, forceOpen, children }: { title: string; forceOpen: number; children: React.ReactNode }) {
   const [expanded, setExpanded] = useState(false)
-  const [phone, setPhone] = useState(false)
+  const phone = useSyncExternalStore(subscribeEditorPhone, editorIsPhone, () => false)
+  const [seenForceOpen, setSeenForceOpen] = useState(forceOpen)
+  if (forceOpen !== seenForceOpen) { setSeenForceOpen(forceOpen); setExpanded(true) }
   const buttonRef = useRef<HTMLButtonElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const id = React.useId()
-  useEffect(() => {
-    const query = window.matchMedia('(max-width: 639px)')
-    const update = () => setPhone(query.matches)
-    update()
-    query.addEventListener('change', update)
-    return () => query.removeEventListener('change', update)
-  }, [])
-  useEffect(() => { if (forceOpen) setExpanded(true) }, [forceOpen])
   const visible = !phone || expanded
   return <section className="stop-editor-section">
     <button ref={buttonRef} type="button" className="stop-editor-disclosure" aria-expanded={visible} aria-controls={id}
