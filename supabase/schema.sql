@@ -946,24 +946,132 @@ grant execute on function public.prune_pub_events(integer) to service_role;
 --   select public.prune_pub_events();
 
 -- ============================================================
--- Invite-code lookup (see migrations/20260909_invite_codes.sql)
+-- Invite-code lookup (mirrors migrations/20261124c_invite_preview_write_version.sql)
 -- ============================================================
 -- The code is the capability — same trust model as get_invite_trip: a
 -- private trip must be previewable by whoever holds its invite code, and RLS
 -- cannot know the request came from a #/join/<code> link. SECURITY DEFINER
 -- bypasses the trips read policy; case-insensitive because users type codes
 -- casually.
+--
+-- This copy answers what the live function answers, and it is plpgsql for one
+-- reason: the live body is `language sql`, and a sql body is validated at
+-- CREATE time. This file never creates `public.entitlements` (the payments
+-- rail lives in migrations/20260918_payments_rail.sql), so a sql copy fails the
+-- whole bootstrap with "relation does not exist". plpgsql resolves a relation
+-- when the statement is reached, so the guarded branch below keeps a
+-- schema-only build valid. Same reasoning as trip_has_publication_money above.
+--
+-- The projection is the live one: only the columns named here reach a caller,
+-- so a new column is not exposed by accident. `write_version` is the row
+-- revision the app checks before it renders a preview, `deleted_at is null`
+-- hides trashed trips, and the gates hold the paywall.
 create or replace function public.get_trip_by_invite_code(p_code text)
 returns setof public.trips
-language sql
+language plpgsql
 security definer
 set search_path = public
 stable
 as $$
-  select t.* from public.trips t
-  where upper(t.invite_code) = upper(trim(p_code));
+declare
+  v_row public.trips;
+begin
+  for v_row in
+    select projected.*
+    from public.trips t
+    cross join lateral jsonb_populate_record(
+      null::public.trips,
+      jsonb_build_object(
+        'id', t.id,
+        'owner_id', t.owner_id,
+        'name', t.name,
+        'start_location', t.start_location,
+        'destinations', t.destinations,
+        'start_date', t.start_date,
+        'end_date', t.end_date,
+        'travellers', t.travellers,
+        'transport_mode', t.transport_mode,
+        'budget_per_person_inr', t.budget_per_person_inr,
+        'travel_style', t.travel_style,
+        'fixed_commitments', t.fixed_commitments,
+        'days', t.days,
+        'expenses', t.expenses,
+        'cover_emoji', t.cover_emoji,
+        'visibility', t.visibility,
+        'created_at', t.created_at,
+        'updated_at', t.updated_at,
+        'start_location_coords', t.start_location_coords,
+        'destination_coords', t.destination_coords,
+        'fuel_economy_km_per_l', t.fuel_economy_km_per_l,
+        'fuel_price_per_l', t.fuel_price_per_l,
+        'round_trip', t.round_trip,
+        'invite_code', t.invite_code,
+        'deleted_at', t.deleted_at,
+        'driver_count', t.driver_count,
+        'has_vulnerable', t.has_vulnerable,
+        'drive_after_dinner_min', t.drive_after_dinner_min,
+        'vehicle_profile', t.vehicle_profile,
+        'cover_image_url', t.cover_image_url,
+        'stay_style', t.stay_style,
+        'drives_part', t.drives_part,
+        'write_version', t.write_version
+      )
+    ) as projected
+    where upper(t.invite_code) = upper(trim(p_code))
+      and t.deleted_at is null
+  loop
+    -- The owner, the crew and a masteradmin resolve the trip.
+    if v_row.owner_id = auth.uid()
+      or public.is_member(v_row.id)
+      or public.is_admin() then
+      return next v_row;
+      continue;
+    end if;
+
+    -- A private trip: the code is the capability, exactly like the uuid.
+    if v_row.visibility = 'private' then
+      return next v_row;
+      continue;
+    end if;
+
+    -- A public trip is fine unless a priced publication backs it.
+    if not exists (
+      select 1 from public.published_itineraries p
+      where p.trip_id = v_row.id and coalesce(p.premium_price_inr, 0) > 0
+    ) then
+      return next v_row;
+      continue;
+    end if;
+
+    -- The publication's creator reads their own plan.
+    if exists (
+      select 1 from public.published_itineraries p
+      where p.trip_id = v_row.id and p.creator_id = auth.uid()
+    ) then
+      return next v_row;
+      continue;
+    end if;
+
+    -- A buyer resolves it too, but only on an install that has the payments
+    -- rail. No buyer can exist without that table, so a schema-only build
+    -- answers fail-closed and serves no preview.
+    if to_regclass('public.entitlements') is not null then
+      if exists (
+        select 1 from public.entitlements e
+        join public.published_itineraries p on p.id = e.pub_id
+        where p.trip_id = v_row.id and e.user_id = auth.uid()
+      ) then
+        return next v_row;
+        continue;
+      end if;
+    end if;
+  end loop;
+
+  return;
+end;
 $$;
 
+revoke all on function public.get_trip_by_invite_code(text) from public;
 grant execute on function public.get_trip_by_invite_code(text) to anon, authenticated;
 
 -- ============================================================
