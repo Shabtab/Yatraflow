@@ -148,6 +148,9 @@ export function deriveProbes(sql) {
  *  errors at call time) or covered by another live suite. A silent failure to
  *  apply is the one thing this check refuses to wave through. */
 export const NO_PROBE_SURFACE = {
+  '20261124c_invite_preview_write_version.sql': {
+    reason: 'one function body change only (`get_trip_by_invite_code` returns `write_version`). A missing file is not silent: every invite preview shows the failed state. The cover is the contract row in supabase/tests/rls_contract.test.sql and tests/invite-preview-write-version-db.test.ts, which runs the file on PGlite.',
+  },
   '20261124a_member_consent_boundary.sql': {
     reason: 'policy, function, trigger, grant and foreign key changes only. A missing file is silent, so the cover is the contract: supabase/tests/rls_contract.test.sql fails on a hosted project that lacks it, and tests/member-consent-936.test.ts runs the file on PGlite.',
   },

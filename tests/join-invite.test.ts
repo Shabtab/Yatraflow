@@ -5,8 +5,7 @@
 //    is_editor(), which is false until the membership exists, so a join that
 //    fires side effects first writes nothing (console errors only).
 // 2. CODE LOOKUP — fetchTripByInviteCode resolves a short code via the
-//    get_trip_by_invite_code RPC and merges the trip into the cache, so
-//    My Trips and the workspace find it.
+//    get_trip_by_invite_code RPC. The partial row stays out of the trip cache.
 import { describe, it, expect, vi } from 'vitest'
 
 const { state, writes } = vi.hoisted(() => ({
@@ -97,7 +96,8 @@ vi.mock('../src/lib/supabase', () => {
           const then = (res: (v: { data: unknown; error: unknown }) => unknown) => Promise.resolve(result).then(res)
           return { setHeader: () => ({ then }), then }
         }
-        return Promise.resolve({ data: state.rpcRows, error: null })
+        if (state.rpcRejection) return Promise.reject(state.rpcRejection)
+        return Promise.resolve({ data: state.rpcRows, error: state.rpcError ?? null })
       },
     },
   }
@@ -168,14 +168,13 @@ function row(overrides: Partial<TripRow> = {}): TripRow {
 
 describe('fetchTripByInviteCode', () => {
   it('resolves a code via the RPC and returns the trip WITHOUT caching it', async () => {
-    // #804 — the preview row is partial (31 of 34 columns), so it is returned to
-    // the caller and deliberately never merged into cache.trips. The gate keeps
-    // it in local state; a partial row in the writable cache is what let a
-    // whole-row write erase the five columns it had not read.
+    // #804 — the gate keeps the partial row in local state. A whole-row write
+    // from a cached preview could erase columns the RPC did not return.
     state.rpcRows = [row({ invite_code: 'GOA-K7QF' })]
     state.tripRow = null
     const t = await fetchTripByInviteCode('goa k7qf'.replace(' ', '-'))
-    expect(t?.name).toBe('Goa Beach Week')
+    expect(t.kind).toBe('found')
+    expect(t.kind === 'found' && t.trip.name).toBe('Goa Beach Week')
     expect(tripById(row().id)).toBeUndefined()
   })
 
@@ -184,28 +183,51 @@ describe('fetchTripByInviteCode', () => {
     // on the cache hit path and never reaches the RPC.
     state.rpcRows = [row({ id: '55555555-5555-4555-8555-555555555555', invite_code: CODE })]
     const t = await fetchTripByInviteCode(' goabeachwe-k7qf ')
-    expect(t).not.toBeNull()
+    expect(t.kind).toBe('found')
     const rpcWrite = writes.filter(w => w.table === 'rpc:get_trip_by_invite_code').at(-1)!
     expect((rpcWrite.payload as { p_code: string }).p_code).toBe(CODE)
   })
 
-  it('returns null for an unknown code', async () => {
+  it('answers dead for an unknown code: the RPC succeeded with no rows', async () => {
+    // #1019 — "no trip has this code" is a dead link, not a failed read.
     state.rpcRows = []
     const t = await fetchTripByInviteCode('NOPE-1234')
-    expect(t).toBeNull()
+    expect(t).toEqual({ kind: 'dead' })
   })
 
-  it('returns null for a preview with no trip id or no usable revision', async () => {
+  it('answers failed when the RPC returns an error, never dead', async () => {
+    // #1019 — a dropped connection or a server error must not look like a
+    // dead code. The gate shows the "didn't load" screen with a retry.
+    state.rpcRows = []
+    state.rpcError = { message: 'connection reset' }
+    try {
+      expect(await fetchTripByInviteCode('GOABEACHWE-K7QF')).toEqual({ kind: 'failed' })
+    } finally {
+      state.rpcError = null
+    }
+  })
+
+  it('answers failed when the RPC promise rejects', async () => {
+    state.rpcRejection = new Error('connection reset')
+    try {
+      expect(await fetchTripByInviteCode('GOABEACHWE-K7QF')).toEqual({ kind: 'failed' })
+    } finally {
+      state.rpcRejection = null
+    }
+  })
+
+  it('answers failed for a preview with no trip id or no usable revision', async () => {
     // Round 10 B3 — a preview that names no trip, or carries no revision, is
-    // not an answer the gate can act on.
+    // not an answer the gate can act on. #1019 — it is a server fault, so it
+    // is failed, not dead.
     state.rpcRows = [{ ...row({ id: '99999999-9999-4999-8999-999999999999', invite_code: CODE }), id: '' }]
-    expect(await fetchTripByInviteCode('GOABEACHWE-K7QF')).toBeNull()
+    expect(await fetchTripByInviteCode('GOABEACHWE-K7QF')).toEqual({ kind: 'failed' })
     state.rpcRows = [{ ...row({ id: '99999999-9999-4999-8999-999999999999', invite_code: CODE }), write_version: undefined }]
-    expect(await fetchTripByInviteCode('GOABEACHWE-K7QF')).toBeNull()
+    expect(await fetchTripByInviteCode('GOABEACHWE-K7QF')).toEqual({ kind: 'failed' })
     // A well-formed preview still comes back, and stays out of the cache.
     state.rpcRows = [row({ id: '99999999-9999-4999-8999-999999999999', invite_code: CODE })]
     const t = await fetchTripByInviteCode('GOABEACHWE-K7QF')
-    expect(t?.id).toBe('99999999-9999-4999-8999-999999999999')
+    expect(t.kind === 'found' && t.trip.id).toBe('99999999-9999-4999-8999-999999999999')
     expect(tripById('99999999-9999-4999-8999-999999999999')).toBeUndefined()
   })
 })

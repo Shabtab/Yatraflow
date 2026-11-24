@@ -1023,17 +1023,15 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // membership-scoped hydration never loaded it - fetch it on demand. The
   // RPC fallback covers private trips: holding the link (the trip's UUID)
   // is the capability to preview it.
-  // The resolved trip AND the link target that resolved it, in one value: a
-  // failed resolve for a new target is a failed link, never the old trip.
-  const [resolved, setResolved] = useState<{ target: string; trip: Trip | null } | null>(null)
+  const [resolved, setResolved] = useState<{ target: string; identityGen: number; trip: Trip | null } | null>(null)
   // #804 (B1) — 'joined-unloaded' and 'join-failed' are distinct outcomes of a
   // join, kept apart from 'broken' (the link read failed) and 'retired' (a
   // trip-id link for a non-member). Each offers a different remedy.
   // The gate's own read states. 'ready' means the code or UUID resolved to a
   // trip and the join machine owns everything from there (B2).
-  const [status, setStatus] = useState<'loading' | 'broken' | 'retired' | 'ready'>('loading')
-  // A dropped connection resolves to the same null as a dead code, so the
-  // failure screen has to offer the one remedy that costs nothing: try again.
+  // #1019 — 'dead' means no trip has this code (the dead-link copy). 'broken'
+  // means the read itself failed (the retry screen). The two never share a screen.
+  const [status, setStatus] = useState<'loading' | 'broken' | 'dead' | 'retired' | 'ready'>('loading')
   const [retryTick, setRetryTick] = useState(0)
   // Keep the latest navigate callback in a ref so we don't re-fire effects
   // on every parent re-render.
@@ -1099,8 +1097,10 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // phase fields they act on, not on the machine object.
   const dispatch = useCallback((event: JoinEvent): JoinPlan => dispatchGateEvent(linkTarget, event, mountId), [linkTarget, mountId])
   const setOwner = useCallback((next: AttemptOwner | null) => setGateOwner(linkTarget, next, mountId), [linkTarget, mountId])
-  // Only a trip this target resolved counts, so a target change needs no reset.
-  const shownTrip: Trip | null = resolved && resolved.target === linkTarget ? resolved.trip : null
+  const identityGen = useIdentityGeneration()
+  const currentRead = resolved?.target === linkTarget && resolved.identityGen === identityGen ? resolved : null
+  const shownTrip = currentRead?.trip ?? null
+  const currentStatus = currentRead ? status : 'loading'
 
 
   // Resolve the code/UUID to a trip, once per link target. A hydration can
@@ -1110,12 +1110,11 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // decodeURIComponent first: the landing page's code box navigates with
   // encodeURIComponent, and a code typed with a space would otherwise arrive
   // as a %20 inside the segment.
-  const identityGen = useIdentityGeneration()
   useEffect(() => {
     let alive = true
     const resolve = isTripIdLink
       ? readSharedTrip(linkTarget, true)
-      : fetchTripByInviteCode(linkTarget).then(trip => trip ? { kind: 'found' as const, trip } : { kind: 'failed' as const })
+      : fetchTripByInviteCode(linkTarget)
     void resolve.then(result => {
       if (!alive) return
       // B2 — a successful resolve MUST leave the loading status. It was only ever
@@ -1124,8 +1123,11 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
       // was unreachable. The read succeeded, so the gate says ready and the join
       // machine drives from there.
       if (result.kind === 'cancelled') return
-      if (result.kind === 'found') { setResolved({ target: linkTarget, trip: result.trip }); setStatus('ready') }
-      else { setResolved({ target: linkTarget, trip: null }); setStatus(result.kind === 'unavailable' ? 'retired' : 'broken') }
+      if (result.kind === 'found') { setResolved({ target: linkTarget, identityGen, trip: result.trip }); setStatus('ready') }
+      else {
+        setResolved({ target: linkTarget, identityGen, trip: null })
+        setStatus(result.kind === 'unavailable' ? 'retired' : result.kind === 'dead' ? 'dead' : 'broken')
+      }
     })
     return () => { alive = false }
   }, [linkTarget, isTripIdLink, retryTick, identityGen])
@@ -1263,9 +1265,27 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   }, [joinPhase, joinGen, joinUserId, me, shownTrip, identityGen, linkTarget, owner, machine])
   /* The gate's own state. A read that failed and a link that is dead are
      different answers, and the code below never shows one as the other. */
-  const gate = inviteGateState({ loading: status === 'loading' || !shownTrip, failed: status === 'broken', trip: shownTrip })
+  const gate = inviteGateState({ loading: currentStatus === 'loading' || !shownTrip, failed: currentStatus === 'broken', trip: shownTrip })
 
-  if (status === 'retired') {
+  // #1019 — no trip has this code. The copy is split into a title and a body; read
+  // together they are the dead-link copy word for word.
+  if (currentStatus === 'dead') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="empty"
+          art={<Link2 size={38} aria-hidden />}
+          title="This invite link no longer works."
+          body="Ask the trip owner for a new one. If you are already on this trip, open it from My trips."
+          actions={(
+            <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
+          )}
+        />
+      </div>
+    )
+  }
+
+  if (currentStatus === 'retired') {
     return (
       <div className="container yf-page page-enter">
         <StateBlock

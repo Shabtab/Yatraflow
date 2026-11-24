@@ -27,9 +27,10 @@ type State = {
 }
 
 function table(name: string): string {
-  const match = schema.match(new RegExp(`create table if not exists public\\.${name} \\([\\s\\S]*?\\n\\);`))
-  if (!match) throw new Error(`Missing table ${name}`)
-  return match[0]
+  const start = schema.indexOf(`create table if not exists public.${name} (`)
+  const end = start < 0 ? -1 : schema.indexOf('\n);', start)
+  if (start < 0 || end < 0) throw new Error(`Missing table ${name}`)
+  return schema.slice(start, end + 3)
 }
 
 describe('member consent boundary through actual SQL (#936, file 1)', () => {

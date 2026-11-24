@@ -50,6 +50,7 @@ interface Harness {
   settle: () => Promise<void>
   setUser: (id: string | null) => void
   stateBlock: () => { props: { title?: string; body?: string } } | undefined
+  retry: () => void
 }
 
 function mountGate(join: (tripId: string) => Promise<gate.JoinResult>, overrides: Record<string, unknown> = {}): Harness {
@@ -74,9 +75,10 @@ function mountGate(join: (tripId: string) => Promise<gate.JoinResult>, overrides
     // The real state module: the same gateMachine, joinMachine and owner helpers.
     ...gate,
     tripById: () => context.cached,
+    // #1019 — the lookup answers an InviteLookup, not a bare trip.
     fetchTripByInviteCode: async (code: string) => {
       events.push(['resolve', code])
-      return code === 'SECOND' ? trip(TRIP_B) : trip(TRIP_A)
+      return { kind: 'found' as const, trip: code === 'SECOND' ? trip(TRIP_B) : trip(TRIP_A) }
     },
     readSharedTrip: async (id: string) => ({ kind: 'found', trip: trip(id) }),
     viewerIsMemberOf: async () => false,
@@ -151,9 +153,15 @@ function mountGate(join: (tripId: string) => Promise<gate.JoinResult>, overrides
     return [...(pred(n) ? [n] : []), ...(((n.children as unknown[]) ?? []).flatMap(c => walk(c, pred))), ...walk(n.props && (n.props as Record<string, unknown>).actions, pred)]
   }
   const stateBlock = () => walk(tree, n => n.type === 'StateBlock')[0] as { props: { title?: string; body?: string } } | undefined
+  const retry = () => {
+    const button = walk(tree, n => n.type === 'button' && Array.isArray(n.children) && n.children.includes('Try again'))[0]
+    const onClick = (button?.props as { onClick?: unknown } | undefined)?.onClick
+    if (typeof onClick !== 'function') throw new Error('Try again is missing')
+    onClick()
+  }
   return {
     props, events, rerender: () => { dirty = true }, settle, setUser: id => { context.me = id ? { id } : null; context.identityGen = Number(context.identityGen ?? 0) + 1; dirty = true },
-    stateBlock,
+    stateBlock, retry,
   }
 }
 
@@ -271,6 +279,66 @@ describe('S1 — an unmounted gate relinquishes its registry state', () => {
     expect(owner.retired).toBe(true)
     expect(gate.gateMachineState(target)).toBeUndefined()
     expect(gate.dispatchGateEvent(target, { type: 'join-settled', userId: 'A', gen: 1, tryId: owner.id, result: 'joined' }, mountId).action.type).toBe('none')
+  })
+})
+
+describe('#1019 — the lookup answer picks the screen', () => {
+  it('a dead code renders the dead-link copy, word for word', async () => {
+    const h = mountGate(async () => 'not-member', { fetchTripByInviteCode: async () => ({ kind: 'dead' }) })
+    await h.settle()
+    expect(h.stateBlock()?.props.title).toBe('This invite link no longer works.')
+    expect(h.stateBlock()?.props.body).toBe('Ask the trip owner for a new one. If you are already on this trip, open it from My trips.')
+  })
+
+  it('a failed read renders the retry screen, never the dead-link copy', async () => {
+    const next = deferred<{ kind: 'dead' }>()
+    let reads = 0
+    const h = mountGate(async () => 'not-member', {
+      fetchTripByInviteCode: async () => ++reads === 1 ? { kind: 'failed' } : next.promise,
+    })
+    await h.settle()
+    expect(h.stateBlock()?.props.title).toBe('This invite didn’t load')
+    h.retry()
+    await h.settle()
+    expect(h.stateBlock()?.props.title).toBe('Opening invite…')
+    next.resolve({ kind: 'dead' })
+    await h.settle()
+    expect(h.stateBlock()?.props.title).toBe('This invite link no longer works.')
+    expect(h.events).toEqual([])
+  })
+
+  it('a new link loads while its own lookup is pending', async () => {
+    const next = deferred<{ kind: 'found'; trip: ReturnType<typeof trip> }>()
+    const h = mountGate(async () => 'joined', {
+      fetchTripByInviteCode: async (code: string) => code === 'CODE' ? { kind: 'dead' } : next.promise,
+    })
+    await h.settle()
+    expect(h.stateBlock()?.props.title).toBe('This invite link no longer works.')
+    h.props.codeOrTripId = 'SECOND'
+    h.rerender()
+    await h.settle()
+    expect(h.stateBlock()?.props.title).toBe('Opening invite…')
+    next.resolve({ kind: 'found', trip: trip(TRIP_B) })
+    await h.settle()
+    expect(h.events.filter(e => e[0] === 'navigate')).toEqual([['navigate', `/trip/${TRIP_B}`]])
+  })
+
+  it('a new account waits for its own lookup before joining', async () => {
+    const firstJoin = deferred<gate.JoinResult>()
+    const next = deferred<{ kind: 'dead' }>()
+    let reads = 0
+    const h = mountGate(() => firstJoin.promise, {
+      fetchTripByInviteCode: async () => ++reads === 1 ? { kind: 'found', trip: trip(TRIP_A) } : next.promise,
+    })
+    await h.settle()
+    expect(h.events.filter(e => e[0] === 'join')).toHaveLength(1)
+    h.setUser('B')
+    await h.settle()
+    expect(h.events.filter(e => e[0] === 'join')).toHaveLength(1)
+    expect(h.stateBlock()?.props.title).toBe('Opening invite…')
+    next.resolve({ kind: 'dead' })
+    await h.settle()
+    expect(h.stateBlock()?.props.title).toBe('This invite link no longer works.')
   })
 })
 
