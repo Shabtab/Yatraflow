@@ -24,7 +24,7 @@ import { decodeTripSnapshot } from './lib/snapshot'
 import { analyticsBeforeSend } from './lib/analyticsPrivacy'
 import { scrollBehavior } from './lib/motion'
 import { pageTitle, routeParts } from './lib/pageTitle'
-import { CREATE_SEGMENT, CREATE_PATH, signupThenCreatePath } from './lib/routes'
+import { CREATE_SEGMENT, CREATE_PATH, needsSignupForCreate, signupThenCreatePath } from './lib/routes'
 import { createFunnelOn } from './lib/featureFlags'
 import { currentRoute, navigate as navigateRoute, onRouteChange, replaceRoute, settleLegacyHash } from './lib/router'
 import { appLink } from './lib/appLink'
@@ -496,23 +496,6 @@ export default function App() {
   // segment still matches the switch. Pages read their own params from the
   // address via lib/router's currentQuery().
   const parts = routeParts(route)
-
-  // A signed-out visitor who opens the create route goes to signup and comes
-  // back to it once the account exists. This route used to render the landing
-  // page, which was a silent dead end (#1140): the Plan Bench CTA and the hero
-  // CTA both looked alive, and the trip prefill the bench had just stashed was
-  // never read, because the create page never mounted. The address is replaced
-  // rather than pushed, so Back does not bounce off the same redirect twice.
-  const signedOutCreate = !me && !sessionUserId && parts[0] === CREATE_SEGMENT
-  useEffect(() => {
-    if (!signedOutCreate) return
-    replaceRoute(signupThenCreatePath())
-    // The shell's route state must follow the address just replaced, and the
-    // router's change subscription cannot help: replaceRoute fires no listener
-    // on purpose, so a page's own view preference cannot re-run the shell.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRoute(currentRoute())
-  }, [signedOutCreate])
   // A guided step changes the address while keeping the live form mounted.
   // Other query values still identify a new page, including future seed inputs.
   const routePanelKey = parts[0] === CREATE_SEGMENT && createFunnelOn('guided')
@@ -555,6 +538,29 @@ export default function App() {
   // exactly what the post-gate frame would be, instead of a spinner that
   // swaps to the full page (the landing load shift, Lighthouse CLS 0.997).
   const ready = useStoreReady()
+
+  // A signed-out visitor who opens the create route goes to signup and comes
+  // back to it once the account exists. This route used to render the landing
+  // page, which was a silent dead end (#1140): the Plan Bench CTA and the hero
+  // CTA both looked alive, and the trip prefill the bench had just stashed was
+  // never read, because the create page never mounted. The address is replaced
+  // rather than pushed, so Back does not bounce off the same redirect twice.
+  //
+  // The call waits for `ready`: the session is restored asynchronously, so
+  // until the hydrate settles every signed-in visitor still reads as signed
+  // out, and redirecting then threw a reloading user with a valid session onto
+  // the signup form. `needsSignupForCreate` owns that gate.
+  const signedOutCreate = needsSignupForCreate(ready, sessionUserId, parts[0])
+  useEffect(() => {
+    if (!signedOutCreate) return
+    replaceRoute(signupThenCreatePath())
+    // The shell's route state must follow the address just replaced, and the
+    // router's change subscription cannot help: replaceRoute fires no listener
+    // on purpose, so a page's own view preference cannot re-run the shell.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRoute(currentRoute())
+  }, [signedOutCreate])
+
   // Splash hides on the same ready flip (or 2.5s worst case) so the launch
   // image never lingers behind the loading block.
   useEffect(() => {
