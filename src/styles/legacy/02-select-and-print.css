@@ -1219,6 +1219,22 @@
 .impact-actions .btn { min-height: 44px; }
 .impact-panel:focus-visible { outline: 2px solid var(--teal-deep); outline-offset: -2px; }
 .impact-actions .impact-move { grid-column: 1 / -1; justify-self: center; }
+/* On a phone the action row is a sticky footer of the panel's scroll area, so a
+   long warning list never pushes Keep / Remove / Move off screen. The row takes
+   the panel surface, so warning text cannot show through it. */
+@media (max-width: 640px) {
+  .impact-body { padding-bottom: 0; }
+  .impact-actions {
+    position: sticky; bottom: 0;
+    margin: 13px -24px 0;
+    padding: 10px 24px calc(10px + var(--safe-bottom));
+    background: var(--card);
+    border-top: 1px solid var(--line);
+  }
+}
+@media (max-width: 400px) {
+  .impact-actions { margin-inline: -16px; padding-inline: 16px; }
+}
 
 .suggestion-refresh-btn { white-space: nowrap; }
 
