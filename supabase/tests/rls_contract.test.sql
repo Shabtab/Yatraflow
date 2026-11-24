@@ -1718,3 +1718,61 @@ begin
     raise exception '#936: trips_owner_id_immutable must not exempt anon or authenticated callers that have no JWT subject';
   end if;
 end $$;
+
+-- ---- invite role and reset link (#1012, 20261124b) ----
+-- trip_invite_role is private: RLS on, no policy, and no table or column
+-- privilege for a client or service role. Only the definer commands use it.
+-- The source checks assert positive tokens only, because the guards read comments too.
+do $$
+declare
+  v_role text;
+  v_privilege text;
+  v_src text;
+  v_check text;
+begin
+  if to_regclass('public.trip_invite_role') is null then
+    raise exception '#1012: trip_invite_role must exist -- apply 20261124b_invite_role_and_reset.sql';
+  end if;
+  if not (select relrowsecurity from pg_class where oid='public.trip_invite_role'::regclass) then
+    raise exception '#1012: trip_invite_role must have RLS enabled';
+  end if;
+  if exists (select 1 from pg_policies where schemaname='public' and tablename='trip_invite_role') then
+    raise exception '#1012: trip_invite_role must have no policy';
+  end if;
+  foreach v_role in array array['anon','authenticated','service_role'] loop
+    foreach v_privilege in array array['SELECT','INSERT','UPDATE','DELETE'] loop
+      if has_table_privilege(v_role,'public.trip_invite_role',v_privilege) then
+        raise exception '#1012: % must not have direct % on trip_invite_role',v_role,v_privilege;
+      end if;
+    end loop;
+    if has_any_column_privilege(v_role,'public.trip_invite_role','SELECT')
+      or has_any_column_privilege(v_role,'public.trip_invite_role','INSERT')
+      or has_any_column_privilege(v_role,'public.trip_invite_role','UPDATE') then
+      raise exception '#1012: % must carry no column privilege on trip_invite_role',v_role;
+    end if;
+  end loop;
+  select pg_get_constraintdef(c.oid) into v_check from pg_constraint c
+    where c.conrelid='public.trip_invite_role'::regclass and c.contype='c';
+  if v_check is null or position('''editor''' in v_check) = 0 or position('''viewer''' in v_check) = 0 then
+    raise exception '#1012: trip_invite_role.role must be checked against editor and viewer';
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid='public.trip_invite_role'::regclass and confrelid='public.trips'::regclass
+      and contype='f' and confdeltype='c'
+  ) then
+    raise exception '#1012: trip_invite_role must reference trips with ON DELETE CASCADE';
+  end if;
+  select pg_get_functiondef('public.change_trip_access(uuid,text,uuid,text,bigint)'::regprocedure) into v_src;
+  if position('invite_role' in v_src) = 0 or position('invite_reset' in v_src) = 0 then
+    raise exception '#1012: change_trip_access must carry the invite_role and invite_reset actions';
+  end if;
+  select pg_get_functiondef('public.join_trip(text)'::regprocedure) into v_src;
+  if position('public.trip_invite_role' in v_src) = 0 then
+    raise exception '#1012: join_trip must read the link role from public.trip_invite_role';
+  end if;
+  select pg_get_functiondef('public.trip_access_state(uuid)'::regprocedure) into v_src;
+  if position('''inviteRole''' in v_src) = 0 then
+    raise exception '#1012: trip_access_state must return inviteRole';
+  end if;
+end $$;
