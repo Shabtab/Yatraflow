@@ -46,12 +46,16 @@ function coveredStateCount(rows) {
   return codes.size
 }
 
-/** The planned distance across a catalogue, or null when no row has one. */
+/** The planned distance across a catalogue, or null when no row has one.
+ *  A null distance is unknown, never zero, so it is skipped before the
+ *  conversion — one unknown row must not turn a whole catalogue into "0 km". */
 function plannedKmTotal(rows) {
   let total = 0
   let seen = false
   for (const row of rows) {
-    const km = Number(row?.planned_km)
+    const raw = row?.planned_km
+    if (raw === null || raw === undefined || raw === '') continue
+    const km = Number(raw)
     if (!Number.isFinite(km) || km < 0) continue
     total += km
     seen = true
