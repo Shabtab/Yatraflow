@@ -148,6 +148,9 @@ export function deriveProbes(sql) {
  *  errors at call time) or covered by another live suite. A silent failure to
  *  apply is the one thing this check refuses to wave through. */
 export const NO_PROBE_SURFACE = {
+  '20261124c_invite_preview_write_version.sql': {
+    reason: 'one function body change only (`get_trip_by_invite_code` returns `write_version`). A missing file is not silent: every invite preview shows the failed state. The cover is the contract row in supabase/tests/rls_contract.test.sql and tests/invite-preview-write-version-db.test.ts, which runs the file on PGlite.',
+  },
   '20261120_collab_commenter_commands.sql': {
     reason: 'functions and grants only (`can_comment`, `submit_collab_command`). A missing helper fails a commenter command at call time, not silently.',
   },
