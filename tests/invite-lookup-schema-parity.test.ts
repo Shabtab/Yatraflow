@@ -10,8 +10,8 @@
 // `language sql`, and a sql body is validated at CREATE time. schema.sql
 // deliberately never creates the payments rail (see the DEFERRED table in
 // tests/trip-owner-delete-guards.test.ts), so a verbatim sql copy fails the
-// whole bootstrap with "relation does not exist". The schema copy is therefore
-// plpgsql and guards the one rail table with to_regclass, the same pattern
+// whole bootstrap with "relation does not exist". So the schema copy is
+// plpgsql, and it guards the one rail table with to_regclass, the same pattern
 // trip_has_publication_money uses. The parity this file pins is the meaning:
 // the same projection, the same gates, the same grants.
 //
@@ -40,7 +40,7 @@ function definition(source: string): string {
 const flat = (sql: string) => sql.replace(/--[^\n]*/g, ' ').replace(/\s+/g, ' ').trim()
 
 /**
- * The approved projection, as column names in order.
+ * The approved projection: the column names the caller receives, left to right.
  *
  * This list is what an anon caller may receive, so an added, dropped or
  * reordered column is a disclosure change and not a style change.

@@ -1182,7 +1182,8 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
 
 6bt. **A live body that reads the payments rail cannot go into
    `supabase/schema.sql` word for word (learned 2026-11-24, #1020).** `schema.sql`
-   is a second build path, and it creates no payments rail. A `language sql` body
+   is a second build path. The payments rail comes from
+   `migrations/20260918_payments_rail.sql`, not this file. A `language sql` body
    is checked at CREATE time. `get_trip_by_invite_code` had drifted since
    20260909 and still held `select t.*`. A database built from `schema.sql` alone
    served a priced plan to anyone with the invite code. If you copy the live body
