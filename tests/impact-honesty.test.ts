@@ -215,3 +215,17 @@ it('keeps the raw sign when a change rounds to zero', () => {
   expect(html).toContain('+0h 00m')
   expect(html).toContain('+₹0')
 })
+
+it('lists a new opening-hours warning once, in the conflict block', () => {
+  const before = tripOf([day(0, [stop({ title: 'Fort gate' })])])
+  const after = tripOf([day(0, [stop({ title: 'Fort gate', openTime: '23:00', closeTime: '23:30' })])])
+  const impact = computeImpact(before, after, 'edit', 0)
+  expect(impact.newWarnings.some(w => w.code === 'hours')).toBe(true)
+  const html = renderToStaticMarkup(createElement(ImpactPreviewPanel, {
+    result: impact, onKeep: () => {}, onMoveDay: () => {}, onRemove: () => {},
+  }))
+  expect(html).toContain('>Opening hours conflict<')
+  expect(html).not.toContain('Existing opening hours conflict')
+  expect(html).not.toContain('New warnings</div>')
+  expect(html).toContain('+1 warning')
+})

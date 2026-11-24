@@ -27,6 +27,13 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
   const distance = rounded(result.beforeTotals.distanceKm, result.afterTotals.distanceKm, result.distanceDeltaKm)
   const cost = rounded(result.beforeTotals.costInr, result.afterTotals.costInr, result.costDeltaInr)
   const cls = (v: number) => (v > 0 ? 'delta-pos' : v < 0 ? 'delta-neg' : 'delta-zero')
+  // The conflict block already lists these three kinds, so the new-warning list
+  // skips a code only when its own block is on screen. Nothing else is hidden.
+  const listedAbove = (code: string) =>
+    (code === 'hours' && result.openingHoursIssues.length > 0)
+    || (code === 'commitment' && result.commitmentConflicts.length > 0)
+    || (code === 'backtrack' && result.backtracking)
+  const listedNew = result.newWarnings.filter(w => !listedAbove(w.code))
 
   // Scroll only once the save is acknowledged, never on a refused Keep.
   const handleKeep = () => {
@@ -38,7 +45,7 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
 
   return (
     <div className="impact-sheet" role="status" aria-busy={busy}>
-      <div className="impact-panel" tabIndex={0} aria-label="Impact preview">
+      <div className="impact-panel" role="region" tabIndex={0} aria-label="Impact preview">
         <div className="impact-head">
           <span className="impact-kicker">Impact preview · estimates only</span>
           <h2>Review this change</h2>
@@ -126,10 +133,10 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
             <p className="small muted" style={{ marginTop: 10 }}><InlineIcon icon={ArrowUpRight} size={12} gap={3} />{result.crossDayNote}</p>
           )}
 
-          {result.newWarnings.length > 0 && (
+          {listedNew.length > 0 && (
             <div className="warn-list section-gap" style={{ marginTop: 12 }}>
               <div className="label">New warnings</div>
-              {result.newWarnings.map((warning, i) => (
+              {listedNew.map((warning, i) => (
                 <div className="warn-item impact-conflict" key={`${warning.code}-${i}`}>
                   <span className="warn-icon"><TriangleAlert size={18} aria-hidden /></span>
                   <div><div className="warn-title">{warning.title}</div><div className="warn-fix">{warning.detail}</div></div>

@@ -1163,19 +1163,19 @@
   z-index: var(--z-impact);
   background: rgba(0,0,0,0.35);
   display: flex; justify-content: flex-end; align-items: stretch; pointer-events: none;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding: 16px 16px calc(16px + var(--safe-bottom));
   animation: impact-scrim var(--motion-slow) var(--ease-paper);
 }
 .impact-panel {
   width: min(100%, 480px); overflow-y: auto; overscroll-behavior: contain; pointer-events: auto;
-  background: var(--card); border-left: 1px solid var(--line);
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--elev-3);
   animation: impact-enter-right var(--motion-slow) var(--ease-paper);
 }
 @keyframes impact-scrim { from { background-color: transparent; } }
 @keyframes impact-enter-right { from { opacity: 0; transform: translateX(18px); } }
 @keyframes impact-enter-up { from { opacity: 0; transform: translateY(18px); } }
 @media (max-width: 720px) {
-  .impact-sheet { align-items: flex-end; padding: 10px 12px env(safe-area-inset-bottom, 0px); }
+  .impact-sheet { align-items: flex-end; padding: 10px 12px calc(10px + var(--safe-bottom)); }
   .impact-panel { width: 100%; max-height: 100%; border: 1px solid var(--line); border-radius: var(--radius-lg); animation-name: impact-enter-up; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1216,7 +1216,8 @@
 .impact-panel .warn-title { font-size: 13px; }
 .assumptions { font-size: 12px; color: var(--text-3); background: var(--bg-soft); padding: 9px 12px; border-radius: 10px; line-height: 1.6; }
 .impact-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 13px; }
-.impact-actions .btn { --btn-min-height: 44px; }
+.impact-actions .btn { min-height: 44px; }
+.impact-panel:focus-visible { outline: 2px solid var(--teal-deep); outline-offset: -2px; }
 .impact-actions .impact-move { grid-column: 1 / -1; justify-self: center; }
 
 .suggestion-refresh-btn { white-space: nowrap; }
