@@ -152,10 +152,8 @@ describe('members insert policy (tighten step)', () => {
     expect(policy).not.toMatch(/user_id = auth\.uid\(\)/)
   })
 
-  it('schema.sql carries the same owner-only policy shape', () => {
-    const policy = membersPolicy(SCHEMA, 'members insert')
-    expect(policy).toMatch(/owner_id = auth\.uid\(\)/)
-    expect(policy).not.toMatch(/user_id = auth\.uid\(\)/)
+  it('schema.sql no longer carries the members insert policy (#936: 20261124a drops it)', () => {
+    expect(SCHEMA).not.toMatch(/create policy "members insert" on public\.trip_members/)
   })
 
   it('no migration re-adds a self-join branch to the insert policy', () => {
