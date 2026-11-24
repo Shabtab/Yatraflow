@@ -1272,7 +1272,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
           kind="empty"
           art={<Link2 size={38} aria-hidden />}
           title="This invite link is retired"
-          body="Ask the trip owner for a fresh invite link."
+          body="This invite link no longer works. Ask the trip owner for a new one. If you are already on this trip, open it from My trips."
           actions={(
             <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
           )}

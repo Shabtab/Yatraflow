@@ -50,6 +50,7 @@
 .shr-role-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .shr-role-control[data-busy] { pointer-events: none; opacity: .6; }
 .shr-role-value { font-size: 14px; font-weight: 700; animation: shr-fade-in var(--motion-fast) var(--ease-paper) backwards; }
+.shr-role-fade { animation: shr-fade-in var(--motion-fast) var(--ease-paper) backwards; }
 .shr-reset-link { align-self: flex-start; color: var(--danger); border-color: var(--danger); transition: background-color var(--motion-instant) var(--ease-paper), scale var(--motion-instant) var(--ease-paper); }
 .shr-reset-link:hover { background: var(--danger-soft); }
 .shr-reset-link:active { scale: .97; }
@@ -65,7 +66,7 @@
   .shr-qr-image { animation: none; }
   .shr-seg::before, .shr-seg button, .shr-day-tile { transition: none; }
   .shr-member-row.is-entering { animation: none; }
-  .shr-role-value { animation: none; }
+  .shr-role-value, .shr-role-fade { animation: none; }
   .shr-reset-link { transition: none; }
   .shr-reset-link:active { scale: none; }
 }

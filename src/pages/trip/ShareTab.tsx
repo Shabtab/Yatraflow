@@ -578,15 +578,16 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   const [mintTry, setMintTry] = useState(0)
   const inviteKey = `${trip.id}:${me.id}:${mintTry}`
   const inviteCode = inviteReady === inviteKey ? trip.inviteCode ?? null : null
+  // A newer access version re-checks the code. A failed re-check never hides a link already on screen (#1012).
   useEffect(() => {
     let alive = true
     void ensureInviteCode(trip.id).then(code => {
       if (!alive) return
-      setInviteReady(code ? inviteKey : null)
+      setInviteReady(prev => (code ? inviteKey : prev === inviteKey ? prev : null))
       setMintFailed(!code)
     })
     return () => { alive = false }
-  }, [trip.id, inviteKey])
+  }, [trip.id, inviteKey, trip.accessVersion])
   const inviteLink = inviteCode ? `${location.origin}/join/${inviteCode}` : ''
   // #1012 — the QR code is drawn only when asked for, from a library loaded then.
   const [qrOpen, setQrOpen] = useState(false)
@@ -677,6 +678,8 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
       toast(copy.done)
     } else if (outcome.status === 'unchanged') {
       toast(copy.unchanged, 'err')
+    } else if (outcome.status === 'unsent') {
+      toast('We could not check the link. Nothing changed. Try again.', 'err')
     } else {
       toast(copy.unknown, 'err')
     }
@@ -776,7 +779,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
         <Surface className="card shr-panel">
           <span className="share-intent share-intent--teal">1 · Plan together</span>
           <h3 className="shr-card-title">Invite collaborators</h3>
-          <p className="hint-text shr-invite-description">{readRole ? `New members join as ${readRole}s. ` : ''}Returning members never get more than their last role. Removed members need an owner restore.</p>
+          <p className="hint-text shr-invite-description">{readRole ? <span key={readRole} className="shr-role-fade">{`New members join as ${readRole}s. `}</span> : null}Returning members never get more than their last role. Removed members need an owner restore.</p>
           {/* #1012 — a labelled link, then the join code as its own tile. The link
               and the code are two different things, so they are two blocks. */}
           <div className="shr-invite-field" role="group" aria-labelledby="share-invite-label">

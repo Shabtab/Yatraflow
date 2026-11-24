@@ -8,6 +8,7 @@ import type { Trip } from '../src/data/types'
 import type { MemberAccessState } from '../src/lib/memberAccess'
 
 const transport = vi.hoisted(() => ({
+  actor: 'owner',
   error: null as null | { message: string },
   server: null as unknown,
   reply: null as unknown,
@@ -19,7 +20,7 @@ vi.mock('../src/components/ui', () => ({ toast: notice }))
 vi.mock('../src/lib/supabase', () => ({
   isSupabaseConfigured: false,
   supabase: {
-    auth: { getSession: async () => ({ data: { session: { user: { id: 'owner' }, access_token: 'token-owner' } } }) },
+    auth: { getSession: async () => ({ data: { session: { user: { id: transport.actor }, access_token: `token-${transport.actor}` } } }) },
     // duplicateTrip persists its copy in the background. This stub accepts those writes, so they cannot reject unseen.
     // Membership commands never reach it: they go through rpc.
     from: () => {
@@ -57,6 +58,7 @@ const header = 'Authorization: Bearer token-owner'
 beforeEach(async () => {
   vi.resetModules()
   store = await import('../src/store/store')
+  transport.actor = 'owner'
   transport.server = state()
   transport.reply = { status: 'applied', state: state(2, 'YATRA-JKLMNPQR', 'viewer') }
   transport.error = null
@@ -123,10 +125,29 @@ describe('invite link role and reset (#1012)', () => {
     expect(notice).not.toHaveBeenCalled()
   })
 
-  it('NEGATIVE: a failed read before the write sends no write at all', async () => {
+  it('NEGATIVE: a failed read before the write sends no write, and says nothing was sent', async () => {
     transport.server = null
-    expect(await store.setInviteRole('member-fixture', 'viewer')).toEqual({ status: 'unknown' })
+    expect(await store.setInviteRole('member-fixture', 'viewer')).toEqual({ status: 'unsent' })
     expect(writes()).toEqual([])
+  })
+
+  it('a member who is not the owner reads the access state, and the role is cached from that read', async () => {
+    transport.actor = 'guest'
+    transport.server = {
+      ...state(4, 'YATRA-ABCDEFGH', 'viewer'),
+      members: [
+        { userId: 'owner', role: 'owner', joinedAt: 1, revision: 1 },
+        { userId: 'guest', role: 'viewer', joinedAt: 2, revision: 1 },
+      ],
+    }
+    const db = store.getSnapshot()
+    db.sessionUserId = 'guest'
+    db.trips = db.trips.map(t => ({ ...t, members: [...(t.members ?? []), { userId: 'guest', role: 'viewer' as const, joinedAt: 2 }] }))
+    const read = await store.readMemberAccess('member-fixture')
+    expect(read?.inviteRole).toBe('viewer')
+    expect(cached().inviteRole).toBe('viewer')
+    expect(transport.calls.map(c => c.fn)).toEqual(['trip_access_state'])
+    expect(transport.calls[0].header).toBe('Authorization: Bearer token-guest')
   })
 
   it('an old server answer carries no role, and a bad role fails closed', async () => {

@@ -2705,28 +2705,30 @@ export async function ensureInviteCode(tripId: ID): Promise<string | null> {
 }
 
 /** The outcome of an invite link change (#1012). `done`: the server applied it, or a re-read showed it.
- *  `unchanged`: a re-read showed the old link or the old role. `unknown`: no re-read could confirm either. */
+ *  `unchanged`: a re-read showed the old link or the old role. `unknown`: the write was sent, and no re-read
+ *  could confirm either. `unsent`: nothing was sent, because the state could not be read first. */
 export type InviteLinkOutcome =
   | { status: 'done'; state: MemberAccessState }
   | { status: 'unchanged' }
   | { status: 'unknown' }
+  | { status: 'unsent' }
 
 type InviteLinkChange = { action: 'invite_role'; role: 'editor' | 'viewer' } | { action: 'invite_reset' }
 
 async function changeInviteLink(tripId: ID, change: InviteLinkChange): Promise<InviteLinkOutcome> {
   const scope = captureMemberScope()
-  if (!scope || !tripById(tripId)) return { status: 'unknown' }
+  if (!scope || !tripById(tripId)) return { status: 'unsent' }
   const epoch = tripAccessEpochs.get(tripId) ?? 0
   const live = () => memberAccessLive(scope, tripId, epoch)
   return serializeTripWrite(`${scope.epoch}:${scope.userId}:${tripId}`, async (): Promise<InviteLinkOutcome> => {
-    if (!live()) return { status: 'unknown' }
+    if (!live()) return { status: 'unsent' }
     // The old state is the baseline for a re-read after an error: a reset is
     // proven by a new code, a role change by the new role.
     const before = await readMemberAccess(tripId)
-    if (!before || !live()) return { status: 'unknown' }
+    if (!before || !live()) return { status: 'unsent' }
     try {
       const token = await tripWriteToken(scope)
-      if (!token || !live()) return { status: 'unknown' }
+      if (!token || !live()) return { status: 'unsent' }
       const { data, error } = await supabase.rpc('change_trip_access', {
         p_trip_id: tripId,
         p_action: change.action,
