@@ -1180,6 +1180,24 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    - A realtime binding for a new table goes on its own channel, so a missing
      or unpublished table cannot break the shared live channel.
 
+6bt. **A live body that reads the payments rail cannot go into
+   `supabase/schema.sql` word for word (learned 2026-11-24, #1020).** `schema.sql`
+   is a second build path. The payments rail comes from
+   `migrations/20260918_payments_rail.sql`, not this file. A `language sql` body
+   is checked at CREATE time. `get_trip_by_invite_code` had drifted since
+   20260909 and still held `select t.*`. A database built from `schema.sql` alone
+   served a priced plan to anyone with the invite code. If you copy the live body
+   in, the whole bootstrap fails. It reads `public.entitlements`, which the file
+   never creates (see the DEFERRED table in
+   `tests/trip-owner-delete-guards.test.ts`), and `trips.write_version`, which the
+   file adds further down. Write the schema copy in plpgsql and guard the rail
+   table with `to_regclass`, the pattern `trip_has_publication_money` uses.
+   plpgsql resolves a relation when the statement is reached. So the bootstrap
+   stays valid, and the guarded branch answers fail-closed. Pin the parity by
+   meaning: the same projection and key order, the same gates, the same grants,
+   and one run on a schema-only PGlite database.
+   `tests/invite-lookup-schema-parity.test.ts` is the model.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 - **Separate crew fields must stay separate during parsing.** Normalize the mobile field alone. A name can contain digits. A parser that joins both fields can change that name or make the mobile number invalid. Keep the existing structured draft fields and duplicate rules.
