@@ -1004,10 +1004,9 @@ describe('the default share card agrees everywhere it is written', () => {
 // Part 1.3 of the share copy: WhatsApp drops the tail of a card that runs past
 // its budget on a 360px screen, so both lines are measured here.
 describe('both card lines stay inside the WhatsApp budgets', () => {
-  const meta = (page: string, attr: string, key: string) => {
-    const m = new RegExp(`<meta ${attr}="${key}" content="([^"]*)"`).exec(page)
-    return m ? m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&') : ''
-  }
+  // The shared string-search reader, then the entities it leaves in place.
+  const meta = (page: string, attr: 'property' | 'name', key: string) =>
+    (metaContent(page, attr, key) ?? '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
 
   it('keeps a long plan name inside 58 characters', async () => {
     respond([{
