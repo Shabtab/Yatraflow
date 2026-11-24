@@ -50,6 +50,7 @@ export const ROUTED_SEGMENTS: readonly string[] = [
   'creator-hub',
   'admin',
   'dmca',
+  'about',
 ]
 
 // ============ Real paths, and the legacy hashes that must reach them (#426)

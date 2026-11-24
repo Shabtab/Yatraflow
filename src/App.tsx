@@ -24,9 +24,9 @@ import { decodeTripSnapshot } from './lib/snapshot'
 import { analyticsBeforeSend } from './lib/analyticsPrivacy'
 import { scrollBehavior } from './lib/motion'
 import { pageTitle, routeParts } from './lib/pageTitle'
-import { CREATE_SEGMENT, CREATE_PATH } from './lib/routes'
+import { CREATE_SEGMENT, CREATE_PATH, signupThenCreatePath } from './lib/routes'
 import { createFunnelOn } from './lib/featureFlags'
-import { currentRoute, navigate as navigateRoute, onRouteChange, settleLegacyHash } from './lib/router'
+import { currentRoute, navigate as navigateRoute, onRouteChange, replaceRoute, settleLegacyHash } from './lib/router'
 import { appLink } from './lib/appLink'
 import { App as CapApp } from '@capacitor/app'
 import { isNative } from './lib/native'
@@ -68,6 +68,7 @@ const CreatorHubPage = lazy(() => import('./pages/CreatorHubPage').then(m => ({ 
 // admins type /admin; non-admins fall through to landing inside the page).
 const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })))
 const DMCAPage = lazy(() => import('./pages/DMCAPage').then(m => ({ default: m.DMCAPage })))
+const AboutPage = lazy(() => import('./pages/AboutPage').then(m => ({ default: m.AboutPage })))
 
 /** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. The `page-enter` root gives the block the shared entrance. The `route-fallback` root stays invisible for a short grace period. It also holds a page's height. A fast load then shows no loader and no footer jump. */
 const lazyRouteFallback = <div className="container page-enter route-fallback"><StateBlock kind="loading" titleLevel="h2" art={<Mascot pose="loading" size={112} />} title="Loading…" /></div>
@@ -495,6 +496,23 @@ export default function App() {
   // segment still matches the switch. Pages read their own params from the
   // address via lib/router's currentQuery().
   const parts = routeParts(route)
+
+  // A signed-out visitor who opens the create route goes to signup and comes
+  // back to it once the account exists. This route used to render the landing
+  // page, which was a silent dead end (#1140): the Plan Bench CTA and the hero
+  // CTA both looked alive, and the trip prefill the bench had just stashed was
+  // never read, because the create page never mounted. The address is replaced
+  // rather than pushed, so Back does not bounce off the same redirect twice.
+  const signedOutCreate = !me && !sessionUserId && parts[0] === CREATE_SEGMENT
+  useEffect(() => {
+    if (!signedOutCreate) return
+    replaceRoute(signupThenCreatePath())
+    // The shell's route state must follow the address just replaced, and the
+    // router's change subscription cannot help: replaceRoute fires no listener
+    // on purpose, so a page's own view preference cannot re-run the shell.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRoute(currentRoute())
+  }, [signedOutCreate])
   // A guided step changes the address while keeping the live form mounted.
   // Other query values still identify a new page, including future seed inputs.
   const routePanelKey = parts[0] === CREATE_SEGMENT && createFunnelOn('guided')
@@ -574,14 +592,22 @@ export default function App() {
     // A policy page answers for signed-out visitors too, so it sits pre-switch
     // beside share/join/invite rather than inside the signed-in switch.
     page = <Suspense fallback={lazyRouteFallback}><DMCAPage /></Suspense>
+  } else if (parts[0] === 'about') {
+    // The story page is marketing copy for a visitor who has not signed up, so
+    // it sits beside dmca, pre-switch, and answers for both audiences.
+    page = <Suspense fallback={lazyRouteFallback}><AboutPage /></Suspense>
   } else if (!me) {
     // public pages stay accessible logged-out; everything else funnels to auth/landing
     if (parts[0] === 'pub' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage key={parts[1]} slug={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'creator' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><CreatorPage creatorId={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'explore') page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
+    else if (parts[0] === 'creators') page = <Suspense fallback={lazyRouteFallback}><CreatorRankingsPage /></Suspense>
     else if (parts[0] === 'auth' && !sessionUserId) page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
     else if (profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) page = <ProfileLookupPage state={profileState} />
     else if (parts[0] === 'trip' && parts[1]) page = <SignedOutTripPage route={route} navigate={navigate} />
+    // The create route redirects to signup in the effect beside `parts`; the
+    // frame before it lands holds the loader, so the landing page never flashes.
+    else if (parts[0] === CREATE_SEGMENT && !sessionUserId) page = lazyRouteFallback
     else page = <LandingPage onNavigate={navigate} />
   } else if (!GUEST_ROUTE_SEGMENTS.has(parts[0] ?? '')
     && profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) {
@@ -861,7 +887,7 @@ export default function App() {
         </svg>
         <div className="container footer-inner">
           <span><b>YatraFlow</b>: plan together, travel better. Built for Indian travellers</span>
-          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh trip cost calculator</a></span>
+          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" {...appLink('/about')}>About YatraFlow</a> · <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh trip cost calculator</a></span>
         </div>
       </footer>
 
