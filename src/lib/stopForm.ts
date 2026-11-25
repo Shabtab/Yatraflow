@@ -6,8 +6,31 @@
 // (as it did) simply couldn't offer the action at all. One implementation here
 // keeps the two views from drifting the way their rejected-stop handling did.
 import type { Trip } from '../data/types'
-import { predecessorOf, nextAfter, coLocates, getAssumptions } from './engine'
+import { predecessorOf, nextAfter, coLocates, getAssumptions, scheduleRowsById } from './engine'
+import type { DayCardFacts } from './dayCards'
+import { titleCase, statusLabel } from './labels'
+import { formatHM, type TimeFormat } from './timefmt'
 import type { StopFormValues, LegContext } from '../components/StopEditor'
+
+export const STOP_PRIORITY_CHOICES = [
+  { value: 'must-do', label: 'Must', accessibleLabel: 'Must do' },
+  { value: 'nice-to-have', label: 'Nice', accessibleLabel: 'Nice to have' },
+  { value: 'optional', label: 'If time', accessibleLabel: 'Optional, if time allows' },
+] as const
+
+export function stopEditorSummaries(values: Partial<StopFormValues>, timeFormat: TimeFormat) {
+  const hours = values.openTime && values.closeTime
+    ? `Opens ${formatHM(values.openTime, timeFormat)}–${formatHM(values.closeTime, timeFormat)}`
+    : values.openTime ? `Opens ${formatHM(values.openTime, timeFormat)}`
+      : values.closeTime ? `Closes ${formatHM(values.closeTime, timeFormat)}` : ''
+  const money = (amount: number | undefined, label: string) =>
+    amount != null && Number.isFinite(amount) && amount > 0 ? `${label} ₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : ''
+  return {
+    categoryHours: [values.category ? titleCase(values.category) : '', hours].filter(Boolean).join(' · '),
+    costs: [money(values.entryFeeInrPerPerson, 'Entry'), money(values.transportCostInrTotal, 'Transport')].filter(Boolean).join(' · '),
+    details: [values.description?.trim() ? 'Description' : '', values.notes?.trim() ? 'Notes' : '', values.sourceUrl?.trim() ? 'Link' : '', values.status ? statusLabel(values.status) : ''].filter(Boolean).join(' · '),
+  }
+}
 
 /** Which stop the editor is open for — a new one on `dayIndex`, or an existing `stopId`.
  *  A new one may carry the insertion `position` the user picked (#422): the
@@ -17,6 +40,33 @@ export type StopEditorTarget =
   | { mode: 'add'; dayIndex: number; position?: number }
   | { mode: 'edit'; stopId: string }
   | null
+
+export interface StopPlanFacts {
+  arrive?: string
+  leave?: string
+  stayMin?: number
+  visitMin?: number
+  distanceKm?: number
+  driveMin?: number
+}
+
+export function stopPlanFacts(state: StopEditorTarget, facts: DayCardFacts | undefined): StopPlanFacts | undefined {
+  if (!state || state.mode !== 'edit' || !facts) return undefined
+  const row = scheduleRowsById(facts.sim).get(state.stopId)
+  if (!row) return undefined
+  const point = facts.journey.points.find(p => !p.synthesized && p.stop.id === state.stopId)
+  // A leg with no distance and no drive time is the day's start standing on this
+  // stop, not a drive. Showing "0.0 km, drive 0 min" would invent a trip leg.
+  const leg = point?.legIn && (point.legIn.distanceKm >= 0.05 || point.legIn.durationMinutes >= 0.5) ? point.legIn : undefined
+  return {
+    arrive: row.arrive || undefined,
+    leave: row.depart || undefined,
+    stayMin: point?.dwellMinutes,
+    visitMin: point?.stop.visitMinutes,
+    distanceKm: leg?.distanceKm,
+    driveMin: leg?.durationMinutes,
+  }
+}
 
 /** Pre-fill for the editor: the existing stop when editing, nothing when adding. */
 export function stopInitialValues(

@@ -1,5 +1,5 @@
 // ============ Impact Preview panel ============
-import { AlarmClock, ArrowUpRight, ClipboardList, Clock, Repeat, TriangleAlert, Zap } from 'lucide-react'
+import { AlarmClock, ArrowUpRight, ClipboardList, Clock, Repeat, TriangleAlert, Check } from 'lucide-react'
 import { InlineIcon } from './icons'
 import type { ImpactResult } from '../lib/impact'
 import { minutesToHM, formatInr } from '../lib/engine'
@@ -17,9 +17,23 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
   onRemove: () => void | boolean | Promise<boolean>
   onScrollToDay?: (dayIndex: number) => void
 }) {
-  const signMin = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${minutesToHM(Math.abs(v))}`
-  const signKm = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(0)} km`
+  const rounded = (before: number, after: number, raw: number, minimum = -Infinity) => {
+    const from = Math.max(minimum, Math.round(before))
+    const to = Math.max(minimum, Math.round(after))
+    const delta = to - from
+    return { from, to, delta, sign: (delta || raw) > 0 ? '+' : (delta || raw) < 0 ? '−' : '' }
+  }
+  const time = rounded(result.beforeTotals.timeMin, result.afterTotals.timeMin, result.timeDeltaMin, 0)
+  const distance = rounded(result.beforeTotals.distanceKm, result.afterTotals.distanceKm, result.distanceDeltaKm)
+  const cost = rounded(result.beforeTotals.costInr, result.afterTotals.costInr, result.costDeltaInr)
   const cls = (v: number) => (v > 0 ? 'delta-pos' : v < 0 ? 'delta-neg' : 'delta-zero')
+  // The conflict block already lists these three kinds, so the new-warning list
+  // skips a code only when its own block is on screen. Nothing else is hidden.
+  const listedAbove = (code: string) =>
+    (code === 'hours' && result.openingHoursIssues.length > 0)
+    || (code === 'commitment' && result.commitmentConflicts.length > 0)
+    || (code === 'backtrack' && result.backtracking)
+  const listedNew = result.newWarnings.filter(w => !listedAbove(w.code))
 
   // Scroll only once the save is acknowledged, never on a refused Keep.
   const handleKeep = () => {
@@ -31,36 +45,44 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
 
   return (
     <div className="impact-sheet" role="status" aria-busy={busy}>
-      <div className="impact-panel">
+      <div className="impact-panel" role="region" tabIndex={0} aria-label="Impact preview">
         <div className="impact-head">
-          <span><Zap size={14} aria-hidden /></span>
-          <span>Impact preview: estimates only</span>
-          <span style={{ marginLeft: 'auto' }} className={`chip ${result.newWarnings.length ? 'chip-danger' : 'chip-ok'}`}>
+          <span className="impact-kicker">Impact preview · estimates only</span>
+          <h2>Review this change</h2>
+          <p>Nothing has changed yet. Keep it, or remove it.</p>
+          <span className={`chip ${result.newWarnings.length ? 'chip-danger' : 'chip-ok'}`}>
             {result.newWarnings.length ? `+${result.newWarnings.length} warning${result.newWarnings.length > 1 ? 's' : ''}` : 'No new warnings'}
           </span>
         </div>
         <div className="impact-body">
           <div className="impact-grid">
-            <div className="impact-cell">
-              <div className="k">Time on the road<span className="muted" style={{ display: 'block', fontWeight: 400 }}>Driving + stops</span></div>
-              <div className={`v ${cls(result.timeDeltaMin)}`}>{signMin(result.timeDeltaMin)}</div>
-            </div>
-            <div className="impact-cell">
-              <div className="k">Distance</div>
-              <div className={`v ${cls(result.distanceDeltaKm)}`}>{signKm(result.distanceDeltaKm)}</div>
-            </div>
-            <div className="impact-cell">
-              <div className="k">Est. cost</div>
-              <div className={`v ${cls(result.costDeltaInr)}`}>
-                {result.costDeltaInr > 0 ? '+' : result.costDeltaInr < 0 ? '−' : ''}{formatInr(Math.abs(result.costDeltaInr))}
+            {Number.isFinite(result.beforeTotals.distanceKm) && Number.isFinite(result.afterTotals.distanceKm) && (
+              <div className="impact-cell">
+                <div className="k">Trip distance</div>
+                <div className="impact-values"><s>{distance.from} km</s> → <b>{distance.to} km</b></div>
+                <div className={cls(distance.delta)}>{distance.sign}{Math.abs(distance.delta)} km</div>
               </div>
-            </div>
-            <div className="impact-cell">
+            )}
+            {Number.isFinite(result.beforeTotals.timeMin) && Number.isFinite(result.afterTotals.timeMin) && (
+              <div className="impact-cell">
+                <div className="k">Trip time <span className="muted">Driving + stops</span></div>
+                <div className="impact-values"><s>{minutesToHM(time.from)}</s> → <b>{minutesToHM(time.to)}</b></div>
+                <div className={cls(time.delta)}>{time.sign}{minutesToHM(Math.abs(time.delta))}</div>
+              </div>
+            )}
+            {Number.isFinite(result.beforeTotals.costInr) && Number.isFinite(result.afterTotals.costInr) && (
+              <div className="impact-cell">
+                <div className="k">Trip est. cost</div>
+                <div className="impact-values"><s>{formatInr(cost.from)}</s> → <b>{formatInr(cost.to)}</b></div>
+                <div className={cls(cost.delta)}>{cost.sign}{formatInr(Math.abs(cost.delta))}</div>
+              </div>
+            )}
+          </div>
+          <div className="impact-busy-verdict">
               <div className="k">Too busy?</div>
               <div className={`v ${result.tooBusy ? 'impact-busy' : 'impact-ok'}`}>
                 {result.tooBusy ? 'Yes: over-packed day' : 'No'}
               </div>
-            </div>
           </div>
 
           {result.arrivalChanges.length > 0 && (
@@ -82,17 +104,18 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
 
           {(result.openingHoursIssues.length > 0 || result.commitmentConflicts.length > 0) && (
             <div className="warn-list section-gap" style={{ marginTop: 12 }}>
+              <div className="label">Conflicts in proposed plan</div>
               {result.commitmentConflicts.map(c => (
-                <div key={c} className="warn-item sev-high">
+                <div key={c} className="warn-item impact-conflict">
                   <span className="warn-icon"><AlarmClock size={13} aria-hidden /></span>
-                  <div><div className="warn-title">Fixed commitment at risk: {c}</div>
+                  <div><div className="warn-title">{result.existingCommitmentConflicts.includes(c) ? 'Existing fixed commitment at risk' : 'Fixed commitment at risk'}: {c}</div>
                     <div className="warn-fix">Cut an earlier stop or start sooner.</div></div>
                 </div>
               ))}
               {result.openingHoursIssues.map(h => (
-                <div key={h} className="warn-item">
+                <div key={h} className="warn-item impact-conflict">
                   <span className="warn-icon"><Clock size={13} aria-hidden /></span>
-                  <div><div className="warn-title">Opening hours conflict</div>
+                  <div><div className="warn-title">{result.existingOpeningHoursIssues.includes(h) ? 'Existing opening hours conflict' : 'Opening hours conflict'}</div>
                     <div className="warn-fix">{h}</div></div>
                 </div>
               ))}
@@ -102,7 +125,7 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
           {result.backtracking && (
             <div className="warn-item sev-low" style={{ marginTop: 12 }}>
               <span className="warn-icon"><Repeat size={13} aria-hidden /></span>
-              <div><div className="warn-title">Route backtracking detected</div>
+              <div><div className="warn-title">{result.existingBacktracking ? 'Existing route backtracking' : 'Route backtracking detected'}</div>
                 <div className="warn-fix">Reorder stops to run one direction.</div></div>
             </div>
           )}
@@ -110,8 +133,27 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
             <p className="small muted" style={{ marginTop: 10 }}><InlineIcon icon={ArrowUpRight} size={12} gap={3} />{result.crossDayNote}</p>
           )}
 
-          {(result.clearedWarnings.length > 0 && !result.newWarnings.length) && (
-            <p className="small chip chip-ok" style={{ marginTop: 10 }}>This change actually clears an earlier warning. Nice.</p>
+          {listedNew.length > 0 && (
+            <div className="warn-list section-gap" style={{ marginTop: 12 }}>
+              <div className="label">New warnings</div>
+              {listedNew.map((warning, i) => (
+                <div className="warn-item impact-conflict" key={`${warning.code}-${i}`}>
+                  <span className="warn-icon"><TriangleAlert size={18} aria-hidden /></span>
+                  <div><div className="warn-title">{warning.title}</div><div className="warn-fix">{warning.detail}</div></div>
+                </div>
+              ))}
+            </div>
+          )}
+          {result.clearedWarnings.length > 0 && (
+            <div className="warn-list section-gap" style={{ marginTop: 12 }}>
+              <div className="label">Cleared warnings</div>
+              {result.clearedWarnings.map((warning, i) => (
+                <div className="warn-item impact-cleared" key={`${warning.code}-${i}`}>
+                  <span className="warn-icon"><Check size={18} aria-hidden /></span>
+                  <div><div className="warn-title">{warning.title}</div><div className="warn-fix">{warning.detail}</div></div>
+                </div>
+              ))}
+            </div>
           )}
 
           {uncertain && (
@@ -126,8 +168,8 @@ export function ImpactPreviewPanel({ result, busy = false, uncertain = false, on
 
           <div className="impact-actions">
             <button className="btn btn-primary btn-sm" onClick={handleKeep} disabled={busy}>{busy ? 'Saving…' : 'Keep change'}</button>
-            <button className="btn btn-outline btn-sm" onClick={onMoveDay} disabled={busy}>Move to another day</button>
-            <button className="btn btn-danger btn-sm" onClick={() => { onRemove() }} disabled={busy}>Remove change</button>
+            <button className="btn btn-outline btn-sm" onClick={() => { onRemove() }} disabled={busy}>Remove change</button>
+            <button className="btn btn-ghost btn-sm impact-move" onClick={onMoveDay} disabled={busy}>Move to another day</button>
           </div>
         </div>
       </div>

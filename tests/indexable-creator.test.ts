@@ -87,7 +87,9 @@ describe('readable creator page', () => {
     expect(profileCall[1]?.method).toBe('POST')
     expect(JSON.parse(String(profileCall[1]?.body))).toEqual({ p_ids: [ID] })
     const url = new URL(String(publicationCall[0]))
-    expect(url.searchParams.get('select')).toBe('id,title,tagline')
+    // The route facts feed the card's own description; a project without those
+    // columns gets the same rows from the plain list.
+    expect(url.searchParams.get('select')).toBe('id,title,tagline,planned_km,state_codes')
     expect(url.searchParams.get('creator_id')).toBe(`eq.${ID}`)
     expect(url.searchParams.get('unpublished_at')).toBe('is.null')
     for (const [call, init] of fetchMock.mock.calls) {

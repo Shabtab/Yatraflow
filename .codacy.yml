@@ -51,6 +51,9 @@
 #       input" — the handler's entire job is to write the card it renders; the
 #       sitemap's equivalent note ("HTML passed in to entries.push") applies.
 exclude_paths:
+  - "calculators/client.mjs"
+  - "public/calculators/client.js"
+  - "supabase/migrations/20261125_calculator_share_source.sql"
   - "api/sitemap.js"
   - "api/c.js"
   - "api/payments-webhook.js"
@@ -125,3 +128,36 @@ exclude_paths:
 # (scripts/integration/trip-write-version-db.mjs) and by
 # tests/trip-write-version-migration.test.ts, which assert observable outcomes
 # rather than the source shapes these rules read.
+#
+# `calculators/client.mjs` and its published copy `public/calculators/client.js`
+# are excluded on the same terms, added only after Codacy flagged them.
+#
+#   x4  "User controlled data in a `list.innerHTML` / `el.innerHTML` is an
+#       anti-pattern ... can lead to XSS" (two sinks, reported for each file).
+#       The sinks take the output of `renderHeroHTML` and
+#       `renderBreakdownHTML` from the same module. Those functions interpolate
+#       exactly three kinds of string: `formatInr`/`formatRange` output (a
+#       rupee sign and digits), a category's `name`/`offLabel` from the
+#       destination JSON in this repository, and `people`/`days` after
+#       `Math.floor` and a clamp. No query-string value reaches them as text:
+#       `parseInputs` drops any value outside its band or vocabulary, and the
+#       address bar only ever carries numbers and our own option keys. The
+#       rule cannot see that, and the alternative — a second DOM-building
+#       renderer beside the string one the static pages are generated from —
+#       would let the page a crawler reads drift from the page a visitor sees,
+#       which is the whole point of the generator.
+#
+#       tests/calculators.test.ts ("cannot be talked into emitting markup")
+#       proves the invariant behaviourally: with a destination whose labels
+#       carry `<script>` and `<img onerror>`, and with an input built from an
+#       injection string, the rendered markup contains no tag outside the
+#       small allowlist the renderers emit.
+#
+# `supabase/migrations/20261125_calculator_share_source.sql` is excluded for one
+# parser misfire, not for its content:
+#
+#   x1  "Expected SET QUOTED_IDENTIFIER ON near top of file" (L1) — a T-SQL
+#       housekeeping rule. `SET QUOTED_IDENTIFIER` is SQL Server syntax; it does
+#       not exist in PostgreSQL, and no migration in this repository carries it.
+#       The file is two `drop constraint if exists` / `add constraint` pairs and
+#       nothing else.

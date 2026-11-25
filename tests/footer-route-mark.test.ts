@@ -25,11 +25,21 @@ describe('footer route mark (P1)', () => {
     expect(footer).toMatch(/<svg\b[^>]*focusable="false"/)
   })
 
-  it('keeps the feedback link and the calculator link, and adds no anchor', () => {
+  it('keeps the about, copy-page, feedback, calculator and creator links, and adds no other anchor', () => {
     expect(footer).toContain('href={feedbackHref()}')
     expect(footer).toContain('Send feedback')
+    // The hub is the discovery path for all four calculators; Ladakh stays
+    // named because it is the page that already ranks.
+    expect(footer).toContain('href="/trip-cost-calculators/"')
     expect(footer).toContain('href="/ladakh-trip-cost-calculator/"')
-    expect(footer.match(/<a\s/g)?.length).toBe(2)
+    expect(footer).toContain('How it works')
+    expect(footer).toContain('FAQ')
+    expect(footer).toContain('appLink(\'/about\')')
+    // The creator page is also an in-app route, so it renders through appLink
+    // and keeps a real path in href. Seven anchors: four internal routes, one
+    // feedback and two static calculator pages.
+    expect(footer).toContain("appLink('/for-creators')")
+    expect(footer.match(/<a\s/g)?.length).toBe(7)
   })
 
   it('positions the mark against the footer itself, not against its padding', () => {

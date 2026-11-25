@@ -23,7 +23,7 @@ describe('looksLikeEmail', () => {
 
 describe('the Auth form owns email validation', () => {
   it('sets noValidate on the form', () => {
-    expect(auth).toContain('<form onSubmit={submit} noValidate>')
+    expect(auth).toContain('<form className="auth-form" onSubmit={submit} noValidate>')
   })
 
   it('checks a filled email before the login and sign-up branches', () => {

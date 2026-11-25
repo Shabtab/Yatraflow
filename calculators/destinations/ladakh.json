@@ -1,0 +1,330 @@
+{
+  "slug": "ladakh-trip-cost-calculator",
+  "key": "ladakh",
+  "dest": "Ladakh",
+  "title": "Ladakh Bike Trip Cost Calculator 2026 (Free, No Signup)",
+  "h1": "Ladakh bike trip cost calculator",
+  "description": "Work out your Ladakh bike trip budget in ₹: fuel, bike rent, stays, food and permits, split per rider. Free, no signup, shows a low–high range.",
+  "lead": "Pick a route, set your group and see what a Ladakh bike trip can cost in rupees, per rider and for the whole group. You get a low to high range with no signup, and every number is editable and marked as sourced or an assumption.",
+  "season": "Ride June–September",
+  "seasonNote": "The Manali–Leh highway is shut by snow from about November to May, so plan a summer ride. This page keeps its October 2026 price check.",
+  "pricesChecked": "October 2026",
+  "datePublished": "2026-10-10",
+  "dateModified": "2026-11-25",
+  "ogImage": "/og/calc-ladakh.png",
+  "faqTitle": "Questions about Ladakh trip costs",
+  "hubBlurb": "Bike routes from Manali, Leh or a full Delhi loop, with permits and fuel counted.",
+  "siblings": [
+    "goa-trip-cost-calculator",
+    "rajasthan-trip-cost-calculator",
+    "meghalaya-trip-cost-calculator"
+  ],
+  "defaultRoute": "manali",
+  "kmFromRoute": true,
+  "peoplePerRoom": 2,
+  "fuel": {
+    "mileage": 30,
+    "price": 105
+  },
+  "defaults": {
+    "people": 2,
+    "stay": "homestay",
+    "food": "dhaba",
+    "bike": "own"
+  },
+  "routes": {
+    "delhi": {
+      "label": "Delhi loop",
+      "meta": "3,300–3,600 km, 12 days",
+      "days": 12,
+      "km": 3300,
+      "kmHigh": 3600,
+      "note": "Delhi, Srinagar, Leh, Manali and back. 3,300 to 3,600 km, from the trip-cost guide listed below. The low end feeds the low total. Type a distance to override."
+    },
+    "manali": {
+      "label": "Manali–Leh loop",
+      "meta": "About 1,600 km, 8 days",
+      "days": 8,
+      "km": 1600,
+      "note": "Manali to Leh and back, with Nubra and Pangong. About 1,600 km, an assumption. Type your own distance to override."
+    },
+    "leh": {
+      "label": "Leh rides",
+      "meta": "About 600 km, 6 days",
+      "days": 6,
+      "km": 600,
+      "note": "Rides out of Leh to Nubra and Pangong. About 600 km, an assumption. Type your own distance to override."
+    },
+    "custom": {
+      "label": "Custom",
+      "meta": "Your km, your days",
+      "days": 8,
+      "km": 0,
+      "note": "Enter the total distance you plan to ride."
+    }
+  },
+  "units": {
+    "label": "Bikes",
+    "param": "b",
+    "default": 2,
+    "min": 0
+  },
+  "groups": [
+    {
+      "key": "bike",
+      "legend": "Bike",
+      "options": [
+        {
+          "value": "own",
+          "label": "My own bike",
+          "appMode": "motorcycle"
+        },
+        {
+          "value": "rent",
+          "label": "Rented bikes",
+          "param": "rent",
+          "token": "1",
+          "appMode": "motorcycle"
+        }
+      ]
+    }
+  ],
+  "stays": {
+    "camp": {
+      "label": "Camp",
+      "low": 500,
+      "high": 1500,
+      "style": "budget"
+    },
+    "homestay": {
+      "label": "Homestay",
+      "low": 1500,
+      "high": 2500,
+      "style": "comfort"
+    },
+    "hotel": {
+      "label": "Hotel",
+      "low": 2500,
+      "high": 5000,
+      "style": "luxury"
+    }
+  },
+  "foods": {
+    "dhaba": {
+      "label": "Dhabas",
+      "low": 300,
+      "high": 600
+    },
+    "cafe": {
+      "label": "Restaurants and cafés",
+      "low": 800,
+      "high": 1200
+    }
+  },
+  "lines": [
+    {
+      "key": "fuel",
+      "name": "Fuel",
+      "kind": "km",
+      "units": "units",
+      "rateLabel": "Fuel and distance",
+      "hint": "Pump prices in Ladakh may differ from the rest of India. Enter what you expect to pay.",
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "rent",
+      "name": "Bike rent",
+      "kind": "unit-day",
+      "units": "units",
+      "when": {
+        "group": "bike",
+        "in": [
+          "rent"
+        ]
+      },
+      "offLabel": "Not included, you ride your own bike",
+      "rateLabel": "Rent per bike per day",
+      "rate": {
+        "low": 1500,
+        "high": 2500
+      },
+      "params": {
+        "low": "rl",
+        "high": "rh"
+      },
+      "hint": "2026 listings for common models run about this much a day. A Himalayan 450 or the July and August peak costs more. Deposits are refundable and not counted. Replace both numbers with the quote you have.",
+      "source": {
+        "label": "sourced",
+        "href": "#src-rent"
+      }
+    },
+    {
+      "key": "stay",
+      "name": "Stay",
+      "kind": "room-night",
+      "tier": "stay",
+      "tierLegend": "Stay",
+      "tierParam": "s",
+      "tierHint": "Price per room per night. Two people share a room.",
+      "tierSource": {
+        "label": "sourced",
+        "href": "#src-tata"
+      },
+      "rateLabel": "Stay, per room per night",
+      "params": {
+        "low": "sl",
+        "high": "sh"
+      }
+    },
+    {
+      "key": "food",
+      "name": "Food",
+      "kind": "person-day",
+      "tier": "food",
+      "tierLegend": "Food",
+      "tierParam": "f",
+      "tierSource": {
+        "label": "sourced",
+        "href": "#src-dheeraj"
+      },
+      "rateLabel": "Food, per person per day",
+      "params": {
+        "low": "fl",
+        "high": "fh"
+      }
+    },
+    {
+      "key": "permits",
+      "name": "Permits and fees",
+      "kind": "person",
+      "rateLabel": "Permits and fees, per person",
+      "rate": {
+        "low": 400,
+        "high": 400
+      },
+      "dayRate": {
+        "low": 20,
+        "high": 20
+      },
+      "baseLabel": "Environment fee, once",
+      "dayLabel": "Wildlife fee, per day",
+      "addOn": {
+        "label": "Add the optional ₹50 Red Cross contribution",
+        "amount": 50,
+        "on": true
+      },
+      "params": {
+        "low": "env",
+        "high": "envh",
+        "day": "wl",
+        "dayHigh": "wlh",
+        "add": "rcf",
+        "off": "rc"
+      },
+      "source": {
+        "label": "sourced",
+        "href": "#src-dheeraj"
+      }
+    },
+    {
+      "key": "misc",
+      "name": "Buffer",
+      "kind": "person",
+      "rateLabel": "Buffer, per person",
+      "rate": {
+        "low": 1500,
+        "high": 2500
+      },
+      "hint": "Repairs, tips, snacks, laundry, charging and the things nobody plans for.",
+      "params": {
+        "low": "ml",
+        "high": "mh"
+      },
+      "source": {
+        "label": "sourced",
+        "href": "#src-dheeraj"
+      }
+    }
+  ],
+  "faqs": [
+    {
+      "q": "How much does a Ladakh bike trip cost?",
+      "a": "It depends on the route, the number of days and where you sleep. With the default settings, two riders on their own bikes, on an 8 day Manali to Leh loop with homestays and dhaba meals, the calculator lands near ₹15,400 to ₹22,300 per person. The long Delhi loop adds distance and days, so it costs more. Camps push stays down, and hotels and café meals push them up. Change the inputs above to see your own range."
+    },
+    {
+      "q": "Is it cheaper to take my own bike or rent one?",
+      "a": "Usually your own bike costs less on the road, because you only pay for fuel. A rented bike adds a daily rent for every bike, and often a refundable deposit. Your own bike has its own costs that this tool does not count: servicing before the trip, spares, and moving the bike by road or rail if you start far away. Switch the bike option above and compare both totals. Common models list at about ₹1,500 to ₹2,500 a day in 2026, so replace that range with the quote you have."
+    },
+    {
+      "q": "How many days do I need for a Ladakh bike trip?",
+      "a": "A loop that starts and ends in Delhi is usually planned over 12 to 13 days. From Manali, a round trip to Leh with Nubra and Pangong fits in about a week to ten days if you allow time to adjust to the altitude. Leh-only rides, based in one town, can be done in less. Extra days for rest, bad weather and road closures are cheap insurance, so build in a spare day."
+    },
+    {
+      "q": "What permits and fees do I need for Ladakh?",
+      "a": "The calculator uses a one-time environment fee of ₹400 per person, a wildlife fee of ₹20 per person per day and an optional ₹50 Red Cross contribution, based on the guide listed below. Many areas around Leh need an online registration before you go, and rules and fees change. Check the official Ladakh tourism pages or your host for the current list before you travel."
+    },
+    {
+      "q": "Can I ride a bike rented outside Ladakh into Leh?",
+      "a": "Local rules on outside rental bikes have changed over the years, and they may change again. We do not state a rule here. Before you book, ask your rental company and check with local authorities in Ladakh what applies to your bike and your dates."
+    },
+    {
+      "q": "Why does the calculator show a range instead of one number?",
+      "a": "Because one number would pretend to know things nobody knows yet. Stay and food prices vary by season and by village, and fuel prices change. Some routes have a distance that depends on the detours you take. The low end uses the cheaper figure for each cost and the high end the dearer one, so your real spend has a good chance of landing between them."
+    }
+  ],
+  "sources": [
+    {
+      "id": "src-dheeraj",
+      "kind": "Sourced",
+      "text": "Delhi loop distance of 3,300 to 3,600 km and 12 to 13 days, dhaba food of ₹300 to ₹600 a day (three meals at ₹100 to ₹200), café and restaurant food of ₹800 to ₹1,200 a day, permit fees (₹400 environment fee, ₹20 a day wildlife fee, optional ₹50 Red Cross contribution) and the ₹1,500 to ₹2,500 buffer per person: ",
+      "links": [
+        {
+          "text": "Discover with Dheeraj, Ladakh trip cost guide",
+          "href": "https://discoverwithdheeraj.com/how-to-calculate-cost-or-budget-for-leh-ladakh-trip/"
+        }
+      ]
+    },
+    {
+      "id": "src-tata",
+      "kind": "Sourced",
+      "text": "Camp stays of ₹500 to ₹1,500 and homestays of ₹1,500 to ₹2,500 per night: ",
+      "links": [
+        {
+          "text": "Tata Capital, Leh Ladakh trip cost guide",
+          "href": "https://www.tatacapital.com/blog/loan-for-travel/leh-ladakh-trip-cost/"
+        }
+      ]
+    },
+    {
+      "id": "src-rent",
+      "kind": "Sourced",
+      "text": "Bike rent of about ₹1,500 to ₹2,500 per bike per day, covering the Classic 350 and Himalayan 411 in 2026 shop listings (the Himalayan 450 lists higher, at ₹2,000 to ₹3,800). These are market examples from rental shops, not an official tariff: ",
+      "links": [
+        {
+          "text": "Discover with Dheeraj, Leh rental rates",
+          "href": "https://discoverwithdheeraj.com/leh-ladakh-bike-rental-rates/"
+        },
+        {
+          "text": "Discover with Dheeraj, Manali rentals",
+          "href": "https://discoverwithdheeraj.com/how-to-hire-or-rent-a-bike-or-motorcycle-in-manali/"
+        },
+        {
+          "text": "Ladakh Bikers",
+          "href": "https://ladakhbikers.com/blog/leh-bike-rental-rates-2026/"
+        },
+        {
+          "text": "Rent n Hop",
+          "href": "https://www.rentnhop.com/blogs/leh-ladakh-bike-rental-rates-list-2026-2027"
+        }
+      ]
+    },
+    {
+      "id": "src-assume",
+      "kind": "Assumption",
+      "text": "The Manali to Leh to Manali route with Nubra and Pangong at about 1,600 km over 8 days, Leh-only rides at about 600 km over 6 days, hotel rooms at ₹2,500 to ₹5,000 a night, mileage of 30 km per litre and fuel at ₹105 per litre, nights equal days minus one, and two people sharing each room."
+    }
+  ]
+}

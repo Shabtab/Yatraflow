@@ -359,8 +359,12 @@ describe('#389 — the publish form reports a rule against its own field', () =>
   it('focuses the FIRST invalid field, in form order', () => {
     // The bug: one banner at the bottom, no field marked, focus left on the
     // submit button. A keyboard user had no way to find which of six rules failed.
-    expect(SHARE).toContain('const first = PUBLISH_FIELD_ORDER.find(k => k in next)')
+    // #1012 moved this into `focusFirstInvalid(bad)`, which both the submit
+    // and the refused-write path call. The order and the fallback are unchanged.
+    expect(SHARE).toContain('const first = PUBLISH_FIELD_ORDER.find(k => k in bad)')
     expect(SHARE).toMatch(/const target = first \? fieldRefs\.current\[first\] : null/)
+    expect(SHARE).toMatch(/reportErrors\(next\)/)
+    expect(SHARE).toMatch(/reportErrors\(e\.errors\)/)
     expect(SHARE).toContain('if (target) target.focus()')
     // The fallback for a field with no focusable element of its own, made
     // focusable for the occasion.
@@ -503,10 +507,11 @@ describe('#592 — a charged plan at ₹0 does not exist', () => {
   })
 
   it('the ₹1 floor is ONE vocabulary across the form, the rules and the page', () => {
-    // The form coerces 0 to entirely-free before validating; the rules refuse
-    // it at the writer; and the page renders a row that slipped through as
-    // FREE rather than as an unchargeable ₹0 CTA.
-    expect(SHARE).toContain('priceNum === 0')
+    // The form keeps Premium on at 0 and never coerces it to free. The rules
+    // refuse it in the form and at the writer, with one message. The page
+    // renders a row that slipped through as FREE rather than as an
+    // unchargeable ₹0 CTA.
+    expect(SHARE).toContain('const entirelyFree = !premium')
     expect(RULES).toContain('Price must be at least ₹1 to charge for a plan.')
     expect(PAGE).toContain('const price = pub.premiumPriceInr || undefined')
   })

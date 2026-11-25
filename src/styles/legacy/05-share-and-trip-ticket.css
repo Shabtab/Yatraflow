@@ -2,48 +2,95 @@
 /* Replaces the cramped .two-col grid: each share concern gets its own surface
    behind an ARIA tablist. Tokens are theme-aware so this works in dark mode. */
 .share-tabbed { margin-top: 4px; }
-.share-tablist {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 18px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  /* scroll affordance: edge fades painted on the `scroll` layer show only on
-     the side that still has content; `local` covers slide over them at the
-     ends so the fade never sits under a reached edge. */
-  background:
-    linear-gradient(90deg, var(--card) 25%, transparent) left / 22px 100% no-repeat local,
-    linear-gradient(270deg, var(--card) 25%, transparent) right / 22px 100% no-repeat local,
-    linear-gradient(90deg, var(--card), transparent) left / 22px 100% no-repeat scroll,
-    linear-gradient(270deg, var(--card), transparent) right / 22px 100% no-repeat scroll;
+
+/* #1012 — Share tab, three columns from 1100px. The same width is SHARE_WIDE_QUERY
+   in ShareTab.tsx. The wider container is the Share tab's only (data-share-wide). */
+.container.yf-workspace[data-share-wide='true'] { max-width: var(--share-wide-max, 1240px); }
+.shr-page-head { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 18px; }
+.shr-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--teal-deep); }
+.shr-page-title { margin: 0; font-family: var(--font-body); font-size: 26px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; }
+.shr-page-lede { margin: 0; font-size: 14px; line-height: 1.45; color: var(--text-2); }
+.shr-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .85fr); gap: 14px; align-items: start; }
+.shr-column { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.shr-field-label, .shr-join-label { font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--text-2); }
+.shr-invite-field { display: flex; flex-direction: column; gap: 8px; }
+.shr-share-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.shr-join-tile { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; padding: 14px 16px; border-radius: 16px; background: var(--bg-soft); }
+.shr-join-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.shr-join-code { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: .1em; white-space: nowrap; color: var(--teal-deep); }
+.shr-invite-link { gap: 10px; }
+.shr-invite-link > svg { flex: none; color: var(--text-2); }
+.shr-invite-link code { direction: ltr; text-align: left; }
+.shr-cover { position: relative; height: 150px; border-radius: 16px; overflow: hidden; background: var(--bg-soft); }
+.shr-cover > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.shr-cover-chip { position: absolute; left: 12px; bottom: 12px; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--bg-soft); color: var(--text-2); }
+.shr-cover-change { position: absolute; right: 12px; top: 12px; }
+.shr-day-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.shr-hidden-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--bg-soft); }
+.shr-take-list { display: grid; grid-auto-rows: 1fr; gap: 8px; }
+.shr-take-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color var(--motion-fast) var(--ease-paper), border-color var(--motion-fast) var(--ease-paper); }
+.shr-take-row:hover { background: var(--bg-soft); border-color: var(--teal); }
+.shr-take-row:disabled { cursor: progress; }
+.shr-take-icon { display: flex; align-items: center; justify-content: center; flex: none; width: 38px; height: 38px; border-radius: 12px; background: var(--bg-soft); color: var(--text-2); }
+.shr-take-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.shr-day-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 56px; padding: 6px 4px; border: 1.5px solid var(--line); border-radius: 14px; background: transparent; color: var(--text-2); font: inherit; cursor: pointer; transition: background-color var(--motion-fast) var(--ease-paper), border-color var(--motion-fast) var(--ease-paper), color var(--motion-fast) var(--ease-paper); }
+.shr-day-tile:disabled { cursor: default; }
+.shr-day-tile.is-free { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-deep); }
+.shr-day-tag { font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.shr-day-num { font-family: var(--font-display); font-size: 18px; font-weight: 800; line-height: 1; }
+/* Free / Premium control. Its glider is the group's ::before, moved by data-layout. */
+.shr-seg { position: relative; align-self: flex-start; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--card); }
+.shr-seg::before { content: ''; position: absolute; z-index: 0; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 6px) / 2); border-radius: 999px; background: var(--text); pointer-events: none; transition: left var(--motion-med) var(--ease-glide); }
+.shr-seg[data-layout='premium']::before { left: calc(50% + 1px); }
+.shr-seg button { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 18px; border: 0; border-radius: 999px; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: color var(--motion-med) var(--ease-glide); }
+.shr-seg button[aria-pressed='true'] { color: var(--bg); }
+.shr-seg button:focus-visible { outline: none; box-shadow: var(--ring); }
+/* Joins as (#1012). The role control reuses .shr-seg; its glider moves to the viewer key. */
+.shr-seg[data-layout='viewer']::before { left: calc(50% + 1px); }
+.shr-role-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.shr-role-control[data-busy] { pointer-events: none; opacity: .6; }
+.shr-role-value { font-size: 14px; font-weight: 700; animation: shr-fade-in var(--motion-fast) var(--ease-paper) backwards; }
+.shr-role-fade { animation: shr-fade-in var(--motion-fast) var(--ease-paper) backwards; }
+.shr-reset-link { align-self: flex-start; color: var(--danger); border-color: var(--danger); transition: background-color var(--motion-instant) var(--ease-paper), scale var(--motion-instant) var(--ease-paper); }
+.shr-reset-link:hover { background: var(--danger-soft); }
+.shr-reset-link:active { scale: .97; }
+.shr-more-toggle { align-self: flex-start; }
+.shr-member-row.is-entering { animation: shr-member-in var(--motion-med) var(--ease-paper) backwards; }
+.shr-qr { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.shr-qr-image { animation: shr-fade-in var(--motion-med) var(--ease-paper) backwards; }
+.shr-qr-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+@keyframes shr-member-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes shr-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .shr-take-row { transition: none; }
+  .shr-qr-image { animation: none; }
+  .shr-seg::before, .shr-seg button, .shr-day-tile { transition: none; }
+  .shr-member-row.is-entering { animation: none; }
+  .shr-role-value, .shr-role-fade { animation: none; }
+  .shr-reset-link { transition: none; }
+  .shr-reset-link:active { scale: none; }
 }
-.share-tab {
-  appearance: none;
-  -webkit-appearance: none;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--text-3);
-  padding: 11px 14px;
-  cursor: pointer;
-  white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  border-radius: 8px 8px 0 0;
-  transition: color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out);
-}
-.share-tab:hover { color: var(--text-2); }
-.share-tab.is-active {
-  color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
-}
-.share-tab:focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
+/* #1012 — below the wide breakpoint the three jobs use the shared pill glider
+   (.tabbar + PillNav), as the workspace rail does. The capsule hugs its labels
+   and starts at the left edge. `fit-content` keeps that shape; `max-width`
+   lets it scroll sideways at 390px if the labels do not fit. The 18px bottom
+   margin keeps the old row's rhythm. `overflow-y: hidden` stops `overflow-x:
+   auto` from computing a vertical scrollbar and adding one pixel of height. */
+.share-job-tabs { width: fit-content; max-width: 100%; margin-bottom: 18px; overflow-y: hidden; }
+/* The phone block shortens every .tabbar to 10px; this row keeps the old row's
+   18px at every width, so the compound wins on phone too. */
+.share-tabbed .share-job-tabs { margin-bottom: 18px; }
+/* Short job names below 480px, so all three tabs fit without sideways scroll.
+   The full name is visually hidden there, not removed: a screen reader still
+   announces the same name at every width. The short copy is aria-hidden and
+   only the visible copy sizes the button, so PillNav measures the right pill. */
+.shr-tab-short { display: none; }
+@media (max-width: 479px) {
+  .shr-tab-name {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  .shr-tab-short { display: inline; }
 }
 .share-panel { display: block; }
 /* Guard: keep [hidden] authoritative so inactive panels leave the a11y tree. */

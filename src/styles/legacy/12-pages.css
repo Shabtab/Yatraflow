@@ -79,14 +79,7 @@
 .btn.shr-unpublish-action { margin-top: 10px; }
 .share-link-box.shr-publication-link { margin-top: 10px; }
 
-/* Auth: static presentation extracted from Auth.tsx. */
-.auth-description { margin-top: 4px; }
-.auth-backend-warning { margin-bottom: 12px; }
-.auth-backend-detail { margin-top: 4px; }
-.auth-submit-error { margin-bottom: 8px; }
-.btn.auth-submit { width: 100%; }
-.hint-text.auth-reset-help { margin: 10px 0 0; text-align: center; }
-.hint-text.auth-sample-note { text-align: center; margin-top: 14px; }
+/* Auth page rules live in pages/auth.css. */
 
 /* DMCA: static presentation extracted from DMCAPage.tsx. */
 .dmca-introduction { margin-top: 4px; }
@@ -115,9 +108,6 @@
 @media (prefers-reduced-motion: reduce) {
   .yf-surface.is-interactive:active { transform: none; transition: none; }
 }
-/* The sign-up confirmation note enters like the error line. Its gap is 8px because 10px is off the spacing ladder. */
-.auth-submit-notice { margin-bottom: 8px; animation: errIn var(--motion-med) var(--ease-out); }
-@media (prefers-reduced-motion: reduce) { .auth-submit-notice { animation: none; } }
 /* #704: the publish button waits for the publish status. This fieldset carries
    that gate. It draws no box and lays its button out as the form does. */
 .ts-submit-gate { display: flex; flex-direction: column; border: 0; margin: 0; padding: 0; min-width: 0; }
@@ -275,13 +265,6 @@
    call, so the direction that shipped stays. */
 .shr-state { animation: errIn var(--motion-med) var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .shr-state { animation: none; } }
-/* The section switch transitioned its colour with no opt-out, so a reader who
-   asked for less motion still got a fade on hover and on the active state. The
-   duration stays on the token the rule already used: the legacy `--t-fast` step
-   is the slower of the two, so moving it would change how fast the tab answers,
-   and a motion feel is the user's call, not this pass's. */
-@media (prefers-reduced-motion: reduce) { .share-tab { transition: none; } }
-
 /* ===== P14: Native home (Android shell) ===== */
 /* The native home keeps its own one-column, big-touch grammar at 360px. The
    root takes yf-page for the shared page scope, and the page keeps its own

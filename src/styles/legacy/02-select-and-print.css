@@ -1159,39 +1159,43 @@
 
 /* ---------- Impact preview ---------- */
 .impact-sheet {
-  position: fixed; bottom: 0; left: 0; right: 0;
-  /* Above the toast zone (200): a transient toast must never cover the
-     Keep / Remove decision controls on the sheet while it is open. */
+  position: fixed; inset: 0;
   z-index: var(--z-impact);
   background: rgba(0,0,0,0.35);
-  padding: 10px 12px calc(10px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
-  display: flex; justify-content: center; align-items: flex-start;
-  /* A 390x664 phone needs ~750px of sheet content: with no height cap the top
-     of the panel sat above the viewport and the panel's own `overflow: hidden`
-     left no scroll path to the warning list. The bounds .modal already uses,
-     plus the start alignment that keeps the panel at its natural height so the
-     SHEET scrolls rather than the panel clipping. */
-  max-height: 100dvh; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; justify-content: flex-end; align-items: stretch; pointer-events: none;
+  padding: 16px 16px calc(16px + var(--safe-bottom));
+  animation: impact-scrim var(--motion-slow) var(--ease-paper);
 }
 .impact-panel {
-  border: 1.5px solid var(--saffron); border-radius: var(--radius);
-  background: var(--card); overflow: hidden; margin-top: 0;
-  animation: slideUp var(--t-med) var(--ease-out);
-  width: 100%; max-width: 720px;
+  width: min(100%, 480px); overflow-y: auto; overscroll-behavior: contain; pointer-events: auto;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--elev-3);
+  animation: impact-enter-right var(--motion-slow) var(--ease-paper);
+}
+@keyframes impact-scrim { from { background-color: transparent; } }
+@keyframes impact-enter-right { from { opacity: 0; transform: translateX(18px); } }
+@keyframes impact-enter-up { from { opacity: 0; transform: translateY(18px); } }
+@media (max-width: 720px) {
+  .impact-sheet { align-items: flex-end; padding: 10px 12px calc(10px + var(--safe-bottom)); }
+  .impact-panel { width: 100%; max-height: 100%; border: 1px solid var(--line); border-radius: var(--radius-lg); animation-name: impact-enter-up; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .impact-sheet, .impact-panel { animation: none; }
 }
 @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
-.impact-head {
-  display: flex; align-items: center; gap: 9px;
-  padding: 11px 16px; background: var(--saffron-soft);
-  font-weight: 700; font-size: 13.5px; color: var(--ink-amber);
-  font-family: var(--font-display);
-}
-.impact-body { padding: 15px 16px; }
-.impact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 9px; margin-bottom: 12px; }
-.impact-cell { background: var(--bg-soft); border-radius: 10px; padding: 9px 12px; }
-.impact-cell .k { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
-.impact-cell .v { font-weight: 800; font-size: 14.5px; margin-top: 1px; font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+.impact-head { padding: 24px 24px 0; color: var(--text); }
+.impact-kicker { display: block; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--text-3); }
+.impact-head h2 { margin: 3px 0; font-family: var(--font-body); font-size: 19px; line-height: 1.25; font-weight: 800; }
+.impact-head p { margin: 0 0 8px; color: var(--text-3); font-size: 12.5px; line-height: 1.45; }
+.impact-body { padding: 16px 24px 24px; }
+.impact-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.impact-cell { min-width: 0; display: flex; flex-direction: column; gap: 3px; background: var(--card-soft); border-radius: 14px; padding: 12px; }
+.impact-cell .k, .impact-busy-verdict .k { font-size: 11px; font-weight: 800; color: var(--text-3); text-transform: uppercase; letter-spacing: .07em; }
+.impact-values { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.impact-values b { font-family: var(--font-display); font-size: 16px; color: var(--text); }
+.impact-cell > .delta-pos, .impact-cell > .delta-neg, .impact-cell > .delta-zero { font-size: 12px; font-weight: 700; }
+.impact-busy-verdict { display: flex; gap: 8px; align-items: baseline; margin-bottom: 16px; font-size: 13px; }
+@media (max-width: 400px) { .impact-head { padding-inline: 16px; } .impact-body { padding-inline: 16px; } .impact-cell { padding: 8px; } }
 .delta-pos { color: var(--danger); } .delta-neg { color: var(--ink-ok); } .delta-zero { color: var(--text-2); }
 /* The delta inks sit on the --bg-soft cell fill, so light theme needs the same
    deepen as the map rail: raw --danger is 4.36:1 there (dark's #E06C6C is
@@ -1204,8 +1208,33 @@
 .impact-busy { color: var(--danger); }
 :root:not([data-theme='dark']) .impact-busy { color: var(--danger-600); }
 .impact-ok { color: var(--ink-ok); }
+.impact-panel .impact-conflict, .impact-panel .impact-cleared { gap: 10px; padding: 12px 14px; border-radius: 14px; line-height: 1.45; }
+.impact-panel .impact-conflict { background: var(--danger-soft); }
+.impact-panel .impact-cleared { background: var(--ok-soft); }
+.impact-panel .impact-conflict .warn-icon { color: var(--danger); }
+.impact-panel .impact-cleared .warn-icon { color: var(--ink-ok); }
+.impact-panel .warn-title { font-size: 13px; }
 .assumptions { font-size: 12px; color: var(--text-3); background: var(--bg-soft); padding: 9px 12px; border-radius: 10px; line-height: 1.6; }
-.impact-actions { display: flex; gap: 8px; margin-top: 13px; flex-wrap: wrap; }
+.impact-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 13px; }
+.impact-actions .btn { min-height: 44px; }
+.impact-panel:focus-visible { outline: 2px solid var(--teal-deep); outline-offset: -2px; }
+.impact-actions .impact-move { grid-column: 1 / -1; justify-self: center; }
+/* On a phone the action row is a sticky footer of the panel's scroll area, so a
+   long warning list never pushes Keep / Remove / Move off screen. The row takes
+   the panel surface, so warning text cannot show through it. */
+@media (max-width: 640px) {
+  .impact-body { padding-bottom: 0; }
+  .impact-actions {
+    position: sticky; bottom: 0;
+    margin: 13px -24px 0;
+    padding: 10px 24px calc(10px + var(--safe-bottom));
+    background: var(--card);
+    border-top: 1px solid var(--line);
+  }
+}
+@media (max-width: 400px) {
+  .impact-actions { margin-inline: -16px; padding-inline: 16px; }
+}
 
 .suggestion-refresh-btn { white-space: nowrap; }
 
@@ -1264,13 +1293,7 @@
 /* ---------- Confirm dialog ---------- */
 .confirm-actions { display: flex; gap: 9px; margin-top: 16px; flex-wrap: wrap; }
 
-/* ---------- Auth ---------- */
-.auth-card { width: 100%; max-width: 430px; }
-/* contained heading — the card is a 430px panel, not a full-width page (was
-   an inline fontSize that bypassed every scale) */
-.auth-card h1 { font-size: 26px; }
-/* Dark inputs otherwise sit nearly flush with the card surface — lift them. */
-[data-theme='dark'] .auth-card .input { --input-background: rgba(255, 255, 255, .06); }
+/* Auth page rules live in pages/auth.css. */
 
 /* ---------- Hero (landing) — split layout per CTI homepage mockup ---------- */
 /* The hero is transparent: the atmospheric ramp lives on the page-level
@@ -2188,15 +2211,6 @@ a.creator-line:focus-visible { outline: 2px solid var(--teal); outline-offset: 2
 .footer-inner { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 
 /* ---------- Pages ---------- */
-/* Auth composes its own canvas rather than parking a card at the top of one.
-   #main already stretches (inline flex:1 on <main>), but it is a plain block
-   and the page sits one level deeper inside .route-panel — so the height has
-   to be handed down the chain, and a percentage on the wrap resolves against
-   nothing. Scoped with :has() to the one route that owns an .auth-wrap, so no
-   other page's flow is touched. */
-main:has(.auth-wrap) { display: flex; flex-direction: column; }
-main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: column; }
-.auth-wrap { display: flex; justify-content: center; align-items: center; flex: 1; padding: 54px 18px; }
 .form-page { max-width: 1080px; padding-top: 26px; padding-bottom: 30px; }
 /* Profile and settings: the artboard's three columns. It used to be one
    720px column (#86), which left a 340px gutter empty at desktop widths. The

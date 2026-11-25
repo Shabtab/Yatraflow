@@ -62,7 +62,7 @@ export function ExploreHero({ stats, forks, query, onQueryChange, onSearch, quic
     <PageHero
       kicker="Explore · plans from the community"
       headline={{ lead: 'Find a plan, fork it,', accent: 'make it yours.' }}
-      lede="Real trips from real travellers, with every drive and stop timed. Fork one into your trips and change anything."
+      lede="Timed Indian itineraries you can fork, adjust, and make yours."
       primary={
         <form className="ex-hero-search" role="search" aria-label="Search itineraries"
           onSubmit={event => { event.preventDefault(); onSearch() }}>

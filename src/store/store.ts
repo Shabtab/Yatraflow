@@ -18,7 +18,8 @@ import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
-import { DRIVES_PART_MISSING_REASON, drivesPartWriteVerdict, isMissingColumnError, rowToTrip, tripToRow, tripUpdateRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { DRIVES_PART_MISSING_REASON, drivesPartWriteVerdict, isMissingColumnError, rowToTrip, tripToRow, tripUpdateRow, validWriteVersion, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { classifyInviteRows } from '../lib/inviteLookup'
 import { emptyLockedDay, isWireLocked, withoutLockMarker } from '../lib/lockedDay'
 import type { ShareSource } from '../lib/shareUrl'
 import { dayCountForRange } from '../lib/dayCount'
@@ -2553,34 +2554,53 @@ export async function fetchPublicTrip(pubId: string): Promise<Trip | null> {
 }
 
 /**
+ * What a code lookup found (#1019). `found` carries the preview trip. `dead`
+ * means no trip has this code, or the code is blank. `failed` means the read
+ * gave no answer the client can act on: an RPC error, a network failure, or a
+ * refused row shape, which is a server fault and not a dead code. `cancelled`
+ * means the account changed while the read was in flight.
+ */
+export type InviteLookup =
+  | { kind: 'found'; trip: Trip }
+  | { kind: 'dead' }
+  | { kind: 'failed' }
+  | { kind: 'cancelled' }
+
+/**
  * Resolve a short invite code ("GOA-K7QF") to its trip via the
  * security-definer `get_trip_by_invite_code` RPC — the code is the
  * capability, so this works for private trips and logged-out visitors
- * alike (the join gate previews before login). Merges the trip into the
- * cache so the workspace can open it without another round-trip. Returns
- * null for an unknown code.
+ * alike (the join gate previews before login). The preview is never cached.
+ * Answers `dead` for a code no trip has, and `failed` for a read that gave no
+ * usable answer (#1019).
  */
-export async function fetchTripByInviteCode(code: string): Promise<Trip | null> {
+export async function fetchTripByInviteCode(code: string): Promise<InviteLookup> {
   const epoch = identityEpoch
   const userId = cache.sessionUserId
   const normalized = normalizeInviteCode(code)
-  if (!normalized) return null
+  if (!normalized) return { kind: 'dead' }
   // A member who re-clicks the link already has the FULL row cached, and that
   // row is safe to reuse: it came from a full read, not from the preview RPC.
   // The preview RPC's own answer is never cached, so this can only hit a
   // complete row.
   const cached = cache.trips.find(t => t.inviteCode === normalized)
-  if (cached) return cached
-  const rpc = await supabase.rpc('get_trip_by_invite_code', { p_code: normalized })
-  if (epoch !== identityEpoch || cache.sessionUserId !== userId) return null
-  if (rpc.error) console.error('[yatraflow] invite-code lookup failed', rpc.error)
-  const rows = rpc.data as TripRow[] | null
-  if (!Array.isArray(rows) || rows.length === 0) return null
-  // #804 — get_trip_by_invite_code names 31 of the 34 trips columns, so this row
-  // is INCOMPLETE: flights, tank_l, rent_per_day_inr, local_train and ref are
-  // absent. It is returned to the caller, which keeps it in local state for the
-  // gate to render, and it is deliberately NOT put into cache.trips, the offline
-  // queues or any snapshot.
+  if (cached) return { kind: 'found', trip: cached }
+  let rpc: { data: unknown; error: unknown }
+  try {
+    rpc = await supabase.rpc('get_trip_by_invite_code', { p_code: normalized })
+  } catch (err) {
+    // A network failure can reject instead of returning an error. It is still a failed read.
+    rpc = { data: null, error: err }
+  }
+  if (epoch !== identityEpoch || cache.sessionUserId !== userId) return { kind: 'cancelled' }
+  if (rpc.error) {
+    console.error('[yatraflow] invite-code lookup failed', rpc.error)
+    return { kind: 'failed' }
+  }
+  // #804 — get_trip_by_invite_code returns a partial row. The omitted columns
+  // include flights, tank_l, rent_per_day_inr, local_train and ref.
+  // The gate renders the preview from local state. The preview stays out of
+  // cache.trips, the offline queues and all snapshots.
   //
   // That is the whole fix. A partial row that never enters the writable cache
   // cannot be built into a whole-row UPDATE, so no write can erase the five
@@ -2592,13 +2612,10 @@ export async function fetchTripByInviteCode(code: string): Promise<Trip | null> 
   //
   // The caller cannot write this trip anyway: it is not a member yet, so RLS
   // refuses. After joinViaInvite the full row is fetched into the cache.
-  const preview = rows[0]
-  // B3 (round 10) — provenance, in the same terms as every other admission: no
-  // shape, no trip. A preview that names no trip id, or carries no usable
-  // revision, is not an answer this client can act on. The gate treats a refusal
-  // as a dead link instead of previewing and joining an unrelated trip.
-  if (typeof preview?.id !== 'string' || preview.id.length === 0 || !validWriteVersion(preview.write_version)) return null
-  return rowToTrip(preview, [])
+  // B3 provenance and the dead-or-failed split live in classifyInviteRows (#1019).
+  const verdict = classifyInviteRows(rpc.data)
+  if (verdict.kind !== 'found') return verdict
+  return { kind: 'found', trip: rowToTrip(verdict.row, []) }
 }
 
 const accessReceipts = new Map<ID, { owner: string; epoch: number; version: number }>()
@@ -2626,6 +2643,7 @@ function installMemberAccess(tripId: ID, state: MemberAccessState, scope: Member
   mutateTrip(tripId, draft => {
     draft.members = state.members
     draft.inviteCode = state.inviteCode ?? undefined
+    draft.inviteRole = state.inviteRole
     draft.accessVersion = state.version
   }, { touch: false })
   return true
@@ -2701,6 +2719,64 @@ export async function ensureInviteCode(tripId: ID): Promise<string | null> {
       return result.state.inviteCode
     } catch { return null }
   })
+}
+
+/** The outcome of an invite link change (#1012). `done`: the server applied it, or a re-read showed it.
+ *  `unchanged`: a re-read showed the old link or the old role. `unknown`: the write was sent, and no re-read
+ *  could confirm either. `unsent`: nothing was sent, because the state could not be read first. */
+export type InviteLinkOutcome =
+  | { status: 'done'; state: MemberAccessState }
+  | { status: 'unchanged' }
+  | { status: 'unknown' }
+  | { status: 'unsent' }
+
+type InviteLinkChange = { action: 'invite_role'; role: 'editor' | 'viewer' } | { action: 'invite_reset' }
+
+async function changeInviteLink(tripId: ID, change: InviteLinkChange): Promise<InviteLinkOutcome> {
+  const scope = captureMemberScope()
+  if (!scope || !tripById(tripId)) return { status: 'unsent' }
+  const epoch = tripAccessEpochs.get(tripId) ?? 0
+  const live = () => memberAccessLive(scope, tripId, epoch)
+  return serializeTripWrite(`${scope.epoch}:${scope.userId}:${tripId}`, async (): Promise<InviteLinkOutcome> => {
+    if (!live()) return { status: 'unsent' }
+    // The old state is the baseline for a re-read after an error: a reset is
+    // proven by a new code, a role change by the new role.
+    const before = await readMemberAccess(tripId)
+    if (!before || !live()) return { status: 'unsent' }
+    try {
+      const token = await tripWriteToken(scope)
+      if (!token || !live()) return { status: 'unsent' }
+      const { data, error } = await supabase.rpc('change_trip_access', {
+        p_trip_id: tripId,
+        p_action: change.action,
+        p_user_id: null,
+        p_role: change.action === 'invite_role' ? change.role : null,
+        p_expected_revision: null,
+      }).setHeader('Authorization', 'Bearer ' + token)
+      const result = !error ? memberChangeReceipt(data) : null
+      if (result?.status === 'applied' && result.state) {
+        installMemberAccess(tripId, result.state, scope, epoch)
+        return { status: 'done', state: result.state }
+      }
+    } catch { /* fall through to the re-read: the write's outcome is not known yet */ }
+    // No applied receipt. Read again before any claim.
+    const after = await readMemberAccess(tripId)
+    if (!after) return { status: 'unknown' }
+    const moved = change.action === 'invite_reset'
+      ? after.inviteCode !== before.inviteCode
+      : after.inviteRole === change.role
+    return moved ? { status: 'done', state: after } : { status: 'unchanged' }
+  })
+}
+
+/** Sets who the invite link admits (#1012). A raise replaces the code; a lowering keeps it. */
+export function setInviteRole(tripId: ID, role: 'editor' | 'viewer'): Promise<InviteLinkOutcome> {
+  return changeInviteLink(tripId, { action: 'invite_role', role })
+}
+
+/** Replaces the invite code at once. The old link stops working (#1012). */
+export function resetInviteLink(tripId: ID): Promise<InviteLinkOutcome> {
+  return changeInviteLink(tripId, { action: 'invite_reset' })
 }
 
 export interface NewTripInput {
@@ -3253,6 +3329,7 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
   copy.visibility = opts.makePublic ? 'public' : 'private'
   copy.createdAt = Date.now(); copy.updatedAt = Date.now()
   copy.inviteCode = undefined
+  copy.inviteRole = undefined
   copy.deletedAt = undefined
   // #230 — the fork's own acquisition stamp, never the source trip's. A copy
   // of a copy starts a NEW attribution chain at whatever surface forked it.
@@ -4862,10 +4939,6 @@ export async function tripPreviewPending(operation: TripPreviewOperation): Promi
 function sameQueuedWrite(a: QueuedWrite, b: QueuedWrite): boolean {
   return a.ownerId === b.ownerId && a.tripId === b.tripId
     && (a.revision ?? a.capturedAt) === (b.revision ?? b.capturedAt)
-}
-
-function validWriteVersion(value: unknown): value is number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 
 /** A string that is present and not empty. */
@@ -8870,6 +8943,8 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
         && (row?.invite_code === null || typeof row?.invite_code === 'string')) {
         mutateTrip(id, draft => {
           draft.inviteCode = row.invite_code ?? undefined
+          // A newer access version may have changed the link role. The cached role is dropped until a read reports it again (#1012).
+          draft.inviteRole = undefined
           draft.accessVersion = accessVersion
         }, { touch: false })
       }

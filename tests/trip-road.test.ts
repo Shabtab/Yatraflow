@@ -12,6 +12,7 @@ import {
 import { clearRouteCacheForTests } from '../src/lib/routing'
 import type { RoadLeg } from '../src/lib/routing'
 import { getAssumptions } from '../src/lib/engine'
+import { dayRoadSlices } from '../src/lib/mapStyles/routeTreatment'
 
 const P = (lat: number, lng: number) => ({ lat, lng })
 
@@ -74,10 +75,12 @@ describe('buildRoadChain', () => {
     const trip = tripOf({ start: P(1, 2), days: [{ index: 2, stops: [{ lat: 3, lng: 4 }, { lat: 5, lng: 6, status: 'rejected' }] }], roundTrip: true, destinationCoords: [P(7, 8)] })
     trip.days[0].stops[0].id = 'stop-1'
     const chain = buildRoadChain(trip)
-    expect(chain.ptKind).toEqual(['start', 'stop', 'return', 'destination'])
+    // #1006: on a round trip the destination belongs to the OUTBOUND journey, so
+    // it sits before the drive home, never after it.
+    expect(chain.ptKind).toEqual(['start', 'stop', 'destination', 'return'])
     expect(chain.ptStopId).toEqual([null, 'stop-1', null, null])
     expect(chain.ptDay).toEqual([null, 2, null, null])
-    expect(chain.points).toEqual([P(1, 2), P(3, 4), P(1, 2), P(7, 8)])
+    expect(chain.points).toEqual([P(1, 2), P(3, 4), P(7, 8), P(1, 2)])
   })
   it('walks start → stops in day/order sequence and marks the outbound boundary', () => {
     const chain = buildRoadChain(tripOf({
@@ -489,5 +492,129 @@ describe('the Board draws the workspace road, graded (#370)', () => {
     // all three drawn lines grade: main, the selected day, the drive home
     const grades = tripMap.match(/routeDrawGrade\(geom/g) ?? []
     expect(grades.length).toBe(3)
+  })
+})
+
+// ============ A round trip draws no stray line home (#1006) ============
+// The live trip: Siliguri → Chandigarh → Kaza → Chandra Taal, round trip, and a
+// destination anchor that IS the last stop. The chain builder tested the
+// destination against the ride-home point (Siliguri), not the last stop, so it
+// added a Siliguri → Chandra Taal "tail" leg after the return. The map then
+// joined the outbound line (ends at Chandra Taal) to that tail (starts at
+// Siliguri): one ~1,200 km straight segment, painted in the last day's colour.
+describe('round trip destination tail (#1006)', () => {
+  const SILIGURI = P(26.7271012, 88.3952861)
+  const CHANDIGARH = P(30.7333, 76.7794)
+  const KAZA = P(32.2276, 78.0719)
+  const CHANDRA_TAAL = P(32.4823581, 77.6156642)
+  const MAX_SEGMENT_KM = 300
+
+  const km = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+    const r = Math.PI / 180
+    const h = Math.sin(((b.lat - a.lat) * r) / 2) ** 2
+      + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(((b.lng - a.lng) * r) / 2) ** 2
+    return 2 * 6371 * Math.asin(Math.sqrt(h))
+  }
+  /** A measured road leg: a dense polyline (a vertex every ~20 km), like OSRM's. */
+  const roadLeg = (a: { lat: number; lng: number }, b: { lat: number; lng: number }): RoadLeg => {
+    const dist = km(a, b)
+    const n = Math.max(2, Math.ceil(dist / 20))
+    const geometry: [number, number][] = Array.from({ length: n + 1 }, (_, i) => [
+      a.lng + ((b.lng - a.lng) * i) / n,
+      a.lat + ((b.lat - a.lat) * i) / n,
+    ])
+    return { distanceKm: dist, durationMinutes: dist * 1.5, source: 'osrm', geometry }
+  }
+  const legsOf = (chain: { points: { lat: number; lng: number }[] }) =>
+    chain.points.slice(1).map((p, i) => roadLeg(chain.points[i], p))
+  /** Largest straight segment between two consecutive vertices, in km. */
+  const maxSegment = (g: [number, number][] | null) => {
+    let worst = 0
+    for (let i = 1; g && i < g.length; i++) {
+      worst = Math.max(worst, km({ lat: g[i - 1][1], lng: g[i - 1][0] }, { lat: g[i][1], lng: g[i][0] }))
+    }
+    return worst
+  }
+
+  const days = [
+    { index: 0, stops: [CHANDIGARH] },
+    { index: 1, stops: [KAZA] },
+    { index: 2, stops: [CHANDRA_TAAL] },
+  ]
+  const liveTrip = () => tripOf({ start: SILIGURI, days, roundTrip: true, destinationCoords: [CHANDRA_TAAL] })
+
+  it('(a) adds no tail when the last destination is the last stop', () => {
+    const chain = buildRoadChain(liveTrip())
+    expect(chain.hasDestTail).toBe(false)
+    expect(chain.ptKind).toEqual(['start', 'stop', 'stop', 'stop', 'return'])
+    expect(chain.points[chain.points.length - 1]).toEqual(SILIGURI)
+    expect(chain.outboundCount).toBe(4)
+  })
+
+  it('(b) puts a destination with no stop BEFORE the ride home, and draws no jump', () => {
+    const lake = P(32.9, 77.3)
+    const chain = buildRoadChain(tripOf({ start: SILIGURI, days, roundTrip: true, destinationCoords: [lake] }))
+    expect(chain.ptKind).toEqual(['start', 'stop', 'stop', 'stop', 'destination', 'return'])
+    expect(chain.hasDestTail).toBe(false)
+    expect(chain.outboundCount).toBe(5) // the destination is outbound; the return is the only point after it
+    const legs = legsOf(chain)
+    const view = mapRoadViewFromLegs(chain, legs, [0, 1, 2])
+    expect(maxSegment(view.geometry)).toBeLessThan(MAX_SEGMENT_KM)
+    // the line reaches the destination …
+    expect(view.geometry?.[view.geometry.length - 1]).toEqual([lake.lng, lake.lat])
+    // … and the ride home is its own line, starting at the destination
+    const home = mapReturnGeometryFromLegs(chain, legs)
+    expect(home?.[0]).toEqual([lake.lng, lake.lat])
+    expect(home?.[home.length - 1]).toEqual([SILIGURI.lng, SILIGURI.lat])
+    // per-day road km is untouched by the destination leg (it has no day)
+    expect(view.dayRoadKm?.length).toBe(3)
+  })
+
+  it('(c) keeps the one-way destination tail as before', () => {
+    const oneWay = buildRoadChain(tripOf({ start: SILIGURI, days, destinationCoords: [P(32.9, 77.3)] }))
+    expect(oneWay.ptKind).toEqual(['start', 'stop', 'stop', 'stop', 'destination'])
+    expect(oneWay.hasDestTail).toBe(true)
+    expect(oneWay.outboundCount).toBe(4)
+    const legs = legsOf(oneWay)
+    const view = mapRoadViewFromLegs(oneWay, legs, [0, 1, 2])
+    expect(view.geometry?.length).toBe(legs.flatMap(l => l.geometry).length) // all four legs drawn
+    expect(view.totalKm).toBeCloseTo(legs.slice(0, 3).reduce((s, l) => s + l.distanceKm, 0)) // tail km stay out
+    expect(mapReturnGeometryFromLegs(oneWay, legs)).toBeNull()
+  })
+
+  it('(d) never draws or slices a segment longer than 300 km (measured legs)', () => {
+    const chain = buildRoadChain(liveTrip())
+    const legs = legsOf(chain)
+    const view = mapRoadViewFromLegs(chain, legs, [0, 1, 2])
+    expect(maxSegment(view.geometry)).toBeLessThan(MAX_SEGMENT_KM)
+    // the ride-home day: Chandra Taal → Siliguri, cut from the drawn road
+    const slices = dayRoadSlices(view.geometry, { '3': [CHANDRA_TAAL, SILIGURI] }, 3)
+    for (const s of slices) expect(maxSegment(s.coordinates)).toBeLessThan(MAX_SEGMENT_KM)
+  })
+
+  it('backstop: a tail that does not follow the outbound legs is never drawn', () => {
+    // The pre-#1006 chain shape: start, stops, return, then a "tail" that
+    // starts at home. Its geometry must not be flattened onto the outbound line.
+    const stale: RoadChain = {
+      points: [SILIGURI, CHANDIGARH, KAZA, CHANDRA_TAAL, SILIGURI, CHANDRA_TAAL],
+      ptDay: [null, 0, 1, 2, null, null],
+      outboundCount: 4,
+      hasDestTail: true,
+    }
+    const view = mapRoadViewFromLegs(stale, legsOf(stale), [0, 1, 2])
+    expect(maxSegment(view.geometry)).toBeLessThan(MAX_SEGMENT_KM)
+    expect(view.geometry?.[view.geometry.length - 1]).toEqual([CHANDRA_TAAL.lng, CHANDRA_TAAL.lat])
+    // the pre-fix flatten would end at the tail; the outbound line is exactly three legs
+    expect(view.geometry?.length).toBe(legsOf(stale).slice(0, 3).flatMap(l => l.geometry).length)
+  })
+
+  it('backstop: a day slice with one long straight segment is refused, a short one is not', () => {
+    const jump: [number, number][] = [[77.0, 10.0], [77.1, 10.0], [88.0, 26.0], [88.1, 26.0]]
+    expect(dayRoadSlices(jump, { '1': [P(10, 77.0), P(26, 88.1)] }, 1)).toEqual([])
+    const ok: [number, number][] = [[77.0, 10.0], [77.1, 10.0], [77.2, 10.0]]
+    expect(dayRoadSlices(ok, { '1': [P(10, 77.0), P(10, 77.2)] }, 1).length).toBe(1)
+    // a great-circle flight arc is allowed its long segments (the caller opts out)
+    const arc: [number, number][] = [[77.0, 10.0], [88.0, 26.0]]
+    expect(dayRoadSlices(arc, { '1': [P(10, 77.0), P(26, 88.0)] }, 1, Infinity).length).toBe(1)
   })
 })

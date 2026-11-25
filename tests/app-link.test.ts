@@ -97,7 +97,9 @@ describe('native links stay fragments until slice 4', () => {
 })
 
 describe('publication-reachable anchor wiring', () => {
-  it.each([['../src/App.tsx', 13], ['../src/pages/PublicItinerary.tsx', 1]] as const)('uses the shared pattern on every route anchor in %s', (path, count) => {
+  // App.tsx: the older route anchors, the footer links to /about, /how-it-works
+  // and /faq (#1033, #1036), and the footer link to /for-creators (#1035).
+  it.each([['../src/App.tsx', 18], ['../src/pages/PublicItinerary.tsx', 1]] as const)('uses the shared pattern on every route anchor in %s', (path, count) => {
     const source = readFileSync(new URL(path, import.meta.url), 'utf8')
     expect(source.match(/\{\.\.\.appLink\(/g)).toHaveLength(count)
   })

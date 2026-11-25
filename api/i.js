@@ -4,12 +4,12 @@
 // bundler, and this compiles with the function.
 import { resolveOrigin } from './_origin.js'
 import { escapeHtml } from './_escape.js'
-import { artCardImage, defaultCard, ogImageTags, twitterImageTags } from './_shareCard.js'
-import { renderBodyHTML, touristTripJsonLd } from './_publicBody.js'
+import { artCardImage, defaultCard, fitOg, ogImageTags, twitterImageTags, OG_DESCRIPTION_MAX, OG_TITLE_MAX } from './_shareCard.js'
+import { planBody, renderBodyHTML, touristTripJsonLd } from './_publicBody.js'
 import pilotCampaigns from '../src/data/growthCampaigns.json' with { type: 'json' }
 import artManifest from '../src/assets/art/manifest.json' with { type: 'json' }
 
-const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
+const DEFAULT_TITLE = 'YatraFlow — Plan Indian trips together'
 const DEFAULT_DESCRIPTION = 'Plan realistic India trips together. See the time, distance and cost impact of every stop.'
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -18,10 +18,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // client code); tests/share-attribution.test.ts pins the two lists to each
 // other, and the NEWEST migration defining the CHECK constraints pins the
 // same list into the database (currently
-// supabase/migrations/20260930_pub_events_share_source_allowlist.sql —
+// supabase/migrations/20261125_calculator_share_source.sql —
 // `wa` (the WhatsApp send's own channel) and `community` (a distribution post
-// outside the app) joined the original five for F7 · #228).
-const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community']
+// outside the app) joined for F7 · #228, and `calculator` joined for the
+// trip-cost calculators' `/new?ref=calculator` CTA).
+const SHARE_SOURCES = ['buyer', 'calculator', 'community', 'copy', 'creator', 'explore', 'purchases', 'wa']
 const COVER_WIDTH = 1200
 // A found card is edge-cacheable for five minutes, then served stale for ten
 // while it revalidates. Everything else answers no-store.
@@ -167,27 +168,62 @@ ${twitterImageTags(defaultCard(origin))}
 </html>`
 }
 
+/** The number of timed stops the public page can show. A locked or withheld
+ *  day is not one a reader can open, so the count reads the same split the
+ *  page body prints. */
+function timedStopCount(publication, trip) {
+  return planBody(publication, trip).filter(part => part.open).reduce((sum, part) => sum + part.stops.length, 0)
+}
+
+/** A card title: the plan's name and its length, or the bare name when the
+ *  pair runs past the WhatsApp budget. */
+function itineraryTitle(name, days) {
+  const count = Number(days)
+  const pair = Number.isFinite(count) && count > 0
+    ? `${name} — ${Math.round(count)}-Day India Plan`
+    : `${name} — YatraFlow`
+  return pair.length <= OG_TITLE_MAX ? pair : fitOg(name, OG_TITLE_MAX)
+}
+
+/** A card description: the creator's own line, the numbers a friend decides
+ *  on, then the next step. Each clause is dropped when the budget is spent. */
+function itineraryDescription(facts, tagline) {
+  const line = facts.join(' · ')
+  if (tagline) {
+    const pair = line ? `${tagline} · ${line}` : tagline
+    if (pair.length <= OG_DESCRIPTION_MAX) return pair
+    if (tagline.length <= OG_DESCRIPTION_MAX) return tagline
+    return fitOg(tagline, OG_DESCRIPTION_MAX)
+  }
+  if (!line) return fitOg(DEFAULT_DESCRIPTION, OG_DESCRIPTION_MAX)
+  const full = `${line}. Open free preview or fork for your crew.`
+  return full.length <= OG_DESCRIPTION_MAX ? full : fitOg(line, OG_DESCRIPTION_MAX)
+}
+
 function renderPublication(publication, id, buyer = null, ref = null, trip = null, shared = false, campaign = null, pubCard = false) {
   // A row the database could not read is a 404-without-canonical card, never
   // the brand card under the id it failed to find (#362).
   if (!publication) return renderNotFound()
   const origin = resolveOrigin()
+  const days = Number(publication?.duration_days)
   const title = publication?.title
-    ? (buyer ? `I bought ${publication.title} — YatraFlow` : `${publication.title} — YatraFlow`)
+    ? (buyer ? `I bought ${publication.title} — YatraFlow` : itineraryTitle(publication.title, days))
     : DEFAULT_TITLE
   const facts = []
-  if (publication?.duration_days) facts.push(`${publication.duration_days} days`)
   const budget = Number(publication?.estimated_budget_per_person_inr)
-  if (Number.isFinite(budget) && budget > 0) facts.push(`₹${budget.toLocaleString('en-IN')}/person`)
+  if (Number.isFinite(budget) && budget > 0) facts.push(`₹${budget.toLocaleString('en-IN')}/person est.`)
+  const stops = timedStopCount(publication, trip)
+  if (stops > 0) facts.push(`${stops} timed ${stops === 1 ? 'stop' : 'stops'}`)
+  else if (Number.isFinite(days) && days > 0) facts.push(`${Math.round(days)} ${Math.round(days) === 1 ? 'day' : 'days'}`)
   const route = publication?.route_summary
-  if (Array.isArray(route)) facts.push(route.join(' → '))
+  if (Array.isArray(route) && route.length) facts.push(route.join(' → '))
   else if (typeof route === 'string' && route) facts.push(route)
   // A buyer's card leads with the fact that was verified and then the plan's
   // own numbers; the creator's tagline belongs on the creator's card. No
   // amount paid and no buyer's name — see the migration header.
   const description = buyer
-    ? ['Bought on YatraFlow', ...facts].join(' · ')
-    : (publication?.tagline || facts.join(' · ') || DEFAULT_DESCRIPTION)
+    ? fitOg(['Bought on YatraFlow', ...facts].join(' · '), OG_DESCRIPTION_MAX)
+    : itineraryDescription(facts, publication?.tagline)
   const stored = typeof publication?.cover_image_url === 'string' && /^https:\/\/\S+$/.test(publication.cover_image_url)
     ? publication.cover_image_url : ''
   const cover = stored ? cardCover(origin, stored) : ''

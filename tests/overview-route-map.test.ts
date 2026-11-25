@@ -70,15 +70,15 @@ describe('overview route rows', () => {
     expect(rows.map(row => row.stopId)).toEqual([null, 'a', 'b'])
   })
 
-  it('keeps the return row and the destination tail', () => {
+  it('keeps the destination row before the return row on a round trip (#1006)', () => {
     const rows = overviewRouteRows(tripOf({
       roundTrip: true,
       destinationCoords: [{ lat: 9.93, lng: 76.27 }],
       destinations: ['Kochi'],
     }))
-    expect(rows.map(row => row.kind)).toEqual(['start', 'stop', 'return', 'destination'])
-    expect(rows.at(-2)).toMatchObject({ key: 'return', title: 'Bengaluru' })
-    expect(rows.at(-1)).toMatchObject({ key: 'destination', title: 'Kochi' })
+    expect(rows.map(row => row.kind)).toEqual(['start', 'stop', 'destination', 'return'])
+    expect(rows.at(-2)).toMatchObject({ key: 'destination', title: 'Kochi' })
+    expect(rows.at(-1)).toMatchObject({ key: 'return', title: 'Bengaluru' })
   })
 
   it('drops an invalid coordinate but leaves the next row without an arriving leg', () => {

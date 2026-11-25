@@ -38,8 +38,9 @@ describe('the public itinerary page sells what it can deliver', () => {
 describe('the gallery explains its own vocabulary', () => {
   it('says what Fork means before the first card that offers it', () => {
     const explore = read('../src/pages/Explore.tsx')
-    // The hero's lede names the verb above every card, at every width.
-    expect(read('../src/components/explore/ExploreHero.tsx')).toMatch(/Fork one into your trips and change anything/)
+    // The hero's lede names the verb above every card, at every width. It says
+    // "fork" rather than "copy", because the button that offers it does.
+    expect(read('../src/components/explore/ExploreHero.tsx')).toMatch(/itineraries you can fork, adjust, and make yours/)
     const hero = explore.indexOf('<ExploreHero')
     expect(hero).toBeGreaterThan(-1)
     expect(hero).toBeLessThan(explore.indexOf('<FeaturedCard'))

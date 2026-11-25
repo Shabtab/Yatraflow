@@ -1180,8 +1180,28 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
    - A realtime binding for a new table goes on its own channel, so a missing
      or unpublished table cannot break the shared live channel.
 
+6bt. **A live body that reads the payments rail cannot go into
+   `supabase/schema.sql` word for word (learned 2026-11-24, #1020).** `schema.sql`
+   is a second build path. The payments rail comes from
+   `migrations/20260918_payments_rail.sql`, not this file. A `language sql` body
+   is checked at CREATE time. `get_trip_by_invite_code` had drifted since
+   20260909 and still held `select t.*`. A database built from `schema.sql` alone
+   served a priced plan to anyone with the invite code. If you copy the live body
+   in, the whole bootstrap fails. It reads `public.entitlements`, which the file
+   never creates (see the DEFERRED table in
+   `tests/trip-owner-delete-guards.test.ts`), and `trips.write_version`, which the
+   file adds further down. Write the schema copy in plpgsql and guard the rail
+   table with `to_regclass`, the pattern `trip_has_publication_money` uses.
+   plpgsql resolves a relation when the statement is reached. So the bootstrap
+   stays valid, and the guarded branch answers fail-closed. Pin the parity by
+   meaning: the same projection and key order, the same gates, the same grants,
+   and one run on a schema-only PGlite database.
+   `tests/invite-lookup-schema-parity.test.ts` is the model.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
+- **The trip cost calculator pages are generated: rebuild them with the model.** `calculators/engine.mjs`, `client.mjs`, `template.html`, `shared.css` and every `destinations/*.json` are sources. `public/<slug>/index.html`, `public/calculators/*` and `calculators/manifest.json` are output. Run `npm run calculators:build` after any edit to a source, then commit both sides. `tests/calculators.test.ts` compares the committed bytes with a fresh render, so a missed build fails the gate. A new destination is one JSON file plus its entry in `DESTINATION_ORDER`.
+- **A page's embedded runtime config is a second copy of the model's input.** Each calculator page carries a trimmed destination JSON (`#calc-cfg`) for the browser. A missing field makes the live page disagree with the pre-rendered HTML. One breakdown row rendered the word "undefined" this way. `tests/calculators.test.ts` computes the whole destination and the trimmed config. It needs equal results, breakdown markup and default URL. Add the field to `runtimeConfig`, not to the test's expectations.
 - **Separate crew fields must stay separate during parsing.** Normalize the mobile field alone. A name can contain digits. A parser that joins both fields can change that name or make the mobile number invalid. Keep the existing structured draft fields and duplicate rules.
 
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05
@@ -1514,4 +1534,4 @@ The editor primitives are the default; a script is the exception.
 
 - Map UI labels start with a capital and use short label and value pairs. Use middle dots between facts. Keep full sentences in tooltips, accessible names, and suggestion help only.
 - Every visible label in `src/` starts with a capital or a number, not only on the Map. `tests/ui-label-capitals.test.ts` scans all of `src/`. Fix the string. Allowlist only a piece that follows other words, a unit after a number, or text that never shows. Give each entry a reason.
-- UI strings in `src/` must not contain an em dash or its HTML entity. Preserve en dashes in time ranges. The source scan reports the file and line.
+- UI strings in `src/` must not contain an em dash or its HTML entity. Preserve en dashes in time ranges. The source scan reports the file and line. One exception: the owner's locked main line, as one exact single-quoted literal (`LOCKED_BRAND_LINES` in `tests/uiSourceScan.ts`). Add nothing else to that set without the owner.

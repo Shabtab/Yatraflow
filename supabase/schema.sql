@@ -96,10 +96,10 @@ alter table public.trips add column if not exists drives_part boolean;
 alter table public.trips add column if not exists ref text;
 
 -- Share attribution: one vocabulary across pub_events.source and trips.ref
--- (mirrors 20260929_pub_events_share_source.sql — idempotent, safe to re-run).
+-- (mirrors 20261125_calculator_share_source.sql — idempotent, safe to re-run).
 alter table public.trips drop constraint if exists trips_ref_check;
 alter table public.trips add constraint trips_ref_check
-  check (ref is null or ref in ('copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community'));
+  check (ref is null or ref in ('buyer', 'calculator', 'community', 'copy', 'creator', 'explore', 'purchases', 'wa'));
 
 -- Invite codes are unique when present (app mints one per trip).
 create unique index if not exists idx_trips_invite_code
@@ -289,7 +289,7 @@ create table if not exists public.pub_events (
 alter table public.pub_events add column if not exists source text;
 alter table public.pub_events drop constraint if exists pub_events_source_check;
 alter table public.pub_events add constraint pub_events_source_check
-  check (source is null or source in ('copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community'));
+  check (source is null or source in ('buyer', 'calculator', 'community', 'copy', 'creator', 'explore', 'purchases', 'wa'));
 
 create index if not exists pub_events_pub_at_idx on public.pub_events (pub_id, at desc);
 
@@ -373,10 +373,11 @@ create index if not exists idx_published_creator on public.published_itineraries
 --
 -- Fails closed. The comparison is `is distinct from`, so a null on either side
 -- counts as a change instead of slipping past a null = null test. Allowed: the
--- current owner, a masteradmin, and a caller with no authenticated user
--- (service role / SQL editor / migration). An editor matches none of them and
--- is refused with 42501. Mirrored for existing installs by
--- supabase/migrations/20261020_trip_owner_and_delete_guards.sql.
+-- current owner, a masteradmin, and a caller with no JWT subject that is not anon
+-- or authenticated (service role / SQL editor / migration). An editor matches none
+-- of them and is refused with 42501. Mirrored for existing installs by
+-- supabase/migrations/20261020_trip_owner_and_delete_guards.sql, then
+-- supabase/migrations/20261124a_member_consent_boundary.sql.
 create or replace function public.trips_owner_id_immutable()
 returns trigger
 language plpgsql
@@ -387,7 +388,7 @@ begin
   if new.owner_id is not distinct from old.owner_id then
     return new;
   end if;
-  if auth.uid() is null then
+  if auth.uid() is null and current_user not in ('anon','authenticated') then
     return new;
   end if;
   if old.owner_id = auth.uid() then
@@ -584,7 +585,6 @@ create policy "admin audit read" on public.admin_audit for select to authenticat
 -- inbox) and admin_audit (append-only via RPCs, no direct writes at all).
 create policy "admin write" on public.profiles for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin write" on public.trips for all to authenticated using (public.is_admin()) with check (public.is_admin());
-create policy "admin write" on public.trip_members for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin write" on public.suggestions for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin write" on public.decisions for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin write" on public.activity for all to authenticated using (public.is_admin()) with check (public.is_admin());
@@ -745,32 +745,9 @@ create policy "members read" on public.trip_members
     or public.is_member(trip_members.trip_id)
   );
 
--- The trip owner adds member rows here. A joiner gets a row from join_trip()
--- instead, so no client writes a row for itself.
-create policy "members insert" on public.trip_members
-  for insert with check (
-    exists (
-      select 1 from public.trips t
-      where t.id = trip_members.trip_id and t.owner_id = auth.uid()
-    )
-  );
-
-create policy "members update" on public.trip_members
-  for update using (
-    exists (
-      select 1 from public.trips t
-      where t.id = trip_members.trip_id and t.owner_id = auth.uid()
-    )
-  );
-
-create policy "members delete" on public.trip_members
-  for delete using (
-    exists (
-      select 1 from public.trips t
-      where t.id = trip_members.trip_id and t.owner_id = auth.uid()
-    )
-    or user_id = auth.uid()  -- leave a trip you're on
-  );
+-- No write policy on trip_members (#936, 20261124a). Membership rows change only
+-- through join_trip(), change_trip_access() and move_trip_access_owner(), which
+-- are security definer functions.
 
 -- ---------- suggestions ----------
 create policy "suggestions read" on public.suggestions
@@ -969,24 +946,132 @@ grant execute on function public.prune_pub_events(integer) to service_role;
 --   select public.prune_pub_events();
 
 -- ============================================================
--- Invite-code lookup (see migrations/20260909_invite_codes.sql)
+-- Invite-code lookup (mirrors migrations/20261124c_invite_preview_write_version.sql)
 -- ============================================================
 -- The code is the capability — same trust model as get_invite_trip: a
 -- private trip must be previewable by whoever holds its invite code, and RLS
 -- cannot know the request came from a #/join/<code> link. SECURITY DEFINER
 -- bypasses the trips read policy; case-insensitive because users type codes
 -- casually.
+--
+-- This copy answers what the live function answers, and it is plpgsql for one
+-- reason: the live body is `language sql`, and a sql body is validated at
+-- CREATE time. This file never creates `public.entitlements` (the payments
+-- rail lives in migrations/20260918_payments_rail.sql), so a sql copy fails the
+-- whole bootstrap with "relation does not exist". plpgsql resolves a relation
+-- when the statement is reached, so the guarded branch below keeps a
+-- schema-only build valid. Same reasoning as trip_has_publication_money above.
+--
+-- The projection is the live one: only the columns named here reach a caller,
+-- so a new column is not exposed by accident. `write_version` is the row
+-- revision the app checks before it renders a preview, `deleted_at is null`
+-- hides trashed trips, and the gates hold the paywall.
 create or replace function public.get_trip_by_invite_code(p_code text)
 returns setof public.trips
-language sql
+language plpgsql
 security definer
 set search_path = public
 stable
 as $$
-  select t.* from public.trips t
-  where upper(t.invite_code) = upper(trim(p_code));
+declare
+  v_row public.trips;
+begin
+  for v_row in
+    select projected.*
+    from public.trips t
+    cross join lateral jsonb_populate_record(
+      null::public.trips,
+      jsonb_build_object(
+        'id', t.id,
+        'owner_id', t.owner_id,
+        'name', t.name,
+        'start_location', t.start_location,
+        'destinations', t.destinations,
+        'start_date', t.start_date,
+        'end_date', t.end_date,
+        'travellers', t.travellers,
+        'transport_mode', t.transport_mode,
+        'budget_per_person_inr', t.budget_per_person_inr,
+        'travel_style', t.travel_style,
+        'fixed_commitments', t.fixed_commitments,
+        'days', t.days,
+        'expenses', t.expenses,
+        'cover_emoji', t.cover_emoji,
+        'visibility', t.visibility,
+        'created_at', t.created_at,
+        'updated_at', t.updated_at,
+        'start_location_coords', t.start_location_coords,
+        'destination_coords', t.destination_coords,
+        'fuel_economy_km_per_l', t.fuel_economy_km_per_l,
+        'fuel_price_per_l', t.fuel_price_per_l,
+        'round_trip', t.round_trip,
+        'invite_code', t.invite_code,
+        'deleted_at', t.deleted_at,
+        'driver_count', t.driver_count,
+        'has_vulnerable', t.has_vulnerable,
+        'drive_after_dinner_min', t.drive_after_dinner_min,
+        'vehicle_profile', t.vehicle_profile,
+        'cover_image_url', t.cover_image_url,
+        'stay_style', t.stay_style,
+        'drives_part', t.drives_part,
+        'write_version', t.write_version
+      )
+    ) as projected
+    where upper(t.invite_code) = upper(trim(p_code))
+      and t.deleted_at is null
+  loop
+    -- The owner, the crew and a masteradmin resolve the trip.
+    if v_row.owner_id = auth.uid()
+      or public.is_member(v_row.id)
+      or public.is_admin() then
+      return next v_row;
+      continue;
+    end if;
+
+    -- A private trip: the code is the capability, exactly like the uuid.
+    if v_row.visibility = 'private' then
+      return next v_row;
+      continue;
+    end if;
+
+    -- A public trip is fine unless a priced publication backs it.
+    if not exists (
+      select 1 from public.published_itineraries p
+      where p.trip_id = v_row.id and coalesce(p.premium_price_inr, 0) > 0
+    ) then
+      return next v_row;
+      continue;
+    end if;
+
+    -- The publication's creator reads their own plan.
+    if exists (
+      select 1 from public.published_itineraries p
+      where p.trip_id = v_row.id and p.creator_id = auth.uid()
+    ) then
+      return next v_row;
+      continue;
+    end if;
+
+    -- A buyer resolves it too, but only on an install that has the payments
+    -- rail. No buyer can exist without that table, so a schema-only build
+    -- answers fail-closed and serves no preview.
+    if to_regclass('public.entitlements') is not null then
+      if exists (
+        select 1 from public.entitlements e
+        join public.published_itineraries p on p.id = e.pub_id
+        where p.trip_id = v_row.id and e.user_id = auth.uid()
+      ) then
+        return next v_row;
+        continue;
+      end if;
+    end if;
+  end loop;
+
+  return;
+end;
 $$;
 
+revoke all on function public.get_trip_by_invite_code(text) from public;
 grant execute on function public.get_trip_by_invite_code(text) to anon, authenticated;
 
 -- ============================================================
@@ -1096,7 +1181,7 @@ commit;
 -- #799: the owner_id guard is invoked by the table, so no client role needs
 -- execute on it. Revoked from the API roles by name, because `revoke ... from
 -- public` does not revoke from anon or authenticated on Supabase.
-revoke all on function public.trips_owner_id_immutable() from public, anon, authenticated;
+revoke all on function public.trips_owner_id_immutable() from public, anon, authenticated, service_role;
 
 -- Apply before the app update. Old two- and three-argument counter calls remain valid.
 -- Re-running is safe. No historical trip origin is inferred or rewritten.
@@ -2635,6 +2720,30 @@ create table if not exists public.trip_member_access (
 alter table public.trip_member_access enable row level security;
 revoke all on public.trip_member_access from public, anon, authenticated, service_role;
 
+-- History follows its trip (#936 gap C, 20261124a). A hard delete of a trip
+-- removes its history rows.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.trip_member_access'::regclass
+      and conname = 'trip_member_access_trip_id_fkey'
+  ) then
+    alter table public.trip_member_access
+      add constraint trip_member_access_trip_id_fkey
+      foreign key (trip_id) references public.trips(id) on delete cascade;
+  end if;
+end;
+$$;
+
+create table if not exists public.trip_invite_role (
+  trip_id uuid primary key references public.trips(id) on delete cascade,
+  role text not null check (role in ('editor','viewer')),
+  changed_at bigint not null
+);
+alter table public.trip_invite_role enable row level security;
+revoke all on public.trip_invite_role from public, anon, authenticated, service_role;
+
 alter table public.trips add column if not exists access_version bigint not null default 0;
 
 create or replace function public.trip_access_only_change(p_old jsonb,p_new jsonb)
@@ -2730,7 +2839,9 @@ begin
     raise exception 'Trip access refused.' using errcode='42501';
   end if;
   return jsonb_build_object(
-    'version',v_trip.access_version,'inviteCode',v_trip.invite_code,'planVersion',to_jsonb(v_trip)->'write_version',
+    'version',v_trip.access_version,'inviteCode',v_trip.invite_code,
+    'inviteRole',coalesce((select r.role from public.trip_invite_role r where r.trip_id=p_trip_id),'editor'),
+    'planVersion',to_jsonb(v_trip)->'write_version',
     'members',coalesce((select jsonb_agg(jsonb_build_object('userId',m.user_id,'role',m.role,
       'joinedAt',m.joined_at,'revision',a.revision) order by m.user_id)
       from public.trip_members m join public.trip_member_access a using(trip_id,user_id)
@@ -2813,6 +2924,9 @@ begin
       if p_action='leave' and v_access.state<>'active' then
         raise exception 'Not an active member.' using errcode='42501';
       end if;
+      if p_action='remove' and v_access.state<>'active' then
+        return jsonb_build_object('status','stale','state',public.trip_access_state(p_trip_id));
+      end if;
       v_rotate := p_action='remove';
       update public.trip_member_access set state=case when p_action='remove' then 'removed' else 'left' end,
         revision=revision+1 where trip_id=p_trip_id and user_id=v_target;
@@ -2824,6 +2938,33 @@ begin
       update public.trip_member_access set state='active',revision=revision+1 where trip_id=p_trip_id and user_id=v_target;
       insert into public.trip_members(trip_id,user_id,role,joined_at)
         values(p_trip_id,v_target,v_access.role,v_access.joined_at);
+    end if;
+  elsif p_action in ('invite_role','invite_reset') then
+    if not v_manager then
+      raise exception 'Only the owner or an admin can change the invite link.' using errcode='42501';
+    end if;
+    if p_user_id is not null or p_expected_revision is not null then
+      raise exception 'Invite change refused.' using errcode='22023';
+    end if;
+    if p_action='invite_reset' then
+      if p_role is not null then
+        raise exception 'Invite change refused.' using errcode='22023';
+      end if;
+      v_rotate := true;
+    else
+      if p_role is null or p_role not in ('editor','viewer') then
+        raise exception 'Invite change refused.' using errcode='22023';
+      end if;
+      if p_role=coalesce((select r.role from public.trip_invite_role r where r.trip_id=p_trip_id),'editor') then
+        return jsonb_build_object('status','applied','state',public.trip_access_state(p_trip_id));
+      end if;
+      v_rotate := array_position(array['viewer','commenter','editor','owner'],p_role)
+        > array_position(array['viewer','commenter','editor','owner'],
+            coalesce((select r.role from public.trip_invite_role r where r.trip_id=p_trip_id),'editor'))
+        and v_trip.invite_code is not null;
+      insert into public.trip_invite_role(trip_id,role,changed_at)
+        values(p_trip_id,p_role,floor(extract(epoch from clock_timestamp())*1000))
+        on conflict(trip_id) do update set role=excluded.role, changed_at=excluded.changed_at;
     end if;
   else
     raise exception 'Unknown member action.' using errcode='22023';
@@ -2853,6 +2994,8 @@ declare
   v_access public.trip_member_access;
   v_actor uuid := auth.uid();
   v_code text := upper(trim(p_code));
+  v_link text;
+  v_role text;
 begin
   if v_actor is null or public.is_disabled() then
     raise exception 'Sign in with an enabled account.' using errcode='42501';
@@ -2862,15 +3005,29 @@ begin
   if v_trip.id is null or v_trip.deleted_at is not null or v_trip.invite_code is distinct from v_code then
     raise exception 'Invite is unavailable.' using errcode='42501';
   end if;
+  -- Read after the row lock, so a join never pairs an old role with a new code.
+  v_link := coalesce((select r.role from public.trip_invite_role r where r.trip_id=v_id),'editor');
   select * into v_access from public.trip_member_access where trip_id=v_id and user_id=v_actor for update;
   if v_access.state='removed' or (v_access.owner_id is not null and v_access.owner_id<>v_trip.owner_id) then
     raise exception 'Ask the owner to restore your access.' using errcode='42501';
   end if;
   if exists(select 1 from public.trip_members where trip_id=v_id and user_id=v_actor) then return v_id; end if;
+  -- The owner stays owner. A new member gets the link role. A repaired active
+  -- row keeps its last role. A returning member gets the lower of the last
+  -- role and the link role.
+  v_role := case
+    when v_actor=v_trip.owner_id then 'owner'
+    when v_access.user_id is null then v_link
+    when v_access.state='active' then v_access.role
+    when array_position(array['viewer','commenter','editor','owner'],v_access.role)
+      <= array_position(array['viewer','commenter','editor','owner'],v_link) then v_access.role
+    else v_link
+  end;
   insert into public.trip_member_access(trip_id,user_id,owner_id,state,role,joined_at)
-    values(v_id,v_actor,v_trip.owner_id,'active',case when v_actor=v_trip.owner_id then 'owner' else 'editor' end,
+    values(v_id,v_actor,v_trip.owner_id,'active',v_role,
       floor(extract(epoch from clock_timestamp())*1000))
-    on conflict(trip_id,user_id) do update set state='active',revision=public.trip_member_access.revision+1;
+    on conflict(trip_id,user_id) do update set state='active', role=excluded.role,
+      revision=public.trip_member_access.revision+1;
   insert into public.trip_members(trip_id,user_id,role,joined_at)
     select trip_id,user_id,role,joined_at from public.trip_member_access where trip_id=v_id and user_id=v_actor
     on conflict(trip_id,user_id) do nothing;
@@ -2926,6 +3083,10 @@ returns trigger language plpgsql security definer set search_path=public as $$
 begin
   if exists(select 1 from public.trip_member_access where trip_id=new.id and user_id=new.owner_id and state='removed') then
     raise exception 'Restore access before transferring ownership.' using errcode='42501';
+  end if;
+  if auth.uid() is not null and not exists(
+    select 1 from public.trip_member_access where trip_id=new.id and user_id=new.owner_id and state='active') then
+    raise exception 'The new owner must be a current member.' using errcode='42501';
   end if;
   update public.trip_member_access set owner_id=new.owner_id,
     role=case when user_id=old.owner_id and role='owner' then 'editor' else role end,

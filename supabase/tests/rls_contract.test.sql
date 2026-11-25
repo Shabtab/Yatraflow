@@ -223,38 +223,24 @@ begin
     raise exception 'trip_members SELECT must use the security-definer is_member() (42P17 recursion guard)';
   end if;
 
-  -- Owner-only insert. A joiner gets a row from join_trip(), never from a
-  -- direct insert, so no INSERT policy may let a user add their own row.
-  -- INSERT expressions ride with_check.
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'public' and tablename = 'trip_members'
-      and cmd = 'INSERT' and with_check like '%owner_id%auth.uid()%'
-  ) then
-    raise exception 'trip_members INSERT must allow owner management';
-  end if;
+  -- No permissive write policy on trip_members (#936, 20261124a). Membership
+  -- changes go through the security definer commands only. A write policy
+  -- would reopen the direct-write path that the issue describes.
   if exists (
     select 1 from pg_policies
     where schemaname = 'public' and tablename = 'trip_members'
-      and cmd = 'INSERT' and with_check like '%user_id%auth.uid()%'
+      and permissive = 'PERMISSIVE' and cmd in ('INSERT', 'UPDATE', 'DELETE', 'ALL')
   ) then
-    raise exception 'trip_members INSERT must not let a user add their own row (joins go through join_trip)';
+    raise exception 'trip_members must have no permissive write policy (#936): membership changes go through join_trip, change_trip_access and move_trip_access_owner';
   end if;
 
-  -- Owner update, owner-or-self delete (leave a trip you're on).
+  -- The RESTRICTIVE deny-disabled policy stays. A disabled account reads nothing.
   if not exists (
     select 1 from pg_policies
     where schemaname = 'public' and tablename = 'trip_members'
-      and cmd = 'UPDATE' and qual like '%owner_id%auth.uid()%'
+      and policyname = 'deny disabled' and permissive = 'RESTRICTIVE'
   ) then
-    raise exception 'trip_members UPDATE must be owner-managed';
-  end if;
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'public' and tablename = 'trip_members'
-      and cmd = 'DELETE' and qual like '%user_id%auth.uid()%'
-  ) then
-    raise exception 'trip_members DELETE must allow owner or self (leave a trip you''re on)';
+    raise exception 'trip_members must keep the RESTRICTIVE deny-disabled policy';
   end if;
 end $$;
 
@@ -572,6 +558,16 @@ begin
       raise exception '% must be granted to anon + authenticated', rpc;
     end if;
   end loop;
+end $$;
+
+-- #1019: the invite preview must return write_version. Without it the client
+-- refuses every preview and a valid link shows "didn't load". Positive token
+-- in the live function source.
+do $$
+begin
+  if position('write_version' in pg_get_functiondef('public.get_trip_by_invite_code(text)'::regprocedure)) = 0 then
+    raise exception 'get_trip_by_invite_code must return write_version (#1019)';
+  end if;
 end $$;
 
 -- ------------------------------------------------------------------ 8. realtime
@@ -1651,5 +1647,148 @@ begin
     or position('suggestion.comment' in v_src) = 0
     or position('decision.ballot' in v_src) = 0 then
     raise exception 'submit_collab_command must admit commenters through can_comment for the comment and ballot kinds';
+  end if;
+end $$;
+
+-- ---- member consent boundary (#936, 20261124a) ----
+-- has_table_privilege does not see column grants, so the column check is separate.
+do $$
+declare
+  v_fn record;
+  v_src text;
+  v_trigger text;
+begin
+  -- No INSERT or UPDATE column grant on trip_members for a client or service role.
+  if has_any_column_privilege('anon', 'public.trip_members', 'INSERT')
+    or has_any_column_privilege('authenticated', 'public.trip_members', 'INSERT')
+    or has_any_column_privilege('service_role', 'public.trip_members', 'INSERT')
+    or has_any_column_privilege('anon', 'public.trip_members', 'UPDATE')
+    or has_any_column_privilege('authenticated', 'public.trip_members', 'UPDATE')
+    or has_any_column_privilege('service_role', 'public.trip_members', 'UPDATE') then
+    raise exception '#936: trip_members must carry no INSERT or UPDATE column grant for a client or service role';
+  end if;
+
+  -- Writer allowlist: only the three membership commands write trip_members. Each
+  -- one is security definer, pins its search_path, and is closed to anon.
+  for v_fn in
+    select p.oid, p.proname, p.prosecdef, p.proconfig
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.prokind in ('f', 'p')
+      and pg_get_functiondef(p.oid) ~ '(insert into|update|delete from) public\.trip_members'
+  loop
+    if v_fn.proname not in ('join_trip', 'change_trip_access', 'move_trip_access_owner') then
+      raise exception '#936: % writes trip_members and is not an allowed membership command', v_fn.proname;
+    end if;
+    if not v_fn.prosecdef
+      or v_fn.proconfig is null
+      or not exists (select 1 from unnest(v_fn.proconfig) c where c like 'search_path=%') then
+      raise exception '#936: % must be SECURITY DEFINER with a pinned search_path', v_fn.proname;
+    end if;
+    if has_function_privilege('anon', v_fn.oid, 'execute') then
+      raise exception '#936: % must not be executable by anon', v_fn.proname;
+    end if;
+  end loop;
+
+  -- Hand-over needs a member: the AFTER trigger on owner_id runs a function that
+  -- needs an active history row for the new owner when a caller has a JWT.
+  select pg_get_triggerdef(t.oid) into v_trigger
+    from pg_trigger t
+    where t.tgrelid = 'public.trips'::regclass and t.tgname = 'trips_access_owner' and not t.tgisinternal;
+  if v_trigger is null or position('AFTER UPDATE OF owner_id' in v_trigger) = 0 then
+    raise exception '#936: trips_access_owner must be an AFTER UPDATE OF owner_id trigger';
+  end if;
+  select pg_get_functiondef('public.move_trip_access_owner()'::regprocedure) into v_src;
+  if position('auth.uid() is not null' in v_src) = 0
+    or position('state=''active''' in v_src) = 0 then
+    raise exception '#936: the owner hand-over must check for an active member when a caller has a JWT';
+  end if;
+
+  -- A remove needs an active member, so a member who left cannot be pulled back.
+  select pg_get_functiondef('public.change_trip_access(uuid,text,uuid,text,bigint)'::regprocedure) into v_src;
+  if position('p_action=''remove'' and v_access.state<>''active''' in v_src) = 0 then
+    raise exception '#936: change_trip_access must return stale for a remove that is not on an active member';
+  end if;
+
+  -- History follows its trip: the foreign key cascades on a hard delete.
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.trip_member_access'::regclass
+      and confrelid = 'public.trips'::regclass
+      and contype = 'f' and confdeltype = 'c'
+  ) then
+    raise exception '#936: trip_member_access must reference trips with ON DELETE CASCADE';
+  end if;
+
+  -- Owner guard hardening: a caller with no JWT subject is exempt only when the
+  -- role is not anon or authenticated.
+  select pg_get_functiondef('public.trips_owner_id_immutable()'::regprocedure) into v_src;
+  if position('current_user not in' in v_src) = 0 then
+    raise exception '#936: trips_owner_id_immutable must not exempt anon or authenticated callers that have no JWT subject';
+  end if;
+end $$;
+
+-- ---- invite role and reset link (#1012, 20261124b) ----
+-- trip_invite_role is private: RLS on, no policy, and no table or column
+-- privilege for a client or service role. Only the definer commands use it.
+-- The source checks assert positive tokens only, because the guards read comments too.
+do $$
+declare
+  v_role text;
+  v_privilege text;
+  v_src text;
+  v_check text;
+begin
+  if to_regclass('public.trip_invite_role') is null then
+    raise exception '#1012: trip_invite_role must exist -- apply 20261124b_invite_role_and_reset.sql';
+  end if;
+  if not (select relrowsecurity from pg_class where oid='public.trip_invite_role'::regclass) then
+    raise exception '#1012: trip_invite_role must have RLS enabled';
+  end if;
+  if exists (select 1 from pg_policies where schemaname='public' and tablename='trip_invite_role') then
+    raise exception '#1012: trip_invite_role must have no policy';
+  end if;
+  foreach v_role in array array['anon','authenticated','service_role'] loop
+    foreach v_privilege in array array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop
+      if has_table_privilege(v_role,'public.trip_invite_role',v_privilege) then
+        raise exception '#1012: % must not have direct % on trip_invite_role',v_role,v_privilege;
+      end if;
+    end loop;
+    if has_any_column_privilege(v_role,'public.trip_invite_role','SELECT')
+      or has_any_column_privilege(v_role,'public.trip_invite_role','INSERT')
+      or has_any_column_privilege(v_role,'public.trip_invite_role','UPDATE') then
+      raise exception '#1012: % must carry no column privilege on trip_invite_role',v_role;
+    end if;
+  end loop;
+  select pg_get_constraintdef(c.oid) into v_check from pg_constraint c
+    where c.conrelid='public.trip_invite_role'::regclass and c.contype='c';
+  if v_check is null or position('''editor''' in v_check) = 0 or position('''viewer''' in v_check) = 0 then
+    raise exception '#1012: trip_invite_role.role must be checked against editor and viewer';
+  end if;
+  if position('''commenter''' in v_check) > 0 or position('''owner''' in v_check) > 0 then
+    raise exception '#1012: trip_invite_role.role must allow only editor and viewer';
+  end if;
+  if exists (select 1 from pg_publication_tables where schemaname='public' and tablename='trip_invite_role') then
+    raise exception '#1012: trip_invite_role must not be in a realtime publication';
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid='public.trip_invite_role'::regclass and confrelid='public.trips'::regclass
+      and contype='f' and confdeltype='c'
+  ) then
+    raise exception '#1012: trip_invite_role must reference trips with ON DELETE CASCADE';
+  end if;
+  select pg_get_functiondef('public.change_trip_access(uuid,text,uuid,text,bigint)'::regprocedure) into v_src;
+  if position('invite_role' in v_src) = 0 or position('invite_reset' in v_src) = 0 then
+    raise exception '#1012: change_trip_access must carry the invite_role and invite_reset actions';
+  end if;
+  select pg_get_functiondef('public.join_trip(text)'::regprocedure) into v_src;
+  if position('public.trip_invite_role' in v_src) = 0 then
+    raise exception '#1012: join_trip must read the link role from public.trip_invite_role';
+  end if;
+  select pg_get_functiondef('public.trip_access_state(uuid)'::regprocedure) into v_src;
+  if position('''inviteRole''' in v_src) = 0 then
+    raise exception '#1012: trip_access_state must return inviteRole';
   end if;
 end $$;

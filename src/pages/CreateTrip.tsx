@@ -54,6 +54,12 @@ import { haptic, HAPTIC } from '../lib/haptics'
 import { useTimeFormat, formatHM, validHM } from '../lib/timefmt'
 import { cap } from '../lib/labels'
 import { readBenchPrefill } from '../lib/planBench'
+import {
+  readCalcPrefill, clearCalcPrefill, prefillFromSearch, calcPrefillTripName, calcPartyLimitText,
+  calcDestAction, calcDestHit, calcDestNote, calcDestStop, stageCalcDest, withCalcPinTimeout,
+  type CalcDestOutcome, type CalcDestPhase,
+} from '../lib/calcPrefill'
+import { searchPlaces, requireHitCoords, hasCoords, type PlaceHit } from '../lib/geocode'
 import { scrollBehavior } from '../lib/motion'
 import { LocationInput } from '../components/LocationInput'
 import { PageHeader } from '../components/page/PageHeader'
@@ -132,6 +138,27 @@ function Money({ v, animate }: { v: number | null | undefined; animate: boolean 
   return <Odometer value={text} animate={animate} label={text} />
 }
 
+/** Resolve a calculator's destination name through the same search the destination
+ *  box uses: search, take the matching place, then pin it with requireHitCoords.
+ *  Never throws. Which hit answers and which stop it becomes are decided in
+ *  lib/calcPrefill, so this function only calls the facade. */
+async function pinCalcDest(dest: string): Promise<CalcDestOutcome> {
+  let hits: PlaceHit[]
+  try {
+    hits = await searchPlaces(dest, { indiaOnly: true })
+  } catch {
+    return { phase: 'failed' }
+  }
+  const hit = calcDestHit(dest, hits)
+  if (!hit) return { phase: 'missing' }
+  try {
+    const stop = calcDestStop(hasCoords(hit) ? hit : await requireHitCoords(hit))
+    return stop ? { phase: 'pinned', stop } : { phase: 'failed' }
+  } catch {
+    return { phase: 'failed' }
+  }
+}
+
 export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
@@ -207,6 +234,19 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   // moment it can compute one, and keeps it live as the plan grows — until the
   // user edits the field themselves (or a bench hand-off set it explicitly).
   const [budgetTouched, setBudgetTouched] = useState(false)
+  /** The calculator slug this form was pre-filled from, if any (see below). */
+  const calcSlugRef = useRef<string | null>(null)
+  /** The line for a calculator party above the trip limit. Set on arrival, and
+   *  cleared once the traveller sets the party size. */
+  const [calcPartyLimit, setCalcPartyLimit] = useState<string | null>(null)
+  /** The calculator destination being resolved, and where that stands. Null once it is a stop. */
+  const [calcDest, setCalcDest] = useState<{ dest: string; phase: CalcDestPhase } | null>(null)
+  /** Set once the arrival's destination has been asked for, so it is never asked twice. */
+  const calcDestAsked = useRef(false)
+  /** Set once the traveller types in or clears the stop box. A late calculator result then leaves the box alone. */
+  const stopBoxEdited = useRef(false)
+  /** The route's stop count, read by a late calculator result. The effect below keeps it current. */
+  const routeStopCount = useRef(0)
   // Plan Bench hand-off (issue #37): when the homepage calculator stashed its
   // inputs into sessionStorage, pre-fill the matching fields. Read-once — the
   // stash clears itself on read, so a refresh returns to the plain form.
@@ -230,6 +270,82 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
         : {}),
     }))
   }, [])
+
+  // Calculator hand-off (src/lib/calcPrefill.ts): a destination page's estimate
+  // arrives as a pending row. Deliberately a second effect, not folded into the
+  // bench one — each reads its own key, so neither stash can swallow the other.
+  // Only stated fields are filled; a visitor with no `calc` slug is a plain
+  // /new visit and gets the untouched form.
+  useEffect(() => {
+    // A signed-in visitor arrives with the query still on the address bar — the
+    // signed-out gate never runs for them — so the query wins and the stashed
+    // row is the fallback for the sign-up round trip.
+    const search = typeof location === 'undefined' ? '' : location.search
+    const p = prefillFromSearch(search) ?? readCalcPrefill()
+    if (!p || !p.calc) return
+    // Read once: this row belongs to the arrival, not to the next trip the
+    // same tab starts inside the TTL.
+    clearCalcPrefill()
+    // Kept for the submit event: which calculator priced this trip is the one
+    // attribution fact the row does not already carry.
+    calcSlugRef.current = p.calc
+    // Same reason as the bench above, but only when a figure was stated: with
+    // no budget in the query the smart-budget pre-fill stays free to work.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the input is the stashed row, not this render
+    if (p.budget != null) setBudgetTouched(true)
+    // A party above the trip limit is never taken as the count. The form says so instead.
+    const partyLimit = calcPartyLimitText(p)
+    if (partyLimit) setCalcPartyLimit(partyLimit)
+    const name = calcPrefillTripName(p)
+    // Tomorrow onward, only when the form has no dates yet — a calculator says
+    // how many days, never which day.
+    const start = isoAddDays(isoDay(new Date()), 1)
+    setF(prev => ({
+      ...prev,
+      // The user's own typing (or a resumed draft) wins over the trip name.
+      ...(name && !prev.name ? { name } : {}),
+      ...(p.people != null ? { travellers: p.people } : {}),
+      ...(p.mode ? { transportMode: p.mode } : {}),
+      ...(p.stay ? { stayStyle: p.stay } : {}),
+      ...(p.budget != null ? { budgetPerPersonInr: p.budget } : {}),
+      ...(!prev.startDate && p.days != null ? { startDate: start, endDate: isoAddDays(start, p.days - 1) } : {}),
+    }))
+    // The destination answers the "where" step, so the traveller only has to say
+    // where they start from. The calculator gives a name, not a pin. The name
+    // becomes a stop only once the destination search has pinned it (see
+    // pinCalcDest). Asked once per arrival: StrictMode runs this effect twice,
+    // and a re-render never asks again.
+    if (p.dest && !calcDestAsked.current) {
+      calcDestAsked.current = true
+      const dest = p.dest
+      setCalcDest({ dest, phase: 'finding' })
+      // The whole pin runs inside the window, so the finding line cannot outlast it.
+      void withCalcPinTimeout(pinCalcDest(dest)).then(outcome => {
+        // The traveller may have added a stop or used the box while the search ran.
+        // Their input wins, whatever the lookup found.
+        const action = calcDestAction(outcome, {
+          routeHasStops: routeStopCount.current > 0,
+          boxEdited: stopBoxEdited.current,
+        })
+        if (action.kind === 'add') {
+          const { stop } = action
+          // Second guard: the write itself checks that the route is still empty.
+          setDests(prev => (prev.length ? prev : [stop]))
+          setCalcDest(null)
+          return
+        }
+        if (action.kind === 'stage') {
+          setDestInput(box => stageCalcDest(box, dest))
+          setCalcDest({ dest, phase: action.phase })
+          return
+        }
+        setCalcDest(null)
+      })
+    }
+  }, [])
+
+  // Keeps the route's stop count current for the late calculator result above.
+  useEffect(() => { routeStopCount.current = dests.length }, [dests.length])
 
   // The dock's "Print bill" is pinned to the bottom of the screen while the bill
   // itself sits further down the page, so on a phone that tap used to look like
@@ -452,6 +568,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     if (!draft) return
     haptic(HAPTIC.select)
     recordCreateEvent('draft_resumed', undefined, { userId: me?.id })
+    // A saved draft brings its own party size, so the calculator's line no longer applies.
+    setCalcPartyLimit(null)
     setF(prev => ({ ...prev, ...(draft.form as Partial<typeof prev>) }))
     setDests(draft.dests)
     setReturnCount(draft.returnCount)
@@ -517,6 +635,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   }, [bill.roadKm, f.transportMode, f.drivesPart, f.travelStyle, f.driverCount, f.hasVulnerable])
 
   function patchFields(next: Partial<typeof f>) {
+    // The traveller's own party count replaces the calculator's line.
+    if (next.travellers !== undefined) setCalcPartyLimit(null)
     setF(x => ({ ...x, ...next }))
   }
 
@@ -889,7 +1009,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
    *  draft cleared, and the route in. Navigation never precedes the save — a
    *  workspace opened over a failed write is a trip that vanishes on reload. */
   function finishCreate(trip: Trip) {
-    recordCreateEvent('submitted', { days: trip.days.length, travellers: trip.travellers, mode: trip.transportMode }, { tripId: trip.id, userId: me?.id })
+    recordCreateEvent('submitted', { days: trip.days.length, travellers: trip.travellers, mode: trip.transportMode, calcSlug: calcSlugRef.current ?? undefined }, { tripId: trip.id, userId: me?.id })
     haptic(HAPTIC.success)
     clearDraft()
     if (createFunnelOn('moment')) {
@@ -919,6 +1039,10 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
     setCommitments(list => [...list, { ...c, title: c.title.trim(), destName: c.destName?.trim() || undefined }])
     setC({ title: '', type: 'hotel-checkin', dayIndex: 0, time: '14:00', destName: '' })
   }
+
+  // The calculator destination's line, read against the live box text: a miss or a
+  // failure shows only while the staged name is still in the box.
+  const calcDestLine = calcDest ? calcDestNote(calcDest.phase, calcDest.dest, destInput) : null
 
   // The mockup's step markers answer "is this question done?" - derived from
   // state, never stamped: the soft circle is the goal-gradient, the solid one
@@ -1205,12 +1329,13 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   id="ct-dest-input"
                   ariaLabel="Add a stop to the trip"
                   value={destInput}
-                  onChange={setDestInput}
+                  onChange={v => { stopBoxEdited.current = true; setDestInput(v) }}
                   errorId={errs.destinations ? 'ct-dest-err' : undefined}
                   error={errs.destinations}
                   onPick={p => addDest({ name: p.name + (p.admin1 ? `, ${p.admin1}` : ''), lat: p.latitude, lng: p.longitude }, false)}
                   placeholder={dests.length === 0 ? 'Type a place to add your first stop - e.g. Munnar' : 'Type a place to add the next stop'}
                 />
+                {calcDestLine && <p className="ct-hint" role="status">{calcDestLine}</p>}
                 {/* #375: the escape hatch that keeps the new block honest. A place
                     the providers do not know can still become a real stop — chosen
                     on purpose, with no coordinates, which `DestDraft` already
@@ -1492,6 +1617,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     message inside `.sr-only`, so a screen reader heard the failure
                     twice and saw it nowhere. */}
                 {errs.travellers && <p className="err-text" id="ct-travellers-err" role="status" aria-live="polite">{errs.travellers}</p>}
+                {calcPartyLimit && <p className="ct-hint" role="status">{calcPartyLimit}</p>}
                 {/* The value channel for AT that needs a real input to type into —
                     deliberately no longer where the error lands. */}
                 <div className="sr-only">

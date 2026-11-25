@@ -181,7 +181,8 @@ describe('the workspace markup consumes the rules', () => {
   it('publishes the fold state on the workspace container and page wrapper', () => {
     // W10 added the phone full-screen flag beside the two existing ones: the one
     // container still publishes the fold state and which tab holds the map.
-    expect(ws).toMatch(/<div className="container page-enter yf-workspace" data-wide=\{headerFolded \? 'true' : 'false'\} data-map-active=\{tab === 'map' \? 'true' : undefined\} data-canvas=\{headerFolded \? 'true' : undefined\} data-map-fullscreen=\{phoneMapFullscreen \? 'true' : undefined\}>/)
+    // #1012 adds the Share tab's wide flag on the same container (data-share-wide).
+    expect(ws).toMatch(/<div className="container page-enter yf-workspace" data-wide=\{headerFolded \? 'true' : 'false'\} data-share-wide=\{tab === 'share' \? 'true' : undefined\} data-map-active=\{tab === 'map' \? 'true' : undefined\} data-canvas=\{headerFolded \? 'true' : undefined\} data-map-fullscreen=\{phoneMapFullscreen \? 'true' : undefined\}>/)
     expect(ws).toMatch(/<div className="yf-page" data-compact=\{headerFolded \? 'true' : 'false'\}>/)
   })
 

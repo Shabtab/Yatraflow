@@ -13,7 +13,7 @@ import {
   shouldBrowserNotify,
 } from './lib/browserNotifications'
 import type { Notification, Trip } from './data/types'
-import { useDb, currentUser, privateUser, useUsers, useNotifications, useSessionUserId, useIdentityGeneration, useSliceReads, logout, markAllNotificationsRead, tripById, joinViaInvite, reloadJoinedTrip, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, readSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
+import { useDb, currentUser, privateUser, useUsers, useNotifications, usePublished, useSessionUserId, useIdentityGeneration, useSliceReads, logout, markAllNotificationsRead, tripById, joinViaInvite, reloadJoinedTrip, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, readSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
 import { authNext } from './lib/authNext'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { BottomNav } from './components/BottomNav'
@@ -23,10 +23,16 @@ import { PillNav } from './components/PillNav'
 import { decodeTripSnapshot } from './lib/snapshot'
 import { analyticsBeforeSend } from './lib/analyticsPrivacy'
 import { scrollBehavior } from './lib/motion'
-import { pageTitle, routeParts } from './lib/pageTitle'
-import { CREATE_SEGMENT, CREATE_PATH } from './lib/routes'
+import { pageMeta, routeParts } from './lib/pageTitle'
+import { CREATE_SEGMENT, CREATE_PATH, needsSignupForCreate, signupThenCreatePath } from './lib/routes'
+import { stashCalcPrefillFromSearch } from './lib/calcPrefill'
+import { normalizeInviteCode, inviteRoute } from './lib/inviteCode'
+import {
+  recipientInviteCopy, inviteConfirmCopy, expiredInviteCopy, alreadyMemberCopy,
+  paidGuidePriceFor, invitesStopCount, inviteReadOnlyFacts,
+} from './lib/inviteLandingCopy'
 import { createFunnelOn } from './lib/featureFlags'
-import { currentRoute, navigate as navigateRoute, onRouteChange, settleLegacyHash } from './lib/router'
+import { currentQuery, currentRoute, navigate as navigateRoute, onRouteChange, replaceRoute, settleLegacyHash } from './lib/router'
 import { appLink } from './lib/appLink'
 import { App as CapApp } from '@capacitor/app'
 import { isNative } from './lib/native'
@@ -36,6 +42,7 @@ import { setTheme, useTheme } from './lib/theme'
 import { hideSplash, registerAndroidBack, setNativeTheme } from './lib/appShell'
 import { sliceState, rowsView, type RowsView } from './lib/readState'
 import { StateBlock } from './components/page/StateBlock'
+import { PageHeader } from './components/page/PageHeader'
 import { Mascot } from './components/mascot/Mascot'
 import { LandingPage } from './pages/Landing'
 import { NativeHomePage } from './pages/NativeHome'
@@ -43,7 +50,7 @@ import {
   sharedSnapshotState, inviteGateState, gateMachine, dispatchGateEvent, setGateOwner, ownedBy, disposeGateMount,
   subscribeGateState, gateMachineVersion,
   type JoinResult,
-  inviteLoginNext, inviteSignupNext, invitePreview,
+  inviteSignupNext, invitePreview,
   joinMachine, joinAllowsNavigation, nextAttemptId,
   createAttemptOwner, retireAttemptOwner, attemptOwnerLive,
   type JoinEvent, type JoinPlan, type JoinAction, type AttemptOwner,
@@ -68,6 +75,13 @@ const CreatorHubPage = lazy(() => import('./pages/CreatorHubPage').then(m => ({ 
 // admins type /admin; non-admins fall through to landing inside the page).
 const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })))
 const DMCAPage = lazy(() => import('./pages/DMCAPage').then(m => ({ default: m.DMCAPage })))
+const FaqPage = lazy(() => import('./pages/FaqPage').then(m => ({ default: m.FaqPage })))
+const HowItWorksPage = lazy(() => import('./pages/HowItWorksPage').then(m => ({ default: m.HowItWorksPage })))
+const AboutPage = lazy(() => import('./pages/AboutPage').then(m => ({ default: m.AboutPage })))
+// The creator pitch page is public, so a DM or comment reply links it directly.
+// It reads one session flag to pick the storefront CTA, so it waits for the
+// hydrate like every other store-backed route.
+const ForCreatorsPage = lazy(() => import('./pages/ForCreatorsPage').then(m => ({ default: m.ForCreatorsPage })))
 
 /** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. The `page-enter` root gives the block the shared entrance. The `route-fallback` root stays invisible for a short grace period. It also holds a page's height. A fast load then shows no loader and no footer jump. */
 const lazyRouteFallback = <div className="container page-enter route-fallback"><StateBlock kind="loading" titleLevel="h2" art={<Mascot pose="loading" size={112} />} title="Loading…" /></div>
@@ -119,7 +133,11 @@ export function profileLookupState(
 
 /** Route segments that answer for a signed-out visitor. They stay reachable when
  *  the signed-in account's private read fails. */
-const GUEST_ROUTE_SEGMENTS = new Set(['pub', 'creator', 'explore'])
+const GUEST_ROUTE_SEGMENTS = new Set(['pub', 'creator', 'explore', 'creators', 'for-creators'])
+
+/** Routes that are static copy: they read no store data, so they paint before
+ *  the hydrate settles instead of showing the loading block. */
+const STATIC_COPY_SEGMENTS = new Set(['faq', 'how-it-works'])
 
 /** Whether the profile lookup takes the page from the route. A failed lookup takes it on the
  *  bare route too, so its Try again is never hidden behind the landing. A reading lookup does
@@ -520,9 +538,36 @@ export default function App() {
   // are now". Reviewed 2026-09-23 (entry-path interface review, finding 3).
   const [routeAnnounce, setRouteAnnounce] = useState('')
   useEffect(() => {
-    const title = pageTitle(routeParts(route))
-    document.title = title
-    setRouteAnnounce(title)
+    const meta = pageMeta(routeParts(route))
+    document.title = meta.title
+    setRouteAnnounce(meta.title)
+    // A page that carries its own description swaps it in; every other route
+    // restores the site description index.html ships, kept on the element the
+    // first time a page overrides it.
+    const tag = document.querySelector('meta[name="description"]')
+    if (tag) {
+      const original = tag.getAttribute('data-site-description')
+      if (meta.description) {
+        if (original === null) tag.setAttribute('data-site-description', tag.getAttribute('content') ?? '')
+        tag.setAttribute('content', meta.description)
+      } else if (original !== null) {
+        tag.setAttribute('content', original)
+      }
+    }
+    // A page with its own copy is its own canonical. Without this the shell's
+    // canonical (the homepage) tells a crawler to fold /faq into '/', while the
+    // sitemap lists it as a page of its own.
+    const canonical = document.querySelector('link[rel="canonical"]')
+    if (canonical) {
+      const original = canonical.getAttribute('data-site-canonical')
+      if (meta.description) {
+        if (original === null) canonical.setAttribute('data-site-canonical', canonical.getAttribute('href') ?? '')
+        const base = new URL(original ?? canonical.getAttribute('href') ?? '/', location.origin).origin
+        canonical.setAttribute('href', `${base}/${routeParts(route).join('/')}`)
+      } else if (original !== null) {
+        canonical.setAttribute('href', original)
+      }
+    }
   }, [route])
 
   let page: React.ReactNode
@@ -537,6 +582,32 @@ export default function App() {
   // exactly what the post-gate frame would be, instead of a spinner that
   // swaps to the full page (the landing load shift, Lighthouse CLS 0.997).
   const ready = useStoreReady()
+
+  // A signed-out visitor who opens the create route goes to signup and comes
+  // back to it once the account exists. This route used to render the landing
+  // page, which was a silent dead end (#1140): the Plan Bench CTA and the hero
+  // CTA both looked alive, and the trip prefill the bench had just stashed was
+  // never read, because the create page never mounted. The address is replaced
+  // rather than pushed, so Back does not bounce off the same redirect twice.
+  //
+  // The call waits for `ready`: the session is restored asynchronously, so
+  // until the hydrate settles every signed-in visitor still reads as signed
+  // out, and redirecting then threw a reloading user with a valid session onto
+  // the signup form. `needsSignupForCreate` owns that gate.
+  const signedOutCreate = needsSignupForCreate(ready, sessionUserId, parts[0])
+  useEffect(() => {
+    if (!signedOutCreate) return
+    // A calculator CTA carries the visitor's estimate in the query; keep it
+    // for the create form before the redirect drops the address.
+    stashCalcPrefillFromSearch(currentQuery().toString())
+    replaceRoute(signupThenCreatePath())
+    // The shell's route state must follow the address just replaced, and the
+    // router's change subscription cannot help: replaceRoute fires no listener
+    // on purpose, so a page's own view preference cannot re-run the shell.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRoute(currentRoute())
+  }, [signedOutCreate])
+
   // Splash hides on the same ready flip (or 2.5s worst case) so the launch
   // image never lingers behind the loading block.
   useEffect(() => {
@@ -560,7 +631,7 @@ export default function App() {
   // never the website's home. That ready-gate exclusion used to be
   // unconditional, so every launch flashed the marketing landing + its
   // website chrome before NativeHome arrived.
-  if (!ready && parts[0] !== 'auth' && parts[0] !== 'share' && (!bareRoute || isNative)) {
+  if (!ready && parts[0] !== 'auth' && parts[0] !== 'share' && !STATIC_COPY_SEGMENTS.has(parts[0] ?? '') && (!bareRoute || isNative)) {
     page = lazyRouteFallback
   } else if (parts[0] === 'share' && parts[1]) {
     page = <SharedTripPage payload={parts[1]} onNavigate={navigate} />
@@ -570,18 +641,35 @@ export default function App() {
     // Legacy UUID links (#/invite/<tripId>) from before invite codes shipped.
     // Keep working: the gate accepts a raw trip id too.
     page = <InviteGate codeOrTripId={parts[1]} onNavigate={navigate} />
+  } else if (parts[0] === 'faq') {
+    // Static copy: it answers for signed-out visitors and signed-in ones, so it
+    // sits pre-switch beside share/join/invite.
+    page = <Suspense fallback={lazyRouteFallback}><FaqPage /></Suspense>
+  } else if (parts[0] === 'how-it-works') {
+    page = <Suspense fallback={lazyRouteFallback}><HowItWorksPage /></Suspense>
   } else if (parts[0] === 'dmca') {
     // A policy page answers for signed-out visitors too, so it sits pre-switch
     // beside share/join/invite rather than inside the signed-in switch.
     page = <Suspense fallback={lazyRouteFallback}><DMCAPage /></Suspense>
+  } else if (parts[0] === 'about') {
+    // The story page is marketing copy for a visitor who has not signed up, so
+    // it sits beside dmca, pre-switch, and answers for both audiences.
+    page = <Suspense fallback={lazyRouteFallback}><AboutPage /></Suspense>
   } else if (!me) {
     // public pages stay accessible logged-out; everything else funnels to auth/landing
     if (parts[0] === 'pub' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage key={parts[1]} slug={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'creator' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><CreatorPage creatorId={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'explore') page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
+    else if (parts[0] === 'creators') page = <Suspense fallback={lazyRouteFallback}><CreatorRankingsPage /></Suspense>
+    // A creator's DM answer must open for a signed-out reader, so this page
+    // sits beside explore rather than inside the signed-in switch.
+    else if (parts[0] === 'for-creators') page = <Suspense fallback={lazyRouteFallback}><ForCreatorsPage /></Suspense>
     else if (parts[0] === 'auth' && !sessionUserId) page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
     else if (profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) page = <ProfileLookupPage state={profileState} />
     else if (parts[0] === 'trip' && parts[1]) page = <SignedOutTripPage route={route} navigate={navigate} />
+    // The create route redirects to signup in the effect beside `parts`; the
+    // frame before it lands holds the loader, so the landing page never flashes.
+    else if (parts[0] === CREATE_SEGMENT && !sessionUserId) page = lazyRouteFallback
     else page = <LandingPage onNavigate={navigate} />
   } else if (!GUEST_ROUTE_SEGMENTS.has(parts[0] ?? '')
     && profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) {
@@ -620,6 +708,9 @@ export default function App() {
         break
       case 'creators':
         page = <Suspense fallback={lazyRouteFallback}><CreatorRankingsPage /></Suspense>
+        break
+      case 'for-creators':
+        page = <Suspense fallback={lazyRouteFallback}><ForCreatorsPage /></Suspense>
         break
       case 'pub':
         page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage key={parts[1]} slug={parts[1] ?? ''} onNavigate={navigate} /></Suspense>
@@ -861,7 +952,7 @@ export default function App() {
         </svg>
         <div className="container footer-inner">
           <span><b>YatraFlow</b>: plan together, travel better. Built for Indian travellers</span>
-          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh trip cost calculator</a></span>
+          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" {...appLink('/about')}>About YatraFlow</a> · <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" {...appLink('/how-it-works')}>How it works</a> · <a className="footer-link" {...appLink('/faq')}>FAQ</a> · <a className="footer-link" href="/trip-cost-calculators/">Free trip cost calculators</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh</a> · <a className="footer-link" {...appLink('/for-creators')}>For travel creators</a></span>
         </div>
       </footer>
 
@@ -1023,18 +1114,26 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // membership-scoped hydration never loaded it - fetch it on demand. The
   // RPC fallback covers private trips: holding the link (the trip's UUID)
   // is the capability to preview it.
-  // The resolved trip AND the link target that resolved it, in one value: a
-  // failed resolve for a new target is a failed link, never the old trip.
-  const [resolved, setResolved] = useState<{ target: string; trip: Trip | null } | null>(null)
+  const [resolved, setResolved] = useState<{ target: string; identityGen: number; trip: Trip | null } | null>(null)
   // #804 (B1) — 'joined-unloaded' and 'join-failed' are distinct outcomes of a
   // join, kept apart from 'broken' (the link read failed) and 'retired' (a
   // trip-id link for a non-member). Each offers a different remedy.
   // The gate's own read states. 'ready' means the code or UUID resolved to a
   // trip and the join machine owns everything from there (B2).
-  const [status, setStatus] = useState<'loading' | 'broken' | 'retired' | 'ready'>('loading')
-  // A dropped connection resolves to the same null as a dead code, so the
-  // failure screen has to offer the one remedy that costs nothing: try again.
+  // #1019 — 'dead' means no trip has this code (the dead-link copy). 'broken'
+  // means the read itself failed (the retry screen). The two never share a screen.
+  const [status, setStatus] = useState<'loading' | 'broken' | 'dead' | 'retired' | 'ready'>('loading')
   const [retryTick, setRetryTick] = useState(0)
+  // The confirmation step. A valid invite no longer joins anyone the moment the
+  // page loads: the signed-in reader sees the facts and one button, and the
+  // machine begins only after that press.
+  // Keyed by the link, so a second invite in the same mounted gate starts
+  // unasked without a reset effect.
+  const [joinAskedFor, setJoinAskedFor] = useState<string | null>(null)
+  const joinAsked = joinAskedFor === codeOrTripId
+  // A paid guide behind this trip, from the public catalogue alone. Nothing is
+  // fetched for it, and an unpublished or free plan locks nothing.
+  const publications = usePublished()
   // Keep the latest navigate callback in a ref so we don't re-fire effects
   // on every parent re-render.
   const navigateRef = useRef(onNavigate)
@@ -1099,8 +1198,27 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // phase fields they act on, not on the machine object.
   const dispatch = useCallback((event: JoinEvent): JoinPlan => dispatchGateEvent(linkTarget, event, mountId), [linkTarget, mountId])
   const setOwner = useCallback((next: AttemptOwner | null) => setGateOwner(linkTarget, next, mountId), [linkTarget, mountId])
-  // Only a trip this target resolved counts, so a target change needs no reset.
-  const shownTrip: Trip | null = resolved && resolved.target === linkTarget ? resolved.trip : null
+  const identityGen = useIdentityGeneration()
+  const currentRead = resolved?.target === linkTarget && resolved.identityGen === identityGen ? resolved : null
+  const shownTrip = currentRead?.trip ?? null
+  const currentStatus = currentRead ? status : 'loading'
+  // Membership is a fact of the row the gate holds. When it is true the screen
+  // offers the plan itself instead of a join.
+  const memberNow = !!(me && shownTrip && (tripById(shownTrip.id) ?? shownTrip).members?.some(m => m.userId === me.id))
+  const paidGuidePrice = shownTrip ? paidGuidePriceFor(shownTrip.id, publications) : null
+  /** The preview's facts, read from the row the gate already holds. */
+  const inviteFacts = {
+    tripTitle: shownTrip?.name ?? null,
+    route: (shownTrip?.destinations ?? []).filter(Boolean).join(' → '),
+    crew: shownTrip?.members?.length ?? null,
+    startDate: shownTrip?.startDate ?? null,
+    endDate: shownTrip?.endDate ?? null,
+    days: shownTrip?.days?.length ?? null,
+    stops: invitesStopCount(shownTrip?.days),
+    perPersonBudget: shownTrip?.budgetPerPersonInr ?? null,
+    role: shownTrip?.inviteRole ?? null,
+    paidGuidePrice,
+  }
 
 
   // Resolve the code/UUID to a trip, once per link target. A hydration can
@@ -1110,12 +1228,11 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // decodeURIComponent first: the landing page's code box navigates with
   // encodeURIComponent, and a code typed with a space would otherwise arrive
   // as a %20 inside the segment.
-  const identityGen = useIdentityGeneration()
   useEffect(() => {
     let alive = true
     const resolve = isTripIdLink
       ? readSharedTrip(linkTarget, true)
-      : fetchTripByInviteCode(linkTarget).then(trip => trip ? { kind: 'found' as const, trip } : { kind: 'failed' as const })
+      : fetchTripByInviteCode(linkTarget)
     void resolve.then(result => {
       if (!alive) return
       // B2 — a successful resolve MUST leave the loading status. It was only ever
@@ -1124,8 +1241,11 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
       // was unreachable. The read succeeded, so the gate says ready and the join
       // machine drives from there.
       if (result.kind === 'cancelled') return
-      if (result.kind === 'found') { setResolved({ target: linkTarget, trip: result.trip }); setStatus('ready') }
-      else { setResolved({ target: linkTarget, trip: null }); setStatus(result.kind === 'unavailable' ? 'retired' : 'broken') }
+      if (result.kind === 'found') { setResolved({ target: linkTarget, identityGen, trip: result.trip }); setStatus('ready') }
+      else {
+        setResolved({ target: linkTarget, identityGen, trip: null })
+        setStatus(result.kind === 'unavailable' ? 'retired' : result.kind === 'dead' ? 'dead' : 'broken')
+      }
     })
     return () => { alive = false }
   }, [linkTarget, isTripIdLink, retryTick, identityGen])
@@ -1193,6 +1313,8 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     // itself to anyone else. Without this guard the join ran with the UUID as
     // the invite code, which the server cannot resolve.
     if (isTripIdLink) return
+    // The confirmation step: nothing joins until the reader presses Join.
+    if (!joinAsked) return
     // B-1 — membership is decided BEFORE the machine is told to begin, and the
     // machine returns the right action from that one event. Dispatching 'begin'
     // and then correcting it with a second event is what hung a member on
@@ -1209,7 +1331,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     const plan = dispatch({ type: 'begin', userId: me.id, gen: identityGen, member, tryId: attempt.id })
     if (plan.action.type === 'none') return
     runJoinAction(plan.action, shownTrip.id, me.id, identityGen, attempt, shownTrip.inviteCode ?? linkTarget)
-  }, [me, shownTrip, identityGen, isTripIdLink, linkTarget, joinPhase, joinGen, joinUserId, joinTryId, joinReason, dispatch, runJoinAction, beginAttempt])
+  }, [me, shownTrip, identityGen, isTripIdLink, linkTarget, joinAsked, joinPhase, joinGen, joinUserId, joinTryId, joinReason, dispatch, runJoinAction, beginAttempt])
 
   // B1 — a retry executes exactly one action HERE, from the action the machine
   // returned. The old code dropped it and waited for the effect to notice, so the
@@ -1263,16 +1385,56 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   }, [joinPhase, joinGen, joinUserId, me, shownTrip, identityGen, linkTarget, owner, machine])
   /* The gate's own state. A read that failed and a link that is dead are
      different answers, and the code below never shows one as the other. */
-  const gate = inviteGateState({ loading: status === 'loading' || !shownTrip, failed: status === 'broken', trip: shownTrip })
+  const gate = inviteGateState({ loading: currentStatus === 'loading' || !shownTrip, failed: currentStatus === 'broken', trip: shownTrip })
 
-  if (status === 'retired') {
+  // #1019 — no trip has this code. The copy is split into a title and a body; read
+  // together they are the dead-link copy word for word.
+  if (currentStatus === 'dead') {
+    // The dead-link screen. The owner's name is not known here (nothing
+    // resolved), so the copy falls back to whoever shared it, and the code box
+    // is the way back in.
+    const expired = expiredInviteCopy()
+    return (
+      <div className="container yf-page page-enter inv-screen">
+        <PageHeader
+          headline={{ lead: expired.headline }}
+          lede={expired.body}
+        />
+        <form
+          className="inv-code-form"
+          onSubmit={event => {
+            event.preventDefault()
+            const code = new FormData(event.currentTarget).get('trip-code')
+            if (typeof code === 'string' && code.trim()) onNavigate(inviteRoute(normalizeInviteCode(code)))
+          }}
+        >
+          <label className="inv-code-label" htmlFor="inv-code-input">{expired.codeLabel}</label>
+          <div className="inv-code-row">
+            <input
+              id="inv-code-input"
+              className="input"
+              name="trip-code"
+              placeholder={expired.codePlaceholder}
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+            />
+            <button className="btn btn-primary" type="submit">{expired.codeAction}</button>
+          </div>
+        </form>
+        <a className="inv-quiet-link" {...appLink(expired.helpHref)}>{expired.helpLabel} →</a>
+      </div>
+    )
+  }
+
+  if (currentStatus === 'retired') {
     return (
       <div className="container yf-page page-enter">
         <StateBlock
           kind="empty"
           art={<Link2 size={38} aria-hidden />}
           title="This invite link is retired"
-          body="Ask the trip owner for a fresh invite link."
+          body="This invite link no longer works. Ask the trip owner for a new one. If you are already on this trip, open it from My trips."
           actions={(
             <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
           )}
@@ -1307,7 +1469,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
           kind="empty"
           art={<Link2 size={38} aria-hidden />}
           title="This invite is no longer active"
-          body="The code may be mistyped or no longer active. Ask the organiser for a fresh link."
+          body="This invite link no longer works. Ask the trip owner for a new one. If you are already on this trip, open it from My trips."
           actions={(
             <div className="inv-actions">
               <button className="btn btn-primary" onClick={() => { setStatus('loading'); setRetryTick(t => t + 1) }}>Try again</button>
@@ -1419,6 +1581,45 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     )
   }
 
+  // State D: this account is already on the trip. No error styling, and the
+  // only action is the plan itself.
+  if (me && shownTrip && memberNow) {
+    const member = alreadyMemberCopy()
+    return (
+      <div className="container yf-page page-enter inv-screen">
+        <PageHeader
+          headline={{ lead: member.headline }}
+          actions={(
+            <button className="btn btn-primary" onClick={() => onNavigate(`/trip/${shownTrip.id}`)}>{member.action}</button>
+          )}
+        />
+      </div>
+    )
+  }
+
+  // State B: a valid invite, signed in. The facts and one button; the join
+  // runs only after the press.
+  if (me && shownTrip && !memberNow && !joinAsked && phase === 'idle' && !isTripIdLink) {
+    const confirm = inviteConfirmCopy(inviteFacts)
+    const guideNote = recipientInviteCopy(inviteFacts).paidGuideNote
+    return (
+      <div className="container yf-page page-enter inv-screen">
+        <PageHeader
+          kicker="Trip invite"
+          headline={{ lead: confirm.headline }}
+          lede={confirm.sub}
+          actions={(
+            <div className="inv-actions">
+              <button className="btn btn-primary" onClick={() => setJoinAskedFor(codeOrTripId)}>{confirm.primary}</button>
+              <button className="btn btn-outline" onClick={() => onNavigate('/trips')}>{confirm.quiet}</button>
+            </div>
+          )}
+          meta={guideNote ? <p className="small muted inv-paid-guide">{guideNote}</p> : null}
+        />
+      </div>
+    )
+  }
+
   if (!me) {
     // The state rides the gate, so a stale private row cannot settle a lookup
     // whose latest read failed — the notice and its retry stay reachable.
@@ -1434,53 +1635,41 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
         </div>
       )
     }
-    // Park the invite in the URL and bounce through auth with a next param -
-    // the old buttons went to plain /auth, and AuthPage's post-login redirect
-    // to /trips dropped the invite entirely: users logged in, landed on My
-    // Trips, and the trip never appeared.
-    // The preview below reads only what the gate already holds. No field is
-    // fetched a second time to fill it in.
-    const preview = invitePreview(shownTrip ?? { name: '' })
+    // State A: a valid invite, signed out. The common case: the reader was told
+    // by a friend to tap a link. One primary action, one reassurance, and the
+    // quiet read-only path, which reveals what the invite already knows.
+    const copy = recipientInviteCopy(inviteFacts)
+    const lookRows = inviteReadOnlyFacts(inviteFacts)
     return (
-      <div className="container yf-page page-enter">
-        <StateBlock
-          kind="empty"
-          art={<Mail size={38} aria-hidden />}
-          title={`You’ve been invited to “${preview.name}”`}
-          body={(
-            <>
-              <p className="muted">Log in or create a free account to join the planning crew.</p>
-              <dl className="inv-preview">
-                {preview.route && (
-                  <div className="inv-preview-row">
-                    <dt>Route</dt>
-                    <dd>{preview.route}</dd>
-                  </div>
-                )}
-                {preview.dates && (
-                  <div className="inv-preview-row">
-                    <dt>Dates</dt>
-                    <dd>{preview.dates}</dd>
-                  </div>
-                )}
-                <div className="inv-preview-row">
-                  <dt>Crew</dt>
-                  <dd>{preview.memberCount} {preview.memberCount === 1 ? 'planner' : 'planners'}</dd>
-                </div>
-              </dl>
-            </>
-          )}
+      <div className="container yf-page page-enter inv-screen">
+        <PageHeader
+          kicker="Trip invite"
+          headline={{ lead: copy.headline }}
+          lede={copy.facts}
           actions={(
-            <div className="inv-actions">
-              {/* The `next` round-trip is load-bearing: it parks this invite so
-                  AuthPage returns here after login. The route and its encoding
-                  come from inviteLoginNext and inviteSignupNext, and the
-                  navigation calls below stay exactly as they were. */}
-              <button className="btn btn-outline" onClick={() => onNavigate(inviteLoginNext(codeOrTripId, isTripIdLink))}>Log in</button>
-              <button className="btn btn-primary" onClick={() => onNavigate(inviteSignupNext(codeOrTripId, isTripIdLink))}>Create account</button>
-            </div>
+            <button className="btn btn-primary" onClick={() => onNavigate(inviteSignupNext(codeOrTripId, isTripIdLink))}>{copy.primary}</button>
           )}
+          meta={<p className="small muted inv-reassure">{copy.underPrimary}</p>}
         />
+        <section className="inv-body" aria-labelledby="inv-role-line">
+          <p id="inv-role-line" className="inv-role">{copy.roleLine}</p>
+          {copy.paidGuideNote ? <p className="small muted inv-paid-guide">{copy.paidGuideNote}</p> : null}
+          <details className="inv-look">
+            <summary className="inv-quiet-link">{copy.lookFirst} →</summary>
+            <dl className="inv-look-facts">
+              {lookRows.map(row => (
+                <div key={row.label} className="inv-look-row">
+                  <dt>{row.label}</dt>
+                  <dd>{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+          <h2 className="inv-next-title">What happens next</h2>
+          <ol className="inv-next">
+            {copy.nextSteps.map(step => <li key={step}>{step}</li>)}
+          </ol>
+        </section>
       </div>
     )
   }

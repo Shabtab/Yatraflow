@@ -3,15 +3,17 @@
 import { resolveOrigin } from './_origin.js'
 import { CREATOR_PAGE_CLASS, CREATOR_PAGE_STYLE, renderCreatorBody, creatorJsonLd } from './_creatorBody.js'
 import { escapeHtml } from './_escape.js'
-import { defaultCard, ogImageTags, twitterImageTags } from './_shareCard.js'
+import { defaultCard, fitOg, ogImageTags, twitterImageTags, OG_DESCRIPTION_MAX, OG_TITLE_MAX } from './_shareCard.js'
 
-const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
+const DEFAULT_TITLE = 'YatraFlow — Plan Indian trips together'
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const PUBLICATION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 // A post id, as `isPostId` in src/lib/creatorPosts.ts checks it.
 const POST_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-// Must match src/lib/shareUrl.ts. The API cannot import client modules.
-const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community']
+// Must match src/lib/shareUrl.ts. The API cannot import client modules, so
+// this is the third mirror of one vocabulary (api/i.js holds the second).
+// tests/indexable-creator.test.ts sends every value through this handler.
+const SHARE_SOURCES = ['buyer', 'calculator', 'community', 'copy', 'creator', 'explore', 'purchases', 'wa']
 const PAGE = 1000
 const MAX_PAGES = 20
 // A found card is edge-cacheable for five minutes, then served stale for ten
@@ -21,6 +23,60 @@ const CARD_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalid
 // The card's own stylesheet. It goes in the document head, never inside the body
 // fragment, so a crawler reads the text and the style block as separate things.
 const CREATOR_STYLE_TAG = `<style>${CREATOR_PAGE_STYLE}</style>`
+
+/** A card title inside the WhatsApp budget. A long name drops the promise
+ *  clause before it drops its own words. */
+function creatorCardTitle(name) {
+  const rich = `${name} on YatraFlow — India Routes & Stats`
+  if (rich.length <= OG_TITLE_MAX) return rich
+  const plain = `${name} on YatraFlow`
+  return plain.length <= OG_TITLE_MAX ? plain : `${fitOg(name, OG_TITLE_MAX - ' on YatraFlow'.length)} on YatraFlow`
+}
+
+/** The states a catalogue covers, from the stored ISO codes. A code that is
+ *  not a two-letter string is ignored, so a bad row cannot inflate the count. */
+function coveredStateCount(rows) {
+  const codes = new Set()
+  for (const row of rows) {
+    if (!Array.isArray(row?.state_codes)) continue
+    for (const code of row.state_codes) {
+      if (typeof code === 'string' && /^[A-Z]{2}$/.test(code)) codes.add(code)
+    }
+  }
+  return codes.size
+}
+
+/** The planned distance across a catalogue, or null when no row has one.
+ *  A null distance is unknown, never zero, so it is skipped before the
+ *  conversion — one unknown row must not turn a whole catalogue into "0 km". */
+function plannedKmTotal(rows) {
+  let total = 0
+  let seen = false
+  for (const row of rows) {
+    const raw = row?.planned_km
+    if (raw === null || raw === undefined || raw === '') continue
+    const km = Number(raw)
+    if (!Number.isFinite(km) || km < 0) continue
+    total += km
+    seen = true
+  }
+  return seen ? Math.round(total) : null
+}
+
+/** The route line a storefront card leads with: how many timed routes, across
+ *  how many states, over how many planned kilometres. Null when the catalogue
+ *  carries no such facts, and then the plain count line speaks for it. */
+function storefrontSummary(rows) {
+  if (!rows.length) return null
+  const states = coveredStateCount(rows)
+  const km = plannedKmTotal(rows)
+  if (!states && km === null) return null
+  const count = rows.length
+  const routes = `${count} timed ${count === 1 ? 'route' : 'routes'}`
+  const across = states ? ` across ${states} Indian ${states === 1 ? 'state' : 'states'}` : ''
+  const distance = km === null ? '' : ` (${km.toLocaleString('en-IN')} km planned)`
+  return `${routes}${across}${distance}.`
+}
 
 /**
  * The card. A profile the database could not read renders the noindex form:
@@ -50,11 +106,19 @@ ${CREATOR_STYLE_TAG}
   const published = publications === null ? 'Published itineraries unavailable' : count > 0
     ? `${count} published ${count === 1 ? 'itinerary' : 'itineraries'}`
     : 'New to YatraFlow'
-  const title = `${name} on YatraFlow`
+  const title = creatorCardTitle(name)
   // The bio and the count are BOTH the card's story — a description that was
   // only the bio dropped the one number that tells a reader whether this
-  // creator has anything to look at.
-  const description = [bio, published].filter(Boolean).join(' · ')
+  // creator has anything to look at. The stored route facts lead when they
+  // exist, because the numbers are the pitch; the bio follows as context, and
+  // the plain count speaks when no facts exist.
+  const summary = publications && count > 0 ? storefrontSummary(publications) : null
+  const facts = summary
+    ? [summary, bio].filter(Boolean).join(' ')
+    : [bio, published].filter(Boolean).join(' · ')
+  const next = 'Open & fork for your group.'
+  const joined = /[.!?]$/.test(facts) ? `${facts} ${next}` : `${facts}. ${next}`
+  const description = joined.length <= OG_DESCRIPTION_MAX ? joined : fitOg(facts, OG_DESCRIPTION_MAX)
   const canonical = `${origin}/c/${id}`
   // #426 slice 3: the browser lands on the app page's real path directly.
   // A post-tagged link (G8) keeps its tag, so the app page counts the visit.
@@ -90,14 +154,18 @@ ${ref || post ? `<script>location.replace(${JSON.stringify(target)})</script>` :
 }
 
 // Read only public card fields. Never fetch trips, emails or sales.
-async function readPublications(url, key, id) {
+const CATALOGUE_COLUMNS = 'id,title,tagline,planned_km,state_codes'
+// A project that has not run the route-facts migration has no such columns,
+// and the card must still read its rows.
+const BASE_COLUMNS = 'id,title,tagline'
+async function readPublications(url, key, id, columns = CATALOGUE_COLUMNS) {
   const publications = []
   let cursor = null
   for (let page = 0; page < MAX_PAGES; page++) {
     const after = cursor ? `&id=gt.${encodeURIComponent(cursor)}` : ''
     const response = await fetch(
       `${url.replace(/\/+$/, '')}/rest/v1/published_itineraries?creator_id=eq.${encodeURIComponent(id)}` +
-      `&unpublished_at=is.null&select=id,title,tagline&order=id.asc&limit=${PAGE}${after}`,
+      `&unpublished_at=is.null&select=${columns}&order=id.asc&limit=${PAGE}${after}`,
       {
         headers: { apikey: key, authorization: `Bearer ${key}` },
         signal: AbortSignal.timeout(4000),
@@ -185,6 +253,9 @@ export default async function handler(req, res) {
 
   try {
     publications = await readPublications(url, key, id)
+    // The route facts are optional columns. When they are missing, the card
+    // reads the same rows without them instead of failing the catalogue.
+    if (publications === null) publications = await readPublications(url, key, id, BASE_COLUMNS)
   } catch {
     // Keep the public bio. Explain the failed catalogue read separately.
   }

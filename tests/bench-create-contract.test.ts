@@ -9,7 +9,7 @@
 // comes up empty.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { CREATE_SEGMENT, CREATE_PATH, CREATE_ROUTE } from '../src/lib/routes'
+import { CREATE_SEGMENT, CREATE_PATH, CREATE_ROUTE, needsSignupForCreate, signupThenCreatePath } from '../src/lib/routes'
 import {
   BENCH_DEFAULTS, BENCH_PREFILL_KEY, computeBenchBill, parseBenchPrefill,
   readBenchPrefill, stashBenchPrefill, type BenchInputs,
@@ -46,6 +46,22 @@ describe('#398 — one route, three forms, no literal', () => {
     // #426 slice 2: the CTA navigates the path form (the router reads pathname).
     expect(source('components/PlanBench.tsx')).toContain('navigate(CREATE_PATH)')
     expect(source('App.tsx')).toContain('case CREATE_SEGMENT:')
+  })
+
+  it('sends a signed-out visitor to signup, and only once the session settles', () => {
+    // A cold load of /new with a stored session reads `sessionId === null`
+    // until the hydrate restores it. Redirecting on that reading alone threw a
+    // signed-in visitor onto the signup form and lost the step they had chosen.
+    expect(needsSignupForCreate(false, null, CREATE_SEGMENT), 'redirected before the hydrate settled').toBe(false)
+    expect(needsSignupForCreate(true, 'user_1', CREATE_SEGMENT), 'redirected a signed-in visitor').toBe(false)
+    expect(needsSignupForCreate(true, null, CREATE_SEGMENT)).toBe(true)
+    expect(needsSignupForCreate(true, null, 'trips')).toBe(false)
+    expect(needsSignupForCreate(true, null, undefined)).toBe(false)
+    expect(signupThenCreatePath()).toBe('/auth?mode=signup&next=%2Fnew')
+  })
+
+  it('reads that gate from one helper, so the effect cannot drift from it', () => {
+    expect(source('App.tsx')).toContain('needsSignupForCreate(ready, sessionUserId, parts[0])')
   })
 
   it('leaves no hardcoded create route in the files that own one', () => {

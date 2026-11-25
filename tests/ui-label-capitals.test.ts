@@ -25,7 +25,6 @@ export const ALLOWLIST: Allowed[] = [
   ...entry('src/components/TrendChart.tsx', ['reading…', 'not read'], 'MID: value after the "Unlocks" label on one line'),
   ...entry('src/pages/CreateTrip.tsx', ['planner', 'rented car', 'below', 'above', 'within'], 'MID: word inside a hint sentence'),
   ...entry('src/pages/CreatorHubPage.tsx', ['net', 'gross'], 'MID: basis word after "Lifetime"'),
-  ...entry('src/pages/Landing.tsx', ['flow together'], 'MID: end of the headline "Plan trips that actually flow together"'),
   ...entry('src/pages/PublicItinerary.tsx', ['day', 'days'], 'MID: "Read the free {day or days} first"'),
   ...entry('src/pages/Purchases.tsx', ['it', 'them'], 'MID: end of "updated since you bought it or them"'),
   ...entry('src/pages/trip/BudgetTab.tsx', ['your local pump price', 'indicative petrol price. Actual consumption varies'], 'MID: inside a parenthetical in one sentence'),
@@ -38,6 +37,7 @@ export const ALLOWLIST: Allowed[] = [
   ...entry('src/components/storefront/ride/RideTimeline.tsx', ['to'], 'MID: range prefix after the arrival time'),
   ...entry('src/components/trips/OverviewRouteCard.tsx', ['about'], 'MID: qualifier written before a number inside <b>'),
   ...entry('src/lib/budgetBenchmarks.ts', ['the Konkan coast', 'the North-East'], 'MID: region label used inside a sentence'),
+  ...entry('src/pages/FaqPage.tsx', ['mail us'], 'MID: inside the intro sentence "If yours isn\u2019t here, mail us and we\u2019ll add it."'),
   ...entry('src/lib/budgetBenchmarks.ts', ['shoestring', 'budget', 'comfort', 'premium', 'heritage'], 'NOT-UI: tier data label, no UI call site (tests only)'),
   ...entry('src/lib/createDraft.ts', ['earlier', 'just now', 'yesterday'], 'MID: draft age, always joined after "Saved"'),
   ...entry('src/lib/native.ts', ['shared', 'unavailable'], 'NOT-UI: internal status return code, never rendered'),
@@ -53,6 +53,7 @@ export const ALLOWLIST: Allowed[] = [
   ...entry('src/pages/trip/TripSettingsForm.tsx', ['up to'], 'MID: hint beside the crew input ("up to 12")'),
   ...entry('src/pages/trip/TripSettingsForm.tsx', ['per litre'], 'UNIT: follows the fuel price value'),
   ...entry('src/pages/TripCreated.tsx', ['per head'], 'UNIT: follows the per-head price value'),
+  ...entry('src/pages/ForCreatorsPage.tsx', ['yatraflow.in'], 'MID: a hostname under the link-card title, written lowercase as addresses are'),
 ]
 
 export function uiLabelHits(files: string[]): string[] {

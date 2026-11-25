@@ -39,7 +39,7 @@ describe('routeParts', () => {
 
 describe('pageTitle', () => {
   it('names the site on the root route', () => {
-    expect(pageTitle(routeParts('/'))).toBe(`${SITE}: Plan real trips, together`)
+    expect(pageTitle(routeParts('/'))).toBe(`${SITE}: Plan Indian trips together`)
   })
 
   it.each([
@@ -47,6 +47,7 @@ describe('pageTitle', () => {
     ['/trips', 'Your trips'],
     ['/new', 'New trip'],
     ['/explore', 'Explore itineraries'],
+    ['/about', 'About'],
     ['/creators', 'Creator rankings'],
     ['/creator-hub', 'Creator hub'],
     ['/purchases', 'My purchases'],
@@ -88,7 +89,7 @@ describe('pageTitle', () => {
 
   it('names only the site for a route it does not know', () => {
     expect(pageTitle(['nonsense'])).toBe(SITE)
-    expect(pageTitle([])).toBe(`${SITE}: Plan real trips, together`)
+    expect(pageTitle([])).toBe(`${SITE}: Plan Indian trips together`)
   })
 
   it('never returns an empty title, whatever it is handed', () => {

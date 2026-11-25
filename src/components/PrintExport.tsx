@@ -9,6 +9,7 @@
 // modal shows the same markup scaled down, so what you see is what prints.
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { InlineIcon } from './icons'
+import { ChevronRight } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { Printer } from 'lucide-react'
 import type { Trip } from '../data/types'
@@ -49,7 +50,12 @@ function PrintRow({ row, timeFormat }: { row: ReturnType<typeof buildPrintModel>
   )
 }
 
-export function PrintExport({ trip, legCorrections }: { trip: Trip; legCorrections?: Record<string, LegEstimate> }) {
+/** `variant="row"` draws the Share tab's take-it row instead of an outline button. */
+export function PrintExport({ trip, legCorrections, variant = 'button' }: {
+  trip: Trip
+  legCorrections?: Record<string, LegEstimate>
+  variant?: 'button' | 'row'
+}) {
   const [open, setOpen] = useState(false)
   const timeFormat = useTimeFormat()
   // Portal host on <body>: the print stylesheet hides #root entirely, so the
@@ -89,9 +95,17 @@ export function PrintExport({ trip, legCorrections }: { trip: Trip; legCorrectio
 
   return (
     <>
-      <button className="btn btn-outline btn-sm" onClick={() => setOpen(true)}>
-        <InlineIcon icon={Printer} size={13} gap={4} />Print day cards
-      </button>
+      {variant === 'row' ? (
+        <button type="button" className="shr-take-row" onClick={() => setOpen(true)}>
+          <span className="shr-take-icon"><InlineIcon icon={Printer} size={16} gap={0} /></span>
+          <span className="shr-take-text"><b className="small">Print day cards</b><span className="small muted">Save as PDF for no-signal stretches</span></span>
+          <InlineIcon icon={ChevronRight} size={16} gap={0} />
+        </button>
+      ) : (
+        <button className="btn btn-outline btn-sm" onClick={() => setOpen(true)}>
+          <InlineIcon icon={Printer} size={13} gap={4} />Print day cards
+        </button>
+      )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="Print day cards / offline PDF">
         <p className="hint-text" style={{ margin: '0 0 12px' }}>

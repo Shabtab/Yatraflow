@@ -537,12 +537,12 @@ describe('the preview stays out of the cache', () => {
     }
   })
 
-  it('returns the row directly, after one provenance check', () => {
-    // Round 10 — a preview with no trip id or no usable revision is not an
-    // answer this client acts on; a well-formed one is returned unchanged.
-    expect(body).toContain('const preview = rows[0]')
-    expect(body).toContain('if (typeof preview?.id !== \'string\' || preview.id.length === 0 || !validWriteVersion(preview.write_version)) return null')
-    expect(body).toMatch(/return rowToTrip\(preview, \[\]\)/)
+  it('classifies the answer with one provenance check, then returns the row', () => {
+    // #1019 — the B3 provenance check moved into classifyInviteRows, which
+    // inviteLookup.test.ts pins row by row. The store only delegates to it.
+    expect(body).toContain('const verdict = classifyInviteRows(rpc.data)')
+    expect(body).toContain("if (verdict.kind !== 'found') return verdict")
+    expect(body).toMatch(/return \{ kind: 'found', trip: rowToTrip\(verdict\.row, \[\]\) \}/)
   })
 
   it('the marker machinery is gone', () => {
@@ -638,15 +638,15 @@ describe('B2 — a resolved link leaves the loading status', () => {
   it('App sets ready when the read returns a trip', () => {
     expect(APP).toContain("setStatus('ready')")
     // The set must be inside the success branch, next to the trip it returns.
-    // Round 10 keeps the trip WITH its target, so the setter is `setResolved`.
+    // The gate stores the trip with the target and account generation.
     const at = APP.indexOf("setStatus('ready')")
-    expect(APP.slice(Math.max(0, at - 160), at)).toContain('setResolved({ target: linkTarget, trip: result.trip })')
+    expect(APP.slice(Math.max(0, at - 160), at)).toContain('setResolved({ target: linkTarget, identityGen, trip: result.trip })')
   })
 
   it('the loading render is only for a genuinely unread link', () => {
     // The spinner must not swallow the terminal screens or the signed-out
     // preview, so "loading" needs the read to still be in flight.
-    expect(APP).toMatch(/status === 'loading' \|\| !shownTrip/)
+    expect(APP).toMatch(/currentStatus === 'loading' \|\| !shownTrip/)
   })
 })
 

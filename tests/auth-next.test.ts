@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { authNext } from '../src/lib/authNext'
+import { authNext, isInviteNext } from '../src/lib/authNext'
+
+describe('the invite cue gate', () => {
+  it.each(['/join/GOA-ABCD', '/invite/00000000-0000-0000-0000-000000000001'])('is on for %s', path => {
+    expect(isInviteNext(authNext(path))).toBe(true)
+  })
+  it.each([null, '/trips', '/pub/pub_growth', '/joint/x', '//join/x', 'https://example.com/join/x'])('is off for %s', path => {
+    expect(isInviteNext(authNext(path))).toBe(false)
+  })
+})
 
 describe('safe auth return paths', () => {
   it.each(['/pub/pub_growth', '/join/GOA-ABCD', '/invite/00000000-0000-0000-0000-000000000001', '/trips'])('keeps %s', path => {

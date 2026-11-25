@@ -23,6 +23,20 @@ it('rejects em dashes and their HTML entity in source literals and JSX with file
   ])
 })
 
+it('exempts only the exact locked main line, not a variant of it', () => {
+  const dash = String.fromCodePoint(0x2014)
+  expect(emDashLabels('example.tsx', `const a = 'Plan Indian trips together ${dash} not in a chaotic group chat.'`)).toEqual([])
+  expect(emDashLabels('example.tsx', [
+    `const b = "Plan Indian trips together ${dash} not in a chaotic group chat."`,
+    `const c = 'Plan Indian trips together ${dash} not in a group chat.'`,
+    `const d = 'Plan Indian trips together \\u2014 not in a chaotic group chat.'`,
+  ].join('\n'))).toEqual([
+    expect.stringMatching(/^example\.tsx:1:/),
+    expect.stringMatching(/^example\.tsx:2:/),
+    expect.stringMatching(/^example\.tsx:3:/),
+  ])
+})
+
 it('keeps every UI source literal and JSX text free of em dashes', () => {
   expect(sourceFiles('src').flatMap(file => emDashLabels(file))).toEqual([])
   // It parses every src file. 5 s is too short under full-suite load (#1002).

@@ -31,24 +31,26 @@ export interface RoadChain {
   ptStopId?: (string | null)[]
   /** Points in the outbound section (start → stops) — the Map tab's own view */
   outboundCount: number
-  /** true when the chain ends with a one-way DESTINATION leg (after any
-   *  round-trip return) — the map's drawn geometry includes it (#polylines),
-   *  while totalKm/totalMin/dayRoadKm stay outbound-only. Distinguishing this
-   *  tail from the round-trip ride home is what lets the map draw the
-   *  destination without double-counting the journey. */
+  /** true when the chain ends with a one-way DESTINATION leg after the outbound
+   *  legs — the map's drawn geometry includes it (#polylines), while
+   *  totalKm/totalMin/dayRoadKm stay outbound-only. A round trip never has a
+   *  tail (#1006): its destination sits INSIDE the outbound legs, before the
+   *  ride home, so the ride home is always the last leg. */
   hasDestTail: boolean
 }
 
 /**
  * Build the one road chain for a trip. Points are the trip's start, every
- * non-rejected stop in day/order sequence, then — for a round trip — the return
- * to the start, and finally the last destination when it is not already the
- * final point.
+ * non-rejected stop in day/order sequence, and the last destination when it is
+ * not already the last stop. A round trip then ends with the return to the
+ * start; a one-way trip keeps the destination as a trailing tail.
  *
  * `outboundCount` is the boundary the Map tab consumes: legs before it belong to
- * start → stops (the journey the fatigue math and the suggestion corridor
- * describe); legs after it are the drive home / trailing destination the engine
- * corrections need but the map's outbound view must not double-count.
+ * start → stops (→ destination, on a round trip) — the journey the fatigue math
+ * and the suggestion corridor describe, which is also what the engine's day
+ * journeys count. Legs after it are the drive home or a one-way destination
+ * tail: the engine corrections need them, but the map's outbound view must not
+ * double-count them.
  */
 export function buildRoadChain(trip: Pick<Trip, 'startLocationCoords' | 'days' | 'destinationCoords' | 'roundTrip' | 'transportMode'>): RoadChain & { ptKind: RoadPointKind[]; ptStopId: (string | null)[] } {
   const points: RoadChainPoint[] = []
@@ -70,18 +72,35 @@ export function buildRoadChain(trip: Pick<Trip, 'startLocationCoords' | 'days' |
         ptDay.push(d.index)
         ptKind.push('stop'); ptStopId.push(s.id)
       }))
+  const dc = trip.destinationCoords ?? []
+  const lastDest = dc.length ? dc[dc.length - 1] : undefined
+  const returnsHome = isRoundTrip(trip) && !!trip.startLocationCoords
+  // #1006: test the destination against the last OUTBOUND point, never against
+  // the ride-home point. A round trip's home is the start, so comparing there
+  // made a destination that IS the last stop look new, and a home → destination
+  // "tail" leg was added after the return.
+  const same = (a: RoadChainPoint | undefined, b: RoadChainPoint) => !!a && a.lat === b.lat && a.lng === b.lng
+  const destIsNew = !!lastDest
+    && !same(points[points.length - 1], lastDest)
+    // a round trip that ends its destination at home adds nothing before the return
+    && !(returnsHome && same(trip.startLocationCoords ?? undefined, lastDest))
+  // A round trip's destination is part of the OUTBOUND journey, so it goes
+  // BEFORE the drive home and inside `outboundCount`. A one-way destination
+  // stays a tail after the outbound legs (`hasDestTail`).
+  if (returnsHome && destIsNew && lastDest) {
+    points.push({ lat: lastDest.lat, lng: lastDest.lng })
+    ptDay.push(null)
+    ptKind.push('destination'); ptStopId.push(null)
+  }
   // The outbound journey ends here: everything below is the drive back.
   const outboundCount = points.length
-  if (isRoundTrip(trip) && trip.startLocationCoords) {
+  if (returnsHome && trip.startLocationCoords) {
     points.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng })
     ptDay.push(null)
     ptKind.push('return'); ptStopId.push(null)
   }
-  const dc = trip.destinationCoords ?? []
-  const lastDest = dc.length ? dc[dc.length - 1] : undefined
-  const tail = points[points.length - 1]
-  const hasDestTail = !!(lastDest && !(tail && tail.lat === lastDest.lat && tail.lng === lastDest.lng))
-  if (hasDestTail) {
+  const hasDestTail = !returnsHome && destIsNew
+  if (hasDestTail && lastDest) {
     points.push({ lat: lastDest.lat, lng: lastDest.lng })
     ptDay.push(null)
     ptKind.push('destination'); ptStopId.push(null)
@@ -94,12 +113,14 @@ export function buildRoadChain(trip: Pick<Trip, 'startLocationCoords' | 'days' |
  *  change. Without this, `mutateTrip`'s identity-clone on every save re-measures
  *  the whole OSRM chain on a fuel-price keystroke (#188/#202/#213).
  *
- *  Mirrors `buildRoadChain` exactly — same sort order, same rejected-filter,
- *  same round-trip-return-to-start leg, same last-destination tail. If this
- *  function ever drifts from buildRoadChain, re-measure fires on cosmetic
- *  changes (cache miss) or fails to fire on real ones (stale chain). The
- *  `tripRoad.test.ts` "matches what buildRoadChain actually consumes" case
- *  pins the equality. */
+ *  Reads the same inputs as `buildRoadChain` — same sort order, same
+ *  rejected-filter, the return-to-start point on a round trip, and the last
+ *  destination. It does NOT copy the chain's point order or its duplicate test
+ *  (a round trip puts the destination before the return; the signature lists it
+ *  after). It only has to change whenever the chain changes. If it ever misses
+ *  an input of buildRoadChain, a real change leaves a stale chain; if it adds a
+ *  cosmetic input, re-measure fires on every edit. The `tripRoad.test.ts`
+ *  "matches what buildRoadChain actually consumes" case pins this. */
 export function roadChainSig(
   trip: Pick<Trip, 'startLocationCoords' | 'days' | 'destinationCoords' | 'roundTrip' | 'transportMode'>,
 ): string {
@@ -313,6 +334,21 @@ export interface MapRoadView {
 
 const EMPTY_MAP_VIEW: MapRoadView = { geometry: null, totalKm: null, totalMin: null, dayRoadKm: null }
 
+/** Largest gap between where one leg ends and the next starts for them to join. */
+const JOIN_TOLERANCE_KM = 25
+
+/** Does `next` start where the last of `legs` ends? A router snaps both ends to the
+ *  same road point, so a real join is metres apart; a join gap is hundreds of km. */
+function startsWhereLineEnds(legs: RoadLeg[], next: RoadLeg): boolean {
+  const lastGeometry = legs[legs.length - 1]?.geometry
+  const end = lastGeometry?.[lastGeometry.length - 1]
+  const start = next.geometry[0]
+  if (!end || !start) return false
+  const dLat = (end[1] - start[1]) * 111.32
+  const dLng = (end[0] - start[0]) * 111.32 * Math.cos(((end[1] + start[1]) / 2) * Math.PI / 180)
+  return Math.hypot(dLat, dLng) <= JOIN_TOLERANCE_KM
+}
+
 /**
  * The OUTBOUND legs of a measured chain (start → stops, excluding the round
  * trip's ride home and any trailing destination) — the slice the Map tab's
@@ -375,11 +411,15 @@ export function mapRoadViewFromLegs(
     if (day != null) perDay.set(day, (perDay.get(day) ?? 0) + l.distanceKm)
   })
   // The drawn geometry is outbound + (when present) the one-way destination
-  // tail. A round-trip return is a separate line, so skip that middle leg
-  // instead of drawing it once in the main line and again as the return line.
-  const drawnLegs = chain.hasDestTail
-    ? [...legsView, legs[legs.length - 1]].filter(Boolean)
-    : legsView
+  // tail. A round-trip return is a separate line, so it is never added here.
+  // #1006 backstop: the tail is the leg RIGHT AFTER the outbound legs, and only
+  // when it starts where the outbound line ends. The old code took the chain's
+  // last leg, which on a round trip started at home — flattening it onto an
+  // outbound line that ends at the last stop drew one straight join segment.
+  const tail = chain.hasDestTail && chain.points.length === chain.outboundCount + 1
+    ? legs[outbound]
+    : undefined
+  const drawnLegs = tail && startsWhereLineEnds(legsView, tail) ? [...legsView, tail] : legsView
   return {
     geometry: drawnLegs.flatMap(l => l.geometry),
     totalKm: legsView.reduce((sum, l) => sum + l.distanceKm, 0),

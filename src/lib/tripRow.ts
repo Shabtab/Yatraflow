@@ -79,6 +79,11 @@ const TANK_L_MAX = 300
 const RENT_PER_DAY_MIN_INR = 0
 const RENT_PER_DAY_MAX_INR = 100000
 
+/** A row revision the client can compare: a non-negative safe integer. */
+export function validWriteVersion(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
 export function sanitizeTankL(v: number | undefined | null): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= TANK_L_MIN && v <= TANK_L_MAX ? v : null
 }
