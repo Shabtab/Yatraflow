@@ -200,9 +200,12 @@ function placeKey(v: string): string {
 
 /** The search hit that answers a calculator's destination name, or null. Only a
  *  place answers, never a point of interest, and only a hit whose own name is the
- *  stated destination. A longer name such as Goa Velha is a different place. Among
- *  the exact matches a state wins, because a state names itself: its admin1 is its
- *  own name. A village with the same name in another state is listed before it. */
+ *  stated destination. A longer name such as Goa Velha is a different place.
+ *  Among the exact matches a state wins, because a state names itself: its admin1
+ *  is its own name. Open-Meteo reports that region, so a village named Goa in
+ *  another state does not hide the state. On the Google path admin1 is the last
+ *  address segment, usually "India", so no hit names itself there and the first
+ *  exact match answers. */
 export function calcDestHit(dest: string, hits: readonly PlaceHit[]): PlaceHit | null {
   const want = placeKey(dest)
   if (!want) return null
@@ -266,4 +269,25 @@ export function withCalcPinTimeout(
   })
   const settled = pending.catch((): CalcDestOutcome => ({ phase: 'failed' }))
   return Promise.race([settled, timeout]).finally(() => clearTimeout(timer))
+}
+
+/** What a settled calculator lookup does to the form: add the pinned stop, stage the
+ *  name in the empty stop box, or drop the result. */
+export type CalcDestAction =
+  | { kind: 'add'; stop: CalcDestStop }
+  | { kind: 'stage'; phase: 'missing' | 'failed' }
+  | { kind: 'drop' }
+
+/** The decision for a settled lookup. A lookup writes only while the traveller has
+ *  not taken over the form. A route that already has stops belongs to the traveller.
+ *  So does a stop box that the traveller has typed in or cleared. Then every
+ *  outcome is dropped, a pinned one included. Otherwise a pin adds its stop, and a
+ *  miss or a failure stages its name in the empty box. */
+export function calcDestAction(
+  outcome: CalcDestOutcome,
+  taken: { routeHasStops: boolean; boxEdited: boolean },
+): CalcDestAction {
+  if (taken.routeHasStops || taken.boxEdited) return { kind: 'drop' }
+  if (outcome.phase === 'pinned') return { kind: 'add', stop: outcome.stop }
+  return { kind: 'stage', phase: outcome.phase }
 }

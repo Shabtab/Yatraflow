@@ -171,10 +171,21 @@ export async function searchPlacesFree(q: string, opts?: FreeSearchOpts): Promis
     searchOpenMeteo(needle, indiaOnly, 5).catch(() => [] as PlaceHit[]),
     searchWikipediaPois(needle, 5).catch(() => [] as PlaceHit[]),
   ])
+  // Only Open-Meteo reports a real region (admin1) for a place. Mappls reports the
+  // last address segment (often the country) and Wikipedia reports none, so those
+  // hits cannot tell two same-named places apart. Open-Meteo places dedupe by name
+  // AND region: a village named Goa in Karnataka must not hide the state of Goa.
+  // A Mappls or Wikipedia hit yields to a same-named Open-Meteo place, which carries
+  // the region.
+  const placeNames = new Set(places.map(h => h.name.trim().toLowerCase()))
   const seen = new Set<string>()
   const out: PlaceHit[] = []
   for (const hit of [...mappls, ...places, ...pois]) {
-    const key = hit.name.toLowerCase()
+    const name = hit.name.trim().toLowerCase()
+    const regional = hit.source === 'open-meteo'
+    if (!regional && placeNames.has(name)) continue
+    const region = regional ? (hit.admin1 ?? '').trim().toLowerCase() : ''
+    const key = JSON.stringify([name, region])
     if (seen.has(key)) continue
     seen.add(key)
     out.push(hit)

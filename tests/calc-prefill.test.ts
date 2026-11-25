@@ -10,8 +10,8 @@ import {
   parseCalcPrefill, prefillFromSearch, stashCalcPrefill, stashCalcPrefillFromSearch,
   readCalcPrefill, clearCalcPrefill, calcPrefillBannerText, calcPrefillTripName, calcPartyLimitText,
   calcDestHit, calcDestStop, calcDestNote, stageCalcDest,
-  CALC_PIN_TIMEOUT_MS, withCalcPinTimeout,
-  type CalcPrefill, type CalcDestOutcome,
+  CALC_PIN_TIMEOUT_MS, withCalcPinTimeout, calcDestAction,
+  type CalcPrefill, type CalcDestOutcome, type CalcDestAction,
 } from '../src/lib/calcPrefill'
 import type { PlaceHit } from '../src/lib/providers/hits'
 import { CREW_MAX } from '../src/lib/crew'
@@ -466,7 +466,7 @@ describe('the create page pins the calculator destination before it adds a stop'
 
   it('stages an unpinned name in the stop box, and adds a pinned stop to an empty route', () => {
     expect(create).toContain('setDestInput(box => stageCalcDest(box, dest))')
-    expect(create).toMatch(/setDests\(prev => \(prev\.length \? prev : \[outcome\.stop\]\)\)/)
+    expect(create).toMatch(/setDests\(prev => \(prev\.length \? prev : \[stop\]\)\)/)
   })
 
   it('races the whole pin against the eight second window, with no raw number in the component', () => {
@@ -474,8 +474,10 @@ describe('the create page pins the calculator destination before it adds a stop'
     expect(create).not.toMatch(/\b8000\b/)
   })
 
-  it('drops a late miss or failure once the route or the stop box has been used', () => {
-    expect(create).toContain('routeStopCount.current > 0 || stopBoxEdited.current')
+  it('decides every settled lookup against what the traveller has done, pinned ones included', () => {
+    expect(create).toContain('calcDestAction(outcome, {')
+    expect(create).toContain('routeHasStops: routeStopCount.current > 0')
+    expect(create).toContain('boxEdited: stopBoxEdited.current')
     expect(create).toContain('routeStopCount.current = dests.length')
     expect(create).toContain('onChange={v => { stopBoxEdited.current = true; setDestInput(v) }}')
   })
@@ -525,5 +527,46 @@ describe('withCalcPinTimeout — a pin that runs long is a failure, and that fai
 
   it('treats a rejected pin as a failure, not a hang', async () => {
     await expect(withCalcPinTimeout(Promise.reject(new Error('offline')))).resolves.toEqual({ phase: 'failed' })
+  })
+})
+
+/** One settled lookup, and what the traveller had done when it settled. */
+type DestCase = {
+  label: string
+  outcome: CalcDestOutcome
+  taken: { routeHasStops: boolean; boxEdited: boolean }
+  expected: CalcDestAction
+}
+
+describe('calcDestAction — what a settled lookup does, given what the traveller has done', () => {
+  const pinned: CalcDestOutcome = { phase: 'pinned', stop: { name: 'Goa', lat: 15.3, lng: 74.1 } }
+  const missing: CalcDestOutcome = { phase: 'missing' }
+  const failed: CalcDestOutcome = { phase: 'failed' }
+  const clean = { routeHasStops: false, boxEdited: false }
+  const routeUsed = { routeHasStops: true, boxEdited: false }
+  const boxUsed = { routeHasStops: false, boxEdited: true }
+  const bothUsed = { routeHasStops: true, boxEdited: true }
+
+  const CASES: DestCase[] = [
+    { label: 'a pin into an empty route with a clean box adds its stop', outcome: pinned, taken: clean, expected: { kind: 'add', stop: pinned.stop } },
+    { label: 'a pin into a route the traveller started is dropped', outcome: pinned, taken: routeUsed, expected: { kind: 'drop' } },
+    { label: 'a successful lookup that settles after an edit adds nothing', outcome: pinned, taken: boxUsed, expected: { kind: 'drop' } },
+    { label: 'a pin after both a stop and an edit is dropped', outcome: pinned, taken: bothUsed, expected: { kind: 'drop' } },
+    { label: 'a miss with a clean box stages the miss', outcome: missing, taken: clean, expected: { kind: 'stage', phase: 'missing' } },
+    { label: 'a miss into a route the traveller started is dropped', outcome: missing, taken: routeUsed, expected: { kind: 'drop' } },
+    { label: 'a miss after an edit is dropped', outcome: missing, taken: boxUsed, expected: { kind: 'drop' } },
+    { label: 'a miss after both a stop and an edit is dropped', outcome: missing, taken: bothUsed, expected: { kind: 'drop' } },
+    { label: 'a failure with a clean box stages the failure', outcome: failed, taken: clean, expected: { kind: 'stage', phase: 'failed' } },
+    { label: 'a failure into a route the traveller started is dropped', outcome: failed, taken: routeUsed, expected: { kind: 'drop' } },
+    { label: 'a failure after an edit is dropped', outcome: failed, taken: boxUsed, expected: { kind: 'drop' } },
+    { label: 'a failure after both a stop and an edit is dropped', outcome: failed, taken: bothUsed, expected: { kind: 'drop' } },
+  ]
+
+  it('covers every combination of outcome, route and box', () => {
+    expect(CASES).toHaveLength(12)
+  })
+
+  it.each(CASES)('$label', ({ outcome, taken, expected }) => {
+    expect(calcDestAction(outcome, taken)).toEqual(expected)
   })
 })

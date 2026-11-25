@@ -12,6 +12,8 @@ import {
 import type { QuotaSku } from '../src/lib/providers/quota'
 import { detourKm, searchNearbyPois, searchNearbyPoisMulti, searchPlaces, resolveHitCoords, type PlaceHit } from '../src/lib/geocode'
 import { hasCoords } from '../src/lib/providers/hits'
+import { searchPlacesFree } from '../src/lib/providers/free'
+import { calcDestHit } from '../src/lib/calcPrefill'
 
 describe('encodePolyline', () => {
   it('encodes [lng,lat] points with the canonical Google algorithm', () => {
@@ -366,5 +368,53 @@ describe('hasCoords — the either-zero pick guard', () => {
   it('refuses non-finite coordinates', () => {
     expect(hasCoords(hit({ latitude: Number.NaN, longitude: 76 }))).toBe(false)
     expect(hasCoords(hit({ latitude: 10, longitude: Number.POSITIVE_INFINITY }))).toBe(false)
+  })
+})
+
+// ============ Free search: same-named places in different regions ============
+// The free stack merges Open-Meteo, Mappls and Wikipedia hits. Open-Meteo reports a
+// region for each place, so two places named Goa stay apart and calcDestHit can take
+// the state. A Wikipedia article named like a place adds no second row.
+describe('free search: same-named places in different regions', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  const VILLAGE_GOA = { id: 11, name: 'Goa', latitude: 15.27, longitude: 74.6, admin1: 'Karnataka', country: 'India', country_code: 'IN' }
+  const STATE_GOA = { id: 12, name: 'Goa', latitude: 15.3, longitude: 74.1, admin1: 'Goa', country: 'India', country_code: 'IN' }
+  const GOA_ARTICLES = {
+    query: {
+      pages: {
+        '7': { pageid: 7, title: 'Goa', coordinates: [{ lat: 15.3, lon: 74.1 }], description: 'State in India' },
+        '8': { pageid: 8, title: 'Goa Velha', coordinates: [{ lat: 15.4, lon: 73.9 }], description: 'Village in Goa' },
+      },
+    },
+  }
+
+  it('a village named Goa listed before the state keeps the state, and calcDestHit takes the state', async () => {
+    vi.stubGlobal('fetch', routeFetch([
+      [/open-meteo/, { results: [VILLAGE_GOA, STATE_GOA] }],
+      [/wikipedia/, EMPTY],
+    ]))
+    const hits = await searchPlacesFree('goa')
+    expect(hits.filter(h => h.name === 'Goa').map(h => h.admin1)).toEqual(['Karnataka', 'Goa'])
+    expect(calcDestHit('Goa', hits)).toMatchObject({ id: 12, admin1: 'Goa' })
+  })
+
+  it('a true duplicate, the same name in the same region, is still dropped', async () => {
+    vi.stubGlobal('fetch', routeFetch([
+      [/open-meteo/, { results: [STATE_GOA, { ...STATE_GOA, id: 13 }] }],
+      [/wikipedia/, EMPTY],
+    ]))
+    const hits = await searchPlacesFree('goa')
+    expect(hits.filter(h => h.name === 'Goa')).toHaveLength(1)
+  })
+
+  it('a Wikipedia article named like a place adds no second row, and other articles still show', async () => {
+    vi.stubGlobal('fetch', routeFetch([
+      [/open-meteo/, { results: [STATE_GOA] }],
+      [/wikipedia/, GOA_ARTICLES],
+    ]))
+    const hits = await searchPlacesFree('goa')
+    expect(hits.filter(h => h.name === 'Goa')).toHaveLength(1)
+    expect(hits.some(h => h.name === 'Goa Velha' && h.kind === 'poi')).toBe(true)
   })
 })

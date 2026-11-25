@@ -56,7 +56,7 @@ import { cap } from '../lib/labels'
 import { readBenchPrefill } from '../lib/planBench'
 import {
   readCalcPrefill, clearCalcPrefill, prefillFromSearch, calcPrefillTripName, calcPartyLimitText,
-  calcDestHit, calcDestNote, calcDestStop, stageCalcDest, withCalcPinTimeout,
+  calcDestAction, calcDestHit, calcDestNote, calcDestStop, stageCalcDest, withCalcPinTimeout,
   type CalcDestOutcome, type CalcDestPhase,
 } from '../lib/calcPrefill'
 import { searchPlaces, requireHitCoords, hasCoords, type PlaceHit } from '../lib/geocode'
@@ -321,20 +321,25 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       setCalcDest({ dest, phase: 'finding' })
       // The whole pin runs inside the window, so the finding line cannot outlast it.
       void withCalcPinTimeout(pinCalcDest(dest)).then(outcome => {
-        if (outcome.phase === 'pinned') {
-          // A route the traveller already started keeps its own stops, so nothing is added.
-          setDests(prev => (prev.length ? prev : [outcome.stop]))
-          setCalcDest(null)
-          return
-        }
         // The traveller may have added a stop or used the box while the search ran.
-        // Their input wins, so the calculator name is neither staged nor shown.
-        if (routeStopCount.current > 0 || stopBoxEdited.current) {
+        // Their input wins, whatever the lookup found.
+        const action = calcDestAction(outcome, {
+          routeHasStops: routeStopCount.current > 0,
+          boxEdited: stopBoxEdited.current,
+        })
+        if (action.kind === 'add') {
+          const { stop } = action
+          // Second guard: the write itself checks that the route is still empty.
+          setDests(prev => (prev.length ? prev : [stop]))
           setCalcDest(null)
           return
         }
-        setDestInput(box => stageCalcDest(box, dest))
-        setCalcDest({ dest, phase: outcome.phase })
+        if (action.kind === 'stage') {
+          setDestInput(box => stageCalcDest(box, dest))
+          setCalcDest({ dest, phase: action.phase })
+          return
+        }
+        setCalcDest(null)
       })
     }
   }, [])
