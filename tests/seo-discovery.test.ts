@@ -8,7 +8,7 @@ const sitemapPath = '../api/sitemap.js'
 // their hub. Derived from the manifest so adding a destination moves these
 // counts with it instead of failing three unrelated assertions.
 const CALCULATOR_URLS = JSON.parse(readFileSync(new URL('../calculators/manifest.json', import.meta.url), 'utf8')).calculators.length + 1
-const STATIC_URLS = 1 + CALCULATOR_URLS // shell + hub + calculators
+const STATIC_URLS = 1 + CALCULATOR_URLS + 2 // shell + hub + calculators + FAQ + how it works
 const fetchMock = vi.fn<typeof fetch>()
 
 // 2026-09-17T00:00:00Z — a fixed instant so the expected <lastmod> is a literal
@@ -133,6 +133,8 @@ describe('sitemap handler in node', () => {
     expect(res.body).toContain('<loc>https://www.yatraflow.in/ladakh-trip-cost-calculator/</loc>')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/goa-trip-cost-calculator/</loc>')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/trip-cost-calculators/</loc>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/faq</loc>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/how-it-works</loc>')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/i/kerala-trip_1</loc>')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/i/goa-north</loc>')
     expect(res.body.trimEnd().endsWith('</urlset>')).toBe(true)

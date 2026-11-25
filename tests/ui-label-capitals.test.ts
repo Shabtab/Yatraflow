@@ -37,6 +37,7 @@ export const ALLOWLIST: Allowed[] = [
   ...entry('src/components/storefront/ride/RideTimeline.tsx', ['to'], 'MID: range prefix after the arrival time'),
   ...entry('src/components/trips/OverviewRouteCard.tsx', ['about'], 'MID: qualifier written before a number inside <b>'),
   ...entry('src/lib/budgetBenchmarks.ts', ['the Konkan coast', 'the North-East'], 'MID: region label used inside a sentence'),
+  ...entry('src/pages/FaqPage.tsx', ['mail us'], 'MID: inside the intro sentence "If yours isn\u2019t here, mail us and we\u2019ll add it."'),
   ...entry('src/lib/budgetBenchmarks.ts', ['shoestring', 'budget', 'comfort', 'premium', 'heritage'], 'NOT-UI: tier data label, no UI call site (tests only)'),
   ...entry('src/lib/createDraft.ts', ['earlier', 'just now', 'yesterday'], 'MID: draft age, always joined after "Saved"'),
   ...entry('src/lib/native.ts', ['shared', 'unavailable'], 'NOT-UI: internal status return code, never rendered'),

@@ -13,6 +13,11 @@ import { readFileSync } from 'node:fs'
 import { createContext, runInContext } from 'node:vm'
 import ts from 'typescript'
 import * as gate from '../src/lib/inviteGateStates'
+import {
+  alreadyMemberCopy, expiredInviteCopy, inviteConfirmCopy, inviteReadOnlyFacts,
+  invitesStopCount, paidGuidePriceFor, recipientInviteCopy,
+} from '../src/lib/inviteLandingCopy'
+import { inviteRoute, normalizeInviteCode } from '../src/lib/inviteCode'
 
 const APP = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const ast = ts.createSourceFile('App.tsx', APP, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
@@ -50,6 +55,9 @@ interface Harness {
   settle: () => Promise<void>
   setUser: (id: string | null) => void
   stateBlock: () => { props: { title?: string; body?: string } } | undefined
+  header: () => { props: { headline?: { lead?: string }; lede?: unknown } } | undefined
+  /** Press the confirm screen's primary action; the gate joins only after it. */
+  confirm: () => void
   retry: () => void
 }
 
@@ -67,6 +75,13 @@ function mountGate(join: (tripId: string) => Promise<gate.JoinResult>, overrides
   const defaults: Record<string, unknown> = {
     React: { createElement: (type: unknown, props: unknown, ...children: unknown[]) => ({ type, props: props ?? {}, children }) },
     StateBlock: 'StateBlock', Link2: 'Link2', Mail: 'Mail', ProfileLookupNotice: 'ProfileLookupNotice',
+    // The invite screen's own pieces. The copy builders are the real modules:
+    // this file measures the gate's machine, not its words.
+    PageHeader: 'PageHeader', appLink: () => ({}),
+    usePublished: () => [],
+    recipientInviteCopy, inviteConfirmCopy, expiredInviteCopy, alreadyMemberCopy,
+    inviteReadOnlyFacts, invitesStopCount, paidGuidePriceFor,
+    inviteRoute, normalizeInviteCode,
     useDb: () => ({ sessionUserId: (context.me as { id?: string } | null)?.id ?? null, sliceReads: {} }),
     currentUser: () => context.me,
     profileLookupState: () => null,
@@ -153,6 +168,15 @@ function mountGate(join: (tripId: string) => Promise<gate.JoinResult>, overrides
     return [...(pred(n) ? [n] : []), ...(((n.children as unknown[]) ?? []).flatMap(c => walk(c, pred))), ...walk(n.props && (n.props as Record<string, unknown>).actions, pred)]
   }
   const stateBlock = () => walk(tree, n => n.type === 'StateBlock')[0] as { props: { title?: string; body?: string } } | undefined
+  const header = () => walk(tree, n => n.type === 'PageHeader')[0] as
+    { props: { headline?: { lead?: string }; lede?: unknown } } | undefined
+  /** Press the confirm screen's primary action. The gate joins only after it. */
+  const confirm = () => {
+    const button = walk(tree, n => n.type === 'button' && Array.isArray(n.children) && n.children.includes('Join the trip'))[0]
+    const onClick = (button?.props as { onClick?: unknown } | undefined)?.onClick
+    if (typeof onClick !== 'function') throw new Error('the confirm button is missing')
+    onClick()
+  }
   const retry = () => {
     const button = walk(tree, n => n.type === 'button' && Array.isArray(n.children) && n.children.includes('Try again'))[0]
     const onClick = (button?.props as { onClick?: unknown } | undefined)?.onClick
@@ -161,13 +185,15 @@ function mountGate(join: (tripId: string) => Promise<gate.JoinResult>, overrides
   }
   return {
     props, events, rerender: () => { dirty = true }, settle, setUser: id => { context.me = id ? { id } : null; context.identityGen = Number(context.identityGen ?? 0) + 1; dirty = true },
-    stateBlock, retry,
+    stateBlock, header, confirm, retry,
   }
 }
 
 describe('the harness itself: one joined answer opens the trip', () => {
   it('a single target whose join answers "joined" navigates once', async () => {
     const h = mountGate(async () => 'joined')
+    await h.settle()
+    h.confirm()
     await h.settle()
     expect(h.events.filter(e => e[0] === 'join')).toHaveLength(1)
     expect(h.events.filter(e => e[0] === 'navigate')).toEqual([['navigate', `/trip/${TRIP_A}`]])
@@ -180,6 +206,8 @@ describe('B4 — a target change retires the old join before it can finish the n
     // case below measures the target change and nothing else.
     const control = mountGate(async () => 'joined')
     await control.settle()
+    control.confirm()
+    await control.settle()
     expect(control.events.filter(e => e[0] === 'navigate'), 'a join on one target opens it').toEqual([
       ['navigate', `/trip/${TRIP_A}`],
     ])
@@ -189,11 +217,15 @@ describe('B4 — a target change retires the old join before it can finish the n
     let calls = 0
     const h = mountGate(() => { calls += 1; return calls === 1 ? oldJoin.promise : newJoin.promise })
     await h.settle()
+    h.confirm()
+    await h.settle()
     expect(h.events.filter(e => e[0] === 'join')).toHaveLength(1)
 
     // The link moves to a second code while the first join is still in flight.
     h.props.codeOrTripId = 'SECOND'
     h.rerender()
+    await h.settle()
+    h.confirm()
     await h.settle()
 
     // The old join answers "joined" BEFORE the new target's own join answers.
@@ -222,9 +254,13 @@ describe('B4 — a target change retires the old join before it can finish the n
       return second.promise
     })
     await h.settle()
+    h.confirm()
+    await h.settle()
 
     h.props.codeOrTripId = 'SECOND'
     h.rerender()
+    await h.settle()
+    h.confirm()
     await h.settle()
     const joins = h.events.filter(e => e[0] === 'join')
     expect(joins.length, 'the new target begins its own try').toBe(2)
@@ -258,6 +294,8 @@ describe('B4 — a target change retires the old join before it can finish the n
     let calls = 0
     const h = mountGate(() => (++calls === 1 ? oldJoin.promise : Promise.resolve('joined')))
     await h.settle()
+    h.confirm()
+    await h.settle()
     h.setUser('B')
     await h.settle()
     oldJoin.resolve('joined')
@@ -286,8 +324,8 @@ describe('#1019 — the lookup answer picks the screen', () => {
   it('a dead code renders the dead-link copy, word for word', async () => {
     const h = mountGate(async () => 'not-member', { fetchTripByInviteCode: async () => ({ kind: 'dead' }) })
     await h.settle()
-    expect(h.stateBlock()?.props.title).toBe('This invite link no longer works.')
-    expect(h.stateBlock()?.props.body).toBe('Ask the trip owner for a new one. If you are already on this trip, open it from My trips.')
+    expect(h.header()?.props.headline?.lead).toBe('This invite link has expired.')
+    expect(h.header()?.props.lede).toBe('Links can be reset by whoever owns the trip. Ask whoever shared it for a fresh one, or enter the code they shared.')
   })
 
   it('a failed read renders the retry screen, never the dead-link copy', async () => {
@@ -303,7 +341,7 @@ describe('#1019 — the lookup answer picks the screen', () => {
     expect(h.stateBlock()?.props.title).toBe('Opening invite…')
     next.resolve({ kind: 'dead' })
     await h.settle()
-    expect(h.stateBlock()?.props.title).toBe('This invite link no longer works.')
+    expect(h.header()?.props.headline?.lead).toBe('This invite link has expired.')
     expect(h.events).toEqual([])
   })
 
@@ -313,14 +351,16 @@ describe('#1019 — the lookup answer picks the screen', () => {
       fetchTripByInviteCode: async (code: string) => code === 'CODE' ? { kind: 'dead' } : next.promise,
     })
     await h.settle()
-    expect(h.stateBlock()?.props.title).toBe('This invite link no longer works.')
+    expect(h.header()?.props.headline?.lead).toBe('This invite link has expired.')
     h.props.codeOrTripId = 'SECOND'
     h.rerender()
     await h.settle()
     expect(h.stateBlock()?.props.title).toBe('Opening invite…')
     next.resolve({ kind: 'found', trip: trip(TRIP_B) })
     await h.settle()
-    expect(h.events.filter(e => e[0] === 'navigate')).toEqual([['navigate', `/trip/${TRIP_B}`]])
+    // The new link resolves to its own confirm screen; nothing joins by itself.
+    expect(h.header()?.props.headline?.lead).toBe('Join Second?')
+    expect(h.events.filter(e => e[0] === 'navigate')).toEqual([])
   })
 
   it('a new account waits for its own lookup before joining', async () => {
@@ -331,6 +371,8 @@ describe('#1019 — the lookup answer picks the screen', () => {
       fetchTripByInviteCode: async () => ++reads === 1 ? { kind: 'found', trip: trip(TRIP_A) } : next.promise,
     })
     await h.settle()
+    h.confirm()
+    await h.settle()
     expect(h.events.filter(e => e[0] === 'join')).toHaveLength(1)
     h.setUser('B')
     await h.settle()
@@ -338,7 +380,7 @@ describe('#1019 — the lookup answer picks the screen', () => {
     expect(h.stateBlock()?.props.title).toBe('Opening invite…')
     next.resolve({ kind: 'dead' })
     await h.settle()
-    expect(h.stateBlock()?.props.title).toBe('This invite link no longer works.')
+    expect(h.header()?.props.headline?.lead).toBe('This invite link has expired.')
   })
 })
 
@@ -349,6 +391,8 @@ describe('B5 — the real invite screen names each terminal refusal', () => {
     ['deleted', 'This trip was deleted'],
   ] as const)('%s renders its own status', async (result, title) => {
     const h = mountGate(async () => result)
+    await h.settle()
+    h.confirm()
     await h.settle()
     expect(h.stateBlock()?.props.title).toBe(title)
     expect(h.events.filter(e => e[0] === 'navigate')).toHaveLength(0)

@@ -129,6 +129,10 @@ function renderSitemap(rows, creators, origin) {
     // canonicals. No lastmod: the handler only prints dates it can derive (see
     // toLastmod), and the pages' own JSON-LD carries dateModified.
     ...CALCULATOR_PATHS.map((path) => `  <url>\n    <loc>${escapeXml(`${origin}${path}`)}</loc>\n  </url>`),
+    // Static copy pages: real crawlable text with their own titles. No lastmod,
+    // for the same reason as the calculators above.
+    `  <url>\n    <loc>${escapeXml(`${origin}/faq`)}</loc>\n  </url>`,
+    `  <url>\n    <loc>${escapeXml(`${origin}/how-it-works`)}</loc>\n  </url>`,
   ]
   // Ordered by recency, not arrival: an updated classic belongs above a newer
   // row nobody has touched since it published.

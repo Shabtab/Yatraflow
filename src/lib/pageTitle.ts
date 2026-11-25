@@ -13,6 +13,9 @@
 // store subscriptions, so it does not read the trips table just to title a tab;
 // the page that already has the record refines the title itself.
 
+import { FAQ_DESCRIPTION, FAQ_TITLE } from './faqContent'
+import { HOW_IT_WORKS_DESCRIPTION, HOW_IT_WORKS_TITLE } from './howItWorksContent'
+
 export const SITE = 'YatraFlow'
 
 /** Route head -> title, for the routes that need nothing looked up. */
@@ -31,6 +34,15 @@ const STATIC: Record<string, string> = {
   join: `Join a trip · ${SITE}`,
   invite: `Join a trip · ${SITE}`,
   share: `A shared trip · ${SITE}`,
+  faq: FAQ_TITLE,
+  'how-it-works': HOW_IT_WORKS_TITLE,
+}
+
+/** Route head -> the meta description a page carries. Every other route keeps
+ *  the site description that index.html ships. */
+const DESCRIPTIONS: Record<string, string> = {
+  faq: FAQ_DESCRIPTION,
+  'how-it-works': HOW_IT_WORKS_DESCRIPTION,
 }
 
 /** Routes whose title is the record's own name when we have it. */
@@ -53,4 +65,13 @@ export function pageTitle(parts: string[], subject?: string | null): string {
   if (!head) return STATIC['']
   if (head in NAMED) return `${subject || NAMED[head]} · ${SITE}`
   return STATIC[head] ?? SITE
+}
+
+/** The title and the meta description for one route. App applies both, so a
+ *  page's own SEO copy ships with the route rather than with a DOM call. */
+export function pageMeta(parts: string[], subject?: string | null): { title: string; description: string | null } {
+  return {
+    title: pageTitle(parts, subject),
+    description: DESCRIPTIONS[parts[0] ?? ''] ?? null,
+  }
 }

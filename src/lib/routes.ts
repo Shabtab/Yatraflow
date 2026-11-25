@@ -61,6 +61,10 @@ export const ROUTED_SEGMENTS: readonly string[] = [
   'creator-hub',
   'admin',
   'dmca',
+  // Static crawler-readable copy. Both answer for signed-out visitors and
+  // carry their own SEO title, so they are real routes rather than anchors.
+  'faq',
+  'how-it-works',
   'about',
 ]
 
