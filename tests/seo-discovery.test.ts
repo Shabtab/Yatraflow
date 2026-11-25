@@ -125,6 +125,8 @@ describe('sitemap handler in node', () => {
     expect(res.body).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/</loc>')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/ladakh-trip-cost-calculator/</loc>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/faq</loc>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/how-it-works</loc>')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/i/kerala-trip_1</loc>')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/i/goa-north</loc>')
     expect(res.body.trimEnd().endsWith('</urlset>')).toBe(true)
@@ -167,14 +169,14 @@ describe('sitemap handler in node', () => {
     expect(res.body).toContain('/i/fine')
     expect(res.body).not.toContain('has space')
     expect(res.body).not.toContain('has+space')
-    expect((res.body.match(/<loc>/g) ?? []).length).toBe(3) // shell + calculator + one publication
+    expect((res.body.match(/<loc>/g) ?? []).length).toBe(5) // shell + calculator + FAQ + how it works + one publication
   })
 
   it('serves the shell alone when the catalogue is genuinely empty', async () => {
     respond([])
     const res = await runHandler()
     expect(res.statusCode).toBe(200)
-    expect((res.body.match(/<loc>/g) ?? []).length).toBe(2) // shell + calculator
+    expect((res.body.match(/<loc>/g) ?? []).length).toBe(4) // shell + calculator + FAQ + how it works
   })
 
   it('answers 503 rather than publishing a sitemap that omits every itinerary', async () => {
@@ -253,8 +255,8 @@ describe('sitemap handler in node', () => {
       expect(res.statusCode).toBe(200)
       expect(fetchMock).toHaveBeenCalledTimes(3)
       expect(res.body).toContain('/i/pub-the-1001st')
-      // shell + calculator + 1005 publications
-      expect((res.body.match(/<loc>/g) ?? []).length).toBe(PAGE * 2 + 1 + 1 + 1)
+      // shell + calculator + FAQ + how it works + 1005 publications
+      expect((res.body.match(/<loc>/g) ?? []).length).toBe(PAGE * 2 + 5)
     })
 
     it('the second page carries the cursor it was handed', async () => {

@@ -1,0 +1,107 @@
+/* ============================================================================
+   Static copy pages and the invite screen
+   ----------------------------------------------------------------------------
+   The FAQ list, the how-it-works steps, and the invite recipient's layout.
+   Owner: docs/css-ownership.json (id: content-pages). Tokens only: no literal
+   colour, no raw duration, no animation here. The page cascade already gives
+   each page its entrance, so this file declares none.
+   ============================================================================ */
+
+/* ---------- FAQ ---------- */
+.faq-page { padding-top: 22px; padding-bottom: 32px; }
+.faq-jump { display: flex; flex-wrap: wrap; gap: 8px; }
+.faq-jump-link {
+  padding: 5px 11px; border: 1px solid var(--line); border-radius: var(--radius-pill);
+  color: var(--text-2); font-size: 13px; font-weight: 700; text-decoration: none;
+  background: var(--card);
+}
+.faq-jump-link:hover { color: var(--text); border-color: var(--line-strong); }
+.faq-section { margin-top: 28px; scroll-margin-top: 88px; }
+.faq-heading {
+  margin: 0 0 12px; color: var(--text); font-family: var(--font-display); font-weight: 600;
+  font-size: 20px; letter-spacing: -.01em;
+}
+.faq-items { display: flex; flex-direction: column; gap: 12px; }
+.faq-item { padding: 16px 18px; }
+.faq-question {
+  margin: 0 0 6px; color: var(--text); font-size: 16px; font-weight: 800;
+  line-height: 1.3; letter-spacing: -.01em;
+}
+.faq-answer { margin: 0; max-width: 72ch; color: var(--text-2); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
+
+/* ---------- How it works ---------- */
+.hiw-page { padding-top: 22px; padding-bottom: 32px; }
+.hiw-steps {
+  display: flex; flex-direction: column; gap: 20px;
+  margin: 0; padding: 0; list-style: none;
+}
+.hiw-step {
+  display: grid; grid-template-columns: auto 1fr; column-gap: 12px; row-gap: 6px;
+  padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card);
+}
+.hiw-step-number {
+  grid-row: 1 / span 3; align-self: start;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: var(--radius-pill);
+  background: var(--bg-soft); color: var(--ink-teal);
+  font-family: var(--font-display); font-size: 14px; font-weight: 800;
+}
+.hiw-step-title {
+  margin: 0; color: var(--text); font-family: var(--font-display); font-weight: 600;
+  font-size: 19px; line-height: 1.25; letter-spacing: -.01em; text-wrap: balance;
+}
+.hiw-step-body { grid-column: 2; margin: 0; max-width: 68ch; color: var(--text-2); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
+.hiw-step-link { grid-column: 2; justify-self: start; font-size: 14px; font-weight: 700; color: var(--ink-teal); }
+.hiw-limits {
+  margin-top: 28px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg-soft);
+}
+.hiw-limits-title { margin: 0 0 8px; color: var(--text); font-family: var(--font-display); font-size: 19px; font-weight: 600; }
+.hiw-limits-body { margin: 0 0 8px; max-width: 72ch; color: var(--text-2); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
+.hiw-limits-body:last-child { margin-bottom: 0; }
+.hiw-close {
+  margin-top: 28px; padding: 24px 18px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); text-align: left;
+}
+.hiw-close-line {
+  margin: 0; max-width: 24ch; color: var(--text); font-family: var(--font-display); font-weight: 600;
+  font-size: clamp(1.35rem, 1.05rem + 1.2vw, 1.9rem); line-height: 1.15; letter-spacing: -.015em; text-wrap: balance;
+}
+.hiw-close-support { margin: 10px 0 0; max-width: 56ch; color: var(--text-2); font-size: 15px; line-height: 1.5; }
+.hiw-close-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+
+/* ---------- Invite screen ---------- */
+.inv-screen { max-width: 720px; padding-top: 24px; padding-bottom: 32px; }
+.inv-body { display: flex; flex-direction: column; gap: 14px; }
+.inv-role { margin: 0; max-width: 62ch; color: var(--text); font-size: 16px; line-height: 1.5; }
+.inv-reassure { margin: 0; max-width: 62ch; }
+.inv-paid-guide { margin: 0; max-width: 62ch; }
+.inv-quiet-link {
+  justify-self: start; width: fit-content; padding: 0; border: 0; background: none;
+  color: var(--text-2); font-family: inherit; font-size: 14px; font-weight: 700;
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.inv-quiet-link:hover { color: var(--text); }
+.inv-look { display: flex; flex-direction: column; gap: 10px; }
+.inv-look-facts {
+  display: grid; gap: 6px; margin: 0; padding: 12px 0 0; border-top: 1px solid var(--line);
+}
+.inv-look-row { display: flex; gap: 10px; align-items: baseline; }
+.inv-look-row dt {
+  flex: none; min-width: 78px; color: var(--text-2); font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.inv-look-row dd { margin: 0; color: var(--text); font-size: 14px; }
+.inv-next-title { margin: 4px 0 0; color: var(--text); font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.inv-next { margin: 0; padding-left: 20px; color: var(--text-2); font-size: 14px; line-height: 1.6; }
+.inv-next li { margin-bottom: 4px; }
+.inv-code-form { display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
+.inv-code-label { color: var(--text-2); font-size: 13px; font-weight: 700; }
+.inv-code-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.inv-code-row .input { flex: 1 1 180px; min-width: 0; }
+
+@media (min-width: 900px) {
+  .hiw-steps { gap: 16px; }
+  .hiw-step { grid-template-columns: auto 1fr; padding: 20px 22px; }
+  .faq-item { padding: 18px 22px; }
+}

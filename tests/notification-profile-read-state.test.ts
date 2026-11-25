@@ -196,7 +196,9 @@ describe('notification read state', () => {
   it('wires the helpers to the current-user notification list and known-session route', () => {
     const inviteGate = appSource.slice(appSource.indexOf('function InviteGate'))
     const profileGate = inviteGate.indexOf('if (needsProfileLookup(db.sessionUserId, !!me, profileState))')
-    const signInActions = inviteGate.indexOf('Log in or create a free account')
+    // The signed-out screen's one action is the signup round-trip, so that is
+    // the marker the profile gate must come before.
+    const signInActions = inviteGate.indexOf('inviteSignupNext(codeOrTripId, isTripIdLink)')
 
     expect(appSource).toContain('notificationPanelModel(sliceReads, notifications, sessionUserId)')
     expect(appSource).toContain('<NotificationPanelContent')

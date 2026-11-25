@@ -114,6 +114,10 @@ function renderSitemap(rows, creators, origin) {
     // crawlable page with its own title, description and canonical. No
     // lastmod: the handler only prints dates it can derive (see toLastmod).
     `  <url>\n    <loc>${escapeXml(`${origin}/ladakh-trip-cost-calculator/`)}</loc>\n  </url>`,
+    // Static copy pages: real crawlable text with their own titles. No lastmod,
+    // for the same reason as the calculator above.
+    `  <url>\n    <loc>${escapeXml(`${origin}/faq`)}</loc>\n  </url>`,
+    `  <url>\n    <loc>${escapeXml(`${origin}/how-it-works`)}</loc>\n  </url>`,
   ]
   // Ordered by recency, not arrival: an updated classic belongs above a newer
   // row nobody has touched since it published.

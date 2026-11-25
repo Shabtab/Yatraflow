@@ -231,6 +231,8 @@ describe('kicker casing: sentence case in source, uppercase via CSS', () => {
       'SEAT 1A',
       'YF-10S',
       'DISCOVER \u00b7 TRUST \u00b7 FORK',
+      // The footer's name for the page, and the page's own subject.
+      'FAQ',
       'YATRAFLOW \u00b7 ROUGH BILL',
     ])
     const offenders: string[] = []
