@@ -100,17 +100,23 @@ export function purchaseShareMessage(title: string, url: string): string {
  *
  * The list is pinned to the `pub_events.source` / `trips.ref` CHECK constraints
  * in the NEWEST migration defining them (currently
- * supabase/migrations/20260930_pub_events_share_source_allowlist.sql — the
- * 20260929 file carries the original five) — a test asserts the lists agree,
- * so a new value is added in all places or not at all.
+ * supabase/migrations/20261125_calculator_share_source.sql — the 20260930
+ * file widened the original five to seven, and `calculator` is the eighth) — a
+ * test asserts the lists agree, so a new value is added in all places or not
+ * at all.
+ *
+ * `calculator` is a destination page's own route in: the trip-cost calculators
+ * link to `/new?ref=calculator&…`, so a trip created that way says which page
+ * priced it.
  */
-export const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community'] as const
+export const SHARE_SOURCES = ['buyer', 'calculator', 'community', 'copy', 'creator', 'explore', 'purchases', 'wa'] as const
 export type ShareSource = typeof SHARE_SOURCES[number]
 
 /** The legacy `direct` key includes all missing tags. It cannot identify genuine direct traffic separately. */
 export const SHARE_SOURCE_LABELS: Record<string, string> = {
   copy: 'Copy link',
   buyer: 'Buyer card',
+  calculator: 'Trip cost calculator',
   explore: 'Explore',
   creator: 'Creator page',
   purchases: 'My purchases',

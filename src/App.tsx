@@ -25,8 +25,9 @@ import { analyticsBeforeSend } from './lib/analyticsPrivacy'
 import { scrollBehavior } from './lib/motion'
 import { pageTitle, routeParts } from './lib/pageTitle'
 import { CREATE_SEGMENT, CREATE_PATH, needsSignupForCreate, signupThenCreatePath } from './lib/routes'
+import { stashCalcPrefillFromSearch } from './lib/calcPrefill'
 import { createFunnelOn } from './lib/featureFlags'
-import { currentRoute, navigate as navigateRoute, onRouteChange, replaceRoute, settleLegacyHash } from './lib/router'
+import { currentQuery, currentRoute, navigate as navigateRoute, onRouteChange, replaceRoute, settleLegacyHash } from './lib/router'
 import { appLink } from './lib/appLink'
 import { App as CapApp } from '@capacitor/app'
 import { isNative } from './lib/native'
@@ -553,6 +554,9 @@ export default function App() {
   const signedOutCreate = needsSignupForCreate(ready, sessionUserId, parts[0])
   useEffect(() => {
     if (!signedOutCreate) return
+    // A calculator CTA carries the visitor's estimate in the query; keep it
+    // for the create form before the redirect drops the address.
+    stashCalcPrefillFromSearch(currentQuery().toString())
     replaceRoute(signupThenCreatePath())
     // The shell's route state must follow the address just replaced, and the
     // router's change subscription cannot help: replaceRoute fires no listener
@@ -893,7 +897,7 @@ export default function App() {
         </svg>
         <div className="container footer-inner">
           <span><b>YatraFlow</b>: plan together, travel better. Built for Indian travellers</span>
-          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" {...appLink('/about')}>About YatraFlow</a> · <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh trip cost calculator</a></span>
+          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" {...appLink('/about')}>About YatraFlow</a> · <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/trip-cost-calculators/">Free trip cost calculators</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh</a></span>
         </div>
       </footer>
 

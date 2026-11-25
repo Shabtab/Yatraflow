@@ -39,7 +39,9 @@ describe('#428 wiring — every funnel event fires at its real call site', () =>
   })
 
   it('submitted carries counts and the mode — and the trip id', () => {
-    expect(create).toMatch(/recordCreateEvent\('submitted', \{ days: trip\.days\.length, travellers: trip\.travellers, mode: trip\.transportMode \}, \{ tripId: trip\.id, userId: me\?\.id \}\)/)
+    // The calculator hand-off stamps which page priced the trip; a plain /new
+    // submit passes `undefined` and the sanitizer drops it.
+    expect(create).toMatch(/recordCreateEvent\('submitted', \{ days: trip\.days\.length, travellers: trip\.travellers, mode: trip\.transportMode, calcSlug: calcSlugRef\.current \?\? undefined \}, \{ tripId: trip\.id, userId: me\?\.id \}\)/)
     const finish = create.slice(create.indexOf('function finishCreate'), create.indexOf('function addCommitment'))
     expect(finish).toContain("recordCreateEvent('submitted'")
     expect(create).toContain('finishCreate(retry)')

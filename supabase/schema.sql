@@ -96,10 +96,10 @@ alter table public.trips add column if not exists drives_part boolean;
 alter table public.trips add column if not exists ref text;
 
 -- Share attribution: one vocabulary across pub_events.source and trips.ref
--- (mirrors 20260929_pub_events_share_source.sql — idempotent, safe to re-run).
+-- (mirrors 20261125_calculator_share_source.sql — idempotent, safe to re-run).
 alter table public.trips drop constraint if exists trips_ref_check;
 alter table public.trips add constraint trips_ref_check
-  check (ref is null or ref in ('copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community'));
+  check (ref is null or ref in ('buyer', 'calculator', 'community', 'copy', 'creator', 'explore', 'purchases', 'wa'));
 
 -- Invite codes are unique when present (app mints one per trip).
 create unique index if not exists idx_trips_invite_code
@@ -289,7 +289,7 @@ create table if not exists public.pub_events (
 alter table public.pub_events add column if not exists source text;
 alter table public.pub_events drop constraint if exists pub_events_source_check;
 alter table public.pub_events add constraint pub_events_source_check
-  check (source is null or source in ('copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community'));
+  check (source is null or source in ('buyer', 'calculator', 'community', 'copy', 'creator', 'explore', 'purchases', 'wa'));
 
 create index if not exists pub_events_pub_at_idx on public.pub_events (pub_id, at desc);
 

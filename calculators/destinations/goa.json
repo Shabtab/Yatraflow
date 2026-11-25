@@ -1,0 +1,402 @@
+{
+  "key": "goa",
+  "slug": "goa-trip-cost-calculator",
+  "dest": "Goa",
+  "title": "Goa Trip Cost Calculator 2026–27 (Free, No Signup)",
+  "h1": "Goa trip cost calculator",
+  "description": "Work out a Goa group trip budget in ₹: flights or train, scooty or car rental, shacks or cafés, and a nightlife buffer. Free, no signup, low–high range.",
+  "lead": "Flights or the train, a scooty between two people, shacks or cafés, and whatever the group wants to spend on the water and the night. Pick your choices and see a Goa trip cost in rupees, per person and for the whole group, with no signup.",
+  "season": "Peak November–February",
+  "seasonNote": "December and early January are the dear weeks in Goa: flights, rooms and scooties all cost more, and 31 December costs the most. The ranges below are a normal peak-season week; add to them for New Year.",
+  "pricesChecked": "November 2026",
+  "datePublished": "2026-11-25",
+  "dateModified": "2026-11-25",
+  "ogImage": "/og/calc-goa.png",
+  "faqTitle": "Questions about Goa trip costs",
+  "hubBlurb": "Peak-season North or South Goa, with flights or train and a scooty between two people.",
+  "siblings": [
+    "rajasthan-trip-cost-calculator",
+    "meghalaya-trip-cost-calculator",
+    "ladakh-trip-cost-calculator"
+  ],
+  "defaultRoute": "north-4",
+  "kmFromRoute": false,
+  "kmDefault": 1200,
+  "peoplePerRoom": 2,
+  "fuel": {
+    "mileage": 15,
+    "price": 105
+  },
+  "defaults": {
+    "people": 4,
+    "stay": "guesthouse",
+    "food": "shack",
+    "transport": "train",
+    "local": "scooty"
+  },
+  "routes": {
+    "north-4": {
+      "label": "North Goa",
+      "meta": "Baga, Anjuna, Vagator · 4 days",
+      "days": 4,
+      "note": "Beaches, shacks and the market belt north of Panjim, with an easy day trip inland."
+    },
+    "south-4": {
+      "label": "South Goa",
+      "meta": "Palolem, Agonda, Colva · 4 days",
+      "days": 4,
+      "note": "Quieter beaches, longer stretches of sand and fewer late nights."
+    },
+    "both-5": {
+      "label": "North and South",
+      "meta": "Both coasts · 5 days",
+      "days": 5,
+      "note": "Two nights north and two south, with the drive between them counted in the days."
+    },
+    "custom": {
+      "label": "Custom",
+      "meta": "Your days",
+      "days": 4,
+      "note": "Set your own number of days. The nights follow the days unless you change them."
+    }
+  },
+  "groups": [
+    {
+      "key": "transport",
+      "param": "m",
+      "legend": "Getting there",
+      "hint": "Fares are round trip from a metro. Your own city, dates and how early you book move them a lot.",
+      "options": [
+        {
+          "value": "train",
+          "label": "Train",
+          "appMode": "train"
+        },
+        {
+          "value": "flight",
+          "label": "Flight",
+          "appMode": "flight"
+        },
+        {
+          "value": "self-drive",
+          "label": "Self-drive",
+          "appMode": "car"
+        }
+      ]
+    },
+    {
+      "key": "local",
+      "param": "l",
+      "legend": "Getting around",
+      "hint": "One scooty between two people is how most groups cover Goa. A hatchback costs more but is better in the rain.",
+      "options": [
+        {
+          "value": "scooty",
+          "label": "Scooty rental",
+          "appMode": "rental"
+        },
+        {
+          "value": "car",
+          "label": "Car rental",
+          "appMode": "rental"
+        },
+        {
+          "value": "cabs",
+          "label": "Local cabs",
+          "appMode": "taxi"
+        }
+      ]
+    }
+  ],
+  "fuelLabel": "Distance, km",
+  "fuelHint": "Mumbai to Goa and back is about 1,200 km. Enter your own round-trip distance.",
+  "stays": {
+    "hostel": {
+      "label": "Hostel",
+      "low": 600,
+      "high": 1200,
+      "style": "budget"
+    },
+    "guesthouse": {
+      "label": "Guesthouse",
+      "low": 1500,
+      "high": 2500,
+      "style": "comfort"
+    },
+    "hotel": {
+      "label": "Hotel",
+      "low": 3500,
+      "high": 7000,
+      "style": "luxury"
+    }
+  },
+  "foods": {
+    "shack": {
+      "label": "Beach shacks",
+      "low": 500,
+      "high": 900
+    },
+    "cafe": {
+      "label": "Cafés and restaurants",
+      "low": 900,
+      "high": 1600
+    }
+  },
+  "lines": [
+    {
+      "key": "trainFare",
+      "name": "Train (return)",
+      "kind": "person",
+      "when": {
+        "group": "transport",
+        "in": [
+          "train"
+        ]
+      },
+      "rateLabel": "Return train fare, per person",
+      "rate": {
+        "low": 1000,
+        "high": 2600
+      },
+      "hint": "Sleeper to 3AC from Mumbai, Pune or Bengaluru. Tatkal and peak dates cost more.",
+      "params": {
+        "low": "jt",
+        "high": "jT"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "flightFare",
+      "name": "Flight (return)",
+      "kind": "person",
+      "when": {
+        "group": "transport",
+        "in": [
+          "flight"
+        ]
+      },
+      "rateLabel": "Return flight fare, per person",
+      "rate": {
+        "low": 4200,
+        "high": 9500
+      },
+      "hint": "Return from a metro booked a few weeks out. The last week of December is well above this.",
+      "params": {
+        "low": "fl",
+        "high": "fL"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "fuel",
+      "name": "Fuel (self-drive)",
+      "kind": "km",
+      "units": 1,
+      "when": {
+        "group": "transport",
+        "in": [
+          "self-drive"
+        ]
+      },
+      "rateLabel": "Fuel and distance",
+      "hint": "Mileage and pump price for the car you would drive. Tolls and parking are not counted here.",
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "scooty",
+      "name": "Scooty rental",
+      "kind": "unit-day",
+      "units": "half-people",
+      "when": {
+        "group": "local",
+        "in": [
+          "scooty"
+        ]
+      },
+      "rateLabel": "Scooty rent, per scooter per day",
+      "rate": {
+        "low": 400,
+        "high": 600
+      },
+      "hint": "One scooty between two people. December and New Year week cost more, and a helmet and fuel are separate.",
+      "params": {
+        "low": "sc",
+        "high": "sC"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "carRental",
+      "name": "Car rental",
+      "kind": "unit-day",
+      "units": 1,
+      "when": {
+        "group": "local",
+        "in": [
+          "car"
+        ]
+      },
+      "rateLabel": "Car rent, per car per day",
+      "rate": {
+        "low": 1200,
+        "high": 1800
+      },
+      "hint": "A self-drive hatchback. Fuel is separate and not counted in this line.",
+      "params": {
+        "low": "cc",
+        "high": "cC"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "localCabs",
+      "name": "Local cabs",
+      "kind": "person-day",
+      "when": {
+        "group": "local",
+        "in": [
+          "cabs"
+        ]
+      },
+      "rateLabel": "Local cabs, per person per day",
+      "rate": {
+        "low": 500,
+        "high": 900
+      },
+      "hint": "App cabs and local taxis are thin outside the main towns, so book the long hops ahead.",
+      "params": {
+        "low": "lc",
+        "high": "lC"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "stay",
+      "name": "Stay",
+      "kind": "room-night",
+      "tier": "stay",
+      "tierLegend": "Stay",
+      "tierParam": "s",
+      "tierHint": "Price per room per night, in peak season. Two people share a room.",
+      "rateLabel": "Stay, per room per night",
+      "params": {
+        "low": "sl",
+        "high": "sh"
+      }
+    },
+    {
+      "key": "food",
+      "name": "Food",
+      "kind": "person-day",
+      "tier": "food",
+      "tierLegend": "Food",
+      "tierParam": "f",
+      "rateLabel": "Food, per person per day",
+      "params": {
+        "low": "fd",
+        "high": "fD"
+      }
+    },
+    {
+      "key": "nightlife",
+      "name": "Nightlife and water sports",
+      "kind": "person",
+      "optional": true,
+      "on": false,
+      "optionalLabel": "Add nightlife and water sports",
+      "offLabel": "Not included, add it if the group wants it",
+      "rateLabel": "Nightlife and water sports, per person",
+      "rate": {
+        "low": 1500,
+        "high": 3500
+      },
+      "hint": "One beach club night, one water-sports slot and a sunset cruise is what this covers. Goa needs no permits.",
+      "params": {
+        "low": "nl",
+        "high": "nL",
+        "off": "nlo"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "misc",
+      "name": "Buffer",
+      "kind": "person",
+      "rateLabel": "Buffer, per person",
+      "rate": {
+        "low": 800,
+        "high": 1500
+      },
+      "hint": "Sunscreen, water, a lost flip-flop, the odd entry fee and the things nobody plans for.",
+      "params": {
+        "low": "ml",
+        "high": "mh"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    }
+  ],
+  "faqs": [
+    {
+      "q": "How much does a 4-day Goa trip cost for 4 friends?",
+      "a": "With the default settings here, four people on a 4-day North Goa trip in peak season, arriving by train, sharing two scooties and two guesthouse rooms and eating at shacks, the calculator lands near ₹6,900 to ₹12,700 per person. That is ₹27,400 to ₹50,600 for the group. Flights instead of the train, a hotel instead of a guesthouse, or a packed New Year week each move the top of that range up."
+    },
+    {
+      "q": "What is the Goa budget per person from Bengaluru, Mumbai or Delhi?",
+      "a": "The travel line changes most with your city. Mumbai and Pune are the cheapest to reach by train, Bengaluru is a longer but still manageable overnight run, and Delhi usually means a flight. Set the Getting there option to match how you plan to arrive and the calculator shows the difference immediately. The rest of the trip, stay, food, and getting around, costs about the same wherever you start."
+    },
+    {
+      "q": "Do I need a permit to visit Goa?",
+      "a": "No. Goa is an ordinary domestic trip with no permits and no registration fees. That is why this calculator has no permit line, unlike Ladakh or Meghalaya. What it does count is the optional nightlife and water-sports buffer, which is the line most groups forget."
+    },
+    {
+      "q": "Is a scooty or a car better for a group in Goa?",
+      "a": "A scooty is cheaper and easier to park, at about ₹400 to ₹600 a day, and one between two people covers a group of four for ₹800 to ₹1,200 a day. A self-drive car costs about ₹1,200 to ₹1,800 a day and its fuel is extra, but it is better in the rain and for the longer north-to-south drive. Switch the Getting around option above and compare."
+    },
+    {
+      "q": "What are the best months to visit Goa, and how does season change the price?",
+      "a": "November to February is the dry, busy season, and December plus the first week of January is the most expensive part of it. Rooms roughly double against the monsoon months, and flights spike around 31 December. Late October and March are the value weeks with the same weather. The ranges here are a normal peak-season week, not New Year week."
+    }
+  ],
+  "sources": [
+    {
+      "id": "src-assume",
+      "kind": "Assumption",
+      "text": "Travel fares, stays, food, scooter and car rentals, the nightlife and water-sports buffer, the 1,200 km self-drive distance, mileage of 15 km per litre and fuel at ₹105 per litre are YatraFlow planning estimates checked in November 2026. They are market ranges for a peak-season week, not a quote and not an official tariff: replace each one with the price you were actually given."
+    },
+    {
+      "id": "src-tourism",
+      "kind": "Sourced",
+      "text": "Season timing, the December peak and the absence of any permit or registration requirement for a domestic Goa trip: ",
+      "links": [
+        {
+          "text": "Goa Tourism, official state tourism site",
+          "href": "https://www.goatourism.gov.in/"
+        }
+      ]
+    }
+  ]
+}

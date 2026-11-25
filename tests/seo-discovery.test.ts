@@ -3,6 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
 const sitemapPath = '../api/sitemap.js'
+
+// The sitemap's static half: the app shell plus the trip cost calculators and
+// their hub. Derived from the manifest so adding a destination moves these
+// counts with it instead of failing three unrelated assertions.
+const CALCULATOR_URLS = JSON.parse(readFileSync(new URL('../calculators/manifest.json', import.meta.url), 'utf8')).calculators.length + 1
+const STATIC_URLS = 1 + CALCULATOR_URLS // shell + hub + calculators
 const fetchMock = vi.fn<typeof fetch>()
 
 // 2026-09-17T00:00:00Z — a fixed instant so the expected <lastmod> is a literal
@@ -125,6 +131,8 @@ describe('sitemap handler in node', () => {
     expect(res.body).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/</loc>')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/ladakh-trip-cost-calculator/</loc>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/goa-trip-cost-calculator/</loc>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/trip-cost-calculators/</loc>')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/i/kerala-trip_1</loc>')
     expect(res.body).toContain('<loc>https://www.yatraflow.in/i/goa-north</loc>')
     expect(res.body.trimEnd().endsWith('</urlset>')).toBe(true)
@@ -167,14 +175,14 @@ describe('sitemap handler in node', () => {
     expect(res.body).toContain('/i/fine')
     expect(res.body).not.toContain('has space')
     expect(res.body).not.toContain('has+space')
-    expect((res.body.match(/<loc>/g) ?? []).length).toBe(3) // shell + calculator + one publication
+    expect((res.body.match(/<loc>/g) ?? []).length).toBe(STATIC_URLS + 1) // static pages + one publication
   })
 
   it('serves the shell alone when the catalogue is genuinely empty', async () => {
     respond([])
     const res = await runHandler()
     expect(res.statusCode).toBe(200)
-    expect((res.body.match(/<loc>/g) ?? []).length).toBe(2) // shell + calculator
+    expect((res.body.match(/<loc>/g) ?? []).length).toBe(STATIC_URLS) // the static pages alone
   })
 
   it('answers 503 rather than publishing a sitemap that omits every itinerary', async () => {
@@ -253,8 +261,8 @@ describe('sitemap handler in node', () => {
       expect(res.statusCode).toBe(200)
       expect(fetchMock).toHaveBeenCalledTimes(3)
       expect(res.body).toContain('/i/pub-the-1001st')
-      // shell + calculator + 1005 publications
-      expect((res.body.match(/<loc>/g) ?? []).length).toBe(PAGE * 2 + 1 + 1 + 1)
+      // the static pages + 1005 publications
+      expect((res.body.match(/<loc>/g) ?? []).length).toBe(PAGE * 2 + 1 + STATIC_URLS)
     })
 
     it('the second page carries the cursor it was handed', async () => {
