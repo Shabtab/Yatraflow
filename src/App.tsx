@@ -78,8 +78,9 @@ const DMCAPage = lazy(() => import('./pages/DMCAPage').then(m => ({ default: m.D
 const FaqPage = lazy(() => import('./pages/FaqPage').then(m => ({ default: m.FaqPage })))
 const HowItWorksPage = lazy(() => import('./pages/HowItWorksPage').then(m => ({ default: m.HowItWorksPage })))
 const AboutPage = lazy(() => import('./pages/AboutPage').then(m => ({ default: m.AboutPage })))
-// The creator pitch page is static and public, so a DM or comment reply links it
-// directly (no store read, so it also renders before hydrate).
+// The creator pitch page is public, so a DM or comment reply links it directly.
+// It reads one session flag to pick the storefront CTA, so it waits for the
+// hydrate like every other store-backed route.
 const ForCreatorsPage = lazy(() => import('./pages/ForCreatorsPage').then(m => ({ default: m.ForCreatorsPage })))
 
 /** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. The `page-enter` root gives the block the shared entrance. The `route-fallback` root stays invisible for a short grace period. It also holds a page's height. A fast load then shows no loader and no footer jump. */
@@ -136,7 +137,7 @@ const GUEST_ROUTE_SEGMENTS = new Set(['pub', 'creator', 'explore', 'creators', '
 
 /** Routes that are static copy: they read no store data, so they paint before
  *  the hydrate settles instead of showing the loading block. */
-const STATIC_COPY_SEGMENTS = new Set(['faq', 'how-it-works', 'for-creators'])
+const STATIC_COPY_SEGMENTS = new Set(['faq', 'how-it-works'])
 
 /** Whether the profile lookup takes the page from the route. A failed lookup takes it on the
  *  bare route too, so its Try again is never hidden behind the landing. A reading lookup does
