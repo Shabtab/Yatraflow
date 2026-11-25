@@ -54,7 +54,11 @@ import { haptic, HAPTIC } from '../lib/haptics'
 import { useTimeFormat, formatHM, validHM } from '../lib/timefmt'
 import { cap } from '../lib/labels'
 import { readBenchPrefill } from '../lib/planBench'
-import { readCalcPrefill, clearCalcPrefill, prefillFromSearch, calcPrefillTripName, calcPartyLimitText } from '../lib/calcPrefill'
+import {
+  readCalcPrefill, clearCalcPrefill, prefillFromSearch, calcPrefillTripName, calcPartyLimitText,
+  calcDestHit, calcDestNote, calcDestStop, stageCalcDest, type CalcDestPhase, type CalcDestStop,
+} from '../lib/calcPrefill'
+import { searchPlaces, requireHitCoords, hasCoords, type PlaceHit } from '../lib/geocode'
 import { scrollBehavior } from '../lib/motion'
 import { LocationInput } from '../components/LocationInput'
 import { PageHeader } from '../components/page/PageHeader'
@@ -131,6 +135,27 @@ function Money({ v, animate }: { v: number | null | undefined; animate: boolean 
   if (v == null) return <>Not priced</>
   const text = `₹${v.toLocaleString('en-IN')}`
   return <Odometer value={text} animate={animate} label={text} />
+}
+
+/** Resolve a calculator's destination name through the same search the destination
+ *  box uses: search, take the matching place, then pin it with requireHitCoords.
+ *  Never throws. Which hit answers and which stop it becomes are decided in
+ *  lib/calcPrefill, so this function only calls the facade. */
+async function pinCalcDest(dest: string): Promise<{ phase: 'pinned'; stop: CalcDestStop } | { phase: 'missing' | 'failed' }> {
+  let hits: PlaceHit[]
+  try {
+    hits = await searchPlaces(dest, { indiaOnly: true })
+  } catch {
+    return { phase: 'failed' }
+  }
+  const hit = calcDestHit(dest, hits)
+  if (!hit) return { phase: 'missing' }
+  try {
+    const stop = calcDestStop(hasCoords(hit) ? hit : await requireHitCoords(hit))
+    return stop ? { phase: 'pinned', stop } : { phase: 'failed' }
+  } catch {
+    return { phase: 'failed' }
+  }
 }
 
 export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -213,6 +238,10 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   /** The line for a calculator party above the trip limit. Set on arrival, and
    *  cleared once the traveller sets the party size. */
   const [calcPartyLimit, setCalcPartyLimit] = useState<string | null>(null)
+  /** The calculator destination being resolved, and where that stands. Null once it is a stop. */
+  const [calcDest, setCalcDest] = useState<{ dest: string; phase: CalcDestPhase } | null>(null)
+  /** Set once the arrival's destination has been asked for, so it is never asked twice. */
+  const calcDestAsked = useRef(false)
   // Plan Bench hand-off (issue #37): when the homepage calculator stashed its
   // inputs into sessionStorage, pre-fill the matching fields. Read-once — the
   // stash clears itself on read, so a refresh returns to the plain form.
@@ -276,10 +305,26 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       ...(p.budget != null ? { budgetPerPersonInr: p.budget } : {}),
       ...(!prev.startDate && p.days != null ? { startDate: start, endDate: isoAddDays(start, p.days - 1) } : {}),
     }))
-    // The destination answers the "where" step, so the traveller only has to
-    // say where they start from. No coordinates: the calculator knows a place
-    // name, not a pin, and the geocoder resolves it in the usual flow.
-    if (p.dest) setDests(prev => (prev.length ? prev : [{ name: p.dest! }]))
+    // The destination answers the "where" step, so the traveller only has to say
+    // where they start from. The calculator gives a name, not a pin. The name
+    // becomes a stop only once the destination search has pinned it (see
+    // pinCalcDest). Asked once per arrival: StrictMode runs this effect twice,
+    // and a re-render never asks again.
+    if (p.dest && !calcDestAsked.current) {
+      calcDestAsked.current = true
+      const dest = p.dest
+      setCalcDest({ dest, phase: 'finding' })
+      void pinCalcDest(dest).then(outcome => {
+        if (outcome.phase === 'pinned') {
+          // A route the traveller already started keeps its own stops, so nothing is added.
+          setDests(prev => (prev.length ? prev : [outcome.stop]))
+          setCalcDest(null)
+          return
+        }
+        setDestInput(box => stageCalcDest(box, dest))
+        setCalcDest({ dest, phase: outcome.phase })
+      })
+    }
   }, [])
 
   // The dock's "Print bill" is pinned to the bottom of the screen while the bill
@@ -973,6 +1018,10 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
     setC({ title: '', type: 'hotel-checkin', dayIndex: 0, time: '14:00', destName: '' })
   }
 
+  // The calculator destination's line, read against the live box text: a miss or a
+  // failure shows only while the staged name is still in the box.
+  const calcDestLine = calcDest ? calcDestNote(calcDest.phase, calcDest.dest, destInput) : null
+
   // The mockup's step markers answer "is this question done?" - derived from
   // state, never stamped: the soft circle is the goal-gradient, the solid one
   // is still inviting an answer.
@@ -1264,6 +1313,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   onPick={p => addDest({ name: p.name + (p.admin1 ? `, ${p.admin1}` : ''), lat: p.latitude, lng: p.longitude }, false)}
                   placeholder={dests.length === 0 ? 'Type a place to add your first stop - e.g. Munnar' : 'Type a place to add the next stop'}
                 />
+                {calcDestLine && <p className="ct-hint" role="status">{calcDestLine}</p>}
                 {/* #375: the escape hatch that keeps the new block honest. A place
                     the providers do not know can still become a real stop — chosen
                     on purpose, with no coordinates, which `DestDraft` already

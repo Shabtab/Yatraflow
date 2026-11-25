@@ -18,6 +18,7 @@
 
 import { STAY_STYLES, TRANSPORT_MODES, type StayStyle, type TransportMode } from '../data/types'
 import { CREW_MAX } from './crew'
+import { hasCoords, type PlaceHit } from './providers/hits'
 
 export const CALC_PREFILL_KEY = 'yf.pending-calc-prefill'
 export const CALC_PREFILL_TTL_MS = 30 * 60 * 1000
@@ -185,4 +186,58 @@ export function calcPartyLimitText(p: CalcPrefill): string | null {
 export function calcPrefillTripName(p: CalcPrefill): string {
   if (!p.dest) return ''
   return p.days != null ? `${p.days}-day ${p.dest} trip` : `${p.dest} trip`
+}
+
+// ---- The stated destination is a name, not a pin ----
+// The arrival names a place, and the form resolves it through the same search the
+// destination box uses. The steps that touch the network live in CreateTrip. The
+// decisions live here, where the node tests can pin them.
+
+/** A place name as a person reads it: case, accents and spacing aside. */
+function placeKey(v: string): string {
+  return v.normalize('NFKD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+/** The search hit that answers a calculator's destination name, or null. Only a
+ *  place answers, never a point of interest, and only a hit whose own name is the
+ *  stated destination. A near miss such as a beach in Goa is a different place. */
+export function calcDestHit(dest: string, hits: readonly PlaceHit[]): PlaceHit | null {
+  const want = placeKey(dest)
+  if (!want) return null
+  return hits.find(h => h.kind === 'place' && placeKey(h.name) === want) ?? null
+}
+
+/** A destination with a real position, ready to become a route stop. */
+export interface CalcDestStop {
+  name: string
+  lat: number
+  lng: number
+}
+
+/** The stop a pinned hit becomes, or null when the hit has no real position. A
+ *  null is the staged case: the name waits in the stop box for the traveller. */
+export function calcDestStop(pinned: PlaceHit | null): CalcDestStop | null {
+  if (!pinned || !hasCoords(pinned)) return null
+  const region = pinned.admin1 && placeKey(pinned.admin1) !== placeKey(pinned.name) ? `, ${pinned.admin1}` : ''
+  return { name: `${pinned.name}${region}`, lat: pinned.latitude, lng: pinned.longitude }
+}
+
+/** Where a calculator destination stands while the form resolves it. */
+export type CalcDestPhase = 'finding' | 'missing' | 'failed'
+
+/** The stop box after an unpinned destination is staged. The name fills an empty
+ *  box. Text the traveller already typed stays as it is. */
+export function stageCalcDest(box: string, dest: string): string {
+  return box.trim() === '' ? dest : box
+}
+
+/** The line under the stop box for a calculator destination, or null. The search
+ *  in progress reads differently from a miss and from a failure. A miss or a
+ *  failure shows only while the staged name is still in the box. */
+export function calcDestNote(phase: CalcDestPhase, dest: string, box: string): string | null {
+  if (phase === 'finding') return `Finding ${dest} on the map…`
+  if (box.trim() !== dest.trim()) return null
+  return phase === 'missing'
+    ? `No map place matched ${dest}. Pick a suggestion, or add it without a map pin.`
+    : `Couldn’t pin ${dest} on the map. Pick a suggestion, or add it without a map pin.`
 }

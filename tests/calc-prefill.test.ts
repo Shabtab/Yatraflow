@@ -9,8 +9,10 @@ import {
   CALC_PREFILL_KEY, CALC_PREFILL_TTL_MS, CALC_PEOPLE_MAX,
   parseCalcPrefill, prefillFromSearch, stashCalcPrefill, stashCalcPrefillFromSearch,
   readCalcPrefill, clearCalcPrefill, calcPrefillBannerText, calcPrefillTripName, calcPartyLimitText,
+  calcDestHit, calcDestStop, calcDestNote, stageCalcDest,
   type CalcPrefill,
 } from '../src/lib/calcPrefill'
+import type { PlaceHit } from '../src/lib/providers/hits'
 import { CREW_MAX } from '../src/lib/crew'
 import { sanitizeCreateMeta } from '../src/lib/createEvents'
 import { readFileSync } from 'node:fs'
@@ -312,5 +314,115 @@ describe('the create page consumes the hand-off once', () => {
     expect(create).toContain('clearCalcPrefill()')
     const afterRead = create.slice(create.indexOf('const p = prefillFromSearch'), create.indexOf('calcSlugRef.current = p.calc'))
     expect(afterRead).toContain('clearCalcPrefill()')
+  })
+})
+
+/** A search hit as the facade returns one. Only the fields a test reads are set. */
+const place = (over: Partial<PlaceHit> = {}): PlaceHit => ({
+  id: 1, name: 'Goa', latitude: 15.3, longitude: 74.1, kind: 'place', admin1: 'Goa', ...over,
+})
+
+describe('the calculator destination is pinned before it becomes a stop', () => {
+  describe('calcDestHit — which search hit answers the stated name', () => {
+    it('takes the place whose own name is the destination', () => {
+      expect(calcDestHit('Goa', [place({ id: 2, name: 'Goa Beach' }), place({ id: 1 })])?.id).toBe(1)
+    })
+
+    it('ignores case, accents and spacing', () => {
+      expect(calcDestHit('  meghâlaya ', [place({ name: 'Meghalaya' })])?.name).toBe('Meghalaya')
+    })
+
+    it('never answers with a point of interest', () => {
+      expect(calcDestHit('Goa', [place({ kind: 'poi' })])).toBeNull()
+    })
+
+    it('does not take a near miss for the place', () => {
+      expect(calcDestHit('Goa', [place({ name: 'Goa Beach' })])).toBeNull()
+    })
+
+    it('answers nothing for a blank name or no hits', () => {
+      expect(calcDestHit('   ', [place()])).toBeNull()
+      expect(calcDestHit('Goa', [])).toBeNull()
+    })
+
+    it('takes the first exact match in the order the search returned them', () => {
+      expect(calcDestHit('Goa', [place({ id: 'first' }), place({ id: 'second' })])?.id).toBe('first')
+    })
+  })
+
+  describe('calcDestStop — only a real position becomes a stop', () => {
+    it('is null with no hit, and for the (0, 0) placeholder a provider returns before a pick', () => {
+      expect(calcDestStop(null)).toBeNull()
+      expect(calcDestStop(place({ latitude: 0, longitude: 0 }))).toBeNull()
+    })
+
+    it('is null for a position that is not a number', () => {
+      expect(calcDestStop(place({ latitude: NaN }))).toBeNull()
+    })
+
+    it('carries the name and the pinned position', () => {
+      expect(calcDestStop(place({ name: 'Goa', admin1: 'Goa', latitude: 15.3, longitude: 74.1 }))).toEqual({
+        name: 'Goa', lat: 15.3, lng: 74.1,
+      })
+    })
+
+    it('adds the region when it is a different name', () => {
+      expect(calcDestStop(place({ name: 'Munnar', admin1: 'Kerala', latitude: 10.1, longitude: 77.1 }))).toEqual({
+        name: 'Munnar, Kerala', lat: 10.1, lng: 77.1,
+      })
+    })
+  })
+
+  describe('stageCalcDest — the name waits in an empty stop box only', () => {
+    it('fills an empty or blank box', () => {
+      expect(stageCalcDest('', 'Goa')).toBe('Goa')
+      expect(stageCalcDest('   ', 'Goa')).toBe('Goa')
+    })
+
+    it('keeps what the traveller already typed', () => {
+      expect(stageCalcDest('Munnar', 'Goa')).toBe('Munnar')
+    })
+  })
+
+  describe('calcDestNote — the three states stay apart', () => {
+    it('reads as a search while it runs, whatever the box holds', () => {
+      expect(calcDestNote('finding', 'Goa', '')).toBe('Finding Goa on the map…')
+      expect(calcDestNote('finding', 'Goa', 'Munnar')).toBe('Finding Goa on the map…')
+    })
+
+    it('says that no place matched, and that a pin failed, in different words', () => {
+      expect(calcDestNote('missing', 'Goa', 'Goa')).toBe('No map place matched Goa. Pick a suggestion, or add it without a map pin.')
+      expect(calcDestNote('failed', 'Goa', 'Goa')).toBe('Couldn’t pin Goa on the map. Pick a suggestion, or add it without a map pin.')
+    })
+
+    it('shows a miss or a failure only while the staged name is still in the box', () => {
+      expect(calcDestNote('missing', 'Goa', '')).toBeNull()
+      expect(calcDestNote('failed', 'Goa', 'Munnar')).toBeNull()
+    })
+  })
+})
+
+describe('the create page pins the calculator destination before it adds a stop', () => {
+  const create = readFileSync(new URL('../src/pages/CreateTrip.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+
+  it('never adds the bare name, because a stop needs a real position', () => {
+    expect(create).not.toMatch(/name: p\.dest!/)
+    expect(create).not.toContain('the geocoder resolves it in the usual flow')
+  })
+
+  it('resolves the name through the destination search and the facade pin', () => {
+    expect(create).toMatch(/searchPlaces\(dest, \{ indiaOnly: true \}\)/)
+    expect(create).toContain('requireHitCoords(hit)')
+    expect(create).toMatch(/calcDestStop\(hasCoords\(hit\)/)
+  })
+
+  it('asks once per arrival, so StrictMode and a re-render never resolve it twice', () => {
+    expect(create).toContain('if (p.dest && !calcDestAsked.current) {')
+    expect(create).toContain('calcDestAsked.current = true')
+  })
+
+  it('stages an unpinned name in the stop box, and adds a pinned stop to an empty route', () => {
+    expect(create).toContain('setDestInput(box => stageCalcDest(box, dest))')
+    expect(create).toMatch(/setDests\(prev => \(prev\.length \? prev : \[outcome\.stop\]\)\)/)
   })
 })
