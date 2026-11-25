@@ -353,7 +353,7 @@ describe('creator card handler in node', () => {
     const res = await runCreator()
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toBe('text/html; charset=utf-8')
-    expect(res.body).toContain('<title>Asha Menon on YatraFlow</title>')
+    expect(res.body).toContain('<title>Asha Menon on YatraFlow — India Routes &amp; Stats</title>')
     expect(res.body).toContain('Slow travel across the Western Ghats')
     expect(res.body).toContain('3 published itineraries')
     expect(res.body).toContain('<h1>Asha Menon</h1>')
@@ -366,6 +366,46 @@ describe('creator card handler in node', () => {
     expect(String(second[0])).toContain('creator_id=eq.')
     expect(String(second[0])).toContain('unpublished_at=is.null')
     expect(second[1]?.method).not.toBe('HEAD')
+  })
+
+  it('leads the card with the routes, states and planned kilometres it can prove', async () => {
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValueOnce(creatorProfileResponse('Asha Menon', 'Ghats coffee routes'))
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([
+      { id: 'trip-0', title: 'Spiti loop', tagline: 'High passes', planned_km: 420, state_codes: ['HP'] },
+      { id: 'trip-1', title: 'Meghalaya', tagline: 'Rain', planned_km: 320, state_codes: ['ML', 'AS'] },
+      { id: 'trip-2', title: 'Coorg', tagline: 'Coffee', planned_km: null, state_codes: null },
+    ]), { status: 200 }))
+    const res = await runCreator()
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toContain('Indian states')
+    expect(res.body).toContain('3 timed routes across 3 Indian states (740 km planned).')
+    expect(res.body).toContain('Open &amp; fork for your group.')
+    expect(res.body).toContain('og:title" content="Asha Menon on YatraFlow — India Routes &amp; Stats"')
+  })
+
+  it('never turns an unknown distance into zero kilometres', async () => {
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValueOnce(creatorProfileResponse())
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([
+      { id: 'trip-0', title: 'Spiti loop', tagline: 'High passes', planned_km: null, state_codes: ['HP'] },
+      { id: 'trip-1', title: 'Meghalaya', tagline: 'Rain', planned_km: null, state_codes: null },
+    ]), { status: 200 }))
+    const res = await runCreator()
+    expect(res.statusCode).toBe(200)
+    // Two routes, one state, no known distance: the distance clause is absent.
+    expect(res.body).toContain('2 timed routes across 1 Indian state.')
+    expect(res.body).not.toContain('0 km planned')
+  })
+
+  it('counts a genuine zero-distance route as a known distance', async () => {
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValueOnce(creatorProfileResponse())
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([
+      { id: 'trip-0', title: 'Coorg', tagline: 'Coffee', planned_km: 0, state_codes: ['KA'] },
+    ]), { status: 200 }))
+    const res = await runCreator()
+    expect(res.body).toContain('1 timed route across 1 Indian state (0 km planned).')
   })
 
   it('falls back to the publication count in the description when there is no bio', async () => {

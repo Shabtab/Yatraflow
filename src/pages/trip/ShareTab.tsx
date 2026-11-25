@@ -14,6 +14,7 @@ import { currentPublicShareUrl, withShareRef } from '../../lib/shareUrl'
 import { downloadTripIcs } from '../../lib/ics'
 import { nativeCopyText, openExternal } from '../../lib/native'
 import { whatsAppSendUrl } from '../../lib/whatsAppShare'
+import { tripInviteMessage } from '../../lib/inviteShareText'
 import { computeTotals, formatInr, type LegEstimate } from '../../lib/engine'
 import { publishablePlannedKm } from '../../lib/creatorFacts'
 import { publishableStateCodes } from '../../lib/routeStates'
@@ -43,11 +44,6 @@ const SHARE_WIDE_QUERY = '(min-width: 1100px)'
 const ROLE_LABEL = { editor: 'Editor', viewer: 'Viewer' } as const
 const ROLE_ITEMS = [{ key: 'editor', label: 'Editor' }, { key: 'viewer', label: 'Viewer' }] as const
 
-// The invite message and the mail link are plain text. They name the code and
-// the link, and nothing else about the trip or its members.
-function inviteMessage(code: string, link: string): string {
-  return `Join my YatraFlow trip with the code ${code}: ${link}`
-}
 function mailtoUrl(subject: string, body: string): string {
   return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }
@@ -657,6 +653,21 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   const removedMembers = !accessPending ? accessRead?.state?.removed ?? [] : []
   // The role comes only from a read that succeeded for this version. The cached trip is never a source (#1012).
   const readRole = !accessPending ? accessRead?.state?.inviteRole ?? null : null
+  // The invite and mail bodies. Every fact is read at press time, so a big
+  // trip's simulation is never paid on render, and an empty trip prints no
+  // zero facts. The role decides what the message may promise (#1012).
+  function inviteText(): string {
+    const totals = computeTotals(trip, legCorrections)
+    return tripInviteMessage({
+      title: trip.name?.trim() || null,
+      days: trip.days.length,
+      stops: totals.stopCount,
+      perPersonInr: totals.costPerPersonInr,
+      url: inviteLink,
+      code: inviteCode ?? '',
+      role: readRole,
+    })
+  }
   useEffect(() => {
     let alive = true
     void readMemberAccess(trip.id).then(state => {
@@ -802,8 +813,8 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
             )}
             {inviteLink && (
               <div className="shr-share-buttons">
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => openExternal(whatsAppSendUrl(inviteMessage(inviteCode ?? '', inviteLink)))}>WhatsApp</button>
-                <button type="button" className="btn btn-outline btn-sm" onClick={() => openExternal(mailtoUrl('Join my YatraFlow trip', inviteMessage(inviteCode ?? '', inviteLink)))}>Email</button>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => openExternal(whatsAppSendUrl(inviteText()))}>WhatsApp</button>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => openExternal(mailtoUrl('Join our YatraFlow trip', inviteText()))}>Email</button>
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => { void openQr() }}>Show QR</button>
               </div>
             )}
