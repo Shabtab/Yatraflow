@@ -6,11 +6,15 @@
 // read-don't-clear behaviour, and the two copy builders byte for byte.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
-  CALC_PREFILL_KEY, CALC_PREFILL_TTL_MS,
+  CALC_PREFILL_KEY, CALC_PREFILL_TTL_MS, CALC_PEOPLE_MAX,
   parseCalcPrefill, prefillFromSearch, stashCalcPrefill, stashCalcPrefillFromSearch,
-  readCalcPrefill, clearCalcPrefill, calcPrefillBannerText, calcPrefillTripName,
-  type CalcPrefill,
+  readCalcPrefill, clearCalcPrefill, calcPrefillBannerText, calcPrefillTripName, calcPartyLimitText,
+  calcDestHit, calcDestStop, calcDestNote, stageCalcDest,
+  CALC_PIN_TIMEOUT_MS, withCalcPinTimeout, calcDestAction,
+  type CalcPrefill, type CalcDestOutcome, type CalcDestAction,
 } from '../src/lib/calcPrefill'
+import type { PlaceHit } from '../src/lib/providers/hits'
+import { CREW_MAX } from '../src/lib/crew'
 import { sanitizeCreateMeta } from '../src/lib/createEvents'
 import { readFileSync } from 'node:fs'
 
@@ -21,7 +25,7 @@ const NOW = Date.parse('2026-11-25T10:00:00Z')
 const CALC_QUERY = '?ref=calculator&calc=goa&dest=Goa&days=4&people=4&mode=train&stay=comfort&budget=18400'
 
 const row = (over: Partial<CalcPrefill> = {}): CalcPrefill => ({
-  v: 1, at: NOW, calc: 'goa', dest: 'Goa', days: 4, people: 4,
+  v: 1, at: NOW, calc: 'goa', dest: 'Goa', days: 4, people: 4, peopleOverLimit: null,
   mode: 'train', stay: 'comfort', budget: 18400, ...over,
 })
 
@@ -43,7 +47,7 @@ function installStorage() {
 describe('prefillFromSearch — the calculator’s own query', () => {
   it('round-trips the documented CTA into the exact field values', () => {
     expect(prefillFromSearch(CALC_QUERY, NOW)).toEqual({
-      v: 1, at: NOW, calc: 'goa', dest: 'Goa', days: 4, people: 4,
+      v: 1, at: NOW, calc: 'goa', dest: 'Goa', days: 4, people: 4, peopleOverLimit: null,
       mode: 'train', stay: 'comfort', budget: 18400,
     })
   })
@@ -70,7 +74,7 @@ describe('prefillFromSearch — the calculator’s own query', () => {
     ['zero days', 'days', '0'],
     ['days past the band', 'days', '91'],
     ['zero people', 'people', '0'],
-    ['people past the band', 'people', '21'],
+    ['a party past the calculator ceiling', 'people', String(CALC_PEOPLE_MAX + 1)],
     ['a non-numeric budget', 'budget', 'a-lot'],
     ['a negative budget', 'budget', '-100'],
     ['a blank destination', 'dest', '   '],
@@ -95,9 +99,58 @@ describe('prefillFromSearch — the calculator’s own query', () => {
 
   it('accepts an empty query under the right ref without inventing values', () => {
     expect(prefillFromSearch('?ref=calculator', NOW)).toEqual({
-      v: 1, at: NOW, calc: null, dest: null, days: null, people: null,
+      v: 1, at: NOW, calc: null, dest: null, days: null, people: null, peopleOverLimit: null,
       mode: null, stay: null, budget: null,
     })
+  })
+})
+
+describe('the party size — the trip limit, and a stated count above it', () => {
+  const withPeople = (n: string) => prefillFromSearch(`?ref=calculator&dest=Goa&people=${n}`, NOW)
+
+  it.each([1, 21, 25, CREW_MAX])('takes a party of %i into the form', n => {
+    const p = withPeople(String(n))
+    expect(p?.people).toBe(n)
+    expect(p?.peopleOverLimit).toBeNull()
+  })
+
+  it.each([CREW_MAX + 1, CALC_PEOPLE_MAX])('reports a stated party of %i as over the trip limit, and never applies it', n => {
+    const p = withPeople(String(n))
+    expect(p?.people).toBeNull()
+    expect(p?.peopleOverLimit).toBe(n)
+  })
+
+  it.each(['0', '-3', 'many', '4.5', '', String(CALC_PEOPLE_MAX + 1)])('drops the party %j from both fields', raw => {
+    const p = withPeople(raw)
+    expect(p?.people).toBeNull()
+    expect(p?.peopleOverLimit).toBeNull()
+  })
+
+  it('keeps a stored over-limit party through the stash round trip', () => {
+    const stored = JSON.stringify(row({ people: null, peopleOverLimit: 35 }))
+    const p = parseCalcPrefill(stored, NOW)
+    expect(p?.people).toBeNull()
+    expect(p?.peopleOverLimit).toBe(35)
+  })
+
+  it('says the stated count and the limit, and says nothing when the party fits', () => {
+    expect(calcPartyLimitText(row({ people: null, peopleOverLimit: 35 }))).toBe(
+      `Your estimate was for 35 people. A trip holds up to ${CREW_MAX} people, so set the party size yourself.`,
+    )
+    expect(calcPartyLimitText(row())).toBeNull()
+  })
+
+  it('names the stated count in the sign-up banner, because that is the estimate the visitor priced', () => {
+    expect(calcPrefillBannerText(row({ people: null, peopleOverLimit: 35 }))).toBe(
+      'Your 4-day Goa estimate for 35 people is ready. Sign up free to open your group plan.',
+    )
+  })
+
+  it('the calculator ceiling is the calculators own MAX_PEOPLE', () => {
+    const engine = readFileSync(new URL('../calculators/engine.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+    const declared = /^const MAX_PEOPLE = (\d+);?$/m.exec(engine)
+    expect(declared, 'MAX_PEOPLE is declared in calculators/engine.mjs').not.toBeNull()
+    expect(CALC_PEOPLE_MAX).toBe(Number(declared![1]))
   })
 })
 
@@ -262,5 +315,258 @@ describe('the create page consumes the hand-off once', () => {
     expect(create).toContain('clearCalcPrefill()')
     const afterRead = create.slice(create.indexOf('const p = prefillFromSearch'), create.indexOf('calcSlugRef.current = p.calc'))
     expect(afterRead).toContain('clearCalcPrefill()')
+  })
+})
+
+/** A search hit as the facade returns one. Only the fields a test reads are set. */
+const place = (over: Partial<PlaceHit> = {}): PlaceHit => ({
+  id: 1, name: 'Goa', latitude: 15.3, longitude: 74.1, kind: 'place', admin1: 'Goa', ...over,
+})
+
+describe('the calculator destination is pinned before it becomes a stop', () => {
+  describe('calcDestHit — which search hit answers the stated name', () => {
+    it('takes the place whose own name is the destination', () => {
+      expect(calcDestHit('Goa', [place({ id: 2, name: 'Goa Beach' }), place({ id: 1 })])?.id).toBe(1)
+    })
+
+    it('ignores case, accents and spacing', () => {
+      expect(calcDestHit('  meghâlaya ', [place({ name: 'Meghalaya' })])?.name).toBe('Meghalaya')
+    })
+
+    it('never answers with a point of interest', () => {
+      expect(calcDestHit('Goa', [place({ kind: 'poi' })])).toBeNull()
+    })
+
+    it('does not take a near miss for the place', () => {
+      expect(calcDestHit('Goa', [place({ name: 'Goa Beach' })])).toBeNull()
+    })
+
+    it('answers nothing for a blank name or no hits', () => {
+      expect(calcDestHit('   ', [place()])).toBeNull()
+      expect(calcDestHit('Goa', [])).toBeNull()
+    })
+
+    it('takes the first exact match in the order the search returned them', () => {
+      expect(calcDestHit('Goa', [place({ id: 'first' }), place({ id: 'second' })])?.id).toBe('first')
+    })
+
+    it('a state wins over a village of the same name that the search lists before it', () => {
+      const hits = [
+        place({ id: 'village', name: 'Goa', admin1: 'Uttar Pradesh' }),
+        place({ id: 'state', name: 'Goa', admin1: 'Goa' }),
+      ]
+      expect(calcDestHit('Goa', hits)?.id).toBe('state')
+    })
+
+    it('finds the state through accents, as the name match does', () => {
+      const hits = [
+        place({ id: 'village', name: 'Goa', admin1: 'Assam' }),
+        place({ id: 'state', name: 'Goa', admin1: 'Goá' }),
+      ]
+      expect(calcDestHit('goa', hits)?.id).toBe('state')
+    })
+
+    it('falls back to the first exact match when no hit names itself as its state', () => {
+      const hits = [
+        place({ id: 'a', name: 'Goa', admin1: 'Karnataka' }),
+        place({ id: 'b', name: 'Goa', admin1: '' }),
+      ]
+      expect(calcDestHit('Goa', hits)?.id).toBe('a')
+    })
+
+    it('never takes Goa Velha for Goa, even when Goa Velha names Goa as its region', () => {
+      expect(calcDestHit('Goa', [place({ id: 'velha', name: 'Goa Velha', admin1: 'Goa' })])).toBeNull()
+      const withState = [
+        place({ id: 'velha', name: 'Goa Velha', admin1: 'Goa' }),
+        place({ id: 'state', name: 'Goa', admin1: 'Goa' }),
+      ]
+      expect(calcDestHit('Goa', withState)?.id).toBe('state')
+    })
+  })
+
+  describe('calcDestStop — only a real position becomes a stop', () => {
+    it('is null with no hit, and for the (0, 0) placeholder a provider returns before a pick', () => {
+      expect(calcDestStop(null)).toBeNull()
+      expect(calcDestStop(place({ latitude: 0, longitude: 0 }))).toBeNull()
+    })
+
+    it('is null for a position that is not a number', () => {
+      expect(calcDestStop(place({ latitude: NaN }))).toBeNull()
+    })
+
+    it('carries the name and the pinned position', () => {
+      expect(calcDestStop(place({ name: 'Goa', admin1: 'Goa', latitude: 15.3, longitude: 74.1 }))).toEqual({
+        name: 'Goa', lat: 15.3, lng: 74.1,
+      })
+    })
+
+    it('adds the region when it is a different name', () => {
+      expect(calcDestStop(place({ name: 'Munnar', admin1: 'Kerala', latitude: 10.1, longitude: 77.1 }))).toEqual({
+        name: 'Munnar, Kerala', lat: 10.1, lng: 77.1,
+      })
+    })
+  })
+
+  describe('stageCalcDest — the name waits in an empty stop box only', () => {
+    it('fills an empty or blank box', () => {
+      expect(stageCalcDest('', 'Goa')).toBe('Goa')
+      expect(stageCalcDest('   ', 'Goa')).toBe('Goa')
+    })
+
+    it('keeps what the traveller already typed', () => {
+      expect(stageCalcDest('Munnar', 'Goa')).toBe('Munnar')
+    })
+  })
+
+  describe('calcDestNote — the three states stay apart', () => {
+    it('reads as a search while it runs, whatever the box holds', () => {
+      expect(calcDestNote('finding', 'Goa', '')).toBe('Finding Goa on the map…')
+      expect(calcDestNote('finding', 'Goa', 'Munnar')).toBe('Finding Goa on the map…')
+    })
+
+    it('says that no place was found, and that a pin failed, in different words', () => {
+      expect(calcDestNote('missing', 'Goa', 'Goa')).toBe('Found no map place for Goa. Edit the name to see suggestions, or add it without a map pin.')
+      expect(calcDestNote('failed', 'Goa', 'Goa')).toBe('Couldn’t pin Goa on the map. Edit the name to see suggestions, or add it without a map pin.')
+    })
+
+    it('keeps the three states apart, so loading, no match and failure never read alike', () => {
+      const lines = [
+        calcDestNote('finding', 'Goa', 'Goa'),
+        calcDestNote('missing', 'Goa', 'Goa'),
+        calcDestNote('failed', 'Goa', 'Goa'),
+      ]
+      expect(new Set(lines).size).toBe(3)
+    })
+
+    it('shows a miss or a failure only while the staged name is still in the box', () => {
+      expect(calcDestNote('missing', 'Goa', '')).toBeNull()
+      expect(calcDestNote('failed', 'Goa', 'Munnar')).toBeNull()
+    })
+  })
+})
+
+describe('the create page pins the calculator destination before it adds a stop', () => {
+  const create = readFileSync(new URL('../src/pages/CreateTrip.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+
+  it('never adds the bare name, because a stop needs a real position', () => {
+    expect(create).not.toMatch(/name: p\.dest!/)
+    expect(create).not.toContain('the geocoder resolves it in the usual flow')
+  })
+
+  it('resolves the name through the destination search and the facade pin', () => {
+    expect(create).toMatch(/searchPlaces\(dest, \{ indiaOnly: true \}\)/)
+    expect(create).toContain('requireHitCoords(hit)')
+    expect(create).toMatch(/calcDestStop\(hasCoords\(hit\)/)
+  })
+
+  it('asks once per arrival, so StrictMode and a re-render never resolve it twice', () => {
+    expect(create).toContain('if (p.dest && !calcDestAsked.current) {')
+    expect(create).toContain('calcDestAsked.current = true')
+  })
+
+  it('stages an unpinned name in the stop box, and adds a pinned stop to an empty route', () => {
+    expect(create).toContain('setDestInput(box => stageCalcDest(box, dest))')
+    expect(create).toMatch(/setDests\(prev => \(prev\.length \? prev : \[stop\]\)\)/)
+  })
+
+  it('races the whole pin against the eight second window, with no raw number in the component', () => {
+    expect(create).toContain('withCalcPinTimeout(pinCalcDest(dest))')
+    expect(create).not.toMatch(/\b8000\b/)
+  })
+
+  it('decides every settled lookup against what the traveller has done, pinned ones included', () => {
+    expect(create).toContain('calcDestAction(outcome, {')
+    expect(create).toContain('routeHasStops: routeStopCount.current > 0')
+    expect(create).toContain('boxEdited: stopBoxEdited.current')
+    expect(create).toContain('routeStopCount.current = dests.length')
+    expect(create).toContain('onChange={v => { stopBoxEdited.current = true; setDestInput(v) }}')
+  })
+
+  it('clears the calculator party line on every path that sets the party size', () => {
+    expect(create).toContain('if (next.travellers !== undefined) setCalcPartyLimit(null)')
+    const resume = create.slice(create.indexOf('function resumeDraft()'), create.indexOf('setDests(draft.dests)'))
+    expect(resume).toContain('setCalcPartyLimit(null)')
+    // The repeat-trip path sets the party through patchFields, which already clears the line.
+    expect(create).toMatch(/patchFields\(\{\s*travellers: lastTrip\.travellers/)
+  })
+})
+
+describe('withCalcPinTimeout — a pin that runs long is a failure, and that failure stands', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  const pinned: CalcDestOutcome = { phase: 'pinned', stop: { name: 'Goa', lat: 15.3, lng: 74.1 } }
+  const miss: CalcDestOutcome = { phase: 'missing' }
+
+  it('waits eight seconds', () => {
+    expect(CALC_PIN_TIMEOUT_MS).toBe(8000)
+  })
+
+  it('delivers a pin that settles in time, and leaves no timer running', async () => {
+    await expect(withCalcPinTimeout(Promise.resolve(pinned))).resolves.toEqual(pinned)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('keeps a miss that settles in time as a miss', async () => {
+    await expect(withCalcPinTimeout(Promise.resolve(miss))).resolves.toEqual(miss)
+  })
+
+  it('reports failed when the pin has not settled by the end of the window', async () => {
+    const done = withCalcPinTimeout(new Promise<CalcDestOutcome>(() => {}))
+    await vi.advanceTimersByTimeAsync(CALC_PIN_TIMEOUT_MS)
+    await expect(done).resolves.toEqual({ phase: 'failed' })
+  })
+
+  it('drops a pin that lands after the window, so no stop is added late', async () => {
+    let land: (outcome: CalcDestOutcome) => void = () => {}
+    const done = withCalcPinTimeout(new Promise<CalcDestOutcome>(resolve => { land = resolve }))
+    await vi.advanceTimersByTimeAsync(CALC_PIN_TIMEOUT_MS)
+    land(pinned)
+    await expect(done).resolves.toEqual({ phase: 'failed' })
+  })
+
+  it('treats a rejected pin as a failure, not a hang', async () => {
+    await expect(withCalcPinTimeout(Promise.reject(new Error('offline')))).resolves.toEqual({ phase: 'failed' })
+  })
+})
+
+/** One settled lookup, and what the traveller had done when it settled. */
+type DestCase = {
+  label: string
+  outcome: CalcDestOutcome
+  taken: { routeHasStops: boolean; boxEdited: boolean }
+  expected: CalcDestAction
+}
+
+describe('calcDestAction — what a settled lookup does, given what the traveller has done', () => {
+  const pinned: CalcDestOutcome = { phase: 'pinned', stop: { name: 'Goa', lat: 15.3, lng: 74.1 } }
+  const missing: CalcDestOutcome = { phase: 'missing' }
+  const failed: CalcDestOutcome = { phase: 'failed' }
+  const clean = { routeHasStops: false, boxEdited: false }
+  const routeUsed = { routeHasStops: true, boxEdited: false }
+  const boxUsed = { routeHasStops: false, boxEdited: true }
+  const bothUsed = { routeHasStops: true, boxEdited: true }
+
+  const CASES: DestCase[] = [
+    { label: 'a pin into an empty route with a clean box adds its stop', outcome: pinned, taken: clean, expected: { kind: 'add', stop: pinned.stop } },
+    { label: 'a pin into a route the traveller started is dropped', outcome: pinned, taken: routeUsed, expected: { kind: 'drop' } },
+    { label: 'a successful lookup that settles after an edit adds nothing', outcome: pinned, taken: boxUsed, expected: { kind: 'drop' } },
+    { label: 'a pin after both a stop and an edit is dropped', outcome: pinned, taken: bothUsed, expected: { kind: 'drop' } },
+    { label: 'a miss with a clean box stages the miss', outcome: missing, taken: clean, expected: { kind: 'stage', phase: 'missing' } },
+    { label: 'a miss into a route the traveller started is dropped', outcome: missing, taken: routeUsed, expected: { kind: 'drop' } },
+    { label: 'a miss after an edit is dropped', outcome: missing, taken: boxUsed, expected: { kind: 'drop' } },
+    { label: 'a miss after both a stop and an edit is dropped', outcome: missing, taken: bothUsed, expected: { kind: 'drop' } },
+    { label: 'a failure with a clean box stages the failure', outcome: failed, taken: clean, expected: { kind: 'stage', phase: 'failed' } },
+    { label: 'a failure into a route the traveller started is dropped', outcome: failed, taken: routeUsed, expected: { kind: 'drop' } },
+    { label: 'a failure after an edit is dropped', outcome: failed, taken: boxUsed, expected: { kind: 'drop' } },
+    { label: 'a failure after both a stop and an edit is dropped', outcome: failed, taken: bothUsed, expected: { kind: 'drop' } },
+  ]
+
+  it('covers every combination of outcome, route and box', () => {
+    expect(CASES).toHaveLength(12)
+  })
+
+  it.each(CASES)('$label', ({ outcome, taken, expected }) => {
+    expect(calcDestAction(outcome, taken)).toEqual(expected)
   })
 })

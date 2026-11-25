@@ -143,7 +143,7 @@ export async function resolveHitCoords(hit: PlaceHit): Promise<PlaceHit> {
 /**
  * Search cities AND points of interest at once (free stack).
  * Mappls suggestions first (best India coverage, when a key is configured),
- * then populated places, then POIs — deduped by name.
+ * then populated places, then POIs — deduped by name and region (see the merge below).
  *
  * Route-aware (found live 2026-09-24): when the caller passes the trip's
  * route geometry or corridor anchors, hits are RANKED by their distance to
@@ -171,10 +171,25 @@ export async function searchPlacesFree(q: string, opts?: FreeSearchOpts): Promis
     searchOpenMeteo(needle, indiaOnly, 5).catch(() => [] as PlaceHit[]),
     searchWikipediaPois(needle, 5).catch(() => [] as PlaceHit[]),
   ])
+  // A place is identified by its name and its region. Open-Meteo places are kept by
+  // name and region, so a village named Goa in Karnataka never hides the state of Goa.
+  // A Mappls hit is dropped only when an Open-Meteo place has the same name and region.
+  // Otherwise it keeps its place in the merge. Mappls reports the last address segment
+  // as admin1. Its own code comment calls that the state, and no live response has
+  // checked it. A Wikipedia hit is a point of interest with no region. It yields to any
+  // same-named place, from Open-Meteo or Mappls, so the typeahead never lists "Goa" twice.
+  const identity = (h: PlaceHit): string =>
+    JSON.stringify([h.name.trim().toLowerCase(), (h.admin1 ?? '').trim().toLowerCase()])
+  const openMeteoIdentities = new Set(places.map(identity))
+  const placeNames = new Set(
+    [...mappls, ...places].filter(h => h.kind === 'place').map(h => h.name.trim().toLowerCase()),
+  )
   const seen = new Set<string>()
   const out: PlaceHit[] = []
   for (const hit of [...mappls, ...places, ...pois]) {
-    const key = hit.name.toLowerCase()
+    if (hit.source === 'mappls' && openMeteoIdentities.has(identity(hit))) continue
+    if (hit.source === 'wikipedia' && placeNames.has(hit.name.trim().toLowerCase())) continue
+    const key = identity(hit)
     if (seen.has(key)) continue
     seen.add(key)
     out.push(hit)
