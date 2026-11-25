@@ -56,7 +56,8 @@ import { cap } from '../lib/labels'
 import { readBenchPrefill } from '../lib/planBench'
 import {
   readCalcPrefill, clearCalcPrefill, prefillFromSearch, calcPrefillTripName, calcPartyLimitText,
-  calcDestHit, calcDestNote, calcDestStop, stageCalcDest, type CalcDestPhase, type CalcDestStop,
+  calcDestHit, calcDestNote, calcDestStop, stageCalcDest, withCalcPinTimeout,
+  type CalcDestOutcome, type CalcDestPhase,
 } from '../lib/calcPrefill'
 import { searchPlaces, requireHitCoords, hasCoords, type PlaceHit } from '../lib/geocode'
 import { scrollBehavior } from '../lib/motion'
@@ -141,7 +142,7 @@ function Money({ v, animate }: { v: number | null | undefined; animate: boolean 
  *  box uses: search, take the matching place, then pin it with requireHitCoords.
  *  Never throws. Which hit answers and which stop it becomes are decided in
  *  lib/calcPrefill, so this function only calls the facade. */
-async function pinCalcDest(dest: string): Promise<{ phase: 'pinned'; stop: CalcDestStop } | { phase: 'missing' | 'failed' }> {
+async function pinCalcDest(dest: string): Promise<CalcDestOutcome> {
   let hits: PlaceHit[]
   try {
     hits = await searchPlaces(dest, { indiaOnly: true })
@@ -242,6 +243,10 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   const [calcDest, setCalcDest] = useState<{ dest: string; phase: CalcDestPhase } | null>(null)
   /** Set once the arrival's destination has been asked for, so it is never asked twice. */
   const calcDestAsked = useRef(false)
+  /** Set once the traveller types in or clears the stop box. A late calculator result then leaves the box alone. */
+  const stopBoxEdited = useRef(false)
+  /** The route's stop count, read by a late calculator result. The effect below keeps it current. */
+  const routeStopCount = useRef(0)
   // Plan Bench hand-off (issue #37): when the homepage calculator stashed its
   // inputs into sessionStorage, pre-fill the matching fields. Read-once — the
   // stash clears itself on read, so a refresh returns to the plain form.
@@ -314,10 +319,17 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       calcDestAsked.current = true
       const dest = p.dest
       setCalcDest({ dest, phase: 'finding' })
-      void pinCalcDest(dest).then(outcome => {
+      // The whole pin runs inside the window, so the finding line cannot outlast it.
+      void withCalcPinTimeout(pinCalcDest(dest)).then(outcome => {
         if (outcome.phase === 'pinned') {
           // A route the traveller already started keeps its own stops, so nothing is added.
           setDests(prev => (prev.length ? prev : [outcome.stop]))
+          setCalcDest(null)
+          return
+        }
+        // The traveller may have added a stop or used the box while the search ran.
+        // Their input wins, so the calculator name is neither staged nor shown.
+        if (routeStopCount.current > 0 || stopBoxEdited.current) {
           setCalcDest(null)
           return
         }
@@ -326,6 +338,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       })
     }
   }, [])
+
+  // Keeps the route's stop count current for the late calculator result above.
+  useEffect(() => { routeStopCount.current = dests.length }, [dests.length])
 
   // The dock's "Print bill" is pinned to the bottom of the screen while the bill
   // itself sits further down the page, so on a phone that tap used to look like
@@ -548,6 +563,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     if (!draft) return
     haptic(HAPTIC.select)
     recordCreateEvent('draft_resumed', undefined, { userId: me?.id })
+    // A saved draft brings its own party size, so the calculator's line no longer applies.
+    setCalcPartyLimit(null)
     setF(prev => ({ ...prev, ...(draft.form as Partial<typeof prev>) }))
     setDests(draft.dests)
     setReturnCount(draft.returnCount)
@@ -1307,7 +1324,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   id="ct-dest-input"
                   ariaLabel="Add a stop to the trip"
                   value={destInput}
-                  onChange={setDestInput}
+                  onChange={v => { stopBoxEdited.current = true; setDestInput(v) }}
                   errorId={errs.destinations ? 'ct-dest-err' : undefined}
                   error={errs.destinations}
                   onPick={p => addDest({ name: p.name + (p.admin1 ? `, ${p.admin1}` : ''), lat: p.latitude, lng: p.longitude }, false)}

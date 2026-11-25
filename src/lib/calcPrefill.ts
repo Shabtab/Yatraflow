@@ -200,11 +200,15 @@ function placeKey(v: string): string {
 
 /** The search hit that answers a calculator's destination name, or null. Only a
  *  place answers, never a point of interest, and only a hit whose own name is the
- *  stated destination. A near miss such as a beach in Goa is a different place. */
+ *  stated destination. A longer name such as Goa Velha is a different place. Among
+ *  the exact matches a state wins, because a state names itself: its admin1 is its
+ *  own name. A village with the same name in another state is listed before it. */
 export function calcDestHit(dest: string, hits: readonly PlaceHit[]): PlaceHit | null {
   const want = placeKey(dest)
   if (!want) return null
-  return hits.find(h => h.kind === 'place' && placeKey(h.name) === want) ?? null
+  const exact = hits.filter(h => h.kind === 'place' && placeKey(h.name) === want)
+  if (exact.length === 0) return null
+  return exact.find(h => !!h.admin1 && placeKey(h.admin1) === placeKey(h.name)) ?? exact[0]
 }
 
 /** A destination with a real position, ready to become a route stop. */
@@ -237,7 +241,29 @@ export function stageCalcDest(box: string, dest: string): string {
 export function calcDestNote(phase: CalcDestPhase, dest: string, box: string): string | null {
   if (phase === 'finding') return `Finding ${dest} on the map…`
   if (box.trim() !== dest.trim()) return null
+  // The box searches only when the traveller types, so the note says how to see suggestions.
   return phase === 'missing'
-    ? `No map place matched ${dest}. Pick a suggestion, or add it without a map pin.`
-    : `Couldn’t pin ${dest} on the map. Pick a suggestion, or add it without a map pin.`
+    ? `Found no map place for ${dest}. Edit the name to see suggestions, or add it without a map pin.`
+    : `Couldn’t pin ${dest} on the map. Edit the name to see suggestions, or add it without a map pin.`
+}
+
+/** The longest the form waits on a calculator destination before it gives up. */
+export const CALC_PIN_TIMEOUT_MS = 8000
+
+/** Where a calculator destination's pin ends: a stop, a miss, or a failure. */
+export type CalcDestOutcome = { phase: 'pinned'; stop: CalcDestStop } | { phase: 'missing' | 'failed' }
+
+/** The pin's outcome, or `failed` once `ms` passes first. The timeout is final: a
+ *  result that lands later is not delivered, so the form never adds a stop after it
+ *  has told the traveller the pin failed. A rejected pin is a failure too. */
+export function withCalcPinTimeout(
+  pending: Promise<CalcDestOutcome>,
+  ms: number = CALC_PIN_TIMEOUT_MS,
+): Promise<CalcDestOutcome> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<CalcDestOutcome>(resolve => {
+    timer = setTimeout(() => resolve({ phase: 'failed' }), ms)
+  })
+  const settled = pending.catch((): CalcDestOutcome => ({ phase: 'failed' }))
+  return Promise.race([settled, timeout]).finally(() => clearTimeout(timer))
 }

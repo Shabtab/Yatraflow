@@ -10,7 +10,8 @@ import {
   parseCalcPrefill, prefillFromSearch, stashCalcPrefill, stashCalcPrefillFromSearch,
   readCalcPrefill, clearCalcPrefill, calcPrefillBannerText, calcPrefillTripName, calcPartyLimitText,
   calcDestHit, calcDestStop, calcDestNote, stageCalcDest,
-  type CalcPrefill,
+  CALC_PIN_TIMEOUT_MS, withCalcPinTimeout,
+  type CalcPrefill, type CalcDestOutcome,
 } from '../src/lib/calcPrefill'
 import type { PlaceHit } from '../src/lib/providers/hits'
 import { CREW_MAX } from '../src/lib/crew'
@@ -348,6 +349,39 @@ describe('the calculator destination is pinned before it becomes a stop', () => 
     it('takes the first exact match in the order the search returned them', () => {
       expect(calcDestHit('Goa', [place({ id: 'first' }), place({ id: 'second' })])?.id).toBe('first')
     })
+
+    it('a state wins over a village of the same name that the search lists before it', () => {
+      const hits = [
+        place({ id: 'village', name: 'Goa', admin1: 'Uttar Pradesh' }),
+        place({ id: 'state', name: 'Goa', admin1: 'Goa' }),
+      ]
+      expect(calcDestHit('Goa', hits)?.id).toBe('state')
+    })
+
+    it('finds the state through accents, as the name match does', () => {
+      const hits = [
+        place({ id: 'village', name: 'Goa', admin1: 'Assam' }),
+        place({ id: 'state', name: 'Goa', admin1: 'Goá' }),
+      ]
+      expect(calcDestHit('goa', hits)?.id).toBe('state')
+    })
+
+    it('falls back to the first exact match when no hit names itself as its state', () => {
+      const hits = [
+        place({ id: 'a', name: 'Goa', admin1: 'Karnataka' }),
+        place({ id: 'b', name: 'Goa', admin1: '' }),
+      ]
+      expect(calcDestHit('Goa', hits)?.id).toBe('a')
+    })
+
+    it('never takes Goa Velha for Goa, even when Goa Velha names Goa as its region', () => {
+      expect(calcDestHit('Goa', [place({ id: 'velha', name: 'Goa Velha', admin1: 'Goa' })])).toBeNull()
+      const withState = [
+        place({ id: 'velha', name: 'Goa Velha', admin1: 'Goa' }),
+        place({ id: 'state', name: 'Goa', admin1: 'Goa' }),
+      ]
+      expect(calcDestHit('Goa', withState)?.id).toBe('state')
+    })
   })
 
   describe('calcDestStop — only a real position becomes a stop', () => {
@@ -390,9 +424,18 @@ describe('the calculator destination is pinned before it becomes a stop', () => 
       expect(calcDestNote('finding', 'Goa', 'Munnar')).toBe('Finding Goa on the map…')
     })
 
-    it('says that no place matched, and that a pin failed, in different words', () => {
-      expect(calcDestNote('missing', 'Goa', 'Goa')).toBe('No map place matched Goa. Pick a suggestion, or add it without a map pin.')
-      expect(calcDestNote('failed', 'Goa', 'Goa')).toBe('Couldn’t pin Goa on the map. Pick a suggestion, or add it without a map pin.')
+    it('says that no place was found, and that a pin failed, in different words', () => {
+      expect(calcDestNote('missing', 'Goa', 'Goa')).toBe('Found no map place for Goa. Edit the name to see suggestions, or add it without a map pin.')
+      expect(calcDestNote('failed', 'Goa', 'Goa')).toBe('Couldn’t pin Goa on the map. Edit the name to see suggestions, or add it without a map pin.')
+    })
+
+    it('keeps the three states apart, so loading, no match and failure never read alike', () => {
+      const lines = [
+        calcDestNote('finding', 'Goa', 'Goa'),
+        calcDestNote('missing', 'Goa', 'Goa'),
+        calcDestNote('failed', 'Goa', 'Goa'),
+      ]
+      expect(new Set(lines).size).toBe(3)
     })
 
     it('shows a miss or a failure only while the staged name is still in the box', () => {
@@ -424,5 +467,63 @@ describe('the create page pins the calculator destination before it adds a stop'
   it('stages an unpinned name in the stop box, and adds a pinned stop to an empty route', () => {
     expect(create).toContain('setDestInput(box => stageCalcDest(box, dest))')
     expect(create).toMatch(/setDests\(prev => \(prev\.length \? prev : \[outcome\.stop\]\)\)/)
+  })
+
+  it('races the whole pin against the eight second window, with no raw number in the component', () => {
+    expect(create).toContain('withCalcPinTimeout(pinCalcDest(dest))')
+    expect(create).not.toMatch(/\b8000\b/)
+  })
+
+  it('drops a late miss or failure once the route or the stop box has been used', () => {
+    expect(create).toContain('routeStopCount.current > 0 || stopBoxEdited.current')
+    expect(create).toContain('routeStopCount.current = dests.length')
+    expect(create).toContain('onChange={v => { stopBoxEdited.current = true; setDestInput(v) }}')
+  })
+
+  it('clears the calculator party line on every path that sets the party size', () => {
+    expect(create).toContain('if (next.travellers !== undefined) setCalcPartyLimit(null)')
+    const resume = create.slice(create.indexOf('function resumeDraft()'), create.indexOf('setDests(draft.dests)'))
+    expect(resume).toContain('setCalcPartyLimit(null)')
+    // The repeat-trip path sets the party through patchFields, which already clears the line.
+    expect(create).toMatch(/patchFields\(\{\s*travellers: lastTrip\.travellers/)
+  })
+})
+
+describe('withCalcPinTimeout — a pin that runs long is a failure, and that failure stands', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  const pinned: CalcDestOutcome = { phase: 'pinned', stop: { name: 'Goa', lat: 15.3, lng: 74.1 } }
+  const miss: CalcDestOutcome = { phase: 'missing' }
+
+  it('waits eight seconds', () => {
+    expect(CALC_PIN_TIMEOUT_MS).toBe(8000)
+  })
+
+  it('delivers a pin that settles in time, and leaves no timer running', async () => {
+    await expect(withCalcPinTimeout(Promise.resolve(pinned))).resolves.toEqual(pinned)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('keeps a miss that settles in time as a miss', async () => {
+    await expect(withCalcPinTimeout(Promise.resolve(miss))).resolves.toEqual(miss)
+  })
+
+  it('reports failed when the pin has not settled by the end of the window', async () => {
+    const done = withCalcPinTimeout(new Promise<CalcDestOutcome>(() => {}))
+    await vi.advanceTimersByTimeAsync(CALC_PIN_TIMEOUT_MS)
+    await expect(done).resolves.toEqual({ phase: 'failed' })
+  })
+
+  it('drops a pin that lands after the window, so no stop is added late', async () => {
+    let land: (outcome: CalcDestOutcome) => void = () => {}
+    const done = withCalcPinTimeout(new Promise<CalcDestOutcome>(resolve => { land = resolve }))
+    await vi.advanceTimersByTimeAsync(CALC_PIN_TIMEOUT_MS)
+    land(pinned)
+    await expect(done).resolves.toEqual({ phase: 'failed' })
+  })
+
+  it('treats a rejected pin as a failure, not a hang', async () => {
+    await expect(withCalcPinTimeout(Promise.reject(new Error('offline')))).resolves.toEqual({ phase: 'failed' })
   })
 })
