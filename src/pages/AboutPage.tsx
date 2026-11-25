@@ -99,7 +99,7 @@ export function AboutPage() {
             <span className="about-step" aria-hidden="true">3</span>
             <p>
               People were still dropping new hotel links in the chat.
-              We drove straight there and missed half the stops on the way.
+              We drove straight there and missed the places on the way.
             </p>
           </li>
           <li>
