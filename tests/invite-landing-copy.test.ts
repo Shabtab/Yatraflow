@@ -20,7 +20,7 @@ const FULL = {
   endDate: '2026-12-17',
   days: 6,
   stops: 11,
-  perPersonEst: 18400,
+  perPersonBudget: 18400,
   role: 'editor' as const,
   paidGuidePrice: 199,
 }
@@ -33,7 +33,7 @@ describe('recipient copy with every fact', () => {
   })
 
   it('lists the facts the trip has, in order', () => {
-    expect(copy.facts).toBe('12 – 17 Dec · 6 days · 11 stops · about ₹18,400 per person (estimate)')
+    expect(copy.facts).toBe('12 – 17 Dec · 6 days · 11 stops · ₹18,400 per person budget')
   })
 
   it('adds the paid-guide note only when a guide is priced', () => {
@@ -93,12 +93,13 @@ describe('the signed-in confirm', () => {
 describe('the expired link', () => {
   const copy = expiredInviteCopy()
 
-  it('offers the code box and the FAQ anchor that explains codes', () => {
+  it('offers the code box and the FAQ section that explains codes', () => {
     expect(copy.headline).toBe('This invite link has expired.')
     expect(copy.codeLabel).toBe('Trip code')
     expect(copy.codePlaceholder).toBe('GOA-K7QF')
     expect(copy.codeAction).toBe('Open the trip')
-    expect(copy.helpHref).toBe('/faq#codes')
+    // A query, not a fragment: the native shell routes on the hash.
+    expect(copy.helpHref).toBe('/faq?section=codes')
   })
 
   it('names the owner only when the name is known', () => {
@@ -117,9 +118,9 @@ describe('no blank field reaches the screen', () => {
   const forbidden = ['undefined', '₹0', '0 stops', '0 days', 'NaN', 'null']
   const copies = [
     recipientInviteCopy({}),
-    recipientInviteCopy({ tripTitle: '   ', days: 0, stops: 0, perPersonEst: 0 }),
-    recipientInviteCopy({ tripTitle: 'Goa', days: null, stops: null, perPersonEst: Number.NaN }),
-    recipientInviteCopy({ tripTitle: 'Goa', perPersonEst: -400, days: -1 }),
+    recipientInviteCopy({ tripTitle: '   ', days: 0, stops: 0, perPersonBudget: 0 }),
+    recipientInviteCopy({ tripTitle: 'Goa', days: null, stops: null, perPersonBudget: Number.NaN }),
+    recipientInviteCopy({ tripTitle: 'Goa', perPersonBudget: -400, days: -1 }),
   ]
 
   it.each(copies.map((copy, index) => [index, copy] as const))('copy %i reads clean', (_index, copy) => {
@@ -128,7 +129,7 @@ describe('no blank field reaches the screen', () => {
   })
 
   it('never prints a zero-count fact', () => {
-    expect(inviteFactParts({ days: 0, stops: 0, perPersonEst: 0 })).toEqual([])
+    expect(inviteFactParts({ days: 0, stops: 0, perPersonBudget: 0 })).toEqual([])
   })
 })
 
@@ -136,7 +137,7 @@ describe('the read-only rows', () => {
   it('drops every row it does not have', () => {
     expect(inviteReadOnlyFacts({})).toEqual([])
     const rows = inviteReadOnlyFacts(FULL)
-    expect(rows.map(row => row.label)).toEqual(['Route', 'Dates', 'Days', 'Stops', 'Crew', 'Estimate'])
+    expect(rows.map(row => row.label)).toEqual(['Route', 'Dates', 'Days', 'Stops', 'Crew', 'Budget'])
   })
 })
 

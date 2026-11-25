@@ -7,27 +7,36 @@ import { PageHeader } from '../components/page/PageHeader'
 import { Surface } from '../components/page/Surface'
 import { FAQ_INTRO_LEAD, FAQ_INTRO_TAIL, FAQ_SECTIONS, faqJsonLd } from '../lib/faqContent'
 import { scrollBehavior } from '../lib/motion'
+import { currentQuery } from '../lib/router'
 
-/** The schema block. `<` is escaped so no answer can close the script tag. */
+/**
+ * The FAQPage schema, built with the DOM API so no answer can ever be read as
+ * markup: the JSON goes in as text, and leaving the page removes the block.
+ */
 function FaqSchema() {
-  const json = JSON.stringify(faqJsonLd()).replace(/</g, '\\u003c')
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: json }} />
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.type = 'application/ld+json'
+    script.textContent = JSON.stringify(faqJsonLd())
+    document.head.appendChild(script)
+    return () => { script.remove() }
+  }, [])
+  return null
+}
+
+/** Scroll one section into view under the sticky nav. */
+function jumpToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
 }
 
 export function FaqPage() {
-  // A link may arrive as /faq#codes from the invite screen's expired state.
-  // The hash is not a route, so the browser cannot scroll to it before the
-  // page renders; this scrolls once it has.
+  // A cross-page link arrives as /faq?section=codes (the invite screen's
+  // expired state): a query, never a fragment, because the native shell routes
+  // on the hash. The page renders after the address is read, so it scrolls
+  // here rather than leaving the browser to guess.
   useEffect(() => {
-    const scrollToHash = () => {
-      const raw = location.hash
-      const id = raw.charAt(0) === '#' ? raw.slice(1) : raw
-      if (!id) return
-      document.getElementById(id)?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
-    }
-    scrollToHash()
-    window.addEventListener('hashchange', scrollToHash)
-    return () => window.removeEventListener('hashchange', scrollToHash)
+    const section = currentQuery().get('section')
+    if (section) jumpToSection(section)
   }, [])
 
   return (
@@ -45,7 +54,16 @@ export function FaqPage() {
         meta={(
           <nav className="faq-jump" aria-label="FAQ sections">
             {FAQ_SECTIONS.map(section => (
-              <a key={section.id} className="faq-jump-link" href={`#${section.id}`}>{section.heading}</a>
+              // A button, not an anchor: the router owns the hash, so href="#id"
+              // would read as an unknown route in the native shell.
+              <button
+                key={section.id}
+                type="button"
+                className="faq-jump-link"
+                onClick={() => jumpToSection(section.id)}
+              >
+                {section.heading}
+              </button>
             ))}
           </nav>
         )}

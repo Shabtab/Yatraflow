@@ -129,6 +129,10 @@ export function profileLookupState(
  *  the signed-in account's private read fails. */
 const GUEST_ROUTE_SEGMENTS = new Set(['pub', 'creator', 'explore'])
 
+/** Routes that are static copy: they read no store data, so they paint before
+ *  the hydrate settles instead of showing the loading block. */
+const STATIC_COPY_SEGMENTS = new Set(['faq', 'how-it-works'])
+
 /** Whether the profile lookup takes the page from the route. A failed lookup takes it on the
  *  bare route too, so its Try again is never hidden behind the landing. A reading lookup does
  *  not, so the landing does not flash while hydrate runs. */
@@ -544,6 +548,20 @@ export default function App() {
         tag.setAttribute('content', original)
       }
     }
+    // A page with its own copy is its own canonical. Without this the shell's
+    // canonical (the homepage) tells a crawler to fold /faq into '/', while the
+    // sitemap lists it as a page of its own.
+    const canonical = document.querySelector('link[rel="canonical"]')
+    if (canonical) {
+      const original = canonical.getAttribute('data-site-canonical')
+      if (meta.description) {
+        if (original === null) canonical.setAttribute('data-site-canonical', canonical.getAttribute('href') ?? '')
+        const base = new URL(original ?? canonical.getAttribute('href') ?? '/', location.origin).origin
+        canonical.setAttribute('href', `${base}/${routeParts(route).join('/')}`)
+      } else if (original !== null) {
+        canonical.setAttribute('href', original)
+      }
+    }
   }, [route])
 
   let page: React.ReactNode
@@ -581,7 +599,7 @@ export default function App() {
   // never the website's home. That ready-gate exclusion used to be
   // unconditional, so every launch flashed the marketing landing + its
   // website chrome before NativeHome arrived.
-  if (!ready && parts[0] !== 'auth' && parts[0] !== 'share' && (!bareRoute || isNative)) {
+  if (!ready && parts[0] !== 'auth' && parts[0] !== 'share' && !STATIC_COPY_SEGMENTS.has(parts[0] ?? '') && (!bareRoute || isNative)) {
     page = lazyRouteFallback
   } else if (parts[0] === 'share' && parts[1]) {
     page = <SharedTripPage payload={parts[1]} onNavigate={navigate} />
@@ -1151,7 +1169,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     endDate: shownTrip?.endDate ?? null,
     days: shownTrip?.days?.length ?? null,
     stops: invitesStopCount(shownTrip?.days),
-    perPersonEst: shownTrip?.budgetPerPersonInr ?? null,
+    perPersonBudget: shownTrip?.budgetPerPersonInr ?? null,
     role: shownTrip?.inviteRole ?? null,
     paidGuidePrice,
   }

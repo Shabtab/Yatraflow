@@ -11,18 +11,27 @@ export const HOW_IT_WORKS_DESCRIPTION =
 export const HOW_IT_WORKS_INTRO =
   'One shared plan instead of a group chat, a notes file and three spreadsheets. Five steps, and you can stop at any of them.'
 
+/** A link that either stays in the app or loads a static page as a document.
+ *  The calculator hub is a static page (public/trip-cost-calculators/), so it
+ *  is a browser navigation, never an SPA route. */
+export interface HowItWorksLink {
+  label: string
+  href: `/${string}`
+  staticPage?: boolean
+}
+
 export interface HowItWorksStep {
   title: string
   body: string
   /** A quiet follow-on link under the paragraph. */
-  link?: { label: string; href: `/${string}` }
+  link?: HowItWorksLink
 }
 
 export const HOW_IT_WORKS_STEPS: readonly HowItWorksStep[] = [
   {
     title: 'Price it before you plan it',
     body: 'Pick a route and a group size, and you get a low-to-high range in rupees: transport, stay, food, entries, buffer. Every number shows its assumption and every number is editable.',
-    link: { label: 'Try a free calculator', href: '/trip-cost-calculators/' },
+    link: { label: 'Try a free calculator', href: '/trip-cost-calculators/', staticPage: true },
   },
   {
     title: 'Start the plan',
@@ -55,13 +64,10 @@ export const HOW_IT_WORKS_LIMITS: readonly string[] = [
 export const BRAND_LINE_MAIN = 'Plan Indian trips together — not in a chaotic group chat.'
 export const BRAND_LINE_SUPPORT = 'Every stop, hour and rupee in one plan your group can actually follow.'
 
-export interface HowItWorksCta {
-  label: string
-  href: `/${string}`
-}
+export type HowItWorksCta = HowItWorksLink
 
 export const HOW_IT_WORKS_CTAS: readonly HowItWorksCta[] = [
   { label: 'Start a free plan', href: '/new' },
-  { label: 'Price a trip first', href: '/trip-cost-calculators/' },
+  { label: 'Price a trip first', href: '/trip-cost-calculators/', staticPage: true },
   { label: 'See it on a sample trip', href: '/explore' },
 ]

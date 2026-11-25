@@ -27,7 +27,9 @@ export interface InviteFacts {
   endDate?: string | null
   days?: number | null
   stops?: number | null
-  perPersonEst?: number | null
+  /** The trip's stated spend per person. It is the crew's target, never a
+   *  computed estimate, so the copy calls it a budget. */
+  perPersonBudget?: number | null
   role?: InviteRole
   /** A paid guide's price, in rupees. Absent means no locked days. */
   paidGuidePrice?: number | null
@@ -82,10 +84,8 @@ export function inviteReadOnlyFacts(facts: InviteFacts): { label: string; value:
   if (stops) rows.push({ label: 'Stops', value: String(stops) })
   const crew = dayNumber(facts.crew)
   if (crew) rows.push({ label: 'Crew', value: `${crew} ${crew === 1 ? 'planner' : 'planners'}` })
-  const perPerson = typeof facts.perPersonEst === 'number' && Number.isFinite(facts.perPersonEst) && facts.perPersonEst > 0
-    ? Math.round(facts.perPersonEst)
-    : null
-  if (perPerson) rows.push({ label: 'Estimate', value: `About ${formatInr(perPerson)} per person` })
+  const perPerson = perPersonBudget(facts)
+  if (perPerson) rows.push({ label: 'Budget', value: `${formatInr(perPerson)} per person` })
   return rows
 }
 
@@ -98,6 +98,13 @@ export function inviteFirstName(name: string | null | undefined): string | null 
   const first = name.trim().split(/\s+/)[0]
   if (!first) return null
   return first.length > 24 ? `${first.slice(0, 24)}…` : first
+}
+
+/** The stated per-person budget, or null. `budgetPerPersonInr` is what the crew
+ *  aimed for, so no surface may show it as a computed estimate. */
+function perPersonBudget(facts: InviteFacts): number | null {
+  const value = facts.perPersonBudget
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.round(value) : null
 }
 
 function dayNumber(value: number | null | undefined): number | null {
@@ -137,10 +144,8 @@ export function inviteFactParts(facts: InviteFacts): string[] {
   if (days) parts.push(`${days} ${days === 1 ? 'day' : 'days'}`)
   const stops = dayNumber(facts.stops)
   if (stops) parts.push(`${stops} ${stops === 1 ? 'stop' : 'stops'}`)
-  const perPerson = typeof facts.perPersonEst === 'number' && Number.isFinite(facts.perPersonEst) && facts.perPersonEst > 0
-    ? Math.round(facts.perPersonEst)
-    : null
-  if (perPerson) parts.push(`about ${formatInr(perPerson)} per person (estimate)`)
+  const perPerson = perPersonBudget(facts)
+  if (perPerson) parts.push(`${formatInr(perPerson)} per person budget`)
   return parts
 }
 
@@ -208,7 +213,9 @@ export function expiredInviteCopy(input: { ownerFirstName?: string | null } = {}
     codePlaceholder: 'GOA-K7QF',
     codeAction: 'Open the trip',
     helpLabel: 'How trip codes work',
-    helpHref: '/faq#codes',
+    // A query, not a fragment: the native shell routes on the hash, so a
+    // '#codes' tail would read as an unknown route.
+    helpHref: '/faq?section=codes',
   }
 }
 

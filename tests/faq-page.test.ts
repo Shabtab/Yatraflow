@@ -2,6 +2,7 @@
 // The page and the FAQPage schema must never disagree: one crawler reading a
 // question the reader cannot see is a broken promise in the search result. Both
 // read lib/faqContent, and this file proves it from the rendered markup.
+import { readFileSync } from 'node:fs'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -33,37 +34,37 @@ interface SchemaQuestion {
   acceptedAnswer: { '@type': string; text: string }
 }
 
-function schema(): { '@type': string; mainEntity: SchemaQuestion[] } {
-  const match = markup.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)
-  expect(match).not.toBeNull()
-  return JSON.parse(match![1].replace(/\\u003c/g, '<')) as { '@type': string; mainEntity: SchemaQuestion[] }
-}
+const schema = faqJsonLd() as unknown as { '@type': string; mainEntity: SchemaQuestion[] }
+const pageSource = readFileSync(new URL('../src/pages/FaqPage.tsx', import.meta.url), 'utf8')
 
 describe('FAQ schema matches the visible list', () => {
-  it('renders one FAQPage block', () => {
-    expect(markup.match(/application\/ld\+json/g)).toHaveLength(1)
-    expect(schema()['@type']).toBe('FAQPage')
+  it('is a FAQPage with one question per visible entry', () => {
+    expect(schema['@type']).toBe('FAQPage')
+    expect(schema.mainEntity).toHaveLength(faqEntries().length)
+    expect(schema.mainEntity.map(question => question.name)).toEqual(faqEntries().map(entry => entry.question))
   })
 
-  it('carries a question for every entry a reader can see', () => {
-    const questions = schema().mainEntity
-    expect(questions).toHaveLength(faqEntries().length)
-    for (const question of questions) {
+  it('carries a question and answer a reader can see on the page', () => {
+    for (const question of schema.mainEntity) {
       expect(question['@type']).toBe('Question')
+      expect(question.acceptedAnswer['@type']).toBe('Answer')
       expect(visible).toContain(question.name)
       expect(visible).toContain(question.acceptedAnswer.text)
     }
   })
 
   it('renders every question and answer exactly once on screen', () => {
-    // The schema repeats each question by design, so this counts the visible
-    // half only.
-    const body = markup.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/, '')
     for (const entry of faqEntries()) {
-      expect(body.split(entry.question).length - 1).toBe(1)
-      expect(body.split(entry.answer).length - 1).toBe(1)
+      expect(markup.split(entry.question).length - 1).toBe(1)
+      expect(markup.split(entry.answer).length - 1).toBe(1)
     }
-    expect(schema().mainEntity.map(question => question.name)).toEqual(faqEntries().map(entry => entry.question))
+  })
+
+  it('mounts the schema from that same list, as text the browser cannot read as markup', () => {
+    expect(pageSource).toContain('<FaqSchema />')
+    expect(pageSource).toContain('JSON.stringify(faqJsonLd())')
+    expect(pageSource).toContain("script.textContent =")
+    expect(pageSource).not.toContain('dangerouslySetInnerHTML')
   })
 
   it('groups the answers under their headings', () => {
@@ -73,9 +74,12 @@ describe('FAQ schema matches the visible list', () => {
     }
   })
 
-  it('answers the invite screen anchor: #codes exists', () => {
+  it('answers the invite screen: the codes section is reachable and scrollable', () => {
     expect(markup).toContain('id="codes"')
-    expect(markup).toContain('href="#codes"')
+    // A button, never href="#codes": the native shell routes on the hash.
+    expect(markup).toContain('type="button"')
+    expect(markup).not.toContain('href="#codes"')
+    expect(pageSource).toContain("currentQuery().get('section')")
   })
 
   it('never ships a tuple of questions the page would have to duplicate', () => {
