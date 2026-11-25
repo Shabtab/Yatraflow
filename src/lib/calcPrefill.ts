@@ -17,6 +17,7 @@
 // break the second, so the 30-minute TTL is what retires it.
 
 import { STAY_STYLES, TRANSPORT_MODES, type StayStyle, type TransportMode } from '../data/types'
+import { CREW_MAX } from './crew'
 
 export const CALC_PREFILL_KEY = 'yf.pending-calc-prefill'
 export const CALC_PREFILL_TTL_MS = 30 * 60 * 1000
@@ -30,13 +31,22 @@ const CALC_PREFILL_SKEW_MS = 60 * 1000
 export const CALC_PREFILL_SLUGS = ['ladakh', 'goa', 'rajasthan', 'meghalaya'] as const
 export type CalcSlug = (typeof CALC_PREFILL_SLUGS)[number]
 
+/** The most people one calculator estimate can state: MAX_PEOPLE in
+ *  calculators/engine.mjs. A stated count above the trip limit but within this
+ *  ceiling is real and is reported; a count above it cannot come from a page. */
+export const CALC_PEOPLE_MAX = 40
+
 export interface CalcPrefill {
   v: 1
   at: number
   calc: string | null
   dest: string | null
   days: number | null
+  /** The party the form can take: 1 to CREW_MAX. */
   people: number | null
+  /** A stated party above CREW_MAX, up to CALC_PEOPLE_MAX. The form never takes
+   *  it as its own count. It says so instead (see calcPartyLimitText). */
+  peopleOverLimit: number | null
   mode: TransportMode | null
   stay: StayStyle | null
   budget: number | null
@@ -72,7 +82,8 @@ function normaliseFields(src: Record<string, unknown>): CalcPrefillFields {
     calc: oneOf(src.calc, CALC_PREFILL_SLUGS),
     dest: destName(src.dest),
     days: intInBand(src.days, 1, 90),
-    people: intInBand(src.people, 1, 20),
+    people: intInBand(src.people, 1, CREW_MAX),
+    peopleOverLimit: intInBand(src.people, CREW_MAX + 1, CALC_PEOPLE_MAX),
     mode: oneOf(src.mode, TRANSPORT_MODES),
     stay: oneOf(src.stay, STAY_STYLES),
     budget: intInBand(src.budget, 0, 1000000),
@@ -91,7 +102,9 @@ export function parseCalcPrefill(raw: string | null | undefined, now = Date.now(
     if (typeof p.at !== 'number' || !Number.isFinite(p.at)) return null
     const age = now - p.at
     if (age < -CALC_PREFILL_SKEW_MS || age > CALC_PREFILL_TTL_MS) return null
-    return { v: 1, at: p.at, ...normaliseFields(p) }
+    // A stored row keeps its stated party in whichever of the two fields it was
+    // written from. Read both fields so an over-limit party survives the round trip.
+    return { v: 1, at: p.at, ...normaliseFields({ ...p, people: p.people ?? p.peopleOverLimit }) }
   } catch { return null }
 }
 
@@ -154,8 +167,17 @@ export function clearCalcPrefill(): void {
 export function calcPrefillBannerText(p: CalcPrefill): string | null {
   if (!p.dest) return null
   const span = p.days != null ? `${p.days}-day ` : ''
-  const crew = p.people != null ? ` for ${p.people} ${p.people === 1 ? 'person' : 'people'}` : ''
+  const headcount = p.people ?? p.peopleOverLimit
+  const crew = headcount != null ? ` for ${headcount} ${headcount === 1 ? 'person' : 'people'}` : ''
   return `Your ${span}${p.dest} estimate${crew} is ready. Sign up free to open your group plan.`
+}
+
+/** The create form's line for a stated party above the trip limit, or null when
+ *  the stated party fits or none was stated. It names the stated count and the
+ *  limit. It never changes the form's party count, which the traveller sets. */
+export function calcPartyLimitText(p: CalcPrefill): string | null {
+  if (p.peopleOverLimit == null) return null
+  return `Your estimate was for ${p.peopleOverLimit} people. A trip holds up to ${CREW_MAX} people, so set the party size yourself.`
 }
 
 /** The trip name to pre-fill: "Goa trip", "4-day Goa trip", or "" with no

@@ -6,11 +6,12 @@
 // read-don't-clear behaviour, and the two copy builders byte for byte.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
-  CALC_PREFILL_KEY, CALC_PREFILL_TTL_MS,
+  CALC_PREFILL_KEY, CALC_PREFILL_TTL_MS, CALC_PEOPLE_MAX,
   parseCalcPrefill, prefillFromSearch, stashCalcPrefill, stashCalcPrefillFromSearch,
-  readCalcPrefill, clearCalcPrefill, calcPrefillBannerText, calcPrefillTripName,
+  readCalcPrefill, clearCalcPrefill, calcPrefillBannerText, calcPrefillTripName, calcPartyLimitText,
   type CalcPrefill,
 } from '../src/lib/calcPrefill'
+import { CREW_MAX } from '../src/lib/crew'
 import { sanitizeCreateMeta } from '../src/lib/createEvents'
 import { readFileSync } from 'node:fs'
 
@@ -21,7 +22,7 @@ const NOW = Date.parse('2026-11-25T10:00:00Z')
 const CALC_QUERY = '?ref=calculator&calc=goa&dest=Goa&days=4&people=4&mode=train&stay=comfort&budget=18400'
 
 const row = (over: Partial<CalcPrefill> = {}): CalcPrefill => ({
-  v: 1, at: NOW, calc: 'goa', dest: 'Goa', days: 4, people: 4,
+  v: 1, at: NOW, calc: 'goa', dest: 'Goa', days: 4, people: 4, peopleOverLimit: null,
   mode: 'train', stay: 'comfort', budget: 18400, ...over,
 })
 
@@ -43,7 +44,7 @@ function installStorage() {
 describe('prefillFromSearch — the calculator’s own query', () => {
   it('round-trips the documented CTA into the exact field values', () => {
     expect(prefillFromSearch(CALC_QUERY, NOW)).toEqual({
-      v: 1, at: NOW, calc: 'goa', dest: 'Goa', days: 4, people: 4,
+      v: 1, at: NOW, calc: 'goa', dest: 'Goa', days: 4, people: 4, peopleOverLimit: null,
       mode: 'train', stay: 'comfort', budget: 18400,
     })
   })
@@ -70,7 +71,7 @@ describe('prefillFromSearch — the calculator’s own query', () => {
     ['zero days', 'days', '0'],
     ['days past the band', 'days', '91'],
     ['zero people', 'people', '0'],
-    ['people past the band', 'people', '21'],
+    ['a party past the calculator ceiling', 'people', String(CALC_PEOPLE_MAX + 1)],
     ['a non-numeric budget', 'budget', 'a-lot'],
     ['a negative budget', 'budget', '-100'],
     ['a blank destination', 'dest', '   '],
@@ -95,9 +96,58 @@ describe('prefillFromSearch — the calculator’s own query', () => {
 
   it('accepts an empty query under the right ref without inventing values', () => {
     expect(prefillFromSearch('?ref=calculator', NOW)).toEqual({
-      v: 1, at: NOW, calc: null, dest: null, days: null, people: null,
+      v: 1, at: NOW, calc: null, dest: null, days: null, people: null, peopleOverLimit: null,
       mode: null, stay: null, budget: null,
     })
+  })
+})
+
+describe('the party size — the trip limit, and a stated count above it', () => {
+  const withPeople = (n: string) => prefillFromSearch(`?ref=calculator&dest=Goa&people=${n}`, NOW)
+
+  it.each([1, 21, 25, CREW_MAX])('takes a party of %i into the form', n => {
+    const p = withPeople(String(n))
+    expect(p?.people).toBe(n)
+    expect(p?.peopleOverLimit).toBeNull()
+  })
+
+  it.each([CREW_MAX + 1, CALC_PEOPLE_MAX])('reports a stated party of %i as over the trip limit, and never applies it', n => {
+    const p = withPeople(String(n))
+    expect(p?.people).toBeNull()
+    expect(p?.peopleOverLimit).toBe(n)
+  })
+
+  it.each(['0', '-3', 'many', '4.5', '', String(CALC_PEOPLE_MAX + 1)])('drops the party %j from both fields', raw => {
+    const p = withPeople(raw)
+    expect(p?.people).toBeNull()
+    expect(p?.peopleOverLimit).toBeNull()
+  })
+
+  it('keeps a stored over-limit party through the stash round trip', () => {
+    const stored = JSON.stringify(row({ people: null, peopleOverLimit: 35 }))
+    const p = parseCalcPrefill(stored, NOW)
+    expect(p?.people).toBeNull()
+    expect(p?.peopleOverLimit).toBe(35)
+  })
+
+  it('says the stated count and the limit, and says nothing when the party fits', () => {
+    expect(calcPartyLimitText(row({ people: null, peopleOverLimit: 35 }))).toBe(
+      `Your estimate was for 35 people. A trip holds up to ${CREW_MAX} people, so set the party size yourself.`,
+    )
+    expect(calcPartyLimitText(row())).toBeNull()
+  })
+
+  it('names the stated count in the sign-up banner, because that is the estimate the visitor priced', () => {
+    expect(calcPrefillBannerText(row({ people: null, peopleOverLimit: 35 }))).toBe(
+      'Your 4-day Goa estimate for 35 people is ready. Sign up free to open your group plan.',
+    )
+  })
+
+  it('the calculator ceiling is the calculators own MAX_PEOPLE', () => {
+    const engine = readFileSync(new URL('../calculators/engine.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+    const declared = /^const MAX_PEOPLE = (\d+);?$/m.exec(engine)
+    expect(declared, 'MAX_PEOPLE is declared in calculators/engine.mjs').not.toBeNull()
+    expect(CALC_PEOPLE_MAX).toBe(Number(declared![1]))
   })
 })
 

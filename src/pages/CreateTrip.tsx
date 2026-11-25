@@ -54,7 +54,7 @@ import { haptic, HAPTIC } from '../lib/haptics'
 import { useTimeFormat, formatHM, validHM } from '../lib/timefmt'
 import { cap } from '../lib/labels'
 import { readBenchPrefill } from '../lib/planBench'
-import { readCalcPrefill, clearCalcPrefill, prefillFromSearch, calcPrefillTripName } from '../lib/calcPrefill'
+import { readCalcPrefill, clearCalcPrefill, prefillFromSearch, calcPrefillTripName, calcPartyLimitText } from '../lib/calcPrefill'
 import { scrollBehavior } from '../lib/motion'
 import { LocationInput } from '../components/LocationInput'
 import { PageHeader } from '../components/page/PageHeader'
@@ -210,6 +210,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   const [budgetTouched, setBudgetTouched] = useState(false)
   /** The calculator slug this form was pre-filled from, if any (see below). */
   const calcSlugRef = useRef<string | null>(null)
+  /** The line for a calculator party above the trip limit. Set on arrival, and
+   *  cleared once the traveller sets the party size. */
+  const [calcPartyLimit, setCalcPartyLimit] = useState<string | null>(null)
   // Plan Bench hand-off (issue #37): when the homepage calculator stashed its
   // inputs into sessionStorage, pre-fill the matching fields. Read-once — the
   // stash clears itself on read, so a refresh returns to the plain form.
@@ -256,6 +259,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     // no budget in the query the smart-budget pre-fill stays free to work.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the input is the stashed row, not this render
     if (p.budget != null) setBudgetTouched(true)
+    // A party above the trip limit is never taken as the count. The form says so instead.
+    const partyLimit = calcPartyLimitText(p)
+    if (partyLimit) setCalcPartyLimit(partyLimit)
     const name = calcPrefillTripName(p)
     // Tomorrow onward, only when the form has no dates yet — a calculator says
     // how many days, never which day.
@@ -562,6 +568,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   }, [bill.roadKm, f.transportMode, f.drivesPart, f.travelStyle, f.driverCount, f.hasVulnerable])
 
   function patchFields(next: Partial<typeof f>) {
+    // The traveller's own party count replaces the calculator's line.
+    if (next.travellers !== undefined) setCalcPartyLimit(null)
     setF(x => ({ ...x, ...next }))
   }
 
@@ -1537,6 +1545,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     message inside `.sr-only`, so a screen reader heard the failure
                     twice and saw it nowhere. */}
                 {errs.travellers && <p className="err-text" id="ct-travellers-err" role="status" aria-live="polite">{errs.travellers}</p>}
+                {calcPartyLimit && <p className="ct-hint" role="status">{calcPartyLimit}</p>}
                 {/* The value channel for AT that needs a real input to type into —
                     deliberately no longer where the error lands. */}
                 <div className="sr-only">
