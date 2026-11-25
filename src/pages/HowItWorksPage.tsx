@@ -23,11 +23,7 @@ export function HowItWorksPage() {
             <h2 className="hiw-step-title">{step.title}</h2>
             <p className="hiw-step-body">{step.body}</p>
             {step.link ? (
-              step.link.staticPage ? (
-                <a className="hiw-step-link text-link" href={step.link.href}>{step.link.label} →</a>
-              ) : (
-                <a className="hiw-step-link text-link" {...appLink(step.link.href)}>{step.link.label} →</a>
-              )
+              <a className="hiw-step-link text-link" {...appLink(step.link.href)}>{step.link.label} →</a>
             ) : null}
           </li>
         ))}
@@ -46,7 +42,7 @@ export function HowItWorksPage() {
             <a
               key={cta.label}
               className={index === 0 ? 'btn btn-primary' : 'btn btn-outline'}
-              {...(cta.staticPage ? { href: cta.href } : appLink(cta.href))}
+              {...appLink(cta.href)}
             >
               {cta.label}
             </a>

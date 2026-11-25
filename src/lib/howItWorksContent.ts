@@ -11,13 +11,9 @@ export const HOW_IT_WORKS_DESCRIPTION =
 export const HOW_IT_WORKS_INTRO =
   'One shared plan instead of a group chat, a notes file and three spreadsheets. Five steps, and you can stop at any of them.'
 
-/** A link that either stays in the app or loads a static page as a document.
- *  The calculator hub is a static page (public/trip-cost-calculators/), so it
- *  is a browser navigation, never an SPA route. */
 export interface HowItWorksLink {
   label: string
   href: `/${string}`
-  staticPage?: boolean
 }
 
 export interface HowItWorksStep {
@@ -31,7 +27,10 @@ export const HOW_IT_WORKS_STEPS: readonly HowItWorksStep[] = [
   {
     title: 'Price it before you plan it',
     body: 'Pick a route and a group size, and you get a low-to-high range in rupees: transport, stay, food, entries, buffer. Every number shows its assumption and every number is editable.',
-    link: { label: 'Try a free calculator', href: '/trip-cost-calculators/', staticPage: true },
+    // The Plan Bench prices a route and a group size on the landing page. The
+    // multi-destination calculator hub is its own PR; move this link there when
+    // it lands.
+    link: { label: 'Try a free calculator', href: '/' },
   },
   {
     title: 'Start the plan',
@@ -68,6 +67,6 @@ export type HowItWorksCta = HowItWorksLink
 
 export const HOW_IT_WORKS_CTAS: readonly HowItWorksCta[] = [
   { label: 'Start a free plan', href: '/new' },
-  { label: 'Price a trip first', href: '/trip-cost-calculators/', staticPage: true },
+  { label: 'Price a trip first', href: '/' },
   { label: 'See it on a sample trip', href: '/explore' },
 ]

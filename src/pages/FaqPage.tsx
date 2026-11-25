@@ -60,7 +60,7 @@ export function FaqPage() {
                 key={section.id}
                 type="button"
                 className="faq-jump-link"
-                onClick={() => jumpToSection(section.id)}
+                onClick={() => { jumpToSection(section.id) }}
               >
                 {section.heading}
               </button>
