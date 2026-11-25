@@ -22,6 +22,17 @@ export function signupThenCreatePath(): `/${string}` {
   return `/auth?mode=signup&next=${encodeURIComponent(CREATE_PATH)}`
 }
 
+/** Whether a visit to the create route must go to signup first.
+ *
+ *  `ready` is the store's hydrate verdict, and it is not a detail: the session
+ *  is restored asynchronously, so before that flip every signed-in visitor
+ *  still reads as signed out. Redirecting on `sessionId === null` alone threw a
+ *  reloading user with a valid session onto the signup form, and the trip step
+ *  they had chosen was lost on the way back (#1140 review). */
+export function needsSignupForCreate(ready: boolean, sessionId: string | null, head: string | undefined): boolean {
+  return ready && sessionId === null && head === CREATE_SEGMENT
+}
+
 /** Every first segment the router resolves (`App.tsx`'s pre-switch gates and
  *  `switch`, including '' for the bare route). The legacy-hash bridge maps an
  *  old `#/seg/…` bookmark onto `/{seg}/…` when — and only when — the head is
@@ -54,6 +65,7 @@ export const ROUTED_SEGMENTS: readonly string[] = [
   // carry their own SEO title, so they are real routes rather than anchors.
   'faq',
   'how-it-works',
+  'about',
 ]
 
 // ============ Real paths, and the legacy hashes that must reach them (#426)

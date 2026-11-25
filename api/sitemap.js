@@ -7,6 +7,20 @@
 import { resolveOrigin } from './_origin.js'
 import { escapeXml } from './_escape.js'
 
+// The static trip cost calculators and their hub. A literal, not a read of
+// calculators/manifest.json: a Vercel function only gets the files its imports
+// reach, and a runtime read of an untraced path fails in production while
+// passing locally. `tests/calculators.test.ts` pins this list against the
+// manifest in both directions, so a new destination cannot ship unlisted and a
+// dead slug cannot linger.
+const CALCULATOR_PATHS = [
+  '/trip-cost-calculators/',
+  '/goa-trip-cost-calculator/',
+  '/rajasthan-trip-cost-calculator/',
+  '/meghalaya-trip-cost-calculator/',
+  '/ladakh-trip-cost-calculator/',
+]
+
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 // Creator ids are profile UUIDs; listing anything else would put a URL in the
 // sitemap that the creator card handler answers 400 for. Same literal the
@@ -110,12 +124,13 @@ function renderSitemap(rows, creators, origin) {
   // nothing per-URL for a crawler — and robots.txt keeps them out of the
   // index (#426 slice 3).
   const entries = [`  <url>\n    <loc>${escapeXml(`${origin}/`)}</loc>\n  </url>`,
-    // The static calculator page (public/ladakh-trip-cost-calculator/): a real
-    // crawlable page with its own title, description and canonical. No
-    // lastmod: the handler only prints dates it can derive (see toLastmod).
-    `  <url>\n    <loc>${escapeXml(`${origin}/ladakh-trip-cost-calculator/`)}</loc>\n  </url>`,
+    // The static trip cost calculators (public/*-trip-cost-calculator/) and their
+    // hub: real crawlable pages with their own titles, descriptions and
+    // canonicals. No lastmod: the handler only prints dates it can derive (see
+    // toLastmod), and the pages' own JSON-LD carries dateModified.
+    ...CALCULATOR_PATHS.map((path) => `  <url>\n    <loc>${escapeXml(`${origin}${path}`)}</loc>\n  </url>`),
     // Static copy pages: real crawlable text with their own titles. No lastmod,
-    // for the same reason as the calculator above.
+    // for the same reason as the calculators above.
     `  <url>\n    <loc>${escapeXml(`${origin}/faq`)}</loc>\n  </url>`,
     `  <url>\n    <loc>${escapeXml(`${origin}/how-it-works`)}</loc>\n  </url>`,
   ]

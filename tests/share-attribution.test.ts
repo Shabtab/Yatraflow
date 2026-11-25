@@ -47,6 +47,7 @@ function codeOf(source: string): string {
 
 const shareUrlSrc = read('../src/lib/shareUrl.ts')
 const handlerSrc = codeOf(read('../api/i.js'))
+const creatorHandlerSrc = codeOf(read('../api/c.js'))
 const migrationSrc = codeOf(read('../supabase/migrations/20260929_pub_events_share_source.sql'))
 /** The newest migration defining the share-attribution CHECKs — the vocabulary
  *  pin reads the last word. #228's allowlist widened the list in a later file;
@@ -80,6 +81,15 @@ describe('one vocabulary, three places that cannot import each other', () => {
     expect(csv(m![1])).toEqual(expected)
   })
 
+  it('api/c.js mirrors it too — the creator card passes the ref through', () => {
+    // Two API files carry a copy of this list (api/i.js and api/c.js) besides
+    // the app's own. A copy left behind drops the value on that route. That
+    // reads as "no traffic", not as "no code".
+    const m = /const SHARE_SOURCES = \[([^\]]*)\]/.exec(creatorHandlerSrc)
+    expect(m, 'SHARE_SOURCES const exists in the creator handler').not.toBeNull()
+    expect(csv(m![1])).toEqual(expected)
+  })
+
   it('the migration pins BOTH columns to the same list', () => {
     const source = /check \(source is null or source in \(([^)]*)\)\)/.exec(checkSrc)
     const ref = /check \(ref is null or ref in \(([^)]*)\)\)/.exec(checkSrc)
@@ -105,11 +115,12 @@ describe('one vocabulary, three places that cannot import each other', () => {
   })
 
   it('the CHECK pin reads the last word, not the first', () => {
-    // Two files define the constraints; whichever sorts LAST is what a fresh
+    // Three files define the constraints; whichever sorts LAST is what a fresh
     // in-order apply leaves behind, and that is the one the pin above read.
     expect(checkDefiners).toEqual([
       '20260929_pub_events_share_source.sql',
       '20260930_pub_events_share_source_allowlist.sql',
+      '20261125_calculator_share_source.sql',
     ])
   })
 

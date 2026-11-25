@@ -31,7 +31,13 @@ const SHELL_ASSETS = [SHELL, '/manifest.webmanifest', '/icons/icon-192.png', '/i
  *  be cached under the SHELL key — offline navigations would then open card
  *  HTML at every address (#426 slice 4). The static calculator page is the
  *  same case: its navigation must not be filed under the SHELL key. */
-const NEVER = ['/api/', '/i/', '/c/', '/sitemap.xml', '/mappls/', '/ladakh-trip-cost-calculator/']
+const NEVER = [
+  '/api/', '/i/', '/c/', '/sitemap.xml', '/mappls/',
+  // The static trip cost calculators and their hub (calculators/manifest.json).
+  '/calculators/', '/trip-cost-calculators/',
+  '/goa-trip-cost-calculator/', '/rajasthan-trip-cost-calculator/',
+  '/meghalaya-trip-cost-calculator/', '/ladakh-trip-cost-calculator/',
+]
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL_ASSETS)))

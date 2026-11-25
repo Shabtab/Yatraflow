@@ -1,0 +1,200 @@
+/* ============ About page ============
+   The marketing site's story page. The words stay word-for-word; only the
+   layout changes: a two-column hero, icon cards, a timeline, status chips and
+   one closing CTA band. Every colour, radius and duration comes from the app's
+   own tokens. The page root carries `page-enter`, so the entrance cascade
+   belongs to the shared system; this file only adds hover micro-motion. */
+
+.about-page { padding-top: 22px; padding-bottom: 40px; display: grid; gap: 18px; }
+.about-page > * { min-width: 0; }
+
+/* ---------- Hero: copy left, painterly coast art right ---------- */
+.about-header { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+.about-header .yf-header-lede { max-width: 60ch; }
+.about-intro { max-width: 60ch; margin: 14px 0 0; color: var(--text-2); font-size: 15px; line-height: 1.6; text-wrap: pretty; }
+
+.about-hero-art {
+  position: relative; overflow: hidden; isolation: isolate;
+  min-height: 260px; border: 1px solid var(--line); border-radius: var(--radius-lg);
+  background: var(--teal-soft); box-shadow: var(--shadow-card);
+}
+.about-hero-img {
+  display: block; width: 100%; height: 100%; min-height: 260px;
+  object-fit: cover; object-position: center 62%;
+  transition: transform var(--motion-slow) var(--ease-paper);
+}
+.about-hero-art:hover .about-hero-img { transform: scale(1.03); }
+/* The ribbon sits over the art with a translucent scrim, not a caption. */
+.about-hero-ribbon {
+  position: absolute; inset: auto 14px 14px; z-index: 1;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  width: fit-content; max-width: calc(100% - 28px);
+  padding: 10px 14px; border: 1px solid rgba(255,255,255,.42); border-radius: var(--radius-pill);
+  background: rgba(9, 34, 38, .72); color: #fff; font-size: 12px; font-weight: 600; letter-spacing: .01em;
+  box-shadow: 0 8px 22px rgba(0,0,0,.18);
+}
+.about-hero-ribbon span[aria-hidden] { opacity: .75; }
+
+/* ---------- Section shells ---------- */
+.about-section { padding: 26px 22px; font-size: 15px; line-height: 1.65; color: var(--text); }
+.about-section > p { margin: 0; max-width: 70ch; text-wrap: pretty; }
+.about-section > p + p,
+.about-section > p + ol,
+.about-section > p + div,
+.about-section > div + p,
+.about-section > ol + p { margin-top: 14px; }
+.about-lead { color: var(--text-2); }
+.about-gap { color: var(--text-2); }
+.about-origin {
+  margin-top: 18px; padding: 14px 16px; border-left: 3px solid var(--teal-deep);
+  border-radius: var(--radius-xs); background: var(--teal-soft);
+}
+.about-h2 {
+  margin: 0 0 16px; color: var(--text); font-family: var(--font-display);
+  font-size: clamp(1.5rem, 1.1rem + 1.2vw, 2rem); line-height: 1.16; letter-spacing: -.012em; text-wrap: balance;
+}
+.about-h3 {
+  margin: 0 0 14px; color: var(--text); font-family: var(--font-display);
+  font-size: 1.1rem; line-height: 1.3; letter-spacing: -.005em;
+}
+.about-column-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.about-column-head .about-h3 { margin: 0; }
+
+/* ---------- Status chips ---------- */
+.about-status { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 3px 10px; border-radius: var(--radius-pill); font-size: 11px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+.about-status-live { background: var(--teal-soft); color: var(--ink-teal); border: 1px solid color-mix(in srgb, var(--teal-deep) 42%, transparent); }
+.about-status-next { border: 1px solid var(--saffron); color: var(--ink-amber); background: var(--saffron-soft); }
+
+/* ---------- Cards ---------- */
+.about-card-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 18px; }
+.about-card {
+  display: flex; gap: 12px; align-items: flex-start; min-width: 0;
+  padding: 16px; border-radius: var(--radius-sm); background: var(--card);
+  transition: transform var(--motion-med) var(--ease-paper), box-shadow var(--motion-med) var(--ease-paper), border-color var(--motion-fast) var(--ease-paper);
+}
+.about-card:hover {
+  transform: translateY(-2px); border-color: color-mix(in srgb, var(--teal-deep) 38%, var(--line));
+  box-shadow: var(--shadow-card-hover);
+}
+.about-card-icon {
+  flex: none; display: grid; place-items: center; width: 38px; height: 38px;
+  border-radius: var(--radius-xs); background: var(--teal-soft); color: var(--ink-teal);
+}
+.about-card-body { min-width: 0; }
+.about-card-title { margin: 0 0 4px; color: var(--text); font-size: 14px; font-weight: 700; line-height: 1.35; }
+.about-card-body p { margin: 0; color: var(--text-2); font-size: 13.5px; line-height: 1.55; }
+
+/* The four map lenses are chips inside the map card. */
+.about-card-lenses { grid-column: auto; }
+.about-lenses { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.about-lens {
+  padding: 5px 9px; border: 1px solid var(--line); border-radius: var(--radius-pill);
+  background: var(--bg-soft); color: var(--text-2); font-size: 11.5px; line-height: 1.4;
+}
+.about-lens b { color: var(--ink-teal); }
+
+/* ---------- Why: short vertical timeline with a connector line ---------- */
+.about-timeline { position: relative; margin: 18px 0 0; padding: 0 0 0 40px; list-style: none; }
+.about-timeline::before {
+  content: ''; position: absolute; left: 15px; top: 14px; bottom: 14px; width: 2px;
+  background: linear-gradient(var(--teal-deep), var(--line));
+}
+.about-timeline > li { position: relative; min-height: 44px; margin-bottom: 12px; }
+.about-timeline > li:last-child { margin-bottom: 0; }
+.about-timeline > li > p { margin: 0; color: var(--text-2); font-size: 14px; line-height: 1.55; }
+.about-step {
+  position: absolute; left: -40px; top: 0; display: grid; place-items: center;
+  width: 32px; height: 32px; border: 2px solid var(--teal-deep); border-radius: 50%;
+  background: var(--card); color: var(--ink-teal); font-size: 12px; font-weight: 800;
+}
+
+/* ---------- Callout and creator columns ---------- */
+.about-callout {
+  margin-top: 18px; padding: 16px 18px; border-left: 3px solid var(--teal-deep);
+  border-radius: var(--radius-xs); background: var(--teal-soft); color: var(--text);
+}
+.about-columns { display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 22px; }
+.about-column { min-width: 0; }
+.about-column > p { margin: 0 0 12px; color: var(--text-2); }
+.about-status-grid { margin-top: 0; }
+.about-status-grid .about-card { background: var(--bg-soft); }
+
+/* ---------- Beliefs: numbered principle cards ---------- */
+.about-beliefs { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 0; padding: 0; list-style: none; counter-reset: none; }
+.about-beliefs > li {
+  display: flex; gap: 14px; align-items: flex-start; min-width: 0;
+  padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--bg-soft);
+}
+.about-principle-no {
+  flex: none; font-family: var(--font-display); font-size: 26px; font-weight: 700;
+  line-height: 1; color: var(--teal-deep);
+}
+.about-beliefs b { display: block; margin-bottom: 4px; color: var(--text); font-size: 14px; }
+.about-beliefs p { margin: 0; color: var(--text-2); font-size: 13.5px; line-height: 1.55; }
+
+/* ---------- Built in India: founders and the one CTA band ---------- */
+.about-founders { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 18px; }
+.about-founder {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 10px 14px 10px 10px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--bg-soft);
+}
+.about-avatar {
+  display: grid; place-items: center; flex: none; width: 38px; height: 38px;
+  border: 1px solid color-mix(in srgb, var(--teal-deep) 42%, transparent);
+  border-radius: 50%; background: var(--teal-soft); color: var(--ink-teal);
+  font-family: var(--font-display); font-weight: 700;
+}
+.about-avatar-alt {
+  border-color: color-mix(in srgb, var(--saffron) 55%, transparent);
+  background: var(--saffron-soft); color: var(--ink-amber);
+}
+.about-founder b { display: block; color: var(--text); font-size: 13.5px; line-height: 1.3; }
+.about-handle { display: block; color: var(--text-2); font-size: 12px; line-height: 1.4; }
+.about-cta-band {
+  margin-top: 22px; padding: 20px; border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--bg-soft);
+}
+.about-ctas { display: flex; flex-direction: column; gap: 10px; }
+.about-ctas > a { justify-content: center; }
+
+/* ---------- Wider screens: full page width, not a narrow column ---------- */
+@media (min-width: 720px) {
+  .about-page { gap: 22px; }
+  .about-section { padding: 32px; }
+  .about-ctas { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .about-ctas > a { justify-content: flex-start; }
+  .about-card-grid { gap: 14px; }
+  .about-pain-grid, .about-feature-grid, .about-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .about-beliefs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1080px) {
+  .about-page {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+    align-items: start; column-gap: 36px;
+  }
+  .about-page > :not(.about-header, .about-hero-art) { grid-column: 1 / -1; }
+  .about-header { grid-column: 1; grid-row: 1; align-self: center; }
+  .about-hero-art { grid-column: 2; grid-row: 1; height: 100%; min-height: 420px; }
+  .about-hero-img { min-height: 420px; }
+  .about-header .yf-header-title { font-size: clamp(2.2rem, 1.4rem + 2vw, 3.1rem); }
+  .about-feature-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .about-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .about-section { padding: 36px; }
+}
+
+/* ---------- Phone ---------- */
+@media (max-width: 560px) {
+  .about-page { padding-bottom: 28px; gap: 16px; }
+  .about-section { padding: 18px; }
+  .about-hero-art, .about-hero-img { min-height: 220px; }
+  .about-cta-band { padding: 14px; }
+  .about-ctas > a { min-height: 44px; }
+}
+
+/* Reduced motion: hover lift and art zoom rest at their final state. */
+@media (prefers-reduced-motion: reduce) {
+  .about-card, .about-hero-img { transition: none; }
+  .about-card:hover { transform: none; }
+  .about-hero-art:hover .about-hero-img { transform: none; }
+}

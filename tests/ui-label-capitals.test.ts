@@ -25,7 +25,6 @@ export const ALLOWLIST: Allowed[] = [
   ...entry('src/components/TrendChart.tsx', ['reading…', 'not read'], 'MID: value after the "Unlocks" label on one line'),
   ...entry('src/pages/CreateTrip.tsx', ['planner', 'rented car', 'below', 'above', 'within'], 'MID: word inside a hint sentence'),
   ...entry('src/pages/CreatorHubPage.tsx', ['net', 'gross'], 'MID: basis word after "Lifetime"'),
-  ...entry('src/pages/Landing.tsx', ['flow together'], 'MID: end of the headline "Plan trips that actually flow together"'),
   ...entry('src/pages/PublicItinerary.tsx', ['day', 'days'], 'MID: "Read the free {day or days} first"'),
   ...entry('src/pages/Purchases.tsx', ['it', 'them'], 'MID: end of "updated since you bought it or them"'),
   ...entry('src/pages/trip/BudgetTab.tsx', ['your local pump price', 'indicative petrol price. Actual consumption varies'], 'MID: inside a parenthetical in one sentence'),

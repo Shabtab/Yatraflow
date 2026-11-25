@@ -224,7 +224,7 @@
      literals - a `padding: 132px` would be a ratchet violation, a token
      consumed by var() is not, which is how the ladder's law is scoped. */
   /* Ceilings are deliberately moderate. The real hero headline is a long
-     sentence ("Plan trips that actually flow together") in a ~570px column, so a
+     sentence ("Plan Indian trips together — not in a chaotic group chat.") in a ~570px column, so a
      5rem-class display size wraps to five lines and pushes the whole hero tall.
      These keep the mobile floor and the leading exactly as they were and lift
      the desktop ceiling only - the safe half of the scale change. */

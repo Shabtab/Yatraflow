@@ -1,7 +1,7 @@
 // The browser-tab title for each route.
 //
 // `index.html` carries one static title, so every route shared it: a traveller
-// with four tabs open saw "YatraFlow — Plan real trips, together" four times,
+// with four tabs open saw one site title four times,
 // and a bookmark of a specific itinerary was indistinguishable from a bookmark
 // of the site. The route is the only thing that changes, so the mapping lives
 // here rather than inline in the shell.
@@ -20,7 +20,8 @@ export const SITE = 'YatraFlow'
 
 /** Route head -> title, for the routes that need nothing looked up. */
 const STATIC: Record<string, string> = {
-  '': `${SITE}: Plan real trips, together`,
+  '': `${SITE}: Plan Indian trips together`,
+  about: `About · ${SITE}`,
   auth: `Sign in · ${SITE}`,
   trips: `Your trips · ${SITE}`,
   new: `New trip · ${SITE}`,

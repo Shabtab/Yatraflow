@@ -1200,6 +1200,8 @@ Row policies cannot protect authors or ballots inside JSON arrays. Check stored 
 
 ## 2. Conventions (`AGENTS.md` §4)
 
+- **The trip cost calculator pages are generated: rebuild them with the model.** `calculators/engine.mjs`, `client.mjs`, `template.html`, `shared.css` and every `destinations/*.json` are sources. `public/<slug>/index.html`, `public/calculators/*` and `calculators/manifest.json` are output. Run `npm run calculators:build` after any edit to a source, then commit both sides. `tests/calculators.test.ts` compares the committed bytes with a fresh render, so a missed build fails the gate. A new destination is one JSON file plus its entry in `DESTINATION_ORDER`.
+- **A page's embedded runtime config is a second copy of the model's input.** Each calculator page carries a trimmed destination JSON (`#calc-cfg`) for the browser. A missing field makes the live page disagree with the pre-rendered HTML. One breakdown row rendered the word "undefined" this way. `tests/calculators.test.ts` computes the whole destination and the trimmed config. It needs equal results, breakdown markup and default URL. Add the field to `runtimeConfig`, not to the test's expectations.
 - **Separate crew fields must stay separate during parsing.** Normalize the mobile field alone. A name can contain digits. A parser that joins both fields can change that name or make the mobile number invalid. Keep the existing structured draft fields and duplicate rules.
 
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05

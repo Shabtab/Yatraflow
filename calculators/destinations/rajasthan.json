@@ -1,0 +1,377 @@
+{
+  "key": "rajasthan",
+  "slug": "rajasthan-trip-cost-calculator",
+  "dest": "Rajasthan",
+  "title": "Rajasthan Trip Cost Calculator 2026–27 (Free, No Signup)",
+  "h1": "Rajasthan trip cost calculator",
+  "description": "Work out a Rajasthan circuit budget in ₹: own car, SUV with driver or train, fort and monument tickets, a desert camp night. Free, no signup, low–high range.",
+  "lead": "Jaipur to Jodhpur to Jaisalmer to Udaipur is a lot of driving and a lot of ticket windows. Pick how you travel and where you sleep and see what a Rajasthan circuit costs in rupees, per person and for the whole group.",
+  "season": "Peak November–February",
+  "seasonNote": "Winter is the season for this circuit: days are cool and the desert nights are cold but clear. December and January are the busiest weeks, and the desert camp rates rise with them.",
+  "pricesChecked": "November 2026",
+  "datePublished": "2026-11-25",
+  "dateModified": "2026-11-25",
+  "ogImage": "/og/calc-rajasthan.png",
+  "faqTitle": "Questions about Rajasthan trip costs",
+  "hubBlurb": "The Jaipur–Jodhpur–Jaisalmer–Udaipur circuit, with monument tickets and tolls counted.",
+  "siblings": [
+    "goa-trip-cost-calculator",
+    "meghalaya-trip-cost-calculator",
+    "ladakh-trip-cost-calculator"
+  ],
+  "defaultRoute": "circuit-7",
+  "kmFromRoute": true,
+  "peoplePerRoom": 2,
+  "fuel": {
+    "mileage": 14,
+    "price": 105
+  },
+  "defaults": {
+    "people": 4,
+    "stay": "haveli",
+    "food": "thali",
+    "transport": "own-car"
+  },
+  "routes": {
+    "circuit-7": {
+      "label": "Full circuit",
+      "meta": "Jaipur–Jodhpur–Jaisalmer–Udaipur · 7 days",
+      "days": 7,
+      "km": 2000,
+      "note": "The classic winter loop, about 2,000 km of driving across the four cities."
+    },
+    "weekend-4": {
+      "label": "Jaipur–Udaipur",
+      "meta": "Two cities · 4 days",
+      "days": 4,
+      "km": 1100,
+      "note": "One night in Jaipur, two in Udaipur, with the drive between them. The shortest sensible circuit."
+    },
+    "desert-4": {
+      "label": "Desert loop",
+      "meta": "Jaipur–Jodhpur–Jaisalmer · 4 days",
+      "days": 4,
+      "km": 900,
+      "note": "West to the dunes, with the desert camp night in the optional line below."
+    },
+    "custom": {
+      "label": "Custom",
+      "meta": "Your km, your days",
+      "days": 7,
+      "km": 0,
+      "note": "Enter the distance you actually plan to drive."
+    }
+  },
+  "fuelLabel": "Distance, km",
+  "groups": [
+    {
+      "key": "transport",
+      "param": "m",
+      "legend": "Getting around",
+      "hint": "A 2,000 km circuit is a real drive. A car with a driver costs the most but removes the fatigue.",
+      "options": [
+        {
+          "value": "own-car",
+          "label": "Own car",
+          "appMode": "car"
+        },
+        {
+          "value": "suv-driver",
+          "label": "SUV with driver",
+          "appMode": "taxi"
+        },
+        {
+          "value": "train",
+          "label": "Train + cabs",
+          "appMode": "train"
+        }
+      ]
+    }
+  ],
+  "stays": {
+    "guesthouse": {
+      "label": "Guesthouse",
+      "low": 1200,
+      "high": 2000,
+      "style": "budget"
+    },
+    "haveli": {
+      "label": "Haveli",
+      "low": 2500,
+      "high": 4500,
+      "style": "comfort"
+    },
+    "hotel": {
+      "label": "Hotel",
+      "low": 4000,
+      "high": 8000,
+      "style": "luxury"
+    }
+  },
+  "foods": {
+    "thali": {
+      "label": "Local thalis",
+      "low": 400,
+      "high": 700
+    },
+    "restaurant": {
+      "label": "Restaurants",
+      "low": 800,
+      "high": 1400
+    }
+  },
+  "lines": [
+    {
+      "key": "fuel",
+      "name": "Fuel (own car)",
+      "kind": "km",
+      "units": 1,
+      "when": {
+        "group": "transport",
+        "in": [
+          "own-car"
+        ]
+      },
+      "rateLabel": "Fuel and distance",
+      "hint": "Mileage and pump price for the car you would drive. Toll is counted on its own line.",
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "tolls",
+      "name": "Highway tolls (own car)",
+      "kind": "flat",
+      "when": {
+        "group": "transport",
+        "in": [
+          "own-car"
+        ]
+      },
+      "rateLabel": "Highway tolls, for the whole car",
+      "rate": {
+        "low": 1000,
+        "high": 2200
+      },
+      "hint": "Fastag tolls for the full circuit in one car. Parking at the forts is in the buffer.",
+      "params": {
+        "low": "tl",
+        "high": "tL"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "suv",
+      "name": "SUV with driver",
+      "kind": "unit-day",
+      "units": 1,
+      "when": {
+        "group": "transport",
+        "in": [
+          "suv-driver"
+        ]
+      },
+      "rateLabel": "SUV with driver, per day",
+      "rate": {
+        "low": 4000,
+        "high": 5500
+      },
+      "hint": "An Innova-class car with a driver, fuel and tolls included. Driver food and stay are usually settled separately at the end.",
+      "params": {
+        "low": "sv",
+        "high": "sV"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "trainFare",
+      "name": "Intercity train",
+      "kind": "person",
+      "when": {
+        "group": "transport",
+        "in": [
+          "train"
+        ]
+      },
+      "rateLabel": "Train fare, per person",
+      "rate": {
+        "low": 700,
+        "high": 1800
+      },
+      "hint": "The two or three legs the circuit needs. Book early, the Delhi–Jaipur and Jaipur–Udaipur runs fill up in December.",
+      "params": {
+        "low": "jt",
+        "high": "jT"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "localCabs",
+      "name": "Local cabs",
+      "kind": "person-day",
+      "when": {
+        "group": "transport",
+        "in": [
+          "train"
+        ]
+      },
+      "rateLabel": "Local cabs, per person per day",
+      "rate": {
+        "low": 600,
+        "high": 1000
+      },
+      "hint": "Station to hotel and the fort hops. The long intercity hops are on the train line.",
+      "params": {
+        "low": "lc",
+        "high": "lC"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "entries",
+      "name": "Fort and monument tickets",
+      "kind": "person",
+      "rateLabel": "Monument entry tickets, per person",
+      "rate": {
+        "low": 700,
+        "high": 1600
+      },
+      "hint": "Amber, Mehrangarh, Jaisalmer Fort, the City Palace and a stepwell or two. Indian national rates, camera fees not counted.",
+      "params": {
+        "low": "en",
+        "high": "eN"
+      },
+      "source": {
+        "label": "sourced",
+        "href": "#src-asi"
+      }
+    },
+    {
+      "key": "camp",
+      "name": "Desert camp night",
+      "kind": "person",
+      "optional": true,
+      "on": false,
+      "optionalLabel": "Add a desert camp night",
+      "offLabel": "Not included, add a night in the dunes",
+      "rateLabel": "Desert camp, per person",
+      "rate": {
+        "low": 2000,
+        "high": 4500
+      },
+      "hint": "One night at Sam or Khuri with dinner, music and a camel ride. Fewer nights in a haveli, one in the dunes.",
+      "params": {
+        "low": "cp",
+        "high": "cP",
+        "off": "cpo"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    },
+    {
+      "key": "stay",
+      "name": "Stay",
+      "kind": "room-night",
+      "tier": "stay",
+      "tierLegend": "Stay",
+      "tierParam": "s",
+      "tierHint": "Price per room per night. Two people share a room.",
+      "rateLabel": "Stay, per room per night",
+      "params": {
+        "low": "sl",
+        "high": "sh"
+      }
+    },
+    {
+      "key": "food",
+      "name": "Food",
+      "kind": "person-day",
+      "tier": "food",
+      "tierLegend": "Food",
+      "tierParam": "f",
+      "rateLabel": "Food, per person per day",
+      "params": {
+        "low": "fl",
+        "high": "fH"
+      }
+    },
+    {
+      "key": "misc",
+      "name": "Buffer",
+      "kind": "person",
+      "rateLabel": "Buffer, per person",
+      "rate": {
+        "low": 800,
+        "high": 1500
+      },
+      "hint": "Parking at the forts, camera fees, a guide who was worth it, and the things nobody plans for.",
+      "params": {
+        "low": "ml",
+        "high": "mh"
+      },
+      "source": {
+        "label": "assumption",
+        "href": "#src-assume"
+      }
+    }
+  ],
+  "faqs": [
+    {
+      "q": "How much does a 7-day Rajasthan trip cost for 4 people?",
+      "a": "With the default settings here, four people on the full Jaipur–Jodhpur–Jaisalmer–Udaipur circuit in a haveli with local thalis, driving their own car, the calculator lands near ₹15,800 to ₹25,800 per person. That is ₹63,200 to ₹1,03,200 for the group. A car with a driver adds to that, and it takes the driving fatigue out. Two people instead of four pushes the per-person figure up because the car and the rooms are shared between fewer people."
+    },
+    {
+      "q": "What costs do groups usually forget in Rajasthan?",
+      "a": "Fort and monument tickets are the big one: they are cheap individually and add up to ₹700 to ₹1,600 a person over the circuit, and camera fees and parking are extra. Highway tolls for a self-drive car are another ₹1,000 to ₹2,200 for the whole car. The desert camp night is India's most common unplanned splurge. All three have their own line here, so you can see them before you go rather than after."
+    },
+    {
+      "q": "Is it cheaper to drive, take a car with a driver, or go by train?",
+      "a": "Driving your own car is the cheapest on paper, because you pay for fuel and tolls and nothing else. A car with a driver costs the most, but it includes fuel and tolls and removes 2,000 km of driving from your group. The train looks cheap until you add the local cabs at both ends, which is why the train option here prices them together. Switch the Getting around option and compare the totals, not the headline rate."
+    },
+    {
+      "q": "Do I need a permit for Rajasthan?",
+      "a": "No. There are no permits or tourism registrations for a domestic Rajasthan circuit. You pay monument entry tickets, and that is the only government fee involved. Unlike Ladakh or Meghalaya, nothing here needs an online registration before you travel."
+    },
+    {
+      "q": "What are the best months to visit Rajasthan, and how does season change the price?",
+      "a": "November to February is the season. Summer crosses 45°C in Jaisalmer and Jodhpur, so nobody drives the circuit then. December and January are the busiest weeks, and desert camps charge their highest rates. October and early March are the value weeks with the same monuments and fewer people. The ranges here are a normal winter week."
+    }
+  ],
+  "sources": [
+    {
+      "id": "src-asi",
+      "kind": "Sourced",
+      "text": "Monument entry tickets are set by the Archaeological Survey of India. Indian national rates run from about ₹50 to ₹500 a site across Amber, Mehrangarh, Jaisalmer Fort and the City Palace, and camera fees are charged separately: ",
+      "links": [
+        {
+          "text": "Archaeological Survey of India, ticketed monuments",
+          "href": "https://asi.nic.in/"
+        },
+        {
+          "text": "Rajasthan Tourism, official state tourism site",
+          "href": "https://www.tourism.rajasthan.gov.in/"
+        }
+      ]
+    },
+    {
+      "id": "src-assume",
+      "kind": "Assumption",
+      "text": "Route distances of about 2,000 km for the full circuit, 1,100 km for Jaipur–Udaipur and 900 km for the desert loop; stays, food, the SUV-with-driver rate, tolls, the desert camp range, the buffer, mileage of 14 km per litre and fuel at ₹105 per litre are YatraFlow planning estimates checked in November 2026. They are market ranges, not a quote and not an official tariff: replace each one with the price you were actually given."
+    }
+  ]
+}

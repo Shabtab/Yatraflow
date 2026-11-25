@@ -21,6 +21,7 @@
 import { supabase, isSupabaseConfigured } from './supabase'
 import { TRANSPORT_MODES, type TransportMode } from '../data/types'
 import { TRIP_TEMPLATES } from './tripTemplates'
+import { CALC_PREFILL_SLUGS } from './calcPrefill'
 
 /** The closed event vocabulary — mirrored by the table's CHECK constraint
  *  (supabase/migrations/20260929_create_funnel_events.sql). The two lists are
@@ -59,7 +60,10 @@ export interface CreateEventMeta {
   draft_resumed: Record<string, never>
   draft_discarded: Record<string, never>
   crew_added: { count: number }
-  submitted: { days: number; travellers: number; mode: TransportMode }
+  /** `calcSlug` names the trip-cost calculator page that priced the trip, when
+   *  one did. Platform vocabulary (a closed slug list), never free text — it is
+   *  how the weekly scorecard counts calculator-sourced trips. */
+  submitted: { days: number; travellers: number; mode: TransportMode; calcSlug?: string }
   moment_invite_sent: { channel: CreateInviteChannel }
   abandoned: { lastStage: string }
 }
@@ -96,7 +100,8 @@ export function sanitizeCreateMeta<E extends CreateEvent>(
       const travellers = num(m.travellers)
       const mode = TRANSPORT_MODES.find(value => value === m.mode)
       if (days == null || days < 1 || travellers == null || travellers < 1 || travellers > 100 || mode == null) return undefined
-      return { days, travellers, mode } as unknown as Partial<CreateEventMeta[E]>
+      const calcSlug = CALC_PREFILL_SLUGS.find(slug => slug === m.calcSlug)
+      return { days, travellers, mode, ...(calcSlug ? { calcSlug } : {}) } as unknown as Partial<CreateEventMeta[E]>
     }
     case 'moment_invite_sent': {
       const channel = CREATE_INVITE_CHANNELS.find(c => c === m.channel)

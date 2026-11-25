@@ -27,7 +27,7 @@ export function HowItWorksPage() {
             <h2 className="hiw-step-title">{step.title}</h2>
             <p className="hiw-step-body">{step.body}</p>
             {step.link && (!step.link.webCalculator || showCalculator) ? (
-              <a className="hiw-step-link text-link" {...appLink(step.link.href)}>{step.link.label} →</a>
+              <a className="hiw-step-link text-link" {...(step.link.webCalculator ? { href: step.link.href } : appLink(step.link.href as `/${string}`))}>{step.link.label} →</a>
             ) : null}
           </li>
         ))}
@@ -46,7 +46,7 @@ export function HowItWorksPage() {
             <a
               key={cta.label}
               className={index === 0 ? 'btn btn-primary' : 'btn btn-outline'}
-              {...appLink(cta.href)}
+              {...(cta.webCalculator ? { href: cta.href } : appLink(cta.href as `/${string}`))}
             >
               {cta.label}
             </a>

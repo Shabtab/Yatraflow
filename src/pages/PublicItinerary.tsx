@@ -1373,7 +1373,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
           />
         )}
 
-        <p className="pub-footer-line">Published with YatraFlow · Plan real trips, together</p>
+        <p className="pub-footer-line">Published with YatraFlow · Plan Indian trips together</p>
       </div>
     </div>
   )

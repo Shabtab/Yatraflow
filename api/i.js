@@ -9,7 +9,7 @@ import { renderBodyHTML, touristTripJsonLd } from './_publicBody.js'
 import pilotCampaigns from '../src/data/growthCampaigns.json' with { type: 'json' }
 import artManifest from '../src/assets/art/manifest.json' with { type: 'json' }
 
-const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
+const DEFAULT_TITLE = 'YatraFlow — Plan Indian trips together'
 const DEFAULT_DESCRIPTION = 'Plan realistic India trips together. See the time, distance and cost impact of every stop.'
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -18,10 +18,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // client code); tests/share-attribution.test.ts pins the two lists to each
 // other, and the NEWEST migration defining the CHECK constraints pins the
 // same list into the database (currently
-// supabase/migrations/20260930_pub_events_share_source_allowlist.sql —
+// supabase/migrations/20261125_calculator_share_source.sql —
 // `wa` (the WhatsApp send's own channel) and `community` (a distribution post
-// outside the app) joined the original five for F7 · #228).
-const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community']
+// outside the app) joined for F7 · #228, and `calculator` joined for the
+// trip-cost calculators' `/new?ref=calculator` CTA).
+const SHARE_SOURCES = ['buyer', 'calculator', 'community', 'copy', 'creator', 'explore', 'purchases', 'wa']
 const COVER_WIDTH = 1200
 // A found card is edge-cacheable for five minutes, then served stale for ten
 // while it revalidates. Everything else answers no-store.

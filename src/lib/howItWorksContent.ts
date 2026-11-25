@@ -31,10 +31,9 @@ export const HOW_IT_WORKS_STEPS: readonly HowItWorksStep[] = [
   {
     title: 'Price it before you plan it',
     body: 'Pick a route and a group size, and you get a low-to-high range in rupees: transport, stay, food, entries, buffer. Every number shows its assumption and every number is editable.',
-    // The Plan Bench prices a route and a group size on the landing page. The
-    // multi-destination calculator hub is its own PR; move this link there when
-    // it lands.
-    link: { label: 'Try a free calculator', href: '/', webCalculator: true },
+    // The hub is a static page outside the app router, so the page renders
+    // webCalculator links as plain anchors.
+    link: { label: 'Try a free calculator', href: '/trip-cost-calculators/', webCalculator: true },
   },
   {
     title: 'Start the plan',
@@ -71,6 +70,6 @@ export type HowItWorksCta = HowItWorksLink
 
 export const HOW_IT_WORKS_CTAS: readonly HowItWorksCta[] = [
   { label: 'Start a free plan', href: '/new' },
-  { label: 'Price a trip first', href: '/', webCalculator: true },
+  { label: 'Price a trip first', href: '/trip-cost-calculators/', webCalculator: true },
   { label: 'See it on a sample trip', href: '/explore' },
 ]
