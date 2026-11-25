@@ -4,6 +4,9 @@
 // to (not to whatever sits at that index afterwards), agree with the day pill
 // about "busy", and not lose an opening-hours conflict to a NaN dwell.
 import { describe, it, expect } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { ImpactPreviewPanel } from '../src/components/ImpactPreview'
 import { computeImpact } from '../src/lib/impact'
 import { simulateDay, originOf, legKey } from '../src/lib/engine'
 import type { LegEstimate } from '../src/lib/engine'
@@ -149,4 +152,80 @@ describe('cross-day honesty', () => {
     const noop = tripOf([day(0, [stop({ id: 'a', title: 'Fort' })]), day(1, [])])
     expect(computeImpact(noop, noop, 'edit', 0).crossDayNote).toBeUndefined()
   })
+})
+
+
+describe('preview totals and warnings', () => {
+  it('returns each total with its original delta', () => {
+    const before = tripOf([day(0, [stop({ entryFeeInrPerPerson: 100 })])])
+    const after = tripOf([day(0, [stop({ visitMinutes: 90, entryFeeInrPerPerson: 250 })])])
+    const impact = computeImpact(before, after, 'edit', 0)
+    expect(impact.beforeTotals.timeMin + impact.timeDeltaMin).toBeCloseTo(impact.afterTotals.timeMin, 6)
+    expect(impact.beforeTotals.distanceKm + impact.distanceDeltaKm).toBeCloseTo(impact.afterTotals.distanceKm, 6)
+    expect(impact.beforeTotals.costInr + impact.costDeltaInr).toBeCloseTo(impact.afterTotals.costInr, 6)
+  })
+
+  it('does not label an existing conflict as new and shows only reported cleared warnings', () => {
+    const conflict = tripOf([day(0, [stop({ title: 'Fort gate', openTime: '23:00', closeTime: '23:30' })])])
+    const clear = tripOf([day(0, [stop({ title: 'Fort gate' })])])
+    const render = (result: ReturnType<typeof computeImpact>) => renderToStaticMarkup(createElement(ImpactPreviewPanel, {
+      result, onKeep: () => {}, onMoveDay: () => {}, onRemove: () => {},
+    }))
+    const existing = computeImpact(conflict, conflict, 'edit', 0)
+    expect(existing.newWarnings).toHaveLength(0)
+    expect(render(existing)).toContain('Existing opening hours conflict')
+    expect(render(existing)).not.toContain('New warnings</div>')
+    expect(render(existing)).not.toContain('Cleared warnings')
+    const cleared = computeImpact(conflict, clear, 'edit', 0)
+    expect(cleared.clearedWarnings.some(w => w.title.includes('Fort gate'))).toBe(true)
+    expect(render(cleared)).toContain('Cleared warnings')
+    expect(render(cleared)).toContain(cleared.clearedWarnings[0].title)
+    expect(render(cleared)).not.toContain('aria-label="Close')
+    expect((render(cleared).match(/<button/g) || [])).toHaveLength(3)
+  })
+})
+
+
+it('shows changes between rounded endpoints', () => {
+  const base = tripOf([day(0, [stop()])])
+  const impact = computeImpact(base, base, 'edit', 0)
+  const html = renderToStaticMarkup(createElement(ImpactPreviewPanel, {
+    result: { ...impact, beforeTotals: { timeMin: 10.4, distanceKm: 10.4, costInr: 10.4 },
+      afterTotals: { timeMin: 10.6, distanceKm: 10.6, costInr: 10.6 },
+      timeDeltaMin: 0.2, distanceDeltaKm: 0.2, costDeltaInr: 0.2 },
+    onKeep: () => {}, onMoveDay: () => {}, onRemove: () => {},
+  }))
+  expect(html).toContain('<s>10 km</s> → <b>11 km</b>')
+  expect(html).toContain('+1 km')
+  expect(html).toContain('+0h 01m')
+  expect(html).toContain('+₹1')
+})
+
+
+it('keeps the raw sign when a change rounds to zero', () => {
+  const base = tripOf([day(0, [stop()])])
+  const impact = computeImpact(base, base, 'edit', 0)
+  const html = renderToStaticMarkup(createElement(ImpactPreviewPanel, {
+    result: { ...impact, beforeTotals: { timeMin: 10.1, distanceKm: 10.1, costInr: 10.1 },
+      afterTotals: { timeMin: 10.2, distanceKm: 10.2, costInr: 10.2 },
+      timeDeltaMin: 0.1, distanceDeltaKm: 0.1, costDeltaInr: 0.1 },
+    onKeep: () => {}, onMoveDay: () => {}, onRemove: () => {},
+  }))
+  expect(html).toContain('+0 km')
+  expect(html).toContain('+0h 00m')
+  expect(html).toContain('+₹0')
+})
+
+it('lists a new opening-hours warning once, in the conflict block', () => {
+  const before = tripOf([day(0, [stop({ title: 'Fort gate' })])])
+  const after = tripOf([day(0, [stop({ title: 'Fort gate', openTime: '23:00', closeTime: '23:30' })])])
+  const impact = computeImpact(before, after, 'edit', 0)
+  expect(impact.newWarnings.some(w => w.code === 'hours')).toBe(true)
+  const html = renderToStaticMarkup(createElement(ImpactPreviewPanel, {
+    result: impact, onKeep: () => {}, onMoveDay: () => {}, onRemove: () => {},
+  }))
+  expect(html).toContain('>Opening hours conflict<')
+  expect(html).not.toContain('Existing opening hours conflict')
+  expect(html).not.toContain('New warnings</div>')
+  expect(html).toContain('+1 warning')
 })

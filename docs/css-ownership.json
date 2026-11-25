@@ -498,6 +498,16 @@
       ],
       "configClasses": [],
       "variables": []
+    },
+    {
+      "id": "about",
+      "file": "src/styles/pages/about.css",
+      "owned": [
+        "about-page", "about-intro", "about-section", "about-h2", "about-h3",
+        "about-list", "about-sublist", "about-callout", "about-beliefs", "about-ctas"
+      ],
+      "configClasses": [],
+      "variables": []
     }
   ],
   "legacy": [

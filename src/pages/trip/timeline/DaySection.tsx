@@ -48,6 +48,7 @@ import { sizedCoverUrl } from '../../../lib/tripThumb'
 import { currentUser } from '../../../store/store'
 import { Mascot } from '../../../components/mascot/Mascot'
 import { warningHead } from '../../../lib/mascot'
+import { dayHeaderLabel } from './dayLabel'
 
 /**
  * The day's cover plan: the traveller's own upload when there is one, else the
@@ -841,6 +842,9 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
     const MO = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     return { wd: WD[base.getDay()], d: base.getDate(), mon: MO[base.getMonth()] }
   })()
+  // The header's two labels come from one function: an untitled dated day used
+  // to print "Day 3 Day 3" (#995).
+  const headerLabel = dayHeaderLabel(day.index, day.title)
   // The mockup's time budget, from real minutes. Halts are split out of the
   // dwell total because the journey already classifies each point: a food or
   // rest stop is a `halt`, everything else is a `visit`.
@@ -916,7 +920,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
         </div>
         <div className="tl-stop-flex">
           <div className="day-title-row">
-            {dayDate && <span className="day-number">Day {day.index + 1}</span>}
+            {headerLabel.number && <span className="day-number">{headerLabel.number}</span>}
             {editingTitle ? (
               <input
                 autoFocus
@@ -937,7 +941,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, dayCover, 
                  tap on the day name into a focused input, which pushed the heart
                  and the day-type chip onto a second row — the header visibly
                  reflowed while the pointer was still on the title. */
-              <h3 className="day-title-text">{day.title ?? `Day ${day.index + 1}`}</h3>
+              <h3 className="day-title-text">{headerLabel.title}</h3>
             )}
             {editable && !editingTitle && (
               <button type="button" className="day-rename-btn"

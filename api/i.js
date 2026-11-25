@@ -9,7 +9,7 @@ import { renderBodyHTML, touristTripJsonLd } from './_publicBody.js'
 import pilotCampaigns from '../src/data/growthCampaigns.json' with { type: 'json' }
 import artManifest from '../src/assets/art/manifest.json' with { type: 'json' }
 
-const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
+const DEFAULT_TITLE = 'YatraFlow — Plan Indian trips together'
 const DEFAULT_DESCRIPTION = 'Plan realistic India trips together. See the time, distance and cost impact of every stop.'
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

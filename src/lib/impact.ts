@@ -16,6 +16,8 @@ export type LegCorrections = Record<string, LegEstimate> | undefined
 export interface ImpactResult {
   kind: 'add' | 'remove' | 'reorder' | 'edit' | 'move-day'
   dayIndex: number
+  beforeTotals: { timeMin: number; distanceKm: number; costInr: number }
+  afterTotals: { timeMin: number; distanceKm: number; costInr: number }
   timeDeltaMin: number          // + more travel/visit time, − less
   distanceDeltaKm: number
   costDeltaInr: number
@@ -25,6 +27,9 @@ export interface ImpactResult {
   crossDayNote?: string
   tooBusy: boolean
   backtracking: boolean
+  existingBacktracking: boolean
+  existingCommitmentConflicts: string[]
+  existingOpeningHoursIssues: string[]
   commitmentConflicts: string[]
   openingHoursIssues: string[]
   assumptions: string
@@ -193,9 +198,17 @@ export function computeImpact(trip: Trip, proposed: Trip, kind: ImpactResult['ki
   // at n=6 while the pill showed busy — one day, two answers.
   const propBusyCount = day ? simulateDay(day, proposed, originOf(proposed, dayIndex), dayIndex, legCorrections).activeStops.length : 0
 
+  const commitmentConflicts = commitmentConflictsFor(proposed, legCorrections)
+  const openingHoursIssues = openingHoursIssuesFor(proposed, legCorrections)
+  const priorCommitments = new Set(commitmentConflictsFor(trip, legCorrections))
+  const issueStop = (issue: string) => issue.slice(0, issue.lastIndexOf(': '))
+  const priorOpeningStops = new Set(openingHoursIssuesFor(trip, legCorrections).map(issueStop))
+
   return {
     kind,
     dayIndex,
+    beforeTotals: { timeMin: curT.mins, distanceKm: curT.km, costInr: curCost },
+    afterTotals: { timeMin: propT.mins, distanceKm: propT.km, costInr: propCost },
     timeDeltaMin: propT.mins - curT.mins,
     distanceDeltaKm: propT.km - curT.km,
     costDeltaInr: propCost - curCost,
@@ -205,8 +218,11 @@ export function computeImpact(trip: Trip, proposed: Trip, kind: ImpactResult['ki
     crossDayNote,
     tooBusy: propBusyCount > 5,
     backtracking: detectBacktrack(proposed, legCorrections),
-    commitmentConflicts: commitmentConflictsFor(proposed, legCorrections),
-    openingHoursIssues: openingHoursIssuesFor(proposed, legCorrections),
+    existingBacktracking: detectBacktrack(trip, legCorrections),
+    commitmentConflicts,
+    openingHoursIssues,
+    existingCommitmentConflicts: commitmentConflicts.filter(c => priorCommitments.has(c)),
+    existingOpeningHoursIssues: openingHoursIssues.filter(h => priorOpeningStops.has(issueStop(h))),
     assumptions: assumptionsText(proposed),
   }
 }

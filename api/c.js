@@ -5,7 +5,7 @@ import { CREATOR_PAGE_CLASS, CREATOR_PAGE_STYLE, renderCreatorBody, creatorJsonL
 import { escapeHtml } from './_escape.js'
 import { defaultCard, ogImageTags, twitterImageTags } from './_shareCard.js'
 
-const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
+const DEFAULT_TITLE = 'YatraFlow — Plan Indian trips together'
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const PUBLICATION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 // A post id, as `isPostId` in src/lib/creatorPosts.ts checks it.

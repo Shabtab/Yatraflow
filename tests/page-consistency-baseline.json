@@ -9,6 +9,12 @@
     "src/pages/TripsList.tsx"
   ],
   "pageFiles": {
+    "src/pages/AboutPage.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 0
+    },
     "src/pages/AdminPage.tsx": {
       "EmptyState": 5,
       "loadingBlock": 0,
@@ -60,7 +66,7 @@
     "src/pages/Landing.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 17,
+      "inlineStyle": 16,
       "rawH1": 1
     },
     "src/pages/NativeHome.tsx": {
