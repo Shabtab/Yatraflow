@@ -22,7 +22,19 @@ describe('Share tab: three columns from one breakpoint', () => {
     expect(tab).toContain('label="Share and trip options"')
     expect(tab).toContain('id: `share-tab-${t.id}`')
     expect(tab).toContain('controls: `share-panel-${t.id}`')
-    expect(tab).toMatch(/\{wide \? \(\s*<div className="shr-columns">/)
+    expect(tab).toMatch(/<div className=\{wide \? 'shr-columns' : 'share-panels'\}>/)
+  })
+
+  it('the panels never remount between the tabs and the columns, because only attributes switch', () => {
+    // A remount drops PublicationForm's local drafts (price, free days, tagline)
+    // when the window crosses the 1100px break. The wrapper and each keyed section
+    // exist in both layouts, so only className, role, aria and hidden change.
+    expect(tab).not.toMatch(/wide \?\s*\(\s*<div/)
+    expect(tab).toContain('<section key={t.id} id={`share-panel-${t.id}`} data-share-column={t.id}')
+    expect(tab).toContain("className={wide ? 'shr-column' : 'share-panel'}")
+    expect(tab).toContain("role={wide ? undefined : 'tabpanel'}")
+    expect(tab).toContain("aria-labelledby={wide ? undefined : `share-tab-${t.id}`}")
+    expect(tab).toContain('hidden={!wide && tab !== t.id}')
   })
 
   it('phones show short job names but keep the full accessible name', () => {

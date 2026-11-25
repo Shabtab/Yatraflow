@@ -1035,20 +1035,20 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           onChange={key => { if (isShareTabId(key)) setTab(key) }} />
       )}
 
-      {wide ? (
-        <div className="shr-columns">
-          {SHARE_TABS.map(t => (
-            <section key={t.id} className="shr-column" data-share-column={t.id}>{panelBody[t.id]}</section>
-          ))}
-        </div>
-      ) : (
-        SHARE_TABS.map(t => (
-          <section key={t.id} role="tabpanel" id={`share-panel-${t.id}`} aria-labelledby={`share-tab-${t.id}`}
-            className="share-panel" hidden={tab !== t.id}>
+      {/* One wrapper and one section per panel in both layouts. A resize across the
+          1100px break changes attributes only. No panel remounts, so the publish
+          form keeps its drafts. */}
+      <div className={wide ? 'shr-columns' : 'share-panels'}>
+        {SHARE_TABS.map(t => (
+          <section key={t.id} id={`share-panel-${t.id}`} data-share-column={t.id}
+            className={wide ? 'shr-column' : 'share-panel'}
+            role={wide ? undefined : 'tabpanel'}
+            aria-labelledby={wide ? undefined : `share-tab-${t.id}`}
+            hidden={!wide && tab !== t.id}>
             {panelBody[t.id]}
           </section>
-        ))
-      )}
+        ))}
+      </div>
 
       <Modal open={qrOpen} onClose={() => setQrOpen(false)} title="Invite QR code">
         <div className="shr-qr">
