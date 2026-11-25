@@ -4,12 +4,16 @@
 // no store data, so it renders for signed-out visitors.
 import { PageHeader } from '../components/page/PageHeader'
 import { appLink } from '../lib/appLink'
+import { isNative } from '../lib/native'
 import {
   BRAND_LINE_MAIN, BRAND_LINE_SUPPORT,
   HOW_IT_WORKS_CTAS, HOW_IT_WORKS_INTRO, HOW_IT_WORKS_LIMITS, HOW_IT_WORKS_STEPS,
 } from '../lib/howItWorksContent'
 
 export function HowItWorksPage() {
+  // The web's calculator is the Plan Bench on the landing page. The installed
+  // app has no calculator surface, so those two actions stay off native.
+  const showCalculator = !isNative
   return (
     <div className="container page-enter yf-page hiw-page">
       <PageHeader
@@ -22,7 +26,7 @@ export function HowItWorksPage() {
             <span className="hiw-step-number" aria-hidden="true">{index + 1}</span>
             <h2 className="hiw-step-title">{step.title}</h2>
             <p className="hiw-step-body">{step.body}</p>
-            {step.link ? (
+            {step.link && (!step.link.webCalculator || showCalculator) ? (
               <a className="hiw-step-link text-link" {...appLink(step.link.href)}>{step.link.label} →</a>
             ) : null}
           </li>
@@ -38,7 +42,7 @@ export function HowItWorksPage() {
         <h2 id="hiw-close-heading" className="hiw-close-line">{BRAND_LINE_MAIN}</h2>
         <p className="hiw-close-support">{BRAND_LINE_SUPPORT}</p>
         <div className="hiw-close-actions">
-          {HOW_IT_WORKS_CTAS.map((cta, index) => (
+          {HOW_IT_WORKS_CTAS.filter(cta => !cta.webCalculator || showCalculator).map((cta, index) => (
             <a
               key={cta.label}
               className={index === 0 ? 'btn btn-primary' : 'btn btn-outline'}

@@ -14,6 +14,10 @@ export const HOW_IT_WORKS_INTRO =
 export interface HowItWorksLink {
   label: string
   href: `/${string}`
+  /** The Plan Bench is the web landing page's calculator. The installed app has
+   *  no calculator surface, and its home is task-first, so a native reader does
+   *  not get this action rather than a link that lands on nothing. */
+  webCalculator?: boolean
 }
 
 export interface HowItWorksStep {
@@ -30,7 +34,7 @@ export const HOW_IT_WORKS_STEPS: readonly HowItWorksStep[] = [
     // The Plan Bench prices a route and a group size on the landing page. The
     // multi-destination calculator hub is its own PR; move this link there when
     // it lands.
-    link: { label: 'Try a free calculator', href: '/' },
+    link: { label: 'Try a free calculator', href: '/', webCalculator: true },
   },
   {
     title: 'Start the plan',
@@ -67,6 +71,6 @@ export type HowItWorksCta = HowItWorksLink
 
 export const HOW_IT_WORKS_CTAS: readonly HowItWorksCta[] = [
   { label: 'Start a free plan', href: '/new' },
-  { label: 'Price a trip first', href: '/' },
+  { label: 'Price a trip first', href: '/', webCalculator: true },
   { label: 'See it on a sample trip', href: '/explore' },
 ]
