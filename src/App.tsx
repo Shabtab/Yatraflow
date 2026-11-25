@@ -136,7 +136,7 @@ const GUEST_ROUTE_SEGMENTS = new Set(['pub', 'creator', 'explore', 'creators', '
 
 /** Routes that are static copy: they read no store data, so they paint before
  *  the hydrate settles instead of showing the loading block. */
-const STATIC_COPY_SEGMENTS = new Set(['faq', 'how-it-works'])
+const STATIC_COPY_SEGMENTS = new Set(['faq', 'how-it-works', 'for-creators'])
 
 /** Whether the profile lookup takes the page from the route. A failed lookup takes it on the
  *  bare route too, so its Try again is never hidden behind the landing. A reading lookup does
