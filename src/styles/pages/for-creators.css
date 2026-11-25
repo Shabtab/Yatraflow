@@ -2,7 +2,10 @@
    The creator pitch page owns only its own layout. The card skin comes from
    the shared `cr-card` recipe, the buttons from the button module and the type
    scale from the Papercut tokens, so both themes hold without a second block.
-   Entrances come from the page cascade (`.page-enter > *`), never from here. */
+   Entrances come from the page cascade (`.page-enter > *`), never from here.
+   Layout: a two-column hero at 1024 (a comment thread beside the pitch), a
+   horizontal numbered flow, a 2 x 2 live grid, a three-card next grid, then
+   the three starting routes on region art and one closing band. */
 
 .fcr-page {
   padding-block: var(--space-13) var(--space-15);
@@ -10,14 +13,37 @@
 
 /* ---------- Hero ---------- */
 
+.fcr-hero {
+  display: grid;
+  gap: var(--space-11);
+  align-items: center;
+  margin-bottom: var(--space-15);
+}
+
+.fcr-hero__copy {
+  min-width: 0;
+}
+
 .fcr-head {
-  margin-bottom: var(--space-12);
+  margin-bottom: 0;
 }
 
 .fcr-hero-note {
   display: grid;
   gap: var(--space-4);
   max-width: 660px;
+  margin-top: var(--space-7);
+}
+
+.fcr-hero__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-7);
+}
+
+.fcr-hero__actions > .btn {
+  justify-content: center;
 }
 
 .fcr-hero-fact {
@@ -36,10 +62,160 @@
   color: var(--pw-ink-3);
 }
 
+.fcr-hero__visual {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* A phone frame holding the reply a creator sends: three plain asks, then the
+   link card. It is a picture of the page's own claim, not a screenshot. */
+.fcr-phone {
+  width: min(340px, 100%);
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--pw-line);
+  border-radius: 40px;
+  background: var(--pw-sunken);
+  box-shadow: var(--elev-1);
+}
+
+.fcr-phone__screen {
+  display: grid;
+  gap: var(--space-5);
+  overflow: hidden;
+  padding: var(--space-7) var(--space-6) var(--space-6);
+  border-radius: 30px;
+  background: var(--pw-card);
+}
+
+.fcr-phone__bar {
+  display: block;
+  width: 84px;
+  height: 5px;
+  margin: 0 auto;
+  border-radius: var(--radius-pill);
+  background: var(--pw-line);
+}
+
+.fcr-phone__title {
+  margin: 0;
+  font: var(--pw-caption);
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--pw-ink-3);
+}
+
+.fcr-thread {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fcr-comment {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.fcr-comment__avatar {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--pw-line-soft);
+  border-radius: var(--radius-pill);
+  background: var(--pw-lagoon);
+}
+
+.fcr-comment__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fcr-comment__who {
+  font: var(--pw-caption);
+  color: var(--pw-ink-3);
+}
+
+.fcr-comment__text {
+  font: var(--pw-body);
+  color: var(--pw-ink);
+}
+
+.fcr-reply {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--pw-line-soft);
+}
+
+.fcr-reply__label {
+  font: var(--pw-caption);
+  font-weight: 700;
+  color: var(--pw-sea);
+}
+
+.fcr-linkcard {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3);
+  border: 1px solid var(--pw-line);
+  border-radius: var(--radius);
+  background: var(--pw-soft);
+}
+
+.fcr-linkcard__art {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.fcr-linkcard__copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.fcr-linkcard__title {
+  font: var(--pw-meta);
+  font-weight: 700;
+  color: var(--pw-ink);
+}
+
+.fcr-linkcard__meta {
+  font: var(--pw-caption);
+  color: var(--pw-ink-2);
+}
+
+.fcr-linkcard__domain {
+  font: var(--pw-caption);
+  color: var(--pw-ink-3);
+}
+
+.fcr-illustration-note {
+  margin: 0;
+  font: var(--pw-caption);
+  color: var(--pw-ink-3);
+}
+
 /* ---------- Sections ---------- */
 
 .fcr-section {
   margin-top: var(--space-15);
+}
+
+.fcr-section-head {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 720px;
 }
 
 .fcr-section-title {
@@ -51,67 +227,56 @@
 }
 
 .fcr-section-lede {
-  max-width: 680px;
-  margin: var(--space-4) 0 0;
+  max-width: 64ch;
+  margin: 0;
   font: var(--pw-body-l);
   color: var(--pw-ink-2);
 }
 
-/* ---------- Numbered steps ---------- */
+/* ---------- Numbered flow ---------- */
 
-.fcr-steps {
+.fcr-flow {
+  position: relative;
   display: grid;
-  gap: var(--space-5);
-  margin: var(--space-8) 0 0;
+  gap: var(--space-7);
+  margin: var(--space-9) 0 0;
   padding: 0;
   list-style: none;
 }
 
-.fcr-step {
+.fcr-flow__step {
+  position: relative;
   display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: var(--space-5);
-  align-items: start;
-  padding: var(--space-7) var(--space-9);
-  border: 1px solid var(--pw-line-soft);
-  border-radius: var(--radius-lg);
-  background: var(--pw-card);
+  gap: var(--space-4);
+  min-width: 0;
 }
 
-.fcr-step-number {
+.fcr-flow__num {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--pw-line-soft);
   border-radius: var(--radius-pill);
-  background: var(--pw-lagoon-100);
-  color: var(--pw-sea-900);
+  background: var(--pw-lagoon);
+  color: var(--pw-sea);
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
-.fcr-step-body {
+.fcr-flow__body {
   margin: 0;
   font: var(--pw-body);
   color: var(--pw-ink-2);
 }
 
-.fcr-step-body b {
-  display: block;
-  margin-bottom: var(--space-2);
-  font-weight: 700;
-  color: var(--pw-ink);
-}
-
-.fcr-steps--tight {
-  gap: var(--space-4);
-}
-
 /* ---------- Live and next cards ---------- */
 
-.fcr-grid {
+.fcr-card-grid,
+.fcr-next-grid {
   display: grid;
   gap: var(--space-7a);
   margin-top: var(--space-9);
@@ -121,18 +286,46 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  transition:
+    transform var(--motion-fast) var(--ease-paper),
+    border-color var(--motion-fast) var(--ease-paper),
+    box-shadow var(--motion-fast) var(--ease-paper);
 }
 
-.fcr-card-index {
+.fcr-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.fcr-card__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  background: var(--pw-lagoon);
+  color: var(--pw-sea);
+}
+
+.fcr-card__index {
+  position: absolute;
+  top: var(--space-8);
+  right: var(--space-9);
+  color: var(--pw-ink-3);
   font-family: var(--font-display);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: .12em;
-  color: var(--pw-lagoon-600);
   font-variant-numeric: tabular-nums;
 }
 
-.fcr-card-title {
+.fcr-card--next {
+  position: relative;
+}
+
+.fcr-card__title {
   margin: 0;
   font-family: var(--font-body);
   font-size: 18px;
@@ -142,7 +335,7 @@
   color: var(--pw-ink);
 }
 
-.fcr-card-body {
+.fcr-card__body {
   margin: 0;
   font: var(--pw-meta);
   font-size: 14.5px;
@@ -150,22 +343,111 @@
   color: var(--pw-ink-2);
 }
 
-/* ---------- Closing band ---------- */
+.fcr-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font: var(--pw-caption);
+  font-weight: 700;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
 
-.fcr-final {
-  padding-top: var(--space-11);
+.fcr-chip--live {
+  background: var(--pw-lagoon);
+  color: var(--pw-sea);
+}
+
+.fcr-chip--next {
+  border: 1px solid var(--pw-amber);
+  color: var(--pw-amber);
+}
+
+/* ---------- Starting routes ---------- */
+
+.fcr-section--start {
+  padding-top: var(--space-13);
   border-top: 1px dashed var(--pw-line);
 }
 
-.fcr-close {
+.fcr-start-grid {
+  display: grid;
+  gap: var(--space-8);
+  margin: var(--space-9) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fcr-start {
+  position: relative;
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+}
+
+.fcr-start__frame {
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  border: 1px solid var(--pw-line-soft);
+  border-radius: var(--radius-lg);
+  background: var(--pw-sunken);
+}
+
+.fcr-start__art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fcr-start__num {
+  position: absolute;
+  top: var(--space-5);
+  left: var(--space-5);
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--radius-pill);
+  background: var(--pw-card);
+  color: var(--pw-sea);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fcr-start__body {
+  margin: 0;
+  font: var(--pw-body);
+  color: var(--pw-ink-2);
+}
+
+.fcr-start__body b {
+  color: var(--pw-ink);
+}
+
+/* ---------- Closing band ---------- */
+
+.fcr-cta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-5) var(--space-9);
-  margin-top: var(--space-9);
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-top: var(--space-11);
+  padding: var(--space-9);
+  border: 1px solid var(--pw-line);
+  border-radius: var(--radius-lg);
+  background: var(--pw-soft);
 }
 
-.fcr-close-note {
+.fcr-cta__note {
   margin: 0;
   font: var(--pw-meta);
   color: var(--pw-ink-3);
@@ -174,31 +456,101 @@
 .fcr-link {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
-  color: var(--pw-sea-700);
+  min-height: 44px;
+  color: var(--pw-sea);
   font-weight: 600;
   text-underline-offset: 3px;
   transition: color var(--motion-fast) var(--ease-paper);
 }
 
 .fcr-link:hover {
-  color: var(--pw-lagoon-600);
+  color: var(--pw-amber);
+}
+
+/* ---------- Reflow ---------- */
+
+@media (min-width: 640px) {
+  .fcr-hero__actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .fcr-hero__actions > .btn {
+    width: auto;
+    min-height: 56px;
+  }
 }
 
 @media (min-width: 720px) {
-  .fcr-grid {
+  .fcr-card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (min-width: 980px) {
-  .fcr-grid--three {
+@media (min-width: 900px) {
+  .fcr-flow {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-9);
+  }
+
+  .fcr-flow__step::after {
+    content: '';
+    position: absolute;
+    top: 18px;
+    right: calc(-1 * var(--space-9) - 1px);
+    left: calc(36px + var(--space-5));
+    height: 1px;
+    background: var(--pw-line);
+  }
+
+  .fcr-flow__step:last-child::after {
+    display: none;
+  }
+
+  .fcr-start-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
+@media (min-width: 980px) {
+  .fcr-next-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .fcr-hero {
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr);
+    gap: var(--space-13);
+    align-items: start;
+  }
+
+  .fcr-hero__visual {
+    justify-items: end;
+  }
+}
+
+/* ---------- Motion ---------- */
+
+/* The dealt moment is the page cascade: the hero and each section rise in
+   order from the shared page-enter rule. Interaction adds one small hover
+   lift. The phone picture and the art tiles stay stills, so nothing moves
+   with the scroll. */
+@media (min-width: 640px) {
+  .fcr-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--pw-ink-3);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .fcr-link {
+  .fcr-link,
+  .fcr-card {
     transition: none;
+  }
+
+  .fcr-card:hover {
+    transform: none;
   }
 }

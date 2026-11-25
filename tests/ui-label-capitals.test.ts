@@ -53,6 +53,7 @@ export const ALLOWLIST: Allowed[] = [
   ...entry('src/pages/trip/TripSettingsForm.tsx', ['up to'], 'MID: hint beside the crew input ("up to 12")'),
   ...entry('src/pages/trip/TripSettingsForm.tsx', ['per litre'], 'UNIT: follows the fuel price value'),
   ...entry('src/pages/TripCreated.tsx', ['per head'], 'UNIT: follows the per-head price value'),
+  ...entry('src/pages/ForCreatorsPage.tsx', ['yatraflow.in'], 'MID: a hostname under the link-card title, written lowercase as addresses are'),
 ]
 
 export function uiLabelHits(files: string[]): string[] {
