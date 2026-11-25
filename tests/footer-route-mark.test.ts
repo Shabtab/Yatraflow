@@ -25,11 +25,12 @@ describe('footer route mark (P1)', () => {
     expect(footer).toMatch(/<svg\b[^>]*focusable="false"/)
   })
 
-  it('keeps the feedback link and the calculator link, and adds no anchor', () => {
+  it('keeps the one policy route, the feedback link and the calculator link, and adds no other anchor', () => {
     expect(footer).toContain('href={feedbackHref()}')
     expect(footer).toContain('Send feedback')
     expect(footer).toContain('href="/ladakh-trip-cost-calculator/"')
-    expect(footer.match(/<a\s/g)?.length).toBe(2)
+    expect(footer).toContain('appLink(\'/about\')')
+    expect(footer.match(/<a\s/g)?.length).toBe(3)
   })
 
   it('positions the mark against the footer itself, not against its padding', () => {

@@ -5,6 +5,7 @@ import { ArrowDown, ArrowRight, Clock, MapPin, Plane, Route, TriangleAlert, User
 import { RouteSquiggle, useInView, usePageVisible } from '../components/ui'
 import { PlanBench } from '../components/PlanBench'
 import { appLink } from '../lib/appLink'
+import { HERO_HEADLINE, HERO_SUPPORT } from '../lib/positioning'
 import { scrollBehavior } from '../lib/motion'
 import { CREATE_PATH, signupThenCreatePath } from '../lib/routes'
 import { useReveal } from '../hooks/useReveal'
@@ -40,13 +41,8 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
         <div className="container hero-split">
           <div className="hero-copy">
             <span className="chip chip-saffron hero-rise">Built for Indian travellers</span>
-            <h1 className="hero-rise rise-d1 hero-title">
-              Plan trips that actually <span style={{ color: 'var(--yf-teal-600)' }}>flow together</span>
-            </h1>
-            <p className="hero-sub hero-rise rise-d2">
-              Build the route, see every time and cost impact,
-              and keep your whole crew on the same page.
-            </p>
+            <h1 className="hero-rise rise-d1 hero-title">{HERO_HEADLINE}</h1>
+            <p className="hero-sub hero-rise rise-d2">{HERO_SUPPORT}</p>
             <div className="hero-ctas hero-rise rise-d3">
               <a className="btn btn-primary btn-lg btn-trail" {...appLink(startPlanningPath)}>
                 {heroCtaLabel}
@@ -188,7 +184,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
       </section>
 
       <p className="small muted" style={{ textAlign: 'center', paddingBottom: 24 }}>
-        © {new Date().getFullYear()} YatraFlow · <a className="text-link" {...appLink('/dmca')}>Copyright and DMCA</a>
+        © {new Date().getFullYear()} YatraFlow · <a className="text-link" {...appLink('/about')}>About</a> · <a className="text-link" {...appLink('/dmca')}>Copyright and DMCA</a>
       </p>
       </div>
     </div>

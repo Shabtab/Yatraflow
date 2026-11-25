@@ -24,9 +24,9 @@ import { decodeTripSnapshot } from './lib/snapshot'
 import { analyticsBeforeSend } from './lib/analyticsPrivacy'
 import { scrollBehavior } from './lib/motion'
 import { pageTitle, routeParts } from './lib/pageTitle'
-import { CREATE_SEGMENT, CREATE_PATH } from './lib/routes'
+import { CREATE_SEGMENT, CREATE_PATH, needsSignupForCreate, signupThenCreatePath } from './lib/routes'
 import { createFunnelOn } from './lib/featureFlags'
-import { currentRoute, navigate as navigateRoute, onRouteChange, settleLegacyHash } from './lib/router'
+import { currentRoute, navigate as navigateRoute, onRouteChange, replaceRoute, settleLegacyHash } from './lib/router'
 import { appLink } from './lib/appLink'
 import { App as CapApp } from '@capacitor/app'
 import { isNative } from './lib/native'
@@ -68,6 +68,7 @@ const CreatorHubPage = lazy(() => import('./pages/CreatorHubPage').then(m => ({ 
 // admins type /admin; non-admins fall through to landing inside the page).
 const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })))
 const DMCAPage = lazy(() => import('./pages/DMCAPage').then(m => ({ default: m.DMCAPage })))
+const AboutPage = lazy(() => import('./pages/AboutPage').then(m => ({ default: m.AboutPage })))
 
 /** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. The `page-enter` root gives the block the shared entrance. The `route-fallback` root stays invisible for a short grace period. It also holds a page's height. A fast load then shows no loader and no footer jump. */
 const lazyRouteFallback = <div className="container page-enter route-fallback"><StateBlock kind="loading" titleLevel="h2" art={<Mascot pose="loading" size={112} />} title="Loading…" /></div>
@@ -537,6 +538,29 @@ export default function App() {
   // exactly what the post-gate frame would be, instead of a spinner that
   // swaps to the full page (the landing load shift, Lighthouse CLS 0.997).
   const ready = useStoreReady()
+
+  // A signed-out visitor who opens the create route goes to signup and comes
+  // back to it once the account exists. This route used to render the landing
+  // page, which was a silent dead end (#1140): the Plan Bench CTA and the hero
+  // CTA both looked alive, and the trip prefill the bench had just stashed was
+  // never read, because the create page never mounted. The address is replaced
+  // rather than pushed, so Back does not bounce off the same redirect twice.
+  //
+  // The call waits for `ready`: the session is restored asynchronously, so
+  // until the hydrate settles every signed-in visitor still reads as signed
+  // out, and redirecting then threw a reloading user with a valid session onto
+  // the signup form. `needsSignupForCreate` owns that gate.
+  const signedOutCreate = needsSignupForCreate(ready, sessionUserId, parts[0])
+  useEffect(() => {
+    if (!signedOutCreate) return
+    replaceRoute(signupThenCreatePath())
+    // The shell's route state must follow the address just replaced, and the
+    // router's change subscription cannot help: replaceRoute fires no listener
+    // on purpose, so a page's own view preference cannot re-run the shell.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRoute(currentRoute())
+  }, [signedOutCreate])
+
   // Splash hides on the same ready flip (or 2.5s worst case) so the launch
   // image never lingers behind the loading block.
   useEffect(() => {
@@ -574,14 +598,22 @@ export default function App() {
     // A policy page answers for signed-out visitors too, so it sits pre-switch
     // beside share/join/invite rather than inside the signed-in switch.
     page = <Suspense fallback={lazyRouteFallback}><DMCAPage /></Suspense>
+  } else if (parts[0] === 'about') {
+    // The story page is marketing copy for a visitor who has not signed up, so
+    // it sits beside dmca, pre-switch, and answers for both audiences.
+    page = <Suspense fallback={lazyRouteFallback}><AboutPage /></Suspense>
   } else if (!me) {
     // public pages stay accessible logged-out; everything else funnels to auth/landing
     if (parts[0] === 'pub' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage key={parts[1]} slug={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'creator' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><CreatorPage creatorId={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'explore') page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
+    else if (parts[0] === 'creators') page = <Suspense fallback={lazyRouteFallback}><CreatorRankingsPage /></Suspense>
     else if (parts[0] === 'auth' && !sessionUserId) page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
     else if (profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) page = <ProfileLookupPage state={profileState} />
     else if (parts[0] === 'trip' && parts[1]) page = <SignedOutTripPage route={route} navigate={navigate} />
+    // The create route redirects to signup in the effect beside `parts`; the
+    // frame before it lands holds the loader, so the landing page never flashes.
+    else if (parts[0] === CREATE_SEGMENT && !sessionUserId) page = lazyRouteFallback
     else page = <LandingPage onNavigate={navigate} />
   } else if (!GUEST_ROUTE_SEGMENTS.has(parts[0] ?? '')
     && profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) {
@@ -861,7 +893,7 @@ export default function App() {
         </svg>
         <div className="container footer-inner">
           <span><b>YatraFlow</b>: plan together, travel better. Built for Indian travellers</span>
-          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh trip cost calculator</a></span>
+          <span className="small muted">All costs are transparent estimates. No bookings. Planning plus paid itinerary unlocks. <a className="footer-link" {...appLink('/about')}>About YatraFlow</a> · <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh trip cost calculator</a></span>
         </div>
       </footer>
 
