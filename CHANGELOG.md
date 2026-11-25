@@ -16,6 +16,98 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.90.0] - 2026-11-26
+
+### Added
+
+- **The server can set the invite link role and reset the invite link.** The trip owner or an admin can set the link to admit editors or viewers, and can reset the link. When the link role goes up or the link is reset, a new code replaces the old one. The old link stops working. When the link role goes down, the code stays the same. A member who left and joins again gets the lower of their last role and the link role. (#1012)
+
+- **The log in and sign up page shows a cover with the product line.** On a desktop screen, an animated lake scene at dawn fills the left column. A glass panel on it shows the locked main line "Plan Indian trips together — not in a chaotic group chat." and the support line "Every stop, hour and rupee in one plan your group can actually follow." The UI em dash scan exempts that exact main line and no other text. The panel also has the chips "Free to plan", "Works offline" and "Made for India". On a phone, a 150 px strip of the same picture sits above the form. The dark theme shows the lake at night. Reduced motion and Data Saver show a still picture. The picture is decoration only. (#1010)
+
+- **The sign-up password hint counts the missing characters as you type.** A short password gets the hint "At least 8 characters, 3 more to go" in the error colour. At 8 characters the hint goes back to plain text. (#1010)
+
+- **The log in form shows an invite line only when the return route is an invite route.** The line is "Joining with an invite? Log in and you land straight in the trip." A plain log in does not show it. (#1010)
+
+- **A trip-cost calculator hands its estimate into the app.** The destination calculators link to `/new?ref=calculator&…` with the days, people, mode, bed tier and per-person budget. A signed-out visitor goes to sign-up, and their estimate is stashed first. The auth page says what is waiting. The sign-up banner names the visitor's own estimate. The create form pre-fills every stated field. The traveller only says where they start. A missing or unusable value is dropped, never defaulted.
+
+- **An invite link now explains the trip before it asks anyone to join.** The recipient screen names the inviter and the trip. It lists only the facts the plan has: dates, days, stops and the per-person estimate. The wording follows the role the link admits. A signed-in reader confirms on one screen, and a member gets the plan itself. An expired link offers the trip-code box and a link to the FAQ. A paid guide's price is named on the invite.
+
+- **The FAQ page answers the questions people ask before they invite their friends.** `/faq` groups 21 answers under seven headings. It publishes a `FAQPage` schema built from the same list the page renders. It answers signed-out visitors and carries its own title and description.
+
+- **A how-it-works page walks from a rough budget to a settled trip.** `/how-it-works` shows the six steps, what the product does not do, and the three ways to start. Both new pages are in the sitemap and the global footer.
+
+- **The creator pitch page opens at /for-creators.** The page answers a creator's "what is YatraFlow?" reply, and it renders for signed-out visitors. It keeps the locked creator line as its h1 and separates what is live today from what is building next. The footer links it, and a signed-out reader also reaches the creator rankings.
+
+- **Four seasonal India trip cost calculators share one engine.** `/goa-trip-cost-calculator/`, `/rajasthan-trip-cost-calculator/` and `/meghalaya-trip-cost-calculator/` join the rebuilt `/ladakh-trip-cost-calculator/`. Each page is static HTML built from `calculators/`, so a crawler reads the same rupees a visitor sees. Every page shows a low to high range and keeps its numbers in the link. Each one carries `WebApplication` and `FAQPage` structured data, plus Vercel Web Analytics. `/trip-cost-calculators/` lists all four with their season and default estimate.
+
+- **A new About page tells the YatraFlow story at `/about`.** It carries the locked positioning lines, what the planner does today, and where the creator hub goes next. It answers for signed-out visitors and links from the global footer and the landing page.
+
+- **The Share tab sets the invite link role and resets the link.** The owner chooses whether the link admits editors or viewers. Choosing editors asks first, because the current link and code stop working. Reset link replaces the code at once, and the old link stops working. The role line shows only the role the server confirmed. (#1012)
+
+### Changed
+
+- **A wrong email or password now gets a plain message.** The message is "That email and password don't match. Try again, or mail support to reset." The page no longer shows the provider text "Invalid login credentials". A network failure now reads "We can't reach the server. Check your connection and try again." That line does not name the provider or a browser rule. The raw error text goes to the browser console. The message for a build without a backend does not change. The error shows in a tinted banner. (#1010)
+
+- **The log in and sign up form has new field, button and tab styles.** The email and password fields have a leading icon and a teal focus ring. The submit button is 46 px high and shows a spinning icon while it works. The mode tabs sit on a sunken track with a raised pill, and the pill still glides between tabs. The extra sign-up fields fade and move as the form opens and closes. The mode labels cross-fade. Messages collapse when the mode changes. The cover settles in. Every new motion uses the motion tokens and stops when the user asks for reduced motion. (#1010)
+
+- **`calculator` joins the share-attribution vocabulary.** The app and `api/i.js` accept the value. The new `20261125_calculator_share_source.sql` widens both CHECK constraints to match. A trip created from a calculator page can now be traced to that page.
+
+- **The Share tab sets its three jobs side by side on wide screens.** From 1100 px, the three panels sit in columns. Narrow screens keep the numbered tabs. Only the Share tab uses the wider page. (#1012)
+
+- **The invite link and the join code are two blocks.** The link has its own labelled field with Copy. The join code sits in a tile, with Copy beside the label and the caption under the code. (#1012)
+
+- **Invites can go by WhatsApp or email, or as a QR code.** Show QR draws the code only when you press it. (#1012)
+
+- **The public-copy card lists what stays private.** It names crew names and the booking reference on each flight. Each item was checked against the publish path. (#1012)
+
+- **The cover is compact until you change it.** The trip cover shows at 150 px with a Change button. The picker opens on Change, or when the cover needs a fix. (#1012)
+
+- **Publish starts with a Free or Premium choice.** The Premium option shows the price once you type it. Six small day tiles show which days are free. Tagline, season, tips and the call-to-action sit behind More details, which opens when the call-to-action needs a fix. (#1012)
+
+- **Marigold is kept for money.** Publish is the only marigold control on the Share tab. The day tiles and the snapshot row stay quiet. (#1012)
+
+- **Keep a record lists its four actions as equal rows.** Add to calendar, Print day cards, Download JSON and Create snapshot link share one row style. Import JSON is a quiet link under them. (#1012)
+
+- **New members rise in when they join.** The entrance plays once, for members who join while the tab is open. (#1012)
+
+- **The sitemap now lists the creator page.** Search engines can find `/for-creators` with the FAQ and how-it-works pages.
+
+- **The Ladakh calculator runs on the shared engine now.** Its maths, its range and its link parameters do not change. Every address shared in 2026 still opens the numbers it named. Third-party blog credits moved from the route notes into a collapsed Sources footer. The page gains a `FAQPage` block, its own OG card and the prefill CTA. Fonts are served once from `/calculators/fonts/` instead of once per destination.
+
+- **The stop editor groups fields for desktop and phone.** The phone sheet folds extra fields and summarizes values that are set. The choice chips keep the same values. The Timeline shows available plan times and travel facts for an existing stop. (#1023)
+
+- **The invite share message carries the trip's own numbers.** The WhatsApp and Email invites now name the trip, its days, its stops and the per-person estimate. A trip with no facts prints no zero. An editor link asks the group to vote on stops and budget. A viewer link reads as a day-by-day summary and promises no vote.
+
+- **A link preview stays whole in WhatsApp.** The itinerary card title names the plan and its day count. Its description shows the per-person estimate, the timed stop count and the route. The creator card shows the route count, the states covered and the planned kilometres. A title that runs past 58 characters and a description past 115 are cut at a word boundary.
+
+- **The change preview shows trip totals and warning changes in a responsive panel.** It shows before and after totals, new and cleared warnings, and the existing save controls. The shown changes match the rounded totals. On a phone, the save controls stay at the bottom of the panel while the warnings scroll. (#1030)
+
+- **The About page now shows its story as a two-column hero, icon cards, a short timeline and status chips.** The words stay the same. The page reads as one full-width layout on a desktop and stacks on a phone.
+
+- **The live site now carries the locked positioning lines word for word.** The landing hero, the browser title and the social preview use "Plan Indian trips together" with its support line. `src/lib/positioning.ts` holds both lines, so a surface cannot quote half of them.
+
+- **Explore no longer claims live trips from other travellers, or a plan for sale.** The hero offers timed Indian itineraries you can fork and adjust. The share panel offers a public plan or a crew invite, because the creator payout rail does not exist yet.
+
+- **Invite text makes only the promise its link keeps.** A viewer link no longer says that joiners can vote. The Share tab hint names the role the link gives. The dead-link message in the join gate covers a reset link. (#1012)
+
+### Fixed
+
+- **A round trip no longer draws a straight line from its last stop to home.** The road chain checked the destination against the ride home, not the last stop. It now puts a round trip destination before the ride home. The map also refuses a road segment longer than 300 km. A round trip whose destination has no stop now counts the drive to that destination in its totals. (#1006)
+
+- **Map day chips stay on one scrolling row on long trips.** The strip no longer wraps into a second row. It scrolls sideways with edge fades that hide at each end. The calendar button stays centred beside it. The selected day scrolls into view. (#1007)
+
+- **Trip membership changes need the member's consent.** The trip owner can hand a trip over only to a current member. The owner cannot remove a member who has already left, or restore that member. Only the trip's own commands change the member list: nothing writes to it directly. A deleted trip loses its member history too. A new trip with the same ID starts with only its new owner. A request with no signed-in user can no longer change a trip's owner. (#936)
+
+- **Valid invite links open for people who are not on the trip yet.** Such a link showed "This invite didn't load". The invite lookup now returns the row revision that the app checks. A link that no trip uses shows "This invite link no longer works." A failed read still shows the retry screen. If the link or account changes, the app waits for the new result. (#1019)
+
+- **A fresh install refuses the invite-code preview of a priced plan to a caller who did not buy it.** `supabase/schema.sql` held the first version of `get_trip_by_invite_code`. That version selected every column with `select t.*`, with no paywall and no trash filter. A database built from that file alone served the whole plan. The copy now carries the live projection and the live gates. It returns the row revision the app checks before it renders a preview. It hides trashed trips. The owner, the crew, a masteradmin, the publication's creator and its buyers still resolve the trip. The copy is plpgsql and guards the payments table with `to_regclass`. This file never creates the payments rail, so a schema-only build stays valid and answers fail-closed. A new test pins the projection, every gate and the grants against the newest migration. The same test runs the lookup on a schema-only database. (#1020)
+
+- **The Plan Bench call to action now reaches signup for a signed-out visitor.** The create route used to render the landing page. The button looked inert, and the stashed trip prefill was never read. The route now sends the visitor to signup and back to the create page. The redirect waits for the session to settle, so a signed-in reload keeps the create page.
+
+- **Creator rankings open for a signed-out visitor.** `/creators` used to fall back to the landing page.
+
+- **A dated day no longer prints its number twice.** An untitled day read "Day 3 Day 3" side by side. The day number now prints once, and a custom title keeps its kicker. (#995)
+
 ## [0.89.0] - 2026-11-21
 
 ### Added

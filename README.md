@@ -99,9 +99,22 @@ _Recent release highlights, newest first. See [CHANGELOG.md](CHANGELOG.md) for t
 
 Pending notes live in [change fragments](changelog.d/README.md). The release owner assembles them into the public record.
 
+## The v0.90.0 release
+
+The repository is at v0.90.0. See the [release record](CHANGELOG.md) for its full scope.
+
+- **The sign-in page has a new cover and new form styles.** On a desktop, an animated lake scene sits beside the form. The sign-up password hint counts down the characters you still need.
+- **An invite link explains the trip before it asks you to join.** The page names the inviter and the trip. It lists the dates, the stops and the per-person estimate. An expired link offers the trip code box and the FAQ.
+- **The Share tab sets the invite link role.** The link can admit editors or viewers. Reset link replaces the code at once, and the old link stops working.
+- **Every trip cost calculator hands its estimate to a trip plan.** Four seasonal calculators join the Ladakh calculator. Create Trip opens with the estimate filled in.
+- **New pages answer common questions.** The FAQ, How it works, About and creator pages are in the footer. The FAQ, How it works and creator pages are in the sitemap.
+- **Only a current member can take over a trip.** The owner cannot remove a member who has already left, or restore that member.
+- **A round trip no longer draws a straight line home.** Map day chips stay on one scrolling row on long trips.
+- **The WhatsApp and email invites name the trip's own numbers.** A viewer link promises no vote.
+
 ## The v0.89.0 release
 
-The repository is at v0.89.0. See the [release record](CHANGELOG.md) for its full scope.
+The previous release. Its highlights stay here until the next release.
 
 - **Chakra now marks the Plan Bench win, the night halt, the day's warnings, the budget cap and the offline banner.** The companion button and its drawer also show Chakra. Five new heads join the curious one.
 - **My trips has a new look.** A greeting counts trips, drafts and memories. The Up next card counts down with flip tiles and shows a trip health ring. Ended trips become Memories postcards with a "Plan it again" action.
@@ -113,7 +126,7 @@ The repository is at v0.89.0. See the [release record](CHANGELOG.md) for its ful
 
 ## The v0.88.1 release
 
-The previous release. Its highlights stay here until the next release.
+Its highlights stay here until the next release.
 
 - **Removed trip members stay out.** A removed member cannot rejoin with a new invite link. A member who leaves keeps their assigned role when they rejoin. Existing invite links expire once.
 

@@ -133,6 +133,7 @@ function renderSitemap(rows, creators, origin) {
     // for the same reason as the calculators above.
     `  <url>\n    <loc>${escapeXml(`${origin}/faq`)}</loc>\n  </url>`,
     `  <url>\n    <loc>${escapeXml(`${origin}/how-it-works`)}</loc>\n  </url>`,
+    `  <url>\n    <loc>${escapeXml(`${origin}/for-creators`)}</loc>\n  </url>`,
   ]
   // Ordered by recency, not arrival: an updated classic belongs above a newer
   // row nobody has touched since it published.
