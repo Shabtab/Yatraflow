@@ -418,3 +418,66 @@ describe('free search: same-named places in different regions', () => {
     expect(hits.some(h => h.name === 'Goa Velha' && h.kind === 'poi')).toBe(true)
   })
 })
+
+// ============ Free search with Mappls on ============
+// The provider reads VITE_MAPPLS_KEY once, when its module first evaluates. This
+// describe loads its own copy with the key set, so the key does not reach the other
+// describes in this file.
+describe('free search with Mappls enabled', () => {
+  let search: typeof import('../src/lib/providers/free')
+
+  beforeEach(async () => {
+    vi.resetModules()
+    vi.stubEnv('VITE_MAPPLS_KEY', 'test-mappls-key')
+    search = await import('../src/lib/providers/free')
+  })
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals() })
+
+  const MAPPLS_GOA = { suggestedLocations: [{ eLoc: 'GOA_STATE', placeName: 'Goa', placeAddress: 'Goa' }] }
+  const OM_VILLAGE = { id: 21, name: 'Goa', latitude: 15.27, longitude: 74.6, admin1: 'Karnataka', country: 'India', country_code: 'IN' }
+  const OM_STATE = { id: 22, name: 'Goa', latitude: 15.3, longitude: 74.1, admin1: 'Goa', country: 'India', country_code: 'IN' }
+  const WIKI_GOA = {
+    query: {
+      pages: {
+        '7': { pageid: 7, title: 'Goa', coordinates: [{ lat: 15.3, lon: 74.1 }], description: 'State in India' },
+      },
+    },
+  }
+
+  it('turns the Mappls layer on, so the cases below exercise it', () => {
+    expect(search.mapplsEnabled()).toBe(true)
+  })
+
+  it('keeps a Mappls state that no Open-Meteo place matches, first, beside a same-named village', async () => {
+    vi.stubGlobal('fetch', routeFetch([
+      [/mappls/, MAPPLS_GOA],
+      [/open-meteo/, { results: [OM_VILLAGE] }],
+      [/wikipedia/, EMPTY],
+    ]))
+    const hits = await search.searchPlacesFree('goa')
+    expect(hits.filter(h => h.name === 'Goa').map(h => h.source)).toEqual(['mappls', 'open-meteo'])
+    expect(calcDestHit('Goa', hits)).toMatchObject({ id: 'mappls_GOA_STATE', admin1: 'Goa' })
+  })
+
+  it('drops a Mappls hit that Open-Meteo has in the same region, and the Open-Meteo row with coordinates stays', async () => {
+    vi.stubGlobal('fetch', routeFetch([
+      [/mappls/, MAPPLS_GOA],
+      [/open-meteo/, { results: [OM_STATE] }],
+      [/wikipedia/, EMPTY],
+    ]))
+    const hits = await search.searchPlacesFree('goa')
+    const goa = hits.filter(h => h.name === 'Goa')
+    expect(goa).toHaveLength(1)
+    expect(goa[0]).toMatchObject({ source: 'open-meteo', latitude: 15.3, longitude: 74.1 })
+  })
+
+  it('a Wikipedia article named like a kept Mappls place adds no second row', async () => {
+    vi.stubGlobal('fetch', routeFetch([
+      [/mappls/, MAPPLS_GOA],
+      [/open-meteo/, { results: [] }],
+      [/wikipedia/, WIKI_GOA],
+    ]))
+    const hits = await search.searchPlacesFree('goa')
+    expect(hits.filter(h => h.name === 'Goa').map(h => h.source)).toEqual(['mappls'])
+  })
+})
