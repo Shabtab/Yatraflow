@@ -135,7 +135,7 @@ export function ForCreatorsPage() {
               <ul className="fcr-thread">
                 {THREAD.map(comment => (
                   <li className="fcr-comment" key={comment.who}>
-                    <span className="fcr-comment__avatar" />
+                    <span className="fcr-comment__avatar">{comment.who.slice(-1)}</span>
                     <span className="fcr-comment__body">
                       <span className="fcr-comment__who">{comment.who}</span>
                       <span className="fcr-comment__text">{comment.text}</span>

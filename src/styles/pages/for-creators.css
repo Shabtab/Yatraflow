@@ -127,8 +127,14 @@
   width: 28px;
   height: 28px;
   border: 1px solid var(--pw-line-soft);
+  display: grid;
+  place-items: center;
   border-radius: var(--radius-pill);
-  background: var(--pw-lagoon);
+  background: var(--teal-soft);
+  color: var(--ink-teal);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .fcr-comment__body {
@@ -157,7 +163,7 @@
 .fcr-reply__label {
   font: var(--pw-caption);
   font-weight: 700;
-  color: var(--pw-sea);
+  color: var(--ink-teal);
 }
 
 .fcr-linkcard {
@@ -247,6 +253,7 @@
 .fcr-flow__step {
   position: relative;
   display: grid;
+  align-content: start;
   gap: var(--space-4);
   min-width: 0;
 }
@@ -259,8 +266,8 @@
   height: 36px;
   border: 1px solid var(--pw-line-soft);
   border-radius: var(--radius-pill);
-  background: var(--pw-lagoon);
-  color: var(--pw-sea);
+  background: var(--teal-soft);
+  color: var(--ink-teal);
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 700;
@@ -305,8 +312,8 @@
   width: 40px;
   height: 40px;
   border-radius: var(--radius);
-  background: var(--pw-lagoon);
-  color: var(--pw-sea);
+  background: var(--teal-soft);
+  color: var(--ink-teal);
 }
 
 .fcr-card__index {
@@ -357,13 +364,15 @@
 }
 
 .fcr-chip--live {
-  background: var(--pw-lagoon);
-  color: var(--pw-sea);
+  border: 1px solid color-mix(in srgb, var(--teal-deep) 42%, transparent);
+  background: var(--teal-soft);
+  color: var(--ink-teal);
 }
 
 .fcr-chip--next {
-  border: 1px solid var(--pw-amber);
-  color: var(--pw-amber);
+  border: 1px solid var(--saffron);
+  background: var(--saffron-soft);
+  color: var(--ink-amber);
 }
 
 /* ---------- Starting routes ---------- */
@@ -415,7 +424,7 @@
   border: 1px solid var(--pw-line);
   border-radius: var(--radius-pill);
   background: var(--pw-card);
-  color: var(--pw-sea);
+  color: var(--ink-teal);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 700;
@@ -457,14 +466,14 @@
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  color: var(--pw-sea);
+  color: var(--ink-teal);
   font-weight: 600;
   text-underline-offset: 3px;
   transition: color var(--motion-fast) var(--ease-paper);
 }
 
 .fcr-link:hover {
-  color: var(--pw-amber);
+  color: var(--ink-amber);
 }
 
 /* ---------- Reflow ---------- */
@@ -523,11 +532,15 @@
   .fcr-hero {
     grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr);
     gap: var(--space-13);
-    align-items: start;
+    align-items: center;
   }
 
   .fcr-hero__visual {
-    justify-items: end;
+    justify-items: center;
+  }
+
+  .fcr-phone {
+    width: min(380px, 100%);
   }
 }
 
