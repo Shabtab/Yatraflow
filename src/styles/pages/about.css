@@ -173,7 +173,7 @@
     grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
     align-items: start; column-gap: 36px;
   }
-  .about-page > :not(.about-header):not(.about-hero-art) { grid-column: 1 / -1; }
+  .about-page > :not(.about-header, .about-hero-art) { grid-column: 1 / -1; }
   .about-header { grid-column: 1; grid-row: 1; align-self: center; }
   .about-hero-art { grid-column: 2; grid-row: 1; height: 100%; min-height: 420px; }
   .about-hero-img { min-height: 420px; }

@@ -71,7 +71,7 @@ export function AboutPage() {
       />
 
       <div className="about-hero-art" aria-hidden="true">
-        <img className="about-hero-img" src="/art/goa-1.webp" alt="" />
+        <img className="about-hero-img" src="/art/west-bengal-v1.webp" alt="" />
         <div className="about-hero-ribbon">
           <span>Kolkata</span><span aria-hidden="true">→</span>
           <span>Kolaghat</span><span aria-hidden="true">→</span>
@@ -148,12 +148,12 @@ export function AboutPage() {
           </AboutCard>
           <AboutCard icon={Layers} title="Map views built for actual planning decisions." className="about-card-lenses">
             Switch between four operational lenses, each one a planning question:
-            <div className="about-lenses">
+            <span className="about-lenses">
               <span className="about-lens"><b>Drive</b>: fatigue and corridor pacing.</span>
               <span className="about-lens"><b>Stay</b>: distance from your base.</span>
               <span className="about-lens"><b>Gap</b>: open slots in your day.</span>
               <span className="about-lens"><b>Fix</b>: spot and repair an overloaded leg.</span>
-            </div>
+            </span>
           </AboutCard>
           <AboutCard icon={Users} title="Group decisions that actually end.">
             Run a crew preference quiz and let everyone propose stops.
