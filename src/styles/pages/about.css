@@ -74,7 +74,7 @@
 }
 .about-card:hover {
   transform: translateY(-2px); border-color: color-mix(in srgb, var(--teal-deep) 38%, var(--line));
-  box-shadow: 0 14px 30px color-mix(in srgb, var(--teal-deep) 16%, transparent);
+  box-shadow: var(--shadow-card-hover);
 }
 .about-card-icon {
   flex: none; display: grid; place-items: center; width: 38px; height: 38px;

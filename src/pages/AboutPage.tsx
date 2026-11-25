@@ -113,10 +113,10 @@ export function AboutPage() {
           Everything in between still dies in screenshots, spreadsheets and endless chat threads:
         </p>
         <div className="about-card-grid about-pain-grid">
-          <AboutCard icon={MessageCircle} title="Deciding where to go as a group.">Nobody had one place for the idea.</AboutCard>
-          <AboutCard icon={Car} title="Checking whether a day’s drive is realistic.">Drive times stayed a guess.</AboutCard>
-          <AboutCard icon={CalendarClock} title="Agreeing on stops before the deadline.">The chat kept moving after the booking.</AboutCard>
-          <AboutCard icon={Wallet} title="Settling every rupee after the trip.">The money took three days to sort out.</AboutCard>
+          <AboutCard icon={MessageCircle} title="Deciding where to go as a group." />
+          <AboutCard icon={Car} title="Checking whether a day’s drive is realistic." />
+          <AboutCard icon={CalendarClock} title="Agreeing on stops before the deadline." />
+          <AboutCard icon={Wallet} title="Settling every rupee after the trip." />
         </div>
         <p className="about-origin">
           So in late August 2026, two of us from that trip started building YatraFlow.
